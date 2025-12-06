@@ -42,14 +42,14 @@ class MockApps {
       id: 'org.mozilla.firefox',
       name: 'Firefox',
       icon: Icons.public,
-      exec: 'firefox',
+      exec: 'env MOZ_ENABLE_WAYLAND=1 firefox',
       categories: ['Network', 'WebBrowser'],
     ),
     AppInfo(
       id: 'org.chromium.Chromium',
       name: 'Chromium',
       icon: Icons.language,
-      exec: 'chromium',
+      exec: 'chromium --ozone-platform=wayland',
       categories: ['Network', 'WebBrowser'],
     ),
     AppInfo(
