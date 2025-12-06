@@ -333,13 +333,24 @@ pub fn run(shell_cmd: Option<String>) -> Result<()> {
                 continue;
             }
 
-            if let Err(e) = render_surface(
-                &mut gpu.renderer,
-                &mut surface_data,
-                &state,
-                &output,
-            ) {
-                error!("Render error on {:?}: {:?}", crtc, e);
+            // Catch any panics during rendering
+            let render_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                render_surface(
+                    &mut gpu.renderer,
+                    &mut surface_data,
+                    &state,
+                    &output,
+                )
+            }));
+
+            match render_result {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    error!("Render error on {:?}: {:?}", crtc, e);
+                }
+                Err(panic) => {
+                    error!("PANIC during render on {:?}: {:?}", crtc, panic);
+                }
             }
         }
     }
