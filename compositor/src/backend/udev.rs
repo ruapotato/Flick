@@ -47,6 +47,9 @@ use smithay::{
 // Re-import libinput types for keyboard handling
 use smithay::reexports::input::event::keyboard::KeyboardEventTrait;
 
+use smithay::wayland::xwayland_shell::XWaylandShellState;
+use smithay::xwayland::{XWayland, XWaylandEvent, xwm::X11Wm};
+
 use crate::state::Flick;
 
 /// Per-GPU state
@@ -303,6 +306,15 @@ pub fn run(shell_cmd: Option<String>) -> Result<()> {
                 error!("Failed to start shell: {:?}", e);
             }
         }
+    }
+
+    // Initialize XWayland
+    info!("Starting XWayland...");
+    if let Err(e) = init_xwayland(&mut state, &event_loop.handle()) {
+        warn!("Failed to start XWayland: {:?}", e);
+        warn!("X11 applications will not be available");
+    } else {
+        info!("XWayland started successfully");
     }
 
     info!("Entering render loop");
@@ -922,4 +934,66 @@ fn handle_input_event(
         }
         _ => {}
     }
+}
+
+/// Initialize XWayland support
+fn init_xwayland(
+    state: &mut Flick,
+    loop_handle: &smithay::reexports::calloop::LoopHandle<'static, Flick>,
+) -> Result<()> {
+    use std::process::Stdio;
+
+    // Initialize XWayland shell state
+    state.xwayland_shell_state = Some(XWaylandShellState::new::<Flick>(&state.display_handle));
+
+    // Spawn XWayland
+    let (xwayland, client) = XWayland::spawn(
+        &state.display_handle,
+        None,  // Let Smithay choose display number
+        std::iter::empty::<(&str, &str)>(),  // No extra env vars
+        true,  // Enable abstract socket
+        Stdio::null(),  // stdout
+        Stdio::null(),  // stderr
+        |_| {},  // user_data initialization
+    ).map_err(|e| anyhow::anyhow!("Failed to spawn XWayland: {:?}", e))?;
+
+    // Register XWayland event source - XWayland implements EventSource directly
+    let client_clone = client.clone();
+    let loop_handle_clone = loop_handle.clone();
+    loop_handle
+        .insert_source(xwayland, move |event, _, state| {
+            match event {
+                XWaylandEvent::Ready {
+                    x11_socket,
+                    display_number,
+                } => {
+                    info!("XWayland ready on display :{}", display_number);
+
+                    // Start the X11 window manager
+                    match X11Wm::start_wm(
+                        loop_handle_clone.clone(),
+                        &state.display_handle,
+                        x11_socket,
+                        client_clone.clone(),
+                    ) {
+                        Ok(wm) => {
+                            info!("X11 Window Manager started");
+                            state.xwm = Some(wm);
+
+                            // Set DISPLAY for child processes
+                            std::env::set_var("DISPLAY", format!(":{}", display_number));
+                        }
+                        Err(e) => {
+                            error!("Failed to start X11 WM: {:?}", e);
+                        }
+                    }
+                }
+                XWaylandEvent::Error => {
+                    error!("XWayland encountered an error");
+                }
+            }
+        })
+        .map_err(|e| anyhow::anyhow!("Failed to insert XWayland source: {:?}", e))?;
+
+    Ok(())
 }

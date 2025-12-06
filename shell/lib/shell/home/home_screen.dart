@@ -18,11 +18,18 @@ class _HomeScreenState extends State<HomeScreen> {
   void _launchApp(AppInfo app) {
     log.info('Launching app: ${app.name} (${app.exec})');
 
+    // Build environment with DISPLAY for X11 apps
+    // ALWAYS use :1 - our XWayland runs there, system X is :0
+    final env = Map<String, String>.from(Platform.environment);
+    env['DISPLAY'] = ':1';
+    log.info('Launching with DISPLAY=:1 for XWayland');
+
     // Launch the app using shell to handle arguments properly
     Process.start(
       '/bin/sh',
       ['-c', app.exec],
       mode: ProcessStartMode.detached,
+      environment: env,
     ).then((_) {
       log.debug('App ${app.name} started');
     }).catchError((e) {

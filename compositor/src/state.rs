@@ -13,7 +13,7 @@ use smithay::{
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
     delegate_xdg_shell,
     desktop::{PopupManager, Space, Window},
-    input::{Seat, SeatHandler, SeatState},
+    input::{dnd::DndGrabHandler, Seat, SeatHandler, SeatState},
     output::Output,
     reexports::{
         calloop::LoopHandle,
@@ -45,6 +45,8 @@ use smithay::{
         shm::{ShmHandler, ShmState},
         socket::ListeningSocketSource,
     },
+    wayland::xwayland_shell::XWaylandShellState,
+    xwayland::{xwm::X11Wm, XWayland},
 };
 
 use crate::viewport::Viewport;
@@ -94,6 +96,11 @@ pub struct Flick {
 
     // Screen size
     pub screen_size: Size<i32, Logical>,
+
+    // XWayland
+    pub xwayland: Option<XWayland>,
+    pub xwm: Option<X11Wm>,
+    pub xwayland_shell_state: Option<XWaylandShellState>,
 }
 
 impl Flick {
@@ -169,6 +176,9 @@ impl Flick {
             viewports: HashMap::new(),
             next_viewport_id: 0,
             screen_size,
+            xwayland: None,
+            xwm: None,
+            xwayland_shell_state: None,
         }
     }
 
@@ -215,7 +225,15 @@ impl CompositorHandler for Flick {
         &self,
         client: &'a smithay::reexports::wayland_server::Client,
     ) -> &'a CompositorClientState {
-        &client.get_data::<ClientState>().unwrap().compositor_state
+        // XWayland client may not have ClientState, use a static default in that case
+        static XWAYLAND_CLIENT_STATE: std::sync::OnceLock<ClientState> = std::sync::OnceLock::new();
+
+        if let Some(state) = client.get_data::<ClientState>() {
+            &state.compositor_state
+        } else {
+            // XWayland or other internal client without ClientState
+            &XWAYLAND_CLIENT_STATE.get_or_init(ClientState::default).compositor_state
+        }
     }
 
     fn commit(&mut self, surface: &WlSurface) {
@@ -294,6 +312,8 @@ impl DataDeviceHandler for Flick {
 }
 
 impl WaylandDndGrabHandler for Flick {}
+
+impl DndGrabHandler for Flick {}
 
 impl XdgShellHandler for Flick {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {

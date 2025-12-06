@@ -39,10 +39,25 @@ class MockApps {
       categories: ['System', 'TerminalEmulator'],
     ),
     AppInfo(
+      id: 'xterm',
+      name: 'XTerm',
+      genericName: 'X11 Terminal',
+      icon: Icons.terminal,
+      exec: 'xterm',
+      categories: ['System', 'TerminalEmulator'],
+    ),
+    AppInfo(
       id: 'org.mozilla.firefox',
       name: 'Firefox',
       icon: Icons.public,
       exec: 'env MOZ_ENABLE_WAYLAND=1 firefox',
+      categories: ['Network', 'WebBrowser'],
+    ),
+    AppInfo(
+      id: 'org.mozilla.firefox.x11',
+      name: 'Firefox (X11)',
+      icon: Icons.public,
+      exec: 'firefox',
       categories: ['Network', 'WebBrowser'],
     ),
     AppInfo(
@@ -59,13 +74,6 @@ class MockApps {
       icon: Icons.edit_note,
       exec: 'kate',
       categories: ['Utility', 'TextEditor'],
-    ),
-    AppInfo(
-      id: 'xterm',
-      name: 'XTerm',
-      icon: Icons.terminal,
-      exec: 'xterm',
-      categories: ['System', 'TerminalEmulator'],
     ),
   ];
 }
