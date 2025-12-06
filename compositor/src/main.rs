@@ -35,6 +35,23 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    // Set up panic hook to log panics before crashing
+    std::panic::set_hook(Box::new(|panic_info| {
+        eprintln!("PANIC: {}", panic_info);
+        // Also write to log file directly
+        if let Ok(home) = std::env::var("HOME") {
+            let crash_log = format!("{}/.local/state/flick/crash.log", home);
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&crash_log)
+            {
+                use std::io::Write;
+                let _ = writeln!(f, "[{}] PANIC: {}", chrono::Local::now(), panic_info);
+            }
+        }
+    }));
+
     // Set up log directory (~/.local/state/flick or /tmp/flick)
     let log_dir = std::env::var("XDG_STATE_HOME")
         .map(PathBuf::from)
