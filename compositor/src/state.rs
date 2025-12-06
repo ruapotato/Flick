@@ -333,20 +333,28 @@ impl XdgShellHandler for Flick {
         }
     }
 
-    fn new_popup(&mut self, _surface: PopupSurface, _positioner: PositionerState) {
-        // TODO: Handle popups
+    fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
+        tracing::info!("New popup created");
+
+        // Configure the popup - it will use the positioner to determine its position
+        surface.send_configure().expect("Failed to configure popup");
     }
 
     fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        // TODO: Handle popup grabs
+        // Popup grabs are used for menus that should close on outside click
+        // For now, we just acknowledge the grab request
+        tracing::debug!("Popup grab requested (not fully implemented)");
     }
 
     fn reposition_request(
         &mut self,
-        _surface: PopupSurface,
+        surface: PopupSurface,
         _positioner: PositionerState,
-        _token: u32,
+        token: u32,
     ) {
+        tracing::debug!("Popup reposition request");
+        surface.send_repositioned(token);
+        surface.send_configure().expect("Failed to reconfigure popup");
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
