@@ -17,6 +17,7 @@ use smithay::{
     output::Output,
     reexports::{
         calloop::LoopHandle,
+        wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::{wl_buffer, wl_seat, wl_surface::WlSurface},
@@ -308,6 +309,10 @@ impl XdgShellHandler for Flick {
 
             surface.with_pending_state(|state| {
                 state.size = Some(output_size.to_logical(1));
+                // Set fullscreen and activated states - this tells the client
+                // not to draw decorations (title bar, borders)
+                state.states.set(xdg_toplevel::State::Fullscreen);
+                state.states.set(xdg_toplevel::State::Activated);
             });
         }
 
