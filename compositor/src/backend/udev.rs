@@ -801,17 +801,112 @@ fn handle_input_event(
                 );
             }
         }
-        InputEvent::TouchDown { event: _ } => {
-            debug!("Touch down");
+        InputEvent::TouchDown { event } => {
+            use smithay::backend::input::{TouchEvent, AbsolutePositionEvent};
+
+            debug!("Touch down at slot {:?}", event.slot());
+            if let Some(touch) = state.seat.get_touch() {
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                let screen = state.screen_size;
+                let touch_pos = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+                    event.x_transformed(screen.w),
+                    event.y_transformed(screen.h),
+                ));
+
+                // Find surface under touch point
+                let under = state.space.element_under(touch_pos)
+                    .map(|(window, loc)| {
+                        let surface = window.toplevel()
+                            .map(|t| t.wl_surface().clone());
+                        (surface, loc)
+                    });
+
+                let focus = under.as_ref().and_then(|(surface, loc)| {
+                    surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
+                });
+
+                // Set keyboard focus on touch
+                if let Some((ref surface, _)) = focus {
+                    if let Some(keyboard) = state.seat.get_keyboard() {
+                        keyboard.set_focus(state, Some(surface.clone()), serial);
+                        debug!("Keyboard focus set via touch");
+                    }
+                }
+
+                touch.down(
+                    state,
+                    focus,
+                    &smithay::input::touch::DownEvent {
+                        slot: event.slot(),
+                        location: touch_pos,
+                        serial,
+                        time: Event::time_msec(&event),
+                    },
+                );
+            }
         }
-        InputEvent::TouchMotion { event: _ } => {
-            debug!("Touch motion");
+        InputEvent::TouchMotion { event } => {
+            use smithay::backend::input::{TouchEvent, AbsolutePositionEvent};
+
+            debug!("Touch motion at slot {:?}", event.slot());
+            if let Some(touch) = state.seat.get_touch() {
+                let screen = state.screen_size;
+                let touch_pos = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+                    event.x_transformed(screen.w),
+                    event.y_transformed(screen.h),
+                ));
+
+                // Find surface under touch point
+                let under = state.space.element_under(touch_pos)
+                    .map(|(window, loc)| {
+                        let surface = window.toplevel()
+                            .map(|t| t.wl_surface().clone());
+                        (surface, loc)
+                    });
+
+                let focus = under.as_ref().and_then(|(surface, loc)| {
+                    surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
+                });
+
+                touch.motion(
+                    state,
+                    focus,
+                    &smithay::input::touch::MotionEvent {
+                        slot: event.slot(),
+                        location: touch_pos,
+                        time: Event::time_msec(&event),
+                    },
+                );
+            }
         }
-        InputEvent::TouchUp { event: _ } => {
-            debug!("Touch up");
+        InputEvent::TouchUp { event } => {
+            use smithay::backend::input::TouchEvent;
+            debug!("Touch up at slot {:?}", event.slot());
+            if let Some(touch) = state.seat.get_touch() {
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+
+                touch.up(
+                    state,
+                    &smithay::input::touch::UpEvent {
+                        slot: event.slot(),
+                        serial,
+                        time: Event::time_msec(&event),
+                    },
+                );
+            }
         }
         InputEvent::TouchCancel { event: _ } => {
             debug!("Touch cancel");
+            if let Some(touch) = state.seat.get_touch() {
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                touch.cancel(state);
+            }
+        }
+        InputEvent::TouchFrame { event: _ } => {
+            debug!("Touch frame");
+            if let Some(touch) = state.seat.get_touch() {
+                touch.frame(state);
+            }
         }
         _ => {}
     }

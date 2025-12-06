@@ -126,6 +126,9 @@ impl Flick {
         // Add pointer
         seat.add_pointer();
 
+        // Add touch
+        seat.add_touch();
+
         // Create the Wayland socket
         let socket = ListeningSocketSource::new_auto().expect("Failed to create socket");
         let socket_name = socket.socket_name().to_os_string();
