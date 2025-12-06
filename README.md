@@ -1,96 +1,125 @@
 # Flick
 
-A gesture-driven mobile Linux shell built with Flutter. Flick runs on existing mobile Linux infrastructure (Phoc compositor, lisgd for gestures) and provides a modern, touch-first experience.
+A mobile-first Wayland compositor and shell for Linux phones. Flick includes a custom compositor built with Smithay (Rust) and a gesture-driven Flutter shell.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │              Flick Shell (Flutter)                  │
-│        layer-shell surface, responds to gestures    │
+│         Touch-first UI, app launcher, gestures      │
 └─────────────────────────────────────────────────────┘
                         │
-            D-Bus signals / XF86 keys
+                   Wayland protocol
                         │
 ┌─────────────────────────────────────────────────────┐
-│                     lisgd                           │
-│   Left edge swipe → XF86Back (back navigation)      │
-│   Right edge swipe → XF86Forward                    │
+│            Flick Compositor (Rust/Smithay)          │
+│   DRM/KMS rendering, libinput, session management   │
 └─────────────────────────────────────────────────────┘
                         │
 ┌─────────────────────────────────────────────────────┐
-│                      Phoc                           │
-│    Wayland compositor (unchanged, runs as-is)       │
+│                    Linux Kernel                     │
+│              DRM, input devices, TTY                │
 └─────────────────────────────────────────────────────┘
 ```
 
-Flick doesn't replace the compositor - it's a layer-shell client that can hot-swap with Phosh.
+Flick is a complete compositor - it runs directly on DRM/KMS without X11 or another Wayland compositor.
 
 ## Requirements
 
-- Flutter 3.x
-- Phoc (Wayland compositor)
-- lisgd (gesture daemon)
-- wtype (key injection)
-- gtk-layer-shell
+- Rust (for compositor)
+- Flutter 3.x (for shell)
+- libseat, libinput, libudev (session/input management)
+- Mesa with GBM and EGL support
+- gtk-layer-shell (optional, for shell)
 
 ### Installing Dependencies (Debian/Ubuntu)
 
 ```bash
-sudo apt install libgtk-layer-shell-dev libgtk-3-dev pkg-config \
-                 cmake ninja-build clang lisgd wtype
+# Compositor dependencies
+sudo apt install libseat-dev libinput-dev libudev-dev libgbm-dev \
+                 libegl-dev libdrm-dev libxkbcommon-dev pkg-config
+
+# Shell dependencies
+sudo apt install libgtk-layer-shell-dev libgtk-3-dev \
+                 cmake ninja-build clang
 ```
 
 ## Building
 
+### Quick Start
+
 ```bash
-cd shell
+# Build and run everything
+./start.sh
+```
+
+### Manual Build
+
+```bash
+# Build compositor
+cd compositor
+cargo build --release
+
+# Build shell
+cd ../shell
 flutter pub get
 flutter build linux --release
 ```
 
-The binary will be at `shell/build/linux/x64/release/bundle/flick_shell`
-
 ## Usage
 
-### Development Mode (Windowed)
+### Running Flick
 
-Run Flick in a regular window without layer-shell:
+From a TTY (not from within another graphical session):
+
+```bash
+./start.sh
+```
+
+Options:
+- `--timeout, -t SECONDS` - Exit after N seconds (useful for testing)
+- `--shell, -s COMMAND` - Use a different shell (default: flick_shell, fallback: foot)
+
+```bash
+# Run with foot terminal for testing
+./start.sh --shell foot
+
+# Run for 30 seconds then exit
+./start.sh --timeout 30
+```
+
+### VT Switching
+
+Press `Ctrl+Alt+F1` through `Ctrl+Alt+F12` to switch between virtual terminals.
+
+### Development Mode
+
+Run just the shell in windowed mode (requires another Wayland compositor):
 
 ```bash
 FLICK_NO_LAYER_SHELL=1 ./shell/build/linux/x64/release/bundle/flick_shell
-```
-
-### Hot-Swap with Phosh
-
-Switch from Phosh to Flick without restarting the compositor:
-
-```bash
-# Switch to Flick
-./config/flick-swap.sh
-
-# Switch back to Phosh
-./config/flick-swap.sh phosh
-```
-
-### Full Session
-
-Start Flick as the shell (replaces Phosh entirely):
-
-```bash
-./config/flick-session
 ```
 
 ## Directory Structure
 
 ```
 flick/
+├── compositor/                 # Rust Wayland compositor (Smithay)
+│   ├── src/
+│   │   ├── main.rs            # Entry point, argument parsing
+│   │   ├── state.rs           # Compositor state, Wayland protocols
+│   │   ├── viewport.rs        # Virtual viewport management
+│   │   └── backend/
+│   │       └── udev.rs        # DRM/KMS backend, rendering, input
+│   └── Cargo.toml
+│
 ├── shell/                      # Flutter shell application
 │   ├── lib/
-│   │   ├── main.dart           # Entry point, keyboard handling
+│   │   ├── main.dart          # Entry point
 │   │   ├── core/
-│   │   │   ├── logger.dart     # Logging and crash recording
-│   │   │   └── app_model.dart  # App data model
+│   │   │   ├── logger.dart    # Logging and crash recording
+│   │   │   └── app_model.dart # App data model
 │   │   ├── shell/
 │   │   │   └── home/
 │   │   │       ├── home_screen.dart
@@ -99,31 +128,21 @@ flick/
 │   │       └── flick_theme.dart
 │   └── linux/
 │       └── runner/
-│           └── my_application.cc  # Layer-shell integration
+│           └── my_application.cc
 │
-├── services/                   # Rust D-Bus services (planned)
-│   └── flick-app-service/
-│
-├── config/
-│   ├── lisgd.sh               # Gesture daemon configuration
-│   ├── flick-session          # Full session startup
-│   └── flick-swap.sh          # Hot-swap between shells
-│
-└── apps/                       # Native Flick apps (planned)
+├── start.sh                    # Main entry point
+└── config/                     # Configuration scripts
 ```
 
-## Gestures
+## Input
 
-Flick uses lisgd for edge gestures:
+The compositor handles input directly via libinput:
 
-| Gesture | Action |
-|---------|--------|
-| Left edge swipe right | Back (XF86Back) |
-| Right edge swipe left | Forward (XF86Forward) |
-| Swipe up from bottom | Open app drawer |
-| Swipe down on drawer | Close app drawer |
+- **Keyboard**: Full keyboard support with proper keymap handling
+- **Pointer/Mouse**: Motion and button events forwarded to focused window
+- **Touch**: Touch events supported (touchscreen devices)
 
-The shell listens for XF86Back/XF86Forward keys sent by lisgd via wtype.
+Click or tap on a window to focus it.
 
 ## Logging
 
@@ -162,7 +181,7 @@ cat ~/.local/share/flick/logs/crash.log
 cat ~/.local/state/flick/compositor.log.*
 
 # Verbose compositor logging
-RUST_LOG=debug ./compositor/run.sh
+RUST_LOG=debug ./start.sh
 ```
 
 ## Configuration
@@ -171,64 +190,46 @@ RUST_LOG=debug ./compositor/run.sh
 
 | Variable | Description |
 |----------|-------------|
-| `FLICK_NO_LAYER_SHELL` | Set to any value to disable layer-shell (windowed mode) |
-| `FLICK_ROOT` | Override the Flick installation directory |
-| `LISGD_DEVICE` | Override touchscreen device path |
-
-### Customizing Gestures
-
-Edit `config/lisgd.sh` to modify gesture bindings:
-
-```bash
-lisgd -d "$LISGD_DEVICE" \
-  -g "1,LR,L,*,R,wtype -k XF86Back" \
-  -g "1,RL,R,*,R,wtype -k XF86Forward"
-```
-
-See `man lisgd` for gesture configuration syntax.
+| `RUST_LOG` | Compositor log level (error, warn, info, debug, trace) |
+| `FLICK_NO_LAYER_SHELL` | Disable layer-shell for shell (windowed mode) |
 
 ## Development
 
-### Running with Hot Reload
+### Shell Development (Hot Reload)
 
 ```bash
 cd shell
 FLICK_NO_LAYER_SHELL=1 flutter run -d linux
 ```
 
-### Testing Layer-Shell
-
-Test in a nested Wayland session or hot-swap on a real Phosh device:
+### Compositor Development
 
 ```bash
-# Build release
-flutter build linux --release
-
-# Hot-swap
-../config/flick-swap.sh
+cd compositor
+RUST_LOG=debug cargo run -- --shell foot
 ```
 
 ### Code Style
 
-- No back buttons in UI - back is always edge swipe
-- No hamburger menus - use bottom sheets
-- Minimum 48dp touch targets
-- Content-first - no welcome screens
+- Mobile-first: minimum 48dp touch targets
+- Content-first: no splash screens or unnecessary dialogs
+- Direct manipulation: prefer gestures over buttons
 
 ## Roadmap
 
-- [x] Layer-shell integration
-- [x] Home screen with app grid
-- [x] App drawer with search
-- [x] XF86Back handling
-- [x] Logging and crash recording
-- [x] Hot-swap script
-- [ ] App discovery via D-Bus service
-- [ ] Waydroid app integration
+- [x] Custom Wayland compositor (Smithay)
+- [x] DRM/KMS rendering with GBM
+- [x] Keyboard and pointer input
+- [x] VT switching support
+- [x] Session management (libseat)
+- [x] Flutter shell with app grid
+- [x] Logging infrastructure
+- [ ] Touch gesture support
+- [ ] Multi-window management
+- [ ] Layer-shell protocol
 - [ ] Quick settings panel
-- [ ] Notification shade
+- [ ] Notification system
 - [ ] Lock screen
-- [ ] Native Flick apps (Files, Settings, Terminal)
 
 ## License
 
