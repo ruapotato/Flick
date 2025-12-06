@@ -12,7 +12,7 @@ use std::{
 use smithay::{
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
     delegate_xdg_shell,
-    desktop::{Space, Window},
+    desktop::{PopupManager, Space, Window},
     input::{Seat, SeatHandler, SeatState},
     output::Output,
     reexports::{
@@ -83,6 +83,7 @@ pub struct Flick {
 
     // Desktop
     pub space: Space<Window>,
+    pub popup_manager: PopupManager,
 
     // Outputs
     pub outputs: Vec<Output>,
@@ -163,6 +164,7 @@ impl Flick {
             seat_state,
             seat,
             space: Space::default(),
+            popup_manager: PopupManager::default(),
             outputs: Vec::new(),
             viewports: HashMap::new(),
             next_viewport_id: 0,
@@ -219,6 +221,9 @@ impl CompositorHandler for Flick {
     fn commit(&mut self, surface: &WlSurface) {
         tracing::debug!("Surface commit: {:?}", surface.id());
         smithay::backend::renderer::utils::on_commit_buffer_handler::<Self>(surface);
+
+        // Update popup manager state
+        self.popup_manager.commit(surface);
 
         if !is_sync_subsurface(surface) {
             let mut root = surface.clone();
@@ -335,6 +340,10 @@ impl XdgShellHandler for Flick {
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
         tracing::info!("New popup created");
+
+        // Track the popup in our PopupManager
+        self.popup_manager.track_popup(smithay::desktop::PopupKind::Xdg(surface.clone()))
+            .expect("Failed to track popup");
 
         // Configure the popup - it will use the positioner to determine its position
         surface.send_configure().expect("Failed to configure popup");
