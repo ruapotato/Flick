@@ -18,10 +18,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void _launchApp(AppInfo app) {
     log.info('Launching app: ${app.name} (${app.exec})');
 
-    // Launch the app
+    // Launch the app using shell to handle arguments properly
     Process.start(
-      app.exec,
-      [],
+      '/bin/sh',
+      ['-c', app.exec],
       mode: ProcessStartMode.detached,
     ).then((_) {
       log.debug('App ${app.name} started');
