@@ -1,0 +1,24 @@
+# Rust
+/compositor/target/
+**/*.rs.bk
+Cargo.lock
+
+# Flutter
+/shell/build/
+/shell/.dart_tool/
+/shell/.packages
+/shell/.flutter-plugins
+/shell/.flutter-plugins-dependencies
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

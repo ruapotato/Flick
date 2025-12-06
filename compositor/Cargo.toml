@@ -1,0 +1,50 @@
+[package]
+name = "flick-compositor"
+version = "0.1.0"
+edition = "2021"
+description = "Flick mobile compositor - a wlroots-style compositor for mobile Linux"
+license = "MIT"
+
+[dependencies]
+# Smithay - the Wayland compositor library (from git for latest features)
+smithay = { git = "https://github.com/Smithay/smithay", features = [
+    "backend_drm",
+    "backend_libinput",
+    "backend_udev",
+    "backend_session_libseat",
+    "backend_winit",
+    "renderer_glow",
+    "wayland_frontend",
+    "xwayland",
+] }
+
+# Wayland protocols
+smithay-drm-extras = { git = "https://github.com/Smithay/smithay" }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Async runtime
+calloop = "0.14"
+
+# Configuration
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+# CLI
+clap = { version = "4.0", features = ["derive"] }
+
+[features]
+default = ["udev"]
+udev = []
+winit = []
+
+[[bin]]
+name = "flick"
+path = "src/main.rs"
