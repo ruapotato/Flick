@@ -311,9 +311,10 @@ pub fn run(shell_cmd: Option<String>) -> Result<()> {
     // Main render loop
     loop {
         // Dispatch events (16ms timeout for ~60fps)
-        event_loop
-            .dispatch(Some(Duration::from_millis(16)), &mut state)
-            .expect("Failed to dispatch event loop");
+        if let Err(e) = event_loop.dispatch(Some(Duration::from_millis(16)), &mut state) {
+            error!("Event loop dispatch error: {:?}", e);
+            // Continue running - some errors are recoverable
+        }
 
         // Dispatch client requests and flush responses
         state.dispatch_clients();

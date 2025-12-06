@@ -342,11 +342,14 @@ impl XdgShellHandler for Flick {
         tracing::info!("New popup created");
 
         // Track the popup in our PopupManager
-        self.popup_manager.track_popup(smithay::desktop::PopupKind::Xdg(surface.clone()))
-            .expect("Failed to track popup");
+        if let Err(e) = self.popup_manager.track_popup(smithay::desktop::PopupKind::Xdg(surface.clone())) {
+            tracing::warn!("Failed to track popup: {:?}", e);
+        }
 
         // Configure the popup - it will use the positioner to determine its position
-        surface.send_configure().expect("Failed to configure popup");
+        if let Err(e) = surface.send_configure() {
+            tracing::warn!("Failed to configure popup: {:?}", e);
+        }
     }
 
     fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
@@ -363,7 +366,9 @@ impl XdgShellHandler for Flick {
     ) {
         tracing::debug!("Popup reposition request");
         surface.send_repositioned(token);
-        surface.send_configure().expect("Failed to reconfigure popup");
+        if let Err(e) = surface.send_configure() {
+            tracing::warn!("Failed to reconfigure popup: {:?}", e);
+        }
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
