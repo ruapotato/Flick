@@ -102,29 +102,27 @@ impl XwmHandler for Flick {
         &mut self,
         _xwm: XwmId,
         window: X11Surface,
-        _x: Option<i32>,
-        _y: Option<i32>,
-        _w: Option<u32>,
-        _h: Option<u32>,
+        x: Option<i32>,
+        y: Option<i32>,
+        w: Option<u32>,
+        h: Option<u32>,
         _reorder: Option<Reorder>,
     ) {
         tracing::debug!("X11 configure request: {:?}", window.window_id());
 
-        // For now, force fullscreen
-        if let Some(output) = self.outputs.first() {
-            let output_size = output
-                .current_mode()
-                .map(|m| m.size)
-                .unwrap_or((1920, 1080).into());
+        // Honor the window's requested geometry during initial configuration
+        // We'll resize to fullscreen when the window is actually mapped
+        let geo = window.geometry();
+        let new_geo = Rectangle::new(
+            (x.unwrap_or(geo.loc.x), y.unwrap_or(geo.loc.y)).into(),
+            (
+                w.map(|w| w as i32).unwrap_or(geo.size.w).max(1),
+                h.map(|h| h as i32).unwrap_or(geo.size.h).max(1),
+            ).into(),
+        );
 
-            let geo = Rectangle::new(
-                (0, 0).into(),
-                output_size.to_logical(1),
-            );
-
-            if let Err(e) = window.configure(geo) {
-                tracing::warn!("Failed to configure X11 window: {:?}", e);
-            }
+        if let Err(e) = window.configure(new_geo) {
+            tracing::warn!("Failed to configure X11 window: {:?}", e);
         }
     }
 
