@@ -247,8 +247,8 @@ impl Flick {
                 // which appears on top of everything. Changing focus here causes timing issues.
             }
             GestureAction::CloseApp => {
-                // Close the topmost non-shell window
-                self.close_focused_app();
+                // Close gesture is handled by end_close_gesture() in udev.rs
+                // Do NOT call close_focused_app() here - it would close a second window
             }
             _ => {}
         }
