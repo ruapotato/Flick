@@ -49,6 +49,9 @@ serde_json = "1.0"
 # 2D graphics and text rendering
 femtovg = "0.9"
 
+# Image loading for icons
+image = { version = "0.25", default-features = false, features = ["png"] }
+
 # Lazy static for global state
 lazy_static = "1.4"
 

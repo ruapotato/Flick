@@ -13,6 +13,7 @@ pub mod quick_settings;
 pub mod overlay;
 pub mod text;
 pub mod apps;
+pub mod icons;
 
 use smithay::utils::{Logical, Point, Size};
 use crate::input::{Edge, GestureEvent};
@@ -177,6 +178,8 @@ pub struct Shell {
     pub dragging_index: Option<usize>,
     /// Current drag position
     pub drag_position: Option<Point<f64, Logical>>,
+    /// Icon cache for app icons
+    pub icon_cache: icons::IconCache,
 }
 
 impl Shell {
@@ -211,6 +214,7 @@ impl Shell {
             wiggle_start_time: None,
             dragging_index: None,
             drag_position: None,
+            icon_cache: icons::IconCache::new(64), // 64px icons
         }
     }
 

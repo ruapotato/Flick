@@ -58,7 +58,9 @@ use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::{XWayland, XWaylandEvent, xwm::X11Wm};
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-use smithay::backend::renderer::ImportAll;
+use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
+use smithay::backend::renderer::{ImportAll, ImportMem};
+use smithay::backend::renderer::gles::GlesTexture;
 
 use crate::state::Flick;
 
@@ -73,6 +75,14 @@ smithay::backend::renderer::element::render_elements! {
     Solid=SolidColorRenderElement,
     /// Constrained window content (scaled and cropped to fit cards)
     Window=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
+}
+
+// Icon texture storage - loaded on demand, cached for reuse
+// Note: Texture rendering WIP - need to integrate with element pipeline
+use std::sync::{Arc, Mutex};
+lazy_static::lazy_static! {
+    static ref ICON_TEXTURES: Arc<Mutex<std::collections::HashMap<String, Option<TextureBuffer<GlesTexture>>>>> =
+        Arc::new(Mutex::new(std::collections::HashMap::new()));
 }
 
 /// Per-GPU state
