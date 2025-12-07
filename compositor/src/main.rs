@@ -24,15 +24,11 @@ use tracing_appender::rolling;
 
 #[derive(Parser, Debug)]
 #[command(name = "flick")]
-#[command(about = "Flick mobile compositor", long_about = None)]
+#[command(about = "Flick mobile compositor with integrated shell", long_about = None)]
 struct Args {
     /// Run in windowed mode (for development)
     #[arg(short, long)]
     windowed: bool,
-
-    /// Start a shell command after compositor is ready
-    #[arg(short, long)]
-    shell: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -82,9 +78,9 @@ fn main() -> Result<()> {
 
     if args.windowed {
         info!("Running in windowed mode (winit backend)");
-        backend::winit::run(args.shell)
+        backend::winit::run()
     } else {
         info!("Running on hardware (udev backend)");
-        backend::udev::run(args.shell)
+        backend::udev::run()
     }
 }

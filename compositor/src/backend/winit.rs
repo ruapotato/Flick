@@ -32,7 +32,7 @@ use smithay::{
 
 use crate::state::Flick;
 
-pub fn run(shell_cmd: Option<String>) -> Result<()> {
+pub fn run() -> Result<()> {
     // Create event loop
     let mut event_loop: EventLoop<Flick> = EventLoop::try_new()?;
     let loop_handle = event_loop.handle();
@@ -80,15 +80,7 @@ pub fn run(shell_cmd: Option<String>) -> Result<()> {
     // Set WAYLAND_DISPLAY for child processes
     std::env::set_var("WAYLAND_DISPLAY", &state.socket_name);
 
-    // Start shell if requested
-    if let Some(cmd) = shell_cmd {
-        info!("Starting shell: {}", cmd);
-        std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&cmd)
-            .spawn()
-            .expect("Failed to start shell");
-    }
+    // Shell is integrated - no external process needed
 
     // Create damage tracker for rendering
     let mut damage_tracker = OutputDamageTracker::from_output(&output);

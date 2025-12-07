@@ -1,20 +1,20 @@
 # Flick
 
-A mobile-first Wayland compositor and shell for Linux phones. Flick includes a custom compositor built with Smithay (Rust) and a gesture-driven Flutter shell.
+A mobile-first Wayland compositor for Linux phones with an integrated touch shell.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│              Flick Shell (Flutter)                  │
-│         Touch-first UI, app launcher, gestures      │
-└─────────────────────────────────────────────────────┘
-                        │
-                   Wayland protocol
-                        │
-┌─────────────────────────────────────────────────────┐
-│            Flick Compositor (Rust/Smithay)          │
+│            Flick Compositor + Shell (Rust)          │
+│  ┌─────────────────────────────────────────────┐   │
+│  │           Integrated Shell UI                │   │
+│  │   App grid, app switcher, gesture overlays   │   │
+│  │         (rendered via GLES directly)         │   │
+│  └─────────────────────────────────────────────┘   │
+│                                                     │
 │   DRM/KMS rendering, libinput, session management   │
+│   XWayland for X11 app compatibility                │
 └─────────────────────────────────────────────────────┘
                         │
 ┌─────────────────────────────────────────────────────┐
@@ -23,48 +23,30 @@ A mobile-first Wayland compositor and shell for Linux phones. Flick includes a c
 └─────────────────────────────────────────────────────┘
 ```
 
-Flick is a complete compositor - it runs directly on DRM/KMS without X11 or another Wayland compositor.
+The shell UI is rendered directly by the compositor - no separate shell process, no IPC. This provides:
+- Zero-latency gesture response
+- Direct access to window list
+- Single process simplicity
+- Smooth animations
 
 ## Requirements
 
-- Rust (for compositor)
-- Flutter 3.x (for shell)
+- Rust 1.70+ (for compositor)
 - libseat, libinput, libudev (session/input management)
 - Mesa with GBM and EGL support
-- gtk-layer-shell (optional, for shell)
 
 ### Installing Dependencies (Debian/Ubuntu)
 
 ```bash
-# Compositor dependencies
 sudo apt install libseat-dev libinput-dev libudev-dev libgbm-dev \
                  libegl-dev libdrm-dev libxkbcommon-dev pkg-config
-
-# Shell dependencies
-sudo apt install libgtk-layer-shell-dev libgtk-3-dev \
-                 cmake ninja-build clang
 ```
 
 ## Building
 
-### Quick Start
-
 ```bash
-# Build and run everything
-./start.sh
-```
-
-### Manual Build
-
-```bash
-# Build compositor
 cd compositor
 cargo build --release
-
-# Build shell
-cd ../shell
-flutter pub get
-flutter build linux --release
 ```
 
 ## Usage
@@ -74,177 +56,100 @@ flutter build linux --release
 From a TTY (not from within another graphical session):
 
 ```bash
-./start.sh
+cd compositor
+cargo run --release
 ```
 
-Options:
-- `--timeout, -t SECONDS` - Exit after N seconds (useful for testing)
-- `--shell, -s COMMAND` - Use a different shell (default: flick_shell, fallback: foot)
+Or use the start script:
 
 ```bash
-# Run with foot terminal for testing
-./start.sh --shell foot
-
-# Run for 30 seconds then exit
-./start.sh --timeout 30
+./start.sh
 ```
 
 ### VT Switching
 
 Press `Ctrl+Alt+F1` through `Ctrl+Alt+F12` to switch between virtual terminals.
 
-### Development Mode
-
-Run just the shell in windowed mode (requires another Wayland compositor):
-
-```bash
-FLICK_NO_LAYER_SHELL=1 ./shell/build/linux/x64/release/bundle/flick_shell
-```
-
 ## Directory Structure
 
 ```
 flick/
-├── compositor/                 # Rust Wayland compositor (Smithay)
+├── compositor/                 # Rust Wayland compositor + integrated shell
 │   ├── src/
 │   │   ├── main.rs            # Entry point, argument parsing
 │   │   ├── state.rs           # Compositor state, Wayland protocols
-│   │   ├── viewport.rs        # Virtual viewport management
+│   │   ├── input/
+│   │   │   └── gestures.rs    # Touch gesture recognition
+│   │   ├── shell/             # Integrated shell UI
+│   │   │   ├── mod.rs         # Shell state and coordination
+│   │   │   ├── renderer.rs    # GLES rendering for shell UI
+│   │   │   ├── app_grid.rs    # Home screen app launcher grid
+│   │   │   ├── app_switcher.rs# Recent apps view (Android-style)
+│   │   │   └── gestures.rs    # Gesture overlay animations
 │   │   └── backend/
 │   │       └── udev.rs        # DRM/KMS backend, rendering, input
 │   └── Cargo.toml
 │
-├── shell/                      # Flutter shell application
-│   ├── lib/
-│   │   ├── main.dart          # Entry point
-│   │   ├── core/
-│   │   │   ├── logger.dart    # Logging and crash recording
-│   │   │   └── app_model.dart # App data model
-│   │   ├── shell/
-│   │   │   └── home/
-│   │   │       ├── home_screen.dart
-│   │   │       └── app_grid.dart
-│   │   └── theme/
-│   │       └── flick_theme.dart
-│   └── linux/
-│       └── runner/
-│           └── my_application.cc
-│
-├── start.sh                    # Main entry point
-└── config/                     # Configuration scripts
+├── apps/                       # App launcher definitions
+├── config/                     # Configuration
+└── start.sh                    # Launch script
 ```
-
-## Input
-
-The compositor handles input directly via libinput:
-
-- **Keyboard**: Full keyboard support with proper keymap handling
-- **Pointer/Mouse**: Motion and button events forwarded to focused window
-- **Touch**: Touch events with edge gesture recognition
-
-Click or tap on a window to focus it.
 
 ## Gestures
 
-Edge swipe gestures (N9/iPhone inspired):
+Edge swipe gestures (inspired by N9/webOS/iOS):
 
 | Gesture | Action |
 |---------|--------|
-| Swipe up from bottom edge | Go home (show shell) |
-| Swipe down from top edge | Close current app |
+| Swipe up from bottom edge | Go home (show app grid) |
+| Swipe down from top edge | Close current app (with drag animation) |
 | Swipe right from left edge | Back (in-app navigation) |
-| Swipe left from right edge | App switcher |
+| Swipe left from right edge | App switcher (Android-style card stack) |
 
-Gestures are detected by the compositor and communicated to the shell via IPC files:
-- `$XDG_RUNTIME_DIR/flick-gesture` - Gesture events from compositor to shell
-- `$XDG_RUNTIME_DIR/flick-windows` - List of open windows
-- `$XDG_RUNTIME_DIR/flick-focus` - Focus request from shell to compositor
+## Shell UI Components
+
+### App Grid (Home Screen)
+- Grid of app launchers
+- Tap to launch apps via XWayland
+- Slides up from bottom on swipe-up gesture
+
+### App Switcher
+- Android-style vertical card stack
+- Shows all open windows at 50% size
+- Swipe/scroll through cards
+- Tap card to switch to app
+- Only appears when apps are open
+
+### Gesture Overlays
+- Back indicator (left edge) - iOS-style curved arrow
+- Close indicator (top edge) - follows finger with danger zone
+- Visual feedback during all gestures
 
 ## Logging
 
-### Shell Logs
-
-Logs are stored in `~/.local/share/flick/logs/`:
-
-| File | Contents |
-|------|----------|
-| `flick-TIMESTAMP.log` | Session logs |
-| `crash.log` | Crash reports with stack traces |
-| `swap.log` | Hot-swap script logs |
-| `lisgd.log` | Gesture daemon output |
-| `shell.log` | Shell stdout/stderr |
-
-### Compositor Logs
-
-Compositor logs are stored in `~/.local/state/flick/`:
-
-| File | Contents |
-|------|----------|
-| `compositor.log.YYYY-MM-DD` | Daily compositor logs (rotates automatically) |
-
-These logs persist even after a hard freeze/crash - check them to see what happened before the system went down.
-
-### Viewing Logs
-
 ```bash
-# Follow current shell session
-tail -f ~/.local/share/flick/logs/flick-*.log
+# Verbose logging
+RUST_LOG=debug cargo run --release
 
-# Check for shell crashes
-cat ~/.local/share/flick/logs/crash.log
-
-# Check compositor logs (after crash/freeze)
-cat ~/.local/state/flick/compositor.log.*
-
-# Verbose compositor logging
-RUST_LOG=debug ./start.sh
+# Info level (default)
+RUST_LOG=info cargo run --release
 ```
 
-## Configuration
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `RUST_LOG` | Compositor log level (error, warn, info, debug, trace) |
-| `FLICK_NO_LAYER_SHELL` | Disable layer-shell for shell (windowed mode) |
-
-## Development
-
-### Shell Development (Hot Reload)
-
-```bash
-cd shell
-FLICK_NO_LAYER_SHELL=1 flutter run -d linux
-```
-
-### Compositor Development
-
-```bash
-cd compositor
-RUST_LOG=debug cargo run -- --shell foot
-```
-
-### Code Style
-
-- Mobile-first: minimum 48dp touch targets
-- Content-first: no splash screens or unnecessary dialogs
-- Direct manipulation: prefer gestures over buttons
+Logs are written to `~/.local/state/flick/compositor.log.*`
 
 ## Roadmap
 
 - [x] Custom Wayland compositor (Smithay)
 - [x] DRM/KMS rendering with GBM
-- [x] Keyboard and pointer input
+- [x] Keyboard, pointer, and touch input
 - [x] VT switching support
 - [x] Session management (libseat)
-- [x] Flutter shell with app grid
-- [x] Logging infrastructure
-- [x] Touch gesture support (edge swipes)
 - [x] XWayland support (X11 apps)
-- [x] App switcher UI
-- [ ] Multi-window management
-- [ ] Layer-shell protocol
+- [x] Touch gesture recognition
+- [x] Integrated shell UI (in progress)
+  - [x] Gesture overlays
+  - [ ] App grid home screen
+  - [ ] App switcher
 - [ ] Quick settings panel
 - [ ] Notification system
 - [ ] Lock screen

@@ -27,6 +27,14 @@ use smithay::{
             damage::OutputDamageTracker,
             gles::GlesRenderer,
             Bind, Frame, Renderer,
+            element::{
+                AsRenderElements,
+                utils::{
+                    constrain_render_elements,
+                    ConstrainScaleBehavior, ConstrainAlign,
+                    CropRenderElement, RelocateRenderElement, RescaleRenderElement,
+                },
+            },
         },
         session::{
             libseat::LibSeatSession,
@@ -34,6 +42,7 @@ use smithay::{
         },
         udev::{UdevBackend, UdevEvent},
     },
+    desktop::space::SpaceRenderElements,
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
         calloop::{EventLoop, RegistrationToken},
@@ -41,7 +50,7 @@ use smithay::{
         input::Libinput,
         wayland_server::Display,
     },
-    utils::{DeviceFd, Transform},
+    utils::{DeviceFd, Physical, Rectangle, Scale, Transform},
 };
 
 // Re-import libinput types for keyboard handling
@@ -49,8 +58,24 @@ use smithay::reexports::input::event::keyboard::KeyboardEventTrait;
 
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::{XWayland, XWaylandEvent, xwm::X11Wm};
+use smithay::backend::renderer::element::solid::SolidColorRenderElement;
+use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::ImportAll;
 
 use crate::state::Flick;
+
+// Define a combined element type for the app switcher that can hold both
+// solid color elements (for card backgrounds, shadows, text) and
+// constrained window elements (for actual window content previews)
+smithay::backend::renderer::element::render_elements! {
+    /// Render elements for the app switcher view
+    pub SwitcherRenderElement<R> where
+        R: ImportAll;
+    /// Solid color rectangles (backgrounds, shadows, text pixels)
+    Solid=SolidColorRenderElement,
+    /// Constrained window content (scaled and cropped to fit cards)
+    Window=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
+}
 
 /// Per-GPU state
 struct GpuData {
@@ -499,6 +524,7 @@ fn init_gpu(
     ))
 }
 
+
 fn render_surface(
     renderer: &mut GlesRenderer,
     surface_data: &mut SurfaceData,
@@ -507,6 +533,7 @@ fn render_surface(
 ) -> Result<()> {
     use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
     use smithay::backend::renderer::element::Kind;
+    use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
     use crate::shell::{ShellView, app_grid::AppGrid, overlay::GestureOverlay};
     use crate::shell::primitives::{colors, Rect};
     use crate::shell::text;
@@ -574,51 +601,56 @@ fn render_surface(
             );
             shell_elements.push(element);
         }
-    } else if shell_view == ShellView::Switcher {
-        // Full Switcher UI with window cards
+    }
+
+    // Switcher uses a separate element type that can hold both solid colors and window content
+    let mut switcher_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
+
+    if shell_view == ShellView::Switcher {
+        // Full Switcher UI with horizontal card layout (Android-style)
         // NOTE: Elements must be in FRONT-TO-BACK order (front first, background last)
         let screen_w = state.screen_size.w as f64;
         let screen_h = state.screen_size.h as f64;
 
         let window_count = state.space.elements().count();
-        let card_width = (screen_w - 64.0) as i32;
-        let card_height = 350;
-        let card_spacing = 220;
 
-        // Colors for window cards
-        let card_colors = [
-            [0.2, 0.5, 0.8, 1.0],  // Blue
-            [0.8, 0.3, 0.3, 1.0],  // Red
-            [0.3, 0.7, 0.3, 1.0],  // Green
-            [0.7, 0.5, 0.2, 1.0],  // Orange
-            [0.6, 0.3, 0.7, 1.0],  // Purple
-            [0.3, 0.6, 0.6, 1.0],  // Teal
-        ];
+        // Horizontal card layout - cards are phone-shaped (tall and narrow)
+        // Card dimensions: maintain screen aspect ratio but scaled down
+        let card_height = (screen_h * 0.65) as i32;  // 65% of screen height
+        let card_width = (card_height as f64 * (screen_w / screen_h)) as i32;  // Maintain aspect ratio
+        let card_spacing = card_width + 24;  // Gap between cards
+        let card_y = ((screen_h - card_height as f64) / 2.0) as i32;  // Center vertically
 
-        // Build cards front-to-back (topmost card first)
-        // Collect positions, colors, and titles first, then render in reverse order
-        let mut card_data: Vec<(i32, [f32; 4], String)> = Vec::new();
-        let mut y_pos = 80i32;
-        for (i, window) in state.space.elements().enumerate() {
-            // Try to get window title from X11 surface (most apps run via XWayland)
+        // Collect windows and their positions
+        let start_x = 32i32;  // Left margin
+        let scroll_offset = state.shell.switcher_scroll as i32;
+
+        // Build card data with window references
+        let windows: Vec<_> = state.space.elements().cloned().collect();
+
+        // Render cards (front-to-back: later windows drawn first as they're "on top")
+        for (i, window) in windows.iter().enumerate().rev() {
+            let x_pos = start_x + (i as i32 * card_spacing) - scroll_offset;
+
+            // Skip cards that are off-screen
+            if x_pos + card_width < 0 || x_pos > screen_w as i32 {
+                continue;
+            }
+
+            // Get window title
             let title = window.x11_surface()
                 .map(|x11| {
                     let t = x11.title();
                     if t.is_empty() { format!("Window {}", i + 1) } else { t }
                 })
                 .unwrap_or_else(|| format!("Window {}", i + 1));
-            card_data.push((y_pos, card_colors[i % card_colors.len()], title));
-            y_pos += card_spacing;
-        }
 
-        // Render cards front-to-back (last card is on top, so render it first)
-        for (_i, (y_pos, card_color, title)) in card_data.iter().enumerate().rev() {
             // Window title text (frontmost - rendered first)
             let text_scale = 2.5;
             let text_color: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
-            let text_x = 48.0;
-            let text_y = (*y_pos + card_height - 45) as f64;
-            let text_rects = text::render_text(title, text_x, text_y, text_scale, text_color);
+            let text_center_x = x_pos as f64 + card_width as f64 / 2.0;
+            let text_y = (card_y + card_height + 12) as f64;
+            let text_rects = text::render_text_centered(&title, text_center_x, text_y, text_scale, text_color);
             for (rect, color) in text_rects {
                 let buffer = SolidColorBuffer::new(
                     (rect.width as i32, rect.height as i32),
@@ -626,54 +658,78 @@ fn render_surface(
                 );
                 let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
                     (rect.x as i32, rect.y as i32).into();
-                shell_elements.push(SolidColorRenderElement::from_buffer(
-                    &buffer, loc, scale as f64, 1.0, Kind::Unspecified,
-                ));
+                switcher_elements.push(SolidColorRenderElement::from_buffer(
+                    &buffer, loc, scale as f64, 1.0, Kind::Unspecified
+                ).into());
             }
 
-            // Title bar (frontmost part of card)
-            let title_buffer = SolidColorBuffer::new(
-                (card_width, 60),
-                [0.12, 0.12, 0.16, 1.0],
-            );
-            let title_loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                (32, y_pos + card_height - 60).into();
-            shell_elements.push(SolidColorRenderElement::from_buffer(
-                &title_buffer, title_loc, scale as f64, 1.0, Kind::Unspecified,
-            ));
+            // Render actual window content scaled into the card
+            // Get window geometry (the actual content area)
+            let window_geo = window.geometry();
+            let window_loc = state.space.element_location(&window).unwrap_or_default();
 
-            // Card preview area
-            let preview_buffer = SolidColorBuffer::new(
-                (card_width - 16, card_height - 76),
-                *card_color,
-            );
-            let preview_loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                (40, y_pos + 8).into();
-            shell_elements.push(SolidColorRenderElement::from_buffer(
-                &preview_buffer, preview_loc, scale as f64, 1.0, Kind::Unspecified,
-            ));
+            // Get window render elements
+            let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
+                .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                    renderer,
+                    (window_loc.x, window_loc.y).into(),
+                    Scale::from(scale),
+                    1.0,  // alpha
+                );
 
-            // Card background
+            // Constrain window elements to fit inside the card (with 4px padding)
+            // origin: where to render (top-left of card content area)
+            let card_origin: smithay::utils::Point<i32, smithay::utils::Physical> =
+                (x_pos + 4, card_y + 4).into();
+
+            // constrain: the target area size (card content area)
+            let card_constrain: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
+                (0, 0).into(),
+                (card_width - 8, card_height - 8).into(),
+            );
+
+            // reference: the source window area
+            let window_reference: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
+                (0, 0).into(),
+                (window_geo.size.w, window_geo.size.h).into(),
+            );
+
+            let constrained_elements = constrain_render_elements(
+                window_render_elements,
+                card_origin,
+                card_constrain,
+                window_reference,
+                ConstrainScaleBehavior::Fit,
+                ConstrainAlign::CENTER,
+                Scale::from(1.0),  // scale factor
+            );
+
+            // Add constrained window elements
+            for elem in constrained_elements {
+                switcher_elements.push(elem.into());
+            }
+
+            // Card background/border (behind window content)
             let card_buffer = SolidColorBuffer::new(
                 (card_width, card_height),
-                [0.20, 0.20, 0.25, 1.0],
+                [0.15, 0.15, 0.18, 1.0],
             );
             let card_loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                (32, *y_pos).into();
-            shell_elements.push(SolidColorRenderElement::from_buffer(
-                &card_buffer, card_loc, scale as f64, 1.0, Kind::Unspecified,
-            ));
+                (x_pos, card_y).into();
+            switcher_elements.push(SolidColorRenderElement::from_buffer(
+                &card_buffer, card_loc, scale as f64, 1.0, Kind::Unspecified
+            ).into());
 
             // Card shadow (behind card)
             let shadow_buffer = SolidColorBuffer::new(
-                (card_width + 4, card_height + 4),
-                [0.0, 0.0, 0.0, 0.5],
+                (card_width + 6, card_height + 6),
+                [0.0, 0.0, 0.0, 0.4],
             );
             let shadow_loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                (30, y_pos - 2).into();
-            shell_elements.push(SolidColorRenderElement::from_buffer(
-                &shadow_buffer, shadow_loc, scale as f64, 1.0, Kind::Unspecified,
-            ));
+                (x_pos - 3, card_y - 3).into();
+            switcher_elements.push(SolidColorRenderElement::from_buffer(
+                &shadow_buffer, shadow_loc, scale as f64, 1.0, Kind::Unspecified
+            ).into());
         }
 
         // If no windows, show "No Apps" text
@@ -692,9 +748,9 @@ fn render_surface(
                 );
                 let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
                     (rect.x as i32, rect.y as i32).into();
-                shell_elements.push(SolidColorRenderElement::from_buffer(
-                    &buffer, loc, scale as f64, 1.0, Kind::Unspecified,
-                ));
+                switcher_elements.push(SolidColorRenderElement::from_buffer(
+                    &buffer, loc, scale as f64, 1.0, Kind::Unspecified
+                ).into());
             }
         }
 
@@ -713,9 +769,9 @@ fn render_surface(
             );
             let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
                 (rect.x as i32, rect.y as i32).into();
-            shell_elements.push(SolidColorRenderElement::from_buffer(
-                &buffer, loc, scale as f64, 1.0, Kind::Unspecified,
-            ));
+            switcher_elements.push(SolidColorRenderElement::from_buffer(
+                &buffer, loc, scale as f64, 1.0, Kind::Unspecified
+            ).into());
         }
 
         // Header bar (behind cards but in front of background)
@@ -724,9 +780,9 @@ fn render_surface(
             [0.15, 0.15, 0.20, 1.0],
         );
         let header_loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, 0).into();
-        shell_elements.push(SolidColorRenderElement::from_buffer(
-            &header_buffer, header_loc, scale as f64, 1.0, Kind::Unspecified,
-        ));
+        switcher_elements.push(SolidColorRenderElement::from_buffer(
+            &header_buffer, header_loc, scale as f64, 1.0, Kind::Unspecified
+        ).into());
 
         // Background (backmost - rendered last in array)
         let bg_buffer = SolidColorBuffer::new(
@@ -734,11 +790,11 @@ fn render_surface(
             [0.08, 0.08, 0.12, 1.0],
         );
         let bg_loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, 0).into();
-        shell_elements.push(SolidColorRenderElement::from_buffer(
-            &bg_buffer, bg_loc, scale as f64, 1.0, Kind::Unspecified,
-        ));
+        switcher_elements.push(SolidColorRenderElement::from_buffer(
+            &bg_buffer, bg_loc, scale as f64, 1.0, Kind::Unspecified
+        ).into());
 
-        tracing::info!("Switcher: {} windows, {} elements", window_count, shell_elements.len());
+        tracing::info!("Switcher: {} windows, {} elements", window_count, switcher_elements.len());
     }
 
     // Add gesture overlay
@@ -787,7 +843,7 @@ fn render_surface(
             renderer,
             &mut fb,
             0,  // age=0 for full redraw
-            &shell_elements,
+            &switcher_elements,
             bg_color,
         )
     } else if shell_view == ShellView::Home {
@@ -1095,29 +1151,35 @@ fn handle_input_event(
                 state.shell.start_home_touch(touch_pos.y, pending_app);
             }
 
-            // Check if touch is on app switcher card
+            // Check if touch is on app switcher card (horizontal layout)
             if state.shell.view == crate::shell::ShellView::Switcher {
-                // Card layout matches render code
+                // Card layout matches render code - horizontal layout
                 let screen_w = state.screen_size.w as f64;
-                let card_width = screen_w - 64.0;
-                let card_height = 350.0;
-                let card_spacing = 220.0;
-                let card_x = 32.0;
-                let mut card_y = 80.0;
+                let screen_h = state.screen_size.h as f64;
+
+                // Calculate card dimensions (same as render code)
+                let card_height = (screen_h * 0.65) as i32;
+                let card_width = (card_height as f64 * (screen_w / screen_h)) as i32;
+                let card_spacing = card_width + 24;
+                let card_y = ((screen_h - card_height as f64) / 2.0) as i32;
+                let start_x = 32i32;
+                let scroll_offset = state.shell.switcher_scroll as i32;
 
                 // Collect windows and find which card was tapped
                 let windows: Vec<_> = state.space.elements().cloned().collect();
                 let mut tapped_window = None;
 
                 for (i, window) in windows.iter().enumerate() {
+                    // Calculate card position for this window
+                    let x_pos = (start_x + (i as i32 * card_spacing) - scroll_offset) as f64;
+
                     // Check if touch is within this card
-                    if touch_pos.x >= card_x && touch_pos.x < card_x + card_width &&
-                       touch_pos.y >= card_y && touch_pos.y < card_y + card_height {
-                        info!("Switcher: tapped card {} at y={}", i, card_y);
+                    if touch_pos.x >= x_pos && touch_pos.x < x_pos + card_width as f64 &&
+                       touch_pos.y >= card_y as f64 && touch_pos.y < (card_y + card_height) as f64 {
+                        info!("Switcher: tapped card {} at x={}", i, x_pos);
                         tapped_window = Some(window.clone());
                         break;
                     }
-                    card_y += card_spacing;
                 }
 
                 if let Some(window) = tapped_window {
