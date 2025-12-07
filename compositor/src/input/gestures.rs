@@ -420,6 +420,13 @@ impl GestureRecognizer {
         self.points.clear();
         self.active_gesture = None;
     }
+
+    /// Get the current position of a touch point by ID
+    pub fn get_touch_position(&self, id: i32) -> Option<Point<f64, Logical>> {
+        self.points.iter()
+            .find(|p| p.id == id)
+            .map(|p| p.current_pos)
+    }
 }
 
 /// Actions that can be triggered by gestures

@@ -299,6 +299,11 @@ pub fn run() -> Result<()> {
         // Check for focus requests from shell
         state.check_focus_request();
 
+        // Check for long press (periodic check since touch_motion may not fire if finger is still)
+        if state.shell.view == crate::shell::ShellView::Home {
+            state.shell.check_and_show_long_press();
+        }
+
         // Skip rendering if session is not active (VT switched away)
         if !*session_active.borrow() {
             continue;
@@ -582,11 +587,43 @@ fn render_surface(
         state.shell.gesture.edge == Some(crate::input::Edge::Bottom);
 
     if shell_view == ShellView::Home || home_gesture_active {
+        // Collect menu elements first (will be rendered on top - first in array = front)
+        let menu_elements: Vec<_> = if let Some(ref menu) = state.shell.long_press_menu {
+            use crate::shell::app_grid::render_long_press_menu;
+            render_long_press_menu(menu, state.screen_size)
+                .into_iter()
+                .map(|(rect, color)| {
+                    let buffer = SolidColorBuffer::new(
+                        (rect.width as i32, rect.height as i32),
+                        color,
+                    );
+                    let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                        (rect.x as i32, rect.y as i32).into();
+                    SolidColorRenderElement::from_buffer(
+                        &buffer,
+                        loc,
+                        scale as f64,
+                        1.0,
+                        Kind::Unspecified,
+                    )
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        // Add menu elements first so they appear on top
+        shell_elements.extend(menu_elements);
+
+        // Then add the app grid elements
         let mut app_grid = AppGrid::new(state.screen_size);
         app_grid.set_progress(1.0, state.screen_size.h as f64);
-        app_grid.set_scroll(state.shell.home_scroll, state.shell.apps.len());
 
-        for (rect, color) in app_grid.get_render_rects(&state.shell.apps) {
+        // Use category grid instead of apps
+        let categories = state.shell.app_manager.get_category_info();
+        app_grid.set_scroll(state.shell.home_scroll, categories.len());
+
+        for (rect, color) in app_grid.get_category_rects(&categories) {
             let buffer = SolidColorBuffer::new(
                 (rect.width as i32, rect.height as i32),
                 color,
@@ -1230,9 +1267,24 @@ fn handle_input_event(
 
             // Check if touch is on shell UI (home screen app grid)
             // Don't launch immediately - wait for touch up to distinguish tap from scroll
-            if state.shell.view == crate::shell::ShellView::Home {
-                let pending_app = state.shell.handle_touch(touch_pos);
-                state.shell.start_home_touch(touch_pos.y, pending_app);
+            // Skip if an edge gesture was detected (edge gestures take priority)
+            let edge_gesture_active = matches!(
+                state.gesture_recognizer.active_gesture,
+                Some(crate::input::ActiveGesture::EdgeSwipe { .. })
+            );
+            if state.shell.view == crate::shell::ShellView::Home && !edge_gesture_active {
+                // If long press menu is open, handle menu interaction
+                if state.shell.long_press_menu.is_some() {
+                    // Touch on menu - track position for item selection
+                    // Menu handling is done on touch up
+                } else {
+                    // Check if touch hit a category
+                    if let Some(category) = state.shell.hit_test_category(touch_pos) {
+                        state.shell.start_category_touch(touch_pos, category);
+                    } else {
+                        state.shell.start_home_touch(touch_pos.y, None);
+                    }
+                }
             }
 
             // Check if touch is on app switcher card (horizontal layout)
@@ -1345,6 +1397,10 @@ fn handle_input_event(
             // Handle scrolling on home screen
             if state.shell.view == crate::shell::ShellView::Home && state.shell.scroll_touch_start_y.is_some() {
                 state.shell.update_home_scroll(touch_pos.y);
+
+                // Check for long press (300ms without scrolling)
+                // This also runs in the render loop for cases where finger is completely still
+                state.shell.check_and_show_long_press();
             }
 
             // Handle horizontal scrolling in app switcher
@@ -1400,8 +1456,11 @@ fn handle_input_event(
 
             debug!("Touch up at slot {:?}", event.slot());
 
-            // Feed to gesture recognizer and handle completed gestures
+            // Save touch position BEFORE touch_up removes it from gesture recognizer
             let slot_id: i32 = event.slot().into();
+            let last_touch_pos = state.gesture_recognizer.get_touch_position(slot_id);
+
+            // Feed to gesture recognizer and handle completed gestures
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {
                 debug!("Gesture completed: {:?}", gesture_event);
 
@@ -1432,7 +1491,48 @@ fn handle_input_event(
 
             // Handle home screen tap to launch app (only if not scrolling)
             if state.shell.view == crate::shell::ShellView::Home {
-                if let Some(exec) = state.shell.end_home_touch() {
+                info!("touch_up: Home view, menu_open={}, just_opened={}, last_pos={:?}",
+                      state.shell.long_press_menu.is_some(),
+                      state.shell.menu_just_opened,
+                      last_touch_pos);
+                // If long press menu is open, handle menu interaction
+                if state.shell.long_press_menu.is_some() {
+                    // If menu just opened on this touch, don't process tap - just clear the flag
+                    if state.shell.menu_just_opened {
+                        info!("Menu just opened, keeping it open");
+                        state.shell.menu_just_opened = false;
+                        state.shell.end_home_touch();
+                    } else {
+                        use crate::shell::app_grid::hit_test_menu;
+
+                        // Use saved touch position (before it was removed from gesture recognizer)
+                        if let Some(pos) = last_touch_pos {
+                            // Check if tap was on a menu item
+                            let menu = state.shell.long_press_menu.as_ref().unwrap();
+                            info!("Menu tap at ({:.0}, {:.0}), screen={}x{}", pos.x, pos.y,
+                                  state.screen_size.w, state.screen_size.h);
+                            if let Some(index) = hit_test_menu(menu, state.screen_size, (pos.x, pos.y)) {
+                                info!("Menu item selected: {}", index);
+                                if let Some(action) = state.shell.handle_menu_tap(index) {
+                                    info!("Menu action: {:?}", action);
+                                    // MenuAction::EnterWiggleMode already sets wiggle_mode
+                                    // MenuAction::ShowAppList keeps menu open
+                                    // MenuAction::AppSelected closes menu
+                                }
+                            } else {
+                                // Tap outside menu - close it
+                                info!("Closing long press menu (tap outside)");
+                                state.shell.close_long_press_menu();
+                            }
+                        } else {
+                            // No touch position - just close menu
+                            info!("No touch position for menu, closing");
+                            state.shell.close_long_press_menu();
+                        }
+                        // Clear touch state
+                        state.shell.end_home_touch();
+                    }
+                } else if let Some(exec) = state.shell.end_home_touch() {
                     info!("Launching app: {}", exec);
                     // Launch via XWayland
                     if let Ok(display) = std::env::var("XWAYLAND_DISPLAY").or_else(|_| Ok::<_, ()>(":1".to_string())) {

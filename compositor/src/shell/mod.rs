@@ -12,6 +12,7 @@ pub mod app_switcher;
 pub mod quick_settings;
 pub mod overlay;
 pub mod text;
+pub mod apps;
 
 use smithay::utils::{Logical, Point, Size};
 use crate::input::{Edge, GestureEvent};
@@ -84,6 +85,43 @@ impl Default for GestureState {
     }
 }
 
+/// Menu level for long press menu
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MenuLevel {
+    /// Main menu with Move / Change Default options
+    Main,
+    /// Submenu showing available apps for the category
+    SelectApp,
+}
+
+/// Action returned from menu interaction
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MenuAction {
+    /// Enter wiggle mode for rearranging icons
+    EnterWiggleMode,
+    /// Show the app list submenu
+    ShowAppList,
+    /// An app was selected as the new default
+    AppSelected,
+}
+
+/// Long press menu for app categories
+#[derive(Debug, Clone)]
+pub struct LongPressMenu {
+    /// The category being configured
+    pub category: apps::AppCategory,
+    /// Position of the menu (where long press occurred)
+    pub position: Point<f64, Logical>,
+    /// Available apps for this category
+    pub available_apps: Vec<apps::DesktopEntry>,
+    /// Currently highlighted option
+    pub highlighted: Option<usize>,
+    /// Current menu level
+    pub level: MenuLevel,
+    /// Scroll offset for app list (when list is long)
+    pub scroll_offset: f64,
+}
+
 /// Shell state - manages UI views and animations
 pub struct Shell {
     /// Current view
@@ -92,7 +130,9 @@ pub struct Shell {
     pub screen_size: Size<i32, Logical>,
     /// Active gesture for animations
     pub gesture: GestureState,
-    /// Apps for the launcher
+    /// App manager (handles categories and installed apps)
+    pub app_manager: apps::AppManager,
+    /// Legacy apps for compatibility (will be removed)
     pub apps: Vec<AppInfo>,
     /// Selected app index (for touch feedback)
     pub selected_app: Option<usize>,
@@ -108,10 +148,16 @@ pub struct Shell {
     pub switcher_touch_last_x: Option<f64>,
     /// Pending app launch (exec command) - waits for touch up to confirm tap vs scroll
     pub pending_app_launch: Option<String>,
+    /// Pending category for long press menu
+    pub pending_category: Option<apps::AppCategory>,
     /// Pending switcher window index - waits for touch up to confirm tap vs scroll
     pub pending_switcher_index: Option<usize>,
     /// Whether current touch is scrolling (moved significantly)
     pub is_scrolling: bool,
+    /// Long press tracking
+    pub long_press_start: Option<std::time::Instant>,
+    pub long_press_category: Option<apps::AppCategory>,
+    pub long_press_position: Option<Point<f64, Logical>>,
     /// Quick Settings panel state
     pub quick_settings: quick_settings::QuickSettingsPanel,
     /// Quick settings touch tracking
@@ -119,6 +165,12 @@ pub struct Shell {
     pub qs_touch_last_y: Option<f64>,
     /// Pending toggle index for Quick Settings
     pub pending_toggle_index: Option<usize>,
+    /// Long press menu state
+    pub long_press_menu: Option<LongPressMenu>,
+    /// Flag to prevent closing menu on same touch that opened it
+    pub menu_just_opened: bool,
+    /// Wiggle mode for rearranging icons
+    pub wiggle_mode: bool,
 }
 
 impl Shell {
@@ -127,6 +179,7 @@ impl Shell {
             view: ShellView::Home, // Start at home
             screen_size,
             gesture: GestureState::default(),
+            app_manager: apps::AppManager::new(),
             apps: default_apps(),
             selected_app: None,
             switcher_scroll: 0.0,
@@ -136,12 +189,19 @@ impl Shell {
             switcher_touch_start_x: None,
             switcher_touch_last_x: None,
             pending_app_launch: None,
+            pending_category: None,
             pending_switcher_index: None,
             is_scrolling: false,
+            long_press_start: None,
+            long_press_category: None,
+            long_press_position: None,
             quick_settings: quick_settings::QuickSettingsPanel::new(screen_size),
             qs_touch_start_y: None,
             qs_touch_last_y: None,
             pending_toggle_index: None,
+            long_press_menu: None,
+            menu_just_opened: false,
+            wiggle_mode: false,
         }
     }
 
@@ -151,6 +211,123 @@ impl Shell {
         self.scroll_touch_last_y = Some(y);
         self.pending_app_launch = pending_app;
         self.is_scrolling = false;
+        self.long_press_start = Some(std::time::Instant::now());
+    }
+
+    /// Start tracking a touch on a specific category (for long press detection)
+    pub fn start_category_touch(&mut self, pos: Point<f64, Logical>, category: apps::AppCategory) {
+        self.scroll_touch_start_y = Some(pos.y);
+        self.scroll_touch_last_y = Some(pos.y);
+        self.pending_category = Some(category);
+        self.pending_app_launch = self.app_manager.get_exec(category);
+        self.is_scrolling = false;
+        self.long_press_start = Some(std::time::Instant::now());
+        self.long_press_category = Some(category);
+        self.long_press_position = Some(pos);
+    }
+
+    /// Check if a long press has occurred (300ms threshold)
+    pub fn check_long_press(&mut self) -> Option<apps::AppCategory> {
+        if self.is_scrolling {
+            return None;
+        }
+        if let (Some(start), Some(category)) = (self.long_press_start, self.long_press_category) {
+            if start.elapsed() >= std::time::Duration::from_millis(300) {
+                // Clear the pending app launch since this is a long press
+                self.pending_app_launch = None;
+                return Some(category);
+            }
+        }
+        None
+    }
+
+    /// Check for long press and show menu if triggered (called from render loop)
+    /// Returns true if menu was shown
+    pub fn check_and_show_long_press(&mut self) -> bool {
+        if self.long_press_menu.is_some() {
+            return false; // Menu already open
+        }
+        if let Some(category) = self.check_long_press() {
+            if let Some(pos) = self.long_press_position {
+                tracing::info!("Long press triggered for {:?} at ({:.0}, {:.0})", category, pos.x, pos.y);
+                self.show_long_press_menu(category, pos);
+                // Clear long press tracking so it doesn't trigger again
+                self.long_press_start = None;
+                self.long_press_category = None;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Show long press menu for a category
+    pub fn show_long_press_menu(&mut self, category: apps::AppCategory, position: Point<f64, Logical>) {
+        let available_apps = self.app_manager.apps_for_category(category)
+            .into_iter()
+            .cloned()
+            .collect();
+        self.long_press_menu = Some(LongPressMenu {
+            category,
+            position,
+            available_apps,
+            highlighted: None,
+            level: MenuLevel::Main,
+            scroll_offset: 0.0,
+        });
+        self.menu_just_opened = true; // Don't close on this touch release
+    }
+
+    /// Close long press menu
+    pub fn close_long_press_menu(&mut self) {
+        self.long_press_menu = None;
+        self.menu_just_opened = false;
+    }
+
+    /// Handle menu item selection - returns true if menu should close
+    pub fn handle_menu_tap(&mut self, index: usize) -> Option<MenuAction> {
+        let menu = self.long_press_menu.as_mut()?;
+
+        match menu.level {
+            MenuLevel::Main => {
+                match index {
+                    0 => {
+                        // "Move" - enter wiggle mode
+                        self.wiggle_mode = true;
+                        self.long_press_menu = None;
+                        Some(MenuAction::EnterWiggleMode)
+                    }
+                    1 => {
+                        // "Change Default" - switch to app selection
+                        menu.level = MenuLevel::SelectApp;
+                        menu.scroll_offset = 0.0;
+                        Some(MenuAction::ShowAppList)
+                    }
+                    _ => None,
+                }
+            }
+            MenuLevel::SelectApp => {
+                // Select an app from the list
+                if let Some(entry) = menu.available_apps.get(index) {
+                    let exec = entry.exec.clone();
+                    let category = menu.category;
+                    self.app_manager.config.set_selected(category, exec);
+                    self.long_press_menu = None;
+                    Some(MenuAction::AppSelected)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    /// Legacy: Select an app from the long press menu
+    pub fn select_app_from_menu(&mut self, index: usize) -> bool {
+        self.handle_menu_tap(index).is_some()
+    }
+
+    /// Exit wiggle mode (after rearranging is done)
+    pub fn exit_wiggle_mode(&mut self) {
+        self.wiggle_mode = false;
     }
 
     /// Update scroll position based on touch movement
@@ -163,6 +340,10 @@ impl Shell {
             if total_delta > 40.0 {
                 self.is_scrolling = true;
                 self.pending_app_launch = None; // Cancel pending app launch
+                self.pending_category = None;
+                self.long_press_start = None;
+                self.long_press_category = None;
+                self.long_press_position = None;
             }
         }
 
@@ -170,8 +351,10 @@ impl Shell {
             let delta = last_y - y; // Scroll down when finger moves up
 
             // Calculate max scroll based on content height (must match AppGrid calculation)
-            let rows = (self.apps.len() + 2) / 3; // 3 columns
-            let cell_height = (self.screen_size.w as f64 - 32.0) / 3.0 * 1.2;
+            let num_items = self.app_manager.config.grid_order.len();
+            let grid = app_grid::AppGridLayout::new(self.screen_size);
+            let rows = (num_items + grid.columns - 1) / grid.columns;
+            let cell_height = grid.cell_size * 1.2;
             let content_height = rows as f64 * cell_height + 72.0; // top_offset = 72
             let max_scroll = (content_height - self.screen_size.h as f64 + 100.0).max(0.0);
 
@@ -191,7 +374,11 @@ impl Shell {
         self.scroll_touch_start_y = None;
         self.scroll_touch_last_y = None;
         self.pending_app_launch = None;
+        self.pending_category = None;
         self.is_scrolling = false;
+        self.long_press_start = None;
+        self.long_press_category = None;
+        self.long_press_position = None;
         app
     }
 
@@ -302,10 +489,11 @@ impl Shell {
         self.gesture = GestureState::default();
     }
 
-    /// Close the app switcher (go back to current app)
-    pub fn close_switcher(&mut self) {
-        self.view = ShellView::App;
+    /// Close the app switcher (go back to current app, or home if no apps)
+    pub fn close_switcher(&mut self, has_windows: bool) {
+        self.view = if has_windows { ShellView::App } else { ShellView::Home };
         self.gesture = GestureState::default();
+        self.switcher_scroll = 0.0;
     }
 
     /// Sync Quick Settings panel with current system status
@@ -325,9 +513,9 @@ impl Shell {
     }
 
     /// Close quick settings panel (go back to previous view)
-    pub fn close_quick_settings(&mut self) {
+    pub fn close_quick_settings(&mut self, has_windows: bool) {
         // Go back to app if there are apps, otherwise home
-        self.view = ShellView::App;
+        self.view = if has_windows { ShellView::App } else { ShellView::Home };
         self.gesture = GestureState::default();
     }
 
@@ -337,16 +525,37 @@ impl Shell {
             return None;
         }
 
-        // Check if touch is on an app tile
-        let app_index = self.hit_test_app(pos);
-        if let Some(idx) = app_index {
-            return Some(self.apps[idx].exec.clone());
+        // Check if touch is on a category tile
+        if let Some(category) = self.hit_test_category(pos) {
+            return self.app_manager.get_exec(category);
         }
 
         None
     }
 
-    /// Hit test for app grid - returns app index if hit
+    /// Hit test for app grid - returns category if hit
+    pub fn hit_test_category(&self, pos: Point<f64, Logical>) -> Option<apps::AppCategory> {
+        let grid = app_grid::AppGridLayout::new(self.screen_size);
+        let categories = &self.app_manager.config.grid_order;
+
+        for (i, category) in categories.iter().enumerate() {
+            let rect = grid.app_rect(i);
+            // Adjust for scroll offset - tiles scroll up as home_scroll increases
+            let adjusted_y = rect.y - self.home_scroll;
+            tracing::debug!("Category {} '{}': rect ({:.0},{:.0} {:.0}x{:.0}), touch ({:.0},{:.0}), scroll={:.0}",
+                i, category.display_name(), rect.x, adjusted_y, rect.width, rect.height, pos.x, pos.y, self.home_scroll);
+            if pos.x >= rect.x && pos.x < rect.x + rect.width &&
+               pos.y >= adjusted_y && pos.y < adjusted_y + rect.height {
+                tracing::info!("Hit category {} '{}'", i, category.display_name());
+                return Some(*category);
+            }
+        }
+
+        tracing::debug!("No category hit at ({:.0},{:.0})", pos.x, pos.y);
+        None
+    }
+
+    /// Hit test for app grid - returns app index if hit (legacy, for compatibility)
     fn hit_test_app(&self, pos: Point<f64, Logical>) -> Option<usize> {
         let grid = app_grid::AppGridLayout::new(self.screen_size);
 

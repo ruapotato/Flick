@@ -349,6 +349,7 @@ impl Flick {
                 if !has_windows {
                     tracing::info!("No more windows, switching to Home view");
                     self.shell.view = crate::shell::ShellView::Home;
+                    self.shell.switcher_scroll = 0.0; // Reset switcher state
                 }
             } else {
                 // Cancel - restore original position
