@@ -16,6 +16,7 @@ pub mod text;
 pub mod apps;
 pub mod icons;
 pub mod lock_screen;
+pub mod slint_ui;
 
 use smithay::utils::{Logical, Point, Size};
 use crate::input::{Edge, GestureEvent};
@@ -188,6 +189,8 @@ pub struct Shell {
     pub lock_config: lock_screen::LockConfig,
     /// Lock screen runtime state
     pub lock_state: lock_screen::LockScreenState,
+    /// Slint UI shell (optional - may fail to initialize)
+    pub slint_ui: Option<slint_ui::SlintShell>,
 }
 
 impl Shell {
@@ -201,6 +204,20 @@ impl Shell {
             ShellView::Home
         } else {
             ShellView::LockScreen
+        };
+
+        // Try to initialize Slint UI (may fail on some platforms)
+        let slint_ui = match std::panic::catch_unwind(|| {
+            slint_ui::SlintShell::new(screen_size)
+        }) {
+            Ok(ui) => {
+                tracing::info!("Slint UI initialized successfully");
+                Some(ui)
+            }
+            Err(e) => {
+                tracing::warn!("Failed to initialize Slint UI: {:?}", e);
+                None
+            }
         };
 
         let mut shell = Self {
@@ -236,6 +253,7 @@ impl Shell {
             icon_cache: icons::IconCache::new(128), // 128px icons for larger tiles
             lock_config,
             lock_state,
+            slint_ui,
         };
 
         // Preload icons for all categories

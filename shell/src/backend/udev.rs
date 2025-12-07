@@ -660,28 +660,83 @@ fn render_surface(
     let mut shell_elements: Vec<SolidColorRenderElement> = Vec::new();
 
     // Render lock screen if active
+    // For now, we'll render using Slint if available, otherwise fall back to old rendering
+    let mut slint_rendered = false;
     if shell_view == ShellView::LockScreen {
-        use crate::shell::lock_screen::render_lock_screen;
-        let lock_rects = render_lock_screen(
-            &state.shell.lock_state,
-            &state.shell.lock_config,
-            state.screen_size,
-        );
+        // Try Slint rendering first
+        if let Some(ref slint_ui) = state.shell.slint_ui {
+            // Update Slint UI state
+            slint_ui.set_view("lock");
+            slint_ui.set_lock_time(&chrono::Local::now().format("%H:%M").to_string());
+            slint_ui.set_lock_date(&chrono::Local::now().format("%A, %B %e").to_string());
+            slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
+            if let Some(ref err) = state.shell.lock_state.error_message {
+                slint_ui.set_lock_error(err);
+            } else {
+                slint_ui.set_lock_error("");
+            }
 
-        for (rect, color) in lock_rects {
-            let buffer = SolidColorBuffer::new(
-                (rect.width as i32, rect.height as i32),
-                color,
+            // Request redraw and render
+            slint_ui.request_redraw();
+            if let Some((width, height, pixels)) = slint_ui.render() {
+                // Create MemoryRenderBuffer from Slint's pixel output
+                let mut mem_buffer = MemoryRenderBuffer::new(
+                    Fourcc::Abgr8888, // RGBA in little-endian byte order
+                    (width as i32, height as i32),
+                    1, // scale
+                    Transform::Normal,
+                    None,
+                );
+
+                // Write pixels into buffer
+                let pixels_clone = pixels.clone();
+                let _: Result<(), std::convert::Infallible> = mem_buffer.render().draw(|buffer| {
+                    buffer.copy_from_slice(&pixels_clone);
+                    Ok(vec![Rectangle::from_size((width as i32, height as i32).into())])
+                });
+
+                // Create render element
+                let loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, 0).into();
+                if let Ok(slint_element) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    loc.to_f64(),
+                    &mem_buffer,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    home_elements.push(HomeRenderElement::Icon(slint_element));
+                    slint_rendered = true;
+                    tracing::debug!("Slint lock screen rendered");
+                }
+            }
+        }
+
+        // Fall back to old rendering if Slint didn't work
+        if !slint_rendered {
+            use crate::shell::lock_screen::render_lock_screen;
+            let lock_rects = render_lock_screen(
+                &state.shell.lock_state,
+                &state.shell.lock_config,
+                state.screen_size,
             );
-            let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                (rect.x as i32, rect.y as i32).into();
-            shell_elements.push(SolidColorRenderElement::from_buffer(
-                &buffer,
-                loc,
-                scale as f64,
-                1.0,
-                Kind::Unspecified,
-            ));
+
+            for (rect, color) in lock_rects {
+                let buffer = SolidColorBuffer::new(
+                    (rect.width as i32, rect.height as i32),
+                    color,
+                );
+                let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                    (rect.x as i32, rect.y as i32).into();
+                shell_elements.push(SolidColorRenderElement::from_buffer(
+                    &buffer,
+                    loc,
+                    scale as f64,
+                    1.0,
+                    Kind::Unspecified,
+                ));
+            }
         }
     }
 
@@ -1111,6 +1166,24 @@ fn render_surface(
             &mut fb,
             0,  // age=0 for full redraw
             &switcher_elements,
+            bg_color,
+        )
+    } else if shell_view == ShellView::LockScreen && slint_rendered {
+        // Render lock screen with Slint UI (in home_elements)
+        surface_data.damage_tracker.render_output(
+            renderer,
+            &mut fb,
+            0, // Force full redraw for lock screen
+            &home_elements,
+            bg_color,
+        )
+    } else if shell_view == ShellView::LockScreen {
+        // Render lock screen with old rendering (shell_elements)
+        surface_data.damage_tracker.render_output(
+            renderer,
+            &mut fb,
+            0, // Force full redraw for lock screen
+            &shell_elements,
             bg_color,
         )
     } else if shell_view == ShellView::Home {

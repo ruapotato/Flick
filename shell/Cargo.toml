@@ -9,9 +9,9 @@ license = "GPL-3.0"
 slint-build = "=1.7.2"
 
 [dependencies]
-# Slint UI framework (GPL-compatible, OpenGL ES 2.0 support via FemtoVG)
-# Using 1.7 for Rust 1.85 compatibility
-slint = { version = "=1.7.2", default-features = false, features = ["compat-1-2", "renderer-femtovg"] }
+# Slint UI framework (GPL-compatible)
+# Using 1.7 for Rust 1.85 compatibility, software renderer for compositor integration
+slint = { version = "=1.7.2", default-features = false, features = ["compat-1-2", "std", "renderer-software"] }
 
 # Smithay - the Wayland compositor library (from git for latest features)
 smithay = { git = "https://github.com/Smithay/smithay", features = [
