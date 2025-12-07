@@ -308,6 +308,11 @@ impl Shell {
         self.gesture = GestureState::default();
     }
 
+    /// Sync Quick Settings panel with current system status
+    pub fn sync_quick_settings(&mut self, system: &crate::system::SystemStatus) {
+        self.quick_settings.update_from_system(system);
+    }
+
     /// Check if shell UI should be visible
     pub fn is_visible(&self) -> bool {
         match self.view {
@@ -402,16 +407,26 @@ impl Shell {
         self.is_scrolling
     }
 
-    /// End Quick Settings touch - toggle if it was a tap
-    pub fn end_qs_touch(&mut self) {
-        if !self.is_scrolling {
+    /// End Quick Settings touch - toggle if it was a tap, returns toggle ID for system action
+    pub fn end_qs_touch(&mut self) -> Option<String> {
+        let toggle_id = if !self.is_scrolling {
             if let Some(index) = self.pending_toggle_index.take() {
-                self.quick_settings.toggle(index);
+                self.quick_settings.toggle(index)
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
         self.qs_touch_start_y = None;
         self.qs_touch_last_y = None;
         self.pending_toggle_index = None;
         self.is_scrolling = false;
+        toggle_id
+    }
+
+    /// Get current brightness value for system sync
+    pub fn get_qs_brightness(&self) -> f32 {
+        self.quick_settings.brightness
     }
 }

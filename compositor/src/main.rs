@@ -13,6 +13,7 @@ mod shell;
 mod input;
 mod viewport;
 mod xwayland;
+pub mod system;
 
 use std::path::PathBuf;
 

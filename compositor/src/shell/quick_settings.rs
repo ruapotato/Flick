@@ -167,6 +167,11 @@ pub struct QuickSettingsPanel {
     pub toggles: Vec<QuickToggle>,
     pub brightness: f32,
     pub scroll_offset: f64,
+    // Cached system status for rendering
+    pub battery_percent: u8,
+    pub battery_charging: bool,
+    pub wifi_connected: bool,
+    pub wifi_ssid: Option<String>,
 }
 
 impl QuickSettingsPanel {
@@ -176,7 +181,39 @@ impl QuickSettingsPanel {
             toggles: default_toggles(),
             brightness: 0.7,
             scroll_offset: 0.0,
+            battery_percent: 0,
+            battery_charging: false,
+            wifi_connected: false,
+            wifi_ssid: None,
         }
+    }
+
+    /// Update system status from the main system module
+    pub fn update_from_system(&mut self, system: &crate::system::SystemStatus) {
+        // Update battery
+        if let Some(ref battery) = system.battery {
+            self.battery_percent = battery.capacity;
+            self.battery_charging = battery.charging;
+        }
+
+        // Update WiFi status
+        self.wifi_connected = system.wifi_enabled;
+        self.wifi_ssid = system.wifi_ssid.clone();
+
+        // Update toggles to reflect real system state
+        for toggle in &mut self.toggles {
+            match toggle.id.as_str() {
+                "wifi" => toggle.enabled = system.wifi_enabled,
+                "bluetooth" => toggle.enabled = system.bluetooth_enabled,
+                "dnd" => toggle.enabled = system.dnd.enabled,
+                "rotation" => toggle.enabled = system.rotation_lock.locked,
+                "airplane" => toggle.enabled = !system.wifi_enabled && !system.bluetooth_enabled,
+                _ => {}
+            }
+        }
+
+        // Sync brightness from system (read current value)
+        self.brightness = system.get_brightness();
     }
 
     /// Get list of rectangles to render
@@ -207,21 +244,59 @@ impl QuickSettingsPanel {
         );
         rects.extend(time_rects);
 
-        // Battery (right side)
+        // WiFi status (left side)
+        let wifi_text = if self.wifi_connected {
+            if let Some(ref ssid) = self.wifi_ssid {
+                ssid.chars().take(12).collect::<String>()  // Truncate long SSIDs
+            } else {
+                "WiFi".to_string()
+            }
+        } else {
+            "No WiFi".to_string()
+        };
+        let wifi_color = if self.wifi_connected {
+            [0.4, 0.8, 1.0, 1.0]  // Blue when connected
+        } else {
+            [0.5, 0.5, 0.6, 1.0]  // Gray when off
+        };
+        let wifi_rects = text::render_text(
+            &wifi_text,
+            16.0,
+            20.0,
+            2.5,
+            wifi_color,
+        );
+        rects.extend(wifi_rects);
+
+        // Battery (right side) - use real value
+        let battery_str = format!("{}", self.battery_percent);
+        let battery_color = if self.battery_charging {
+            [0.4, 1.0, 0.4, 1.0]  // Green when charging
+        } else if self.battery_percent <= 20 {
+            [1.0, 0.4, 0.4, 1.0]  // Red when low
+        } else {
+            [0.6, 1.0, 0.6, 1.0]  // Normal green
+        };
         let battery_rects = text::render_text(
-            "85",
+            &battery_str,
             screen_w - 70.0,
             20.0,
             3.0,
-            [0.6, 1.0, 0.6, 1.0],
+            battery_color,
         );
         rects.extend(battery_rects);
 
         // Battery icon
         let bat_icon = Rect::new(screen_w - 36.0, 20.0, 20.0, 12.0);
-        rects.push((bat_icon, [0.6, 1.0, 0.6, 1.0]));
+        rects.push((bat_icon, battery_color));
         let bat_tip = Rect::new(screen_w - 16.0, 23.0, 4.0, 6.0);
-        rects.push((bat_tip, [0.6, 1.0, 0.6, 1.0]));
+        rects.push((bat_tip, battery_color));
+
+        // Charging indicator (lightning bolt placeholder)
+        if self.battery_charging {
+            let charge_indicator = Rect::new(screen_w - 32.0, 22.0, 8.0, 8.0);
+            rects.push((charge_indicator, [1.0, 1.0, 0.0, 1.0]));  // Yellow
+        }
 
         // ============ SCROLLABLE CONTENT ============
         let content_y = status_bar_height - scroll;
@@ -489,11 +564,14 @@ impl QuickSettingsPanel {
         None
     }
 
-    /// Toggle a quick setting
-    pub fn toggle(&mut self, index: usize) {
+    /// Toggle a quick setting - returns the toggle ID for system action
+    pub fn toggle(&mut self, index: usize) -> Option<String> {
         if let Some(toggle) = self.toggles.get_mut(index) {
             toggle.enabled = !toggle.enabled;
             tracing::info!("Toggle '{}' is now {}", toggle.name, if toggle.enabled { "ON" } else { "OFF" });
+            Some(toggle.id.clone())
+        } else {
+            None
         }
     }
 

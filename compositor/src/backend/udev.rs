@@ -1361,6 +1361,9 @@ fn handle_input_event(
             // Handle scrolling/brightness on Quick Settings panel
             if state.shell.view == crate::shell::ShellView::QuickSettings && state.shell.qs_touch_start_y.is_some() {
                 state.shell.update_qs_scroll(touch_pos.x, touch_pos.y);
+                // Apply brightness to system backlight in real-time while dragging
+                let brightness = state.shell.get_qs_brightness();
+                state.system.set_brightness(brightness);
             }
 
             // Only forward touch motion to apps when in App view (not Home or Switcher)
@@ -1414,6 +1417,12 @@ fn handle_input_event(
                     if *edge == crate::input::Edge::Bottom {
                         state.end_home_gesture(*completed);
                     }
+                    // Sync Quick Settings with system status when opening it
+                    if *edge == crate::input::Edge::Left && *completed {
+                        state.system.refresh();
+                        state.shell.sync_quick_settings(&state.system);
+                        info!("Quick Settings opened - synced with system status");
+                    }
                 }
 
                 // Handle window management for completed gestures (still needed for close)
@@ -1460,9 +1469,50 @@ fn handle_input_event(
                 }
             }
 
-            // Handle Quick Settings touch up (toggle tap)
+            // Handle Quick Settings touch up (toggle tap) and sync brightness
             if state.shell.view == crate::shell::ShellView::QuickSettings {
-                state.shell.end_qs_touch();
+                // Execute system action if a toggle was tapped
+                if let Some(toggle_id) = state.shell.end_qs_touch() {
+                    use crate::system::{WifiManager, BluetoothManager, AirplaneMode, Flashlight};
+                    match toggle_id.as_str() {
+                        "wifi" => {
+                            WifiManager::toggle();
+                            state.system.wifi_enabled = WifiManager::is_enabled();
+                            state.system.wifi_ssid = WifiManager::current_connection();
+                            info!("WiFi toggled: {}", if state.system.wifi_enabled { "ON" } else { "OFF" });
+                        }
+                        "bluetooth" => {
+                            BluetoothManager::toggle();
+                            state.system.bluetooth_enabled = BluetoothManager::is_enabled();
+                            info!("Bluetooth toggled: {}", if state.system.bluetooth_enabled { "ON" } else { "OFF" });
+                        }
+                        "airplane" => {
+                            AirplaneMode::toggle();
+                            state.system.wifi_enabled = WifiManager::is_enabled();
+                            state.system.bluetooth_enabled = BluetoothManager::is_enabled();
+                            info!("Airplane mode toggled");
+                        }
+                        "flashlight" => {
+                            Flashlight::toggle();
+                            info!("Flashlight toggled");
+                        }
+                        "dnd" => {
+                            state.system.dnd.toggle();
+                            info!("Do Not Disturb: {}", if state.system.dnd.enabled { "ON" } else { "OFF" });
+                        }
+                        "rotation" => {
+                            state.system.rotation_lock.toggle();
+                            info!("Rotation lock: {}", if state.system.rotation_lock.locked { "ON" } else { "OFF" });
+                        }
+                        _ => {
+                            info!("Unknown toggle: {}", toggle_id);
+                        }
+                    }
+                }
+
+                // Apply brightness to system backlight
+                let brightness = state.shell.get_qs_brightness();
+                state.system.set_brightness(brightness);
             }
 
             if let Some(touch) = state.seat.get_touch() {

@@ -52,6 +52,7 @@ use smithay::{
 use crate::input::{GestureRecognizer, GestureAction, gesture_to_action};
 use crate::viewport::Viewport;
 use crate::shell::Shell;
+use crate::system::SystemStatus;
 
 /// Client-specific state
 #[derive(Default)]
@@ -116,6 +117,9 @@ pub struct Flick {
 
     // Integrated shell UI
     pub shell: Shell,
+
+    // System status (hardware integration)
+    pub system: SystemStatus,
 }
 
 impl Flick {
@@ -200,6 +204,7 @@ impl Flick {
             home_gesture_window: None,
             home_gesture_original_y: 0,
             shell: Shell::new(screen_size),
+            system: SystemStatus::new(),
         }
     }
 
