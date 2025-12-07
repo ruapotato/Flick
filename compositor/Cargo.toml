@@ -55,6 +55,10 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # Lazy static for global state
 lazy_static = "1.4"
 
+# Authentication
+pam = "0.7"
+bcrypt = "0.15"
+
 [features]
 default = ["udev"]
 udev = []

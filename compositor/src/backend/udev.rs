@@ -111,11 +111,64 @@ struct SurfaceData {
     ready_to_render: bool,
 }
 
-/// Keyboard modifier state for tracking Ctrl+Alt
+/// Keyboard modifier state for tracking Ctrl+Alt+Shift
 #[derive(Default)]
 struct ModifierState {
     ctrl: bool,
     alt: bool,
+    shift: bool,
+}
+
+/// Convert evdev keycode to character (simplified US QWERTY layout)
+fn evdev_to_char(keycode: u32, shift: bool) -> Option<char> {
+    // Row 1: numbers
+    let c = match keycode {
+        2 => if shift { '!' } else { '1' },
+        3 => if shift { '@' } else { '2' },
+        4 => if shift { '#' } else { '3' },
+        5 => if shift { '$' } else { '4' },
+        6 => if shift { '%' } else { '5' },
+        7 => if shift { '^' } else { '6' },
+        8 => if shift { '&' } else { '7' },
+        9 => if shift { '*' } else { '8' },
+        10 => if shift { '(' } else { '9' },
+        11 => if shift { ')' } else { '0' },
+        12 => if shift { '_' } else { '-' },
+        13 => if shift { '+' } else { '=' },
+        // Row 2: qwertyuiop
+        16 => if shift { 'Q' } else { 'q' },
+        17 => if shift { 'W' } else { 'w' },
+        18 => if shift { 'E' } else { 'e' },
+        19 => if shift { 'R' } else { 'r' },
+        20 => if shift { 'T' } else { 't' },
+        21 => if shift { 'Y' } else { 'y' },
+        22 => if shift { 'U' } else { 'u' },
+        23 => if shift { 'I' } else { 'i' },
+        24 => if shift { 'O' } else { 'o' },
+        25 => if shift { 'P' } else { 'p' },
+        // Row 3: asdfghjkl
+        30 => if shift { 'A' } else { 'a' },
+        31 => if shift { 'S' } else { 's' },
+        32 => if shift { 'D' } else { 'd' },
+        33 => if shift { 'F' } else { 'f' },
+        34 => if shift { 'G' } else { 'g' },
+        35 => if shift { 'H' } else { 'h' },
+        36 => if shift { 'J' } else { 'j' },
+        37 => if shift { 'K' } else { 'k' },
+        38 => if shift { 'L' } else { 'l' },
+        // Row 4: zxcvbnm
+        44 => if shift { 'Z' } else { 'z' },
+        45 => if shift { 'X' } else { 'x' },
+        46 => if shift { 'C' } else { 'c' },
+        47 => if shift { 'V' } else { 'v' },
+        48 => if shift { 'B' } else { 'b' },
+        49 => if shift { 'N' } else { 'n' },
+        50 => if shift { 'M' } else { 'm' },
+        // Space
+        57 => ' ',
+        _ => return None,
+    };
+    Some(c)
 }
 
 pub fn run() -> Result<()> {
@@ -589,7 +642,9 @@ fn render_surface(
     let bottom_gesture = state.shell.gesture.edge == Some(crate::input::Edge::Bottom);
 
     // Choose background color based on state
-    let bg_color = if shell_view == ShellView::Home || gesture_active || bottom_gesture {
+    let bg_color = if shell_view == ShellView::LockScreen {
+        [0.05, 0.05, 0.1, 1.0]  // Dark blue for lock screen
+    } else if shell_view == ShellView::Home || gesture_active || bottom_gesture {
         colors::BACKGROUND
     } else if shell_view == ShellView::Switcher {
         [0.0, 0.3, 0.0, 1.0]  // Dark green for Switcher - should be visible
@@ -602,6 +657,32 @@ fn render_surface(
     // Build shell UI elements (HomeRenderElement for Home view, SolidColorRenderElement otherwise)
     let mut home_elements: Vec<HomeRenderElement<GlesRenderer>> = Vec::new();
     let mut shell_elements: Vec<SolidColorRenderElement> = Vec::new();
+
+    // Render lock screen if active
+    if shell_view == ShellView::LockScreen {
+        use crate::shell::lock_screen::render_lock_screen;
+        let lock_rects = render_lock_screen(
+            &state.shell.lock_state,
+            &state.shell.lock_config,
+            state.screen_size,
+        );
+
+        for (rect, color) in lock_rects {
+            let buffer = SolidColorBuffer::new(
+                (rect.width as i32, rect.height as i32),
+                color,
+            );
+            let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                (rect.x as i32, rect.y as i32).into();
+            shell_elements.push(SolidColorRenderElement::from_buffer(
+                &buffer,
+                loc,
+                scale as f64,
+                1.0,
+                Kind::Unspecified,
+            ));
+        }
+    }
 
     // Check if home gesture is active (bottom edge swipe from App view)
     let home_gesture_active = shell_view == ShellView::App &&
@@ -1166,14 +1247,17 @@ fn handle_input_event(
             let evdev_keycode = raw_keycode.saturating_sub(8);
             debug!("Keyboard event: xkb_keycode={}, evdev_keycode={}, pressed={}", raw_keycode, evdev_keycode, pressed);
 
-            // Track modifier state for VT switching
-            // Evdev keycodes: 29=LCtrl, 97=RCtrl, 56=LAlt, 100=RAlt
+            // Track modifier state for VT switching and password input
+            // Evdev keycodes: 29=LCtrl, 97=RCtrl, 56=LAlt, 100=RAlt, 42=LShift, 54=RShift
             match evdev_keycode {
                 29 | 97 => {
                     modifiers.borrow_mut().ctrl = pressed;
                 }
                 56 | 100 => {
                     modifiers.borrow_mut().alt = pressed;
+                }
+                42 | 54 => {
+                    modifiers.borrow_mut().shift = pressed;
                 }
                 _ => {}
             }
@@ -1191,6 +1275,43 @@ fn handle_input_event(
                         }
                         return;
                     }
+                }
+            }
+
+            // Handle keyboard input for lock screen password mode
+            if state.shell.view == crate::shell::ShellView::LockScreen {
+                if state.shell.lock_state.input_mode == crate::shell::lock_screen::LockInputMode::Password {
+                    if pressed {
+                        // Common keycodes (evdev):
+                        // Enter = 28, Backspace = 14
+                        // Letters a-z = 30-38, 44-50, 16-25
+                        // Numbers 0-9 = 11, 2-10
+                        match evdev_keycode {
+                            28 => {
+                                // Enter - attempt unlock
+                                if !state.shell.lock_state.entered_password.is_empty() {
+                                    state.shell.try_unlock();
+                                }
+                            }
+                            14 => {
+                                // Backspace
+                                state.shell.lock_state.entered_password.pop();
+                            }
+                            _ => {
+                                // Try to convert keycode to character
+                                // This is a simplified mapping - a full implementation would use xkb
+                                let mods = modifiers.borrow();
+                                let char_opt = evdev_to_char(evdev_keycode, mods.shift);
+                                if let Some(c) = char_opt {
+                                    if state.shell.lock_state.entered_password.len() < 64 {
+                                        state.shell.lock_state.entered_password.push(c);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Don't forward keyboard events to clients when on lock screen
+                    return;
                 }
             }
 
@@ -1381,6 +1502,45 @@ fn handle_input_event(
                 }
             }
 
+            // Handle lock screen touch - block all other interactions
+            if state.shell.view == crate::shell::ShellView::LockScreen {
+                use crate::shell::lock_screen::{LockInputMode, get_pin_button_rects, get_pattern_dot_positions, hit_test_pattern_dot};
+
+                match state.shell.lock_state.input_mode {
+                    LockInputMode::Pin => {
+                        // Check which PIN button was pressed
+                        let buttons = get_pin_button_rects(state.screen_size);
+                        for (i, (rect, _label)) in buttons.iter().enumerate() {
+                            if touch_pos.x >= rect.x && touch_pos.x <= rect.x + rect.width &&
+                               touch_pos.y >= rect.y && touch_pos.y <= rect.y + rect.height {
+                                state.shell.lock_state.pressed_button = Some(i);
+                                break;
+                            }
+                        }
+                    }
+                    LockInputMode::Pattern => {
+                        // Start pattern gesture
+                        let dots = get_pattern_dot_positions(state.screen_size);
+                        if let Some(dot_idx) = hit_test_pattern_dot(touch_pos, &dots) {
+                            state.shell.lock_state.pattern_active = true;
+                            state.shell.lock_state.pattern_nodes.clear();
+                            state.shell.lock_state.pattern_nodes.push(dot_idx);
+                            state.shell.lock_state.pattern_touch_pos = Some(touch_pos);
+                        }
+                    }
+                    LockInputMode::Password => {
+                        // Check "Use Password" link hit - handled on touch_up
+                    }
+                }
+
+                // Check for "Use Password" fallback link
+                let screen_h = state.screen_size.h as f64;
+                let link_y = screen_h * 0.9;
+                if touch_pos.y >= link_y - 20.0 && touch_pos.y <= link_y + 30.0 {
+                    // Touched near the fallback link - will switch on touch_up
+                }
+            }
+
             // Check if touch is on shell UI (home screen app grid)
             // Don't launch immediately - wait for touch up to distinguish tap from scroll
             // Skip if an edge gesture was detected (edge gestures take priority)
@@ -1526,6 +1686,23 @@ fn handle_input_event(
                 }
             }
 
+            // Handle pattern gesture on lock screen
+            if state.shell.view == crate::shell::ShellView::LockScreen {
+                if state.shell.lock_state.pattern_active {
+                    use crate::shell::lock_screen::{get_pattern_dot_positions, hit_test_pattern_dot};
+                    let dots = get_pattern_dot_positions(state.screen_size);
+                    state.shell.lock_state.pattern_touch_pos = Some(touch_pos);
+
+                    // Check if we've touched a new dot
+                    if let Some(dot_idx) = hit_test_pattern_dot(touch_pos, &dots) {
+                        // Only add if not already in pattern
+                        if !state.shell.lock_state.pattern_nodes.contains(&dot_idx) {
+                            state.shell.lock_state.pattern_nodes.push(dot_idx);
+                        }
+                    }
+                }
+            }
+
             // Handle scrolling on home screen
             if state.shell.view == crate::shell::ShellView::Home && state.shell.scroll_touch_start_y.is_some() {
                 state.shell.update_home_scroll(touch_pos.y);
@@ -1624,6 +1801,79 @@ fn handle_input_event(
                 // Handle window management for completed gestures (still needed for close)
                 let action = gesture_to_action(&gesture_event);
                 state.handle_gesture_complete(&action);
+            }
+
+            // Handle lock screen touch up
+            if state.shell.view == crate::shell::ShellView::LockScreen {
+                use crate::shell::lock_screen::{LockInputMode, get_pin_button_rects, PIN_BUTTONS};
+
+                match state.shell.lock_state.input_mode {
+                    LockInputMode::Pin => {
+                        // Process PIN button tap
+                        if let Some(button_idx) = state.shell.lock_state.pressed_button {
+                            if button_idx < PIN_BUTTONS.len() {
+                                let label = PIN_BUTTONS[button_idx];
+                                match label {
+                                    "<" => {
+                                        // Backspace
+                                        state.shell.lock_state.entered_pin.pop();
+                                    }
+                                    "OK" => {
+                                        // Attempt unlock
+                                        if !state.shell.lock_state.entered_pin.is_empty() {
+                                            state.shell.try_unlock();
+                                        }
+                                    }
+                                    digit => {
+                                        // Add digit (max 6 digits)
+                                        if state.shell.lock_state.entered_pin.len() < 6 {
+                                            state.shell.lock_state.entered_pin.push_str(digit);
+                                        }
+                                    }
+                                }
+                            }
+                            state.shell.lock_state.pressed_button = None;
+                        }
+
+                        // Check for "Use Password" link tap
+                        if let Some(pos) = last_touch_pos {
+                            let screen_h = state.screen_size.h as f64;
+                            let link_y = screen_h * 0.9;
+                            if pos.y >= link_y - 20.0 && pos.y <= link_y + 30.0 {
+                                state.shell.lock_state.switch_to_password();
+                                info!("Switched to password mode");
+                            }
+                        }
+                    }
+                    LockInputMode::Pattern => {
+                        // Pattern gesture ended - attempt unlock if enough nodes
+                        if state.shell.lock_state.pattern_active {
+                            state.shell.lock_state.pattern_active = false;
+                            state.shell.lock_state.pattern_touch_pos = None;
+
+                            if state.shell.lock_state.pattern_nodes.len() >= 4 {
+                                state.shell.try_unlock();
+                            } else if !state.shell.lock_state.pattern_nodes.is_empty() {
+                                // Too short - show error
+                                state.shell.lock_state.error_message = Some("Pattern too short (min 4 dots)".to_string());
+                                state.shell.lock_state.pattern_nodes.clear();
+                            }
+                        }
+
+                        // Check for "Use Password" link tap
+                        if let Some(pos) = last_touch_pos {
+                            let screen_h = state.screen_size.h as f64;
+                            let link_y = screen_h * 0.9;
+                            if pos.y >= link_y - 20.0 && pos.y <= link_y + 30.0 {
+                                state.shell.lock_state.switch_to_password();
+                                info!("Switched to password mode");
+                            }
+                        }
+                    }
+                    LockInputMode::Password => {
+                        // Password mode - Enter key submits (handled via keyboard)
+                    }
+                }
             }
 
             // Handle home screen tap to launch app (only if not scrolling)

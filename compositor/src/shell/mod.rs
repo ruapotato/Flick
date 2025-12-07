@@ -1,6 +1,7 @@
 //! Integrated shell UI - rendered directly by the compositor
 //!
 //! Components:
+//! - Lock screen (PIN, pattern, password authentication)
 //! - App grid (home screen)
 //! - App switcher (Android-style card stack)
 //! - Quick settings panel (notifications/toggles)
@@ -14,6 +15,7 @@ pub mod overlay;
 pub mod text;
 pub mod apps;
 pub mod icons;
+pub mod lock_screen;
 
 use smithay::utils::{Logical, Point, Size};
 use crate::input::{Edge, GestureEvent};
@@ -52,6 +54,8 @@ pub fn default_apps() -> Vec<AppInfo> {
 /// Current shell view state
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ShellView {
+    /// Lock screen - must authenticate to proceed
+    LockScreen,
     /// Showing a running app (shell hidden)
     App,
     /// Home screen with app grid
@@ -180,12 +184,27 @@ pub struct Shell {
     pub drag_position: Option<Point<f64, Logical>>,
     /// Icon cache for app icons
     pub icon_cache: icons::IconCache,
+    /// Lock screen configuration
+    pub lock_config: lock_screen::LockConfig,
+    /// Lock screen runtime state
+    pub lock_state: lock_screen::LockScreenState,
 }
 
 impl Shell {
     pub fn new(screen_size: Size<i32, Logical>) -> Self {
+        // Load lock config first to determine initial view
+        let lock_config = lock_screen::LockConfig::load();
+        let lock_state = lock_screen::LockScreenState::new(&lock_config);
+
+        // Start at lock screen if lock is configured, otherwise home
+        let initial_view = if lock_config.method == lock_screen::LockMethod::None {
+            ShellView::Home
+        } else {
+            ShellView::LockScreen
+        };
+
         let mut shell = Self {
-            view: ShellView::Home, // Start at home
+            view: initial_view,
             screen_size,
             gesture: GestureState::default(),
             app_manager: apps::AppManager::new(),
@@ -215,11 +234,69 @@ impl Shell {
             dragging_index: None,
             drag_position: None,
             icon_cache: icons::IconCache::new(128), // 128px icons for larger tiles
+            lock_config,
+            lock_state,
         };
 
         // Preload icons for all categories
         shell.preload_icons();
         shell
+    }
+
+    /// Attempt to unlock with the current input
+    /// Returns true if unlock succeeded
+    pub fn try_unlock(&mut self) -> bool {
+        match self.lock_state.input_mode {
+            lock_screen::LockInputMode::Pin => {
+                if self.lock_config.verify_pin(&self.lock_state.entered_pin) {
+                    self.unlock();
+                    return true;
+                }
+            }
+            lock_screen::LockInputMode::Pattern => {
+                if self.lock_config.verify_pattern(&self.lock_state.pattern_nodes) {
+                    self.unlock();
+                    return true;
+                }
+            }
+            lock_screen::LockInputMode::Password => {
+                if let Some(username) = lock_screen::get_current_user() {
+                    if lock_screen::authenticate_pam(&username, &self.lock_state.entered_password) {
+                        self.unlock();
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Failed attempt
+        self.lock_state.record_failed_attempt();
+        self.lock_state.reset_input();
+        false
+    }
+
+    /// Unlock and transition to home screen
+    pub fn unlock(&mut self) {
+        tracing::info!("Lock screen unlocked");
+        self.view = ShellView::Home;
+        self.lock_state.reset_input();
+        self.lock_state.failed_attempts = 0;
+        self.lock_state.error_message = None;
+    }
+
+    /// Lock the screen
+    pub fn lock(&mut self) {
+        tracing::info!("Locking screen");
+        if self.lock_config.method != lock_screen::LockMethod::None {
+            self.view = ShellView::LockScreen;
+            self.lock_state = lock_screen::LockScreenState::new(&self.lock_config);
+        }
+    }
+
+    /// Reload lock config from disk
+    pub fn reload_lock_config(&mut self) {
+        self.lock_config = lock_screen::LockConfig::load();
+        tracing::info!("Reloaded lock config: method = {:?}", self.lock_config.method);
     }
 
     /// Preload icons for all categories into the cache
@@ -590,7 +667,7 @@ impl Shell {
                 // Show during gesture animations
                 self.gesture.edge.is_some()
             }
-            ShellView::Home | ShellView::Switcher | ShellView::QuickSettings => true,
+            ShellView::LockScreen | ShellView::Home | ShellView::Switcher | ShellView::QuickSettings => true,
         }
     }
 
