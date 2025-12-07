@@ -635,11 +635,21 @@ fn render_surface(
                 continue;
             }
 
-            // Get window title
+            // Get window title - try title first, then class, then fallback
             let title = window.x11_surface()
                 .map(|x11| {
                     let t = x11.title();
-                    if t.is_empty() { format!("Window {}", i + 1) } else { t }
+                    if !t.is_empty() {
+                        t
+                    } else {
+                        // Try class name as fallback
+                        let c = x11.class();
+                        if !c.is_empty() {
+                            c
+                        } else {
+                            format!("Window {}", i + 1)
+                        }
+                    }
                 })
                 .unwrap_or_else(|| format!("Window {}", i + 1));
 
@@ -1227,40 +1237,43 @@ fn handle_input_event(
                 state.shell.start_switcher_touch(touch_pos.x, touched_index);
             }
 
-            if let Some(touch) = state.seat.get_touch() {
-                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+            // Only forward touch events to apps when in App view (not Home or Switcher)
+            if state.shell.view == crate::shell::ShellView::App {
+                if let Some(touch) = state.seat.get_touch() {
+                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
-                // Find surface under touch point (handles both Wayland and X11 windows)
-                let under = state.space.element_under(touch_pos)
-                    .map(|(window, loc)| {
-                        let surface = window.toplevel()
-                            .map(|t| t.wl_surface().clone())
-                            .or_else(|| window.x11_surface().and_then(|x| x.wl_surface()));
-                        (surface, loc)
+                    // Find surface under touch point (handles both Wayland and X11 windows)
+                    let under = state.space.element_under(touch_pos)
+                        .map(|(window, loc)| {
+                            let surface = window.toplevel()
+                                .map(|t| t.wl_surface().clone())
+                                .or_else(|| window.x11_surface().and_then(|x| x.wl_surface()));
+                            (surface, loc)
+                        });
+
+                    let focus = under.as_ref().and_then(|(surface, loc)| {
+                        surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
                     });
 
-                let focus = under.as_ref().and_then(|(surface, loc)| {
-                    surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
-                });
-
-                // Set keyboard focus on touch
-                if let Some((ref surface, _)) = focus {
-                    if let Some(keyboard) = state.seat.get_keyboard() {
-                        keyboard.set_focus(state, Some(surface.clone()), serial);
-                        debug!("Keyboard focus set via touch");
+                    // Set keyboard focus on touch
+                    if let Some((ref surface, _)) = focus {
+                        if let Some(keyboard) = state.seat.get_keyboard() {
+                            keyboard.set_focus(state, Some(surface.clone()), serial);
+                            debug!("Keyboard focus set via touch");
+                        }
                     }
-                }
 
-                touch.down(
-                    state,
-                    focus,
-                    &smithay::input::touch::DownEvent {
-                        slot: event.slot(),
-                        location: touch_pos,
-                        serial,
-                        time: Event::time_msec(&event),
-                    },
-                );
+                    touch.down(
+                        state,
+                        focus,
+                        &smithay::input::touch::DownEvent {
+                            slot: event.slot(),
+                            location: touch_pos,
+                            serial,
+                            time: Event::time_msec(&event),
+                        },
+                    );
+                }
             }
         }
         InputEvent::TouchMotion { event } => {
@@ -1308,29 +1321,32 @@ fn handle_input_event(
                 state.shell.update_switcher_scroll(touch_pos.x, num_windows, card_spacing);
             }
 
-            if let Some(touch) = state.seat.get_touch() {
-                // Find surface under touch point (handles both Wayland and X11 windows)
-                let under = state.space.element_under(touch_pos)
-                    .map(|(window, loc)| {
-                        let surface = window.toplevel()
-                            .map(|t| t.wl_surface().clone())
-                            .or_else(|| window.x11_surface().and_then(|x| x.wl_surface()));
-                        (surface, loc)
+            // Only forward touch motion to apps when in App view (not Home or Switcher)
+            if state.shell.view == crate::shell::ShellView::App {
+                if let Some(touch) = state.seat.get_touch() {
+                    // Find surface under touch point (handles both Wayland and X11 windows)
+                    let under = state.space.element_under(touch_pos)
+                        .map(|(window, loc)| {
+                            let surface = window.toplevel()
+                                .map(|t| t.wl_surface().clone())
+                                .or_else(|| window.x11_surface().and_then(|x| x.wl_surface()));
+                            (surface, loc)
+                        });
+
+                    let focus = under.as_ref().and_then(|(surface, loc)| {
+                        surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
                     });
 
-                let focus = under.as_ref().and_then(|(surface, loc)| {
-                    surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
-                });
-
-                touch.motion(
-                    state,
-                    focus,
-                    &smithay::input::touch::MotionEvent {
-                        slot: event.slot(),
-                        location: touch_pos,
-                        time: Event::time_msec(&event),
-                    },
-                );
+                    touch.motion(
+                        state,
+                        focus,
+                        &smithay::input::touch::MotionEvent {
+                            slot: event.slot(),
+                            location: touch_pos,
+                            time: Event::time_msec(&event),
+                        },
+                    );
+                }
             }
         }
         InputEvent::TouchUp { event } => {
