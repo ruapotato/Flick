@@ -10,7 +10,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSITOR_DIR="$SCRIPT_DIR/compositor"
-SHELL_BIN="$SCRIPT_DIR/shell/build/linux/x64/release/bundle/flick_shell"
+SHELL_QML="$SCRIPT_DIR/shell-qml/run.sh"
+SHELL_FLUTTER="$SCRIPT_DIR/shell/build/linux/x64/release/bundle/flick_shell"
 
 # Colors
 RED='\033[0;31m'
@@ -56,10 +57,14 @@ done
 
 # Determine shell to use
 if [ -z "$SHELL_CMD" ]; then
-    if [ -f "$SHELL_BIN" ]; then
-        SHELL_CMD="$SHELL_BIN"
+    if [ -x "$SHELL_QML" ]; then
+        SHELL_CMD="$SHELL_QML"
+        echo -e "${GREEN}Using QML shell${NC}"
+    elif [ -f "$SHELL_FLUTTER" ]; then
+        SHELL_CMD="$SHELL_FLUTTER"
+        echo -e "${YELLOW}Using Flutter shell (fallback)${NC}"
     else
-        echo -e "${YELLOW}Flick shell not built, using foot as fallback${NC}"
+        echo -e "${YELLOW}No shell found, using foot as fallback${NC}"
         SHELL_CMD="foot"
     fi
 fi
