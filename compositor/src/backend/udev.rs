@@ -30,9 +30,7 @@ use smithay::{
             element::{
                 AsRenderElements,
                 utils::{
-                    constrain_render_elements,
-                    ConstrainScaleBehavior, ConstrainAlign,
-                    CropRenderElement, RelocateRenderElement, RescaleRenderElement,
+                    CropRenderElement, RelocateRenderElement, RescaleRenderElement, Relocate,
                 },
             },
         },
@@ -667,9 +665,7 @@ fn render_surface(
             // Get window geometry (the actual content area)
             let window_geo = window.geometry();
 
-            // Get window render elements at origin (0,0) so constrain_render_elements
-            // can properly position them. Using the actual window location would
-            // cause the content to be offset by that amount.
+            // Get window render elements at origin (0,0)
             let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
                 .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
                     renderer,
@@ -678,37 +674,56 @@ fn render_surface(
                     1.0,  // alpha
                 );
 
-            // Constrain window elements to fit inside the card (with 4px padding)
-            // origin: where to render (top-left of card content area on screen)
-            let card_origin: smithay::utils::Point<i32, smithay::utils::Physical> =
-                (x_pos + 4, card_y + 4).into();
+            // Card content area (with padding)
+            let content_width = card_width - 8;
+            let content_height = card_height - 8;
+            let content_x = x_pos + 4;
+            let content_y = card_y + 4;
 
-            // constrain: the cropping area - uses same coordinates as origin since
-            // we want to crop to the same region where we're placing the content
-            let card_constrain: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
-                (0, 0).into(),  // Relative to origin
-                (card_width - 8, card_height - 8).into(),
+            // Calculate scale to fit window in card (maintain aspect ratio)
+            let scale_x = content_width as f64 / window_geo.size.w as f64;
+            let scale_y = content_height as f64 / window_geo.size.h as f64;
+            let fit_scale = f64::min(scale_x, scale_y);
+
+            // Calculate centering offset
+            let scaled_w = (window_geo.size.w as f64 * fit_scale) as i32;
+            let scaled_h = (window_geo.size.h as f64 * fit_scale) as i32;
+            let center_offset_x = (content_width - scaled_w) / 2;
+            let center_offset_y = (content_height - scaled_h) / 2;
+
+            // Final position for the scaled window
+            let final_x = content_x + center_offset_x;
+            let final_y = content_y + center_offset_y;
+
+            // Crop rectangle at the final screen position
+            let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
+                (final_x, final_y).into(),
+                (scaled_w, scaled_h).into(),
             );
 
-            // reference: the source window area (window is rendered at 0,0)
-            let window_reference: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
-                (0, 0).into(),
-                (window_geo.size.w, window_geo.size.h).into(),
-            );
-
-            let constrained_elements = constrain_render_elements(
-                window_render_elements,
-                card_origin,
-                card_constrain,
-                window_reference,
-                ConstrainScaleBehavior::Fit,
-                ConstrainAlign::CENTER,
-                Scale::from(scale),  // Use actual output scale
-            );
-
-            // Add constrained window elements
-            for elem in constrained_elements {
-                switcher_elements.push(elem.into());
+            // Apply transformations: scale at origin, then relocate to final position
+            for elem in window_render_elements {
+                // Scale the element (relative to origin since element is at origin)
+                let scaled = RescaleRenderElement::from_element(
+                    elem,
+                    (0, 0).into(),  // Scale relative to origin
+                    Scale::from(fit_scale),
+                );
+                // Relocate to the final position
+                let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (final_x, final_y).into();
+                let relocated = RelocateRenderElement::from_element(
+                    scaled,
+                    final_pos,
+                    Relocate::Absolute,
+                );
+                // Crop to the card bounds
+                if let Some(cropped) = CropRenderElement::from_element(
+                    relocated,
+                    Scale::from(scale),
+                    crop_rect,
+                ) {
+                    switcher_elements.push(cropped.into());
+                }
             }
 
             // Card background/border (behind window content)
