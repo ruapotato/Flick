@@ -2,19 +2,22 @@
 
 A mobile-first Wayland compositor for Linux phones with an integrated touch shell.
 
+**Target devices:** FuriPhone FLX1s, PinePhone, and other Linux phones running Droidian/postmarketOS/Mobian.
+
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│            Flick Compositor + Shell (Rust)          │
-│  ┌─────────────────────────────────────────────┐   │
-│  │           Integrated Shell UI                │   │
-│  │   App grid, app switcher, gesture overlays   │   │
-│  │         (rendered via GLES directly)         │   │
-│  └─────────────────────────────────────────────┘   │
-│                                                     │
-│   DRM/KMS rendering, libinput, session management   │
-│   XWayland for X11 app compatibility                │
+│              Flick Shell (Rust + Slint)             │
+│  ┌─────────────────────────────────────────────────┐│
+│  │              Slint UI Layer                     ││
+│  │   Home screen, lock screen, quick settings     ││
+│  │      (GPU accelerated via OpenGL ES 2.0)       ││
+│  └─────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────┐│
+│  │           Smithay Compositor Core               ││
+│  │   DRM/KMS, libinput, XWayland, Wayland protocols││
+│  └─────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────┘
                         │
 ┌─────────────────────────────────────────────────────┐
@@ -23,29 +26,46 @@ A mobile-first Wayland compositor for Linux phones with an integrated touch shel
 └─────────────────────────────────────────────────────┘
 ```
 
-The shell UI is rendered directly by the compositor - no separate shell process, no IPC. This provides:
+The shell UI is rendered directly by the compositor using Slint - no separate shell process, no IPC. This provides:
 - Zero-latency gesture response
 - Direct access to window list
 - Single process simplicity
-- Smooth animations
+- Smooth 60fps animations
+- OpenGL ES 2.0 for broad device support
+
+## Features
+
+- **Lock Screen** - PIN, pattern, or PAM password authentication
+- **Home Screen** - App grid with category-based organization
+- **App Switcher** - Android-style horizontal card stack
+- **Quick Settings** - WiFi, Bluetooth, brightness controls
+- **Settings App** - Flutter-based system settings
 
 ## Requirements
 
-- Rust 1.70+ (for compositor)
+- Rust 1.70+
 - libseat, libinput, libudev (session/input management)
 - Mesa with GBM and EGL support
+- OpenGL ES 2.0+ capable GPU
 
 ### Installing Dependencies (Debian/Ubuntu)
 
 ```bash
 sudo apt install libseat-dev libinput-dev libudev-dev libgbm-dev \
-                 libegl-dev libdrm-dev libxkbcommon-dev pkg-config
+                 libegl-dev libdrm-dev libxkbcommon-dev pkg-config \
+                 libpam0g-dev
 ```
 
 ## Building
 
 ```bash
-cd compositor
+./start.sh
+```
+
+Or manually:
+
+```bash
+cd shell
 cargo build --release
 ```
 
@@ -56,15 +76,13 @@ cargo build --release
 From a TTY (not from within another graphical session):
 
 ```bash
-cd compositor
-cargo run --release
-```
-
-Or use the start script:
-
-```bash
 ./start.sh
 ```
+
+### Lock Screen
+
+- **Power button** or **Super+L** to lock
+- Set PIN/pattern/password via Settings app
 
 ### VT Switching
 
@@ -74,91 +92,51 @@ Press `Ctrl+Alt+F1` through `Ctrl+Alt+F12` to switch between virtual terminals.
 
 ```
 flick/
-├── compositor/                 # Rust Wayland compositor + integrated shell
+├── shell/                      # Rust Wayland compositor + Slint shell
 │   ├── src/
-│   │   ├── main.rs            # Entry point, argument parsing
+│   │   ├── main.rs            # Entry point
 │   │   ├── state.rs           # Compositor state, Wayland protocols
 │   │   ├── input/
 │   │   │   └── gestures.rs    # Touch gesture recognition
-│   │   ├── shell/             # Integrated shell UI
+│   │   ├── shell/             # Shell UI components
 │   │   │   ├── mod.rs         # Shell state and coordination
-│   │   │   ├── app_grid.rs    # Home screen app launcher grid
-│   │   │   ├── app_switcher.rs# Recent apps view (Android-style)
-│   │   │   ├── quick_settings.rs # Quick settings/notifications panel
-│   │   │   └── overlay.rs     # Gesture overlay animations
+│   │   │   ├── app_grid.rs    # Home screen app launcher
+│   │   │   ├── lock_screen.rs # Lock screen (PIN/pattern/password)
+│   │   │   ├── quick_settings.rs # Quick settings panel
+│   │   │   └── apps.rs        # Desktop file parsing
 │   │   └── backend/
-│   │       └── udev.rs        # DRM/KMS backend, rendering, input
+│   │       └── udev.rs        # DRM/KMS backend, rendering
 │   └── Cargo.toml
 │
-├── apps/                       # App launcher definitions
-├── config/                     # Configuration
-└── start.sh                    # Launch script
+├── apps/
+│   └── flick_settings/        # Flutter Settings app
+│
+└── start.sh                   # Launch script
 ```
 
 ## Gestures
 
-Edge swipe gestures (inspired by N9/webOS/iOS/Android):
-
 | Gesture | Action |
 |---------|--------|
-| Swipe up from bottom edge | Go home (show app grid) |
-| Swipe down from top edge | Close current app (with drag animation) |
-| Swipe right from left edge | Quick settings panel (notifications/toggles) |
-| Swipe left from right edge | App switcher (Android-style card stack) |
-
-## Shell UI Components
-
-### App Grid (Home Screen)
-- Grid of app launchers
-- Tap to launch apps via XWayland
-- Slides up from bottom on swipe-up gesture
-
-### App Switcher
-- Android-style horizontal card stack
-- Shows all open windows at 65% size
-- Swipe/scroll through cards horizontally
-- Tap card to switch to app
-- Only appears when apps are open
-
-### Quick Settings Panel
-- Android-style notification/settings panel
-- Quick toggles for WiFi, Bluetooth, DND, etc.
-- Notifications list below toggles
-- Swipe right from left edge to open
-
-### Gesture Overlays
-- Close indicator (top edge) - follows finger with danger zone
-- Visual feedback during all gestures
-
-## Logging
-
-```bash
-# Verbose logging
-RUST_LOG=debug cargo run --release
-
-# Info level (default)
-RUST_LOG=info cargo run --release
-```
-
-Logs are written to `~/.local/state/flick/compositor.log.*`
+| Swipe up from bottom | Go home (app grid) |
+| Swipe down from top | Close current app |
+| Swipe right from left | Quick settings panel |
+| Swipe left from right | App switcher |
 
 ## Roadmap
 
-- [x] Custom Wayland compositor (Smithay)
-- [x] DRM/KMS rendering with GBM
-- [x] Keyboard, pointer, and touch input
-- [x] VT switching support
-- [x] Session management (libseat)
-- [x] XWayland support (X11 apps)
+- [x] Wayland compositor (Smithay)
+- [x] DRM/KMS + GBM rendering
 - [x] Touch gesture recognition
-- [x] Integrated shell UI
-  - [x] Gesture overlays
-  - [x] App grid home screen
-  - [x] App switcher
-  - [x] Quick settings panel
-- [ ] Notification system (IPC integration)
-- [ ] Lock screen
+- [x] Integrated shell UI (home, switcher, quick settings)
+- [x] XWayland support
+- [x] Lock screen (PIN/pattern/PAM)
+- [x] Settings app (Flutter)
+- [ ] **Slint UI migration** (in progress)
+- [ ] Notifications (D-Bus integration)
+- [ ] On-screen keyboard
+- [ ] Phone/SMS integration
 
 ## License
 
-GPL3 - David Hamner
+GPL-3.0 - David Hamner

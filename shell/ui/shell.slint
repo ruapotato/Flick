@@ -1,0 +1,510 @@
+// Flick Shell UI - Mobile-first Linux shell
+// Uses Slint declarative UI with Material Design inspired styling
+
+import { Button, VerticalBox, HorizontalBox, GridBox, ScrollView, Slider } from "std-widgets.slint";
+
+// Color scheme - dark mobile theme
+global Theme {
+    out property <color> background: #0a0a0f;
+    out property <color> surface: #1a1a24;
+    out property <color> surface-variant: #252532;
+    out property <color> primary: #4a9eff;
+    out property <color> primary-container: #1a3a5c;
+    out property <color> on-surface: #ffffff;
+    out property <color> on-surface-variant: #a0a0b0;
+    out property <color> error: #ff6b6b;
+    out property <color> success: #4ade80;
+}
+
+// App category for home screen
+export struct AppCategory {
+    name: string,
+    icon: string,
+    color: color,
+}
+
+// Status bar at top of screen
+component StatusBar inherits Rectangle {
+    height: 48px;
+    background: transparent;
+
+    HorizontalBox {
+        padding: 12px;
+        spacing: 8px;
+
+        // Time (left)
+        Text {
+            text: "12:00";
+            color: Theme.on-surface;
+            font-size: 16px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        // Status icons (right)
+        HorizontalBox {
+            spacing: 12px;
+
+            // WiFi
+            Text {
+                text: "W";
+                color: Theme.primary;
+                font-size: 14px;
+                vertical-alignment: center;
+            }
+
+            // Battery
+            Text {
+                text: "85%";
+                color: Theme.success;
+                font-size: 14px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// Home indicator at bottom
+component HomeIndicator inherits Rectangle {
+    height: 34px;
+    background: transparent;
+
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 8px;
+        width: 134px;
+        height: 5px;
+        border-radius: 2.5px;
+        background: Theme.on-surface-variant.with-alpha(0.5);
+    }
+}
+
+// App tile for home screen grid
+component AppTile inherits Rectangle {
+    in property <string> name: "App";
+    in property <string> icon: "A";
+    in property <color> tile-color: Theme.primary;
+
+    callback clicked();
+
+    width: 88px;
+    height: 110px;
+
+    VerticalBox {
+        alignment: center;
+        spacing: 8px;
+        padding: 4px;
+
+        // App icon
+        Rectangle {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+            background: tile-color;
+
+            Text {
+                text: icon;
+                color: Theme.on-surface;
+                font-size: 28px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            // Touch ripple effect
+            touch := TouchArea {
+                clicked => { root.clicked(); }
+            }
+        }
+
+        // App name
+        Text {
+            text: name;
+            color: Theme.on-surface-variant;
+            font-size: 12px;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+// Quick toggle button
+component QuickToggle inherits Rectangle {
+    in property <string> label: "Toggle";
+    in property <string> icon: "T";
+    in property <bool> enabled: false;
+
+    callback toggled();
+
+    width: 72px;
+    height: 72px;
+    border-radius: 16px;
+    background: enabled ? Theme.primary : Theme.surface-variant;
+
+    VerticalBox {
+        alignment: center;
+
+        Text {
+            text: icon;
+            color: Theme.on-surface;
+            font-size: 24px;
+            font-weight: 600;
+            horizontal-alignment: center;
+        }
+    }
+
+    TouchArea {
+        clicked => { root.toggled(); }
+    }
+}
+
+// PIN button - must be defined before PinPad
+component PinButton inherits Rectangle {
+    in property <string> digit: "0";
+    callback clicked();
+
+    width: 72px;
+    height: 72px;
+    border-radius: 36px;
+    background: touch.pressed ? Theme.primary : Theme.surface-variant;
+
+    Text {
+        text: digit;
+        color: Theme.on-surface;
+        font-size: 28px;
+        font-weight: 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// PIN pad for lock screen
+component PinPad inherits Rectangle {
+    callback digit-pressed(string);
+    callback backspace-pressed();
+    callback enter-pressed();
+
+    GridBox {
+        spacing: 16px;
+        padding: 16px;
+
+        // Row 1
+        Row {
+            PinButton { digit: "1"; clicked => { digit-pressed("1"); } }
+            PinButton { digit: "2"; clicked => { digit-pressed("2"); } }
+            PinButton { digit: "3"; clicked => { digit-pressed("3"); } }
+        }
+        // Row 2
+        Row {
+            PinButton { digit: "4"; clicked => { digit-pressed("4"); } }
+            PinButton { digit: "5"; clicked => { digit-pressed("5"); } }
+            PinButton { digit: "6"; clicked => { digit-pressed("6"); } }
+        }
+        // Row 3
+        Row {
+            PinButton { digit: "7"; clicked => { digit-pressed("7"); } }
+            PinButton { digit: "8"; clicked => { digit-pressed("8"); } }
+            PinButton { digit: "9"; clicked => { digit-pressed("9"); } }
+        }
+        // Row 4
+        Row {
+            Rectangle { width: 72px; height: 72px; } // Empty
+            PinButton { digit: "0"; clicked => { digit-pressed("0"); } }
+            PinButton { digit: "<"; clicked => { backspace-pressed(); } }
+        }
+    }
+}
+
+// Lock screen view
+component LockScreen inherits Rectangle {
+    in property <string> time: "12:00";
+    in property <string> date: "Saturday, December 7";
+    in property <int> pin-length: 0;
+    in property <string> error-message: "";
+
+    callback digit-pressed(string);
+    callback backspace-pressed();
+    callback enter-pressed();
+
+    background: Theme.background;
+
+    VerticalBox {
+        alignment: center;
+        spacing: 24px;
+        padding: 32px;
+
+        // Time display
+        Text {
+            text: time;
+            color: Theme.on-surface;
+            font-size: 72px;
+            font-weight: 300;
+            horizontal-alignment: center;
+        }
+
+        // Date
+        Text {
+            text: date;
+            color: Theme.on-surface-variant;
+            font-size: 18px;
+            horizontal-alignment: center;
+        }
+
+        Rectangle { height: 48px; }
+
+        // PIN dots
+        HorizontalBox {
+            alignment: center;
+            spacing: 16px;
+
+            for i in 6: Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: i < pin-length ? Theme.primary : Theme.surface-variant;
+            }
+        }
+
+        // Error message
+        if error-message != "": Text {
+            text: error-message;
+            color: Theme.error;
+            font-size: 14px;
+            horizontal-alignment: center;
+        }
+
+        Rectangle { height: 16px; }
+
+        // PIN pad
+        PinPad {
+            digit-pressed(d) => { root.digit-pressed(d); }
+            backspace-pressed => { root.backspace-pressed(); }
+            enter-pressed => { root.enter-pressed(); }
+        }
+    }
+}
+
+// Home screen with app grid
+component HomeScreen inherits Rectangle {
+    in property <[AppCategory]> categories: [];
+
+    callback app-tapped(int);
+    callback app-long-pressed(int);
+
+    background: Theme.background;
+
+    VerticalBox {
+        StatusBar {}
+
+        // App grid - using VerticalLayout with wrapped HorizontalLayouts for grid effect
+        ScrollView {
+            vertical-stretch: 1;
+
+            VerticalBox {
+                padding: 24px;
+                spacing: 16px;
+                alignment: start;
+
+                for cat[i] in categories: AppTile {
+                    name: cat.name;
+                    icon: cat.icon;
+                    tile-color: cat.color;
+                    clicked => { app-tapped(i); }
+                }
+            }
+        }
+
+        HomeIndicator {}
+    }
+}
+
+// Quick settings panel
+component QuickSettingsPanel inherits Rectangle {
+    in property <float> brightness: 0.7;
+    in property <bool> wifi-enabled: true;
+    in property <bool> bluetooth-enabled: false;
+    in property <string> wifi-ssid: "Home WiFi";
+    in property <int> battery-percent: 85;
+
+    callback brightness-changed(float);
+    callback wifi-toggled();
+    callback bluetooth-toggled();
+    callback lock-pressed();
+
+    background: Theme.background;
+
+    VerticalBox {
+        // Header
+        Rectangle {
+            height: 64px;
+            background: Theme.primary-container;
+
+            HorizontalBox {
+                padding: 16px;
+
+                Text {
+                    text: "12:00";
+                    color: Theme.on-surface;
+                    font-size: 32px;
+                    font-weight: 300;
+                    vertical-alignment: center;
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                HorizontalBox {
+                    spacing: 8px;
+
+                    Text {
+                        text: wifi-ssid;
+                        color: Theme.primary;
+                        font-size: 14px;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: battery-percent + "%";
+                        color: battery-percent > 20 ? Theme.success : Theme.error;
+                        font-size: 14px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // Quick toggles
+        Rectangle {
+            height: 140px;
+
+            VerticalBox {
+                padding: 16px;
+
+                Text {
+                    text: "QUICK SETTINGS";
+                    color: Theme.on-surface-variant;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+
+                HorizontalBox {
+                    spacing: 16px;
+                    alignment: center;
+
+                    QuickToggle {
+                        label: "WiFi";
+                        icon: "W";
+                        enabled: wifi-enabled;
+                        toggled => { wifi-toggled(); }
+                    }
+
+                    QuickToggle {
+                        label: "BT";
+                        icon: "B";
+                        enabled: bluetooth-enabled;
+                        toggled => { bluetooth-toggled(); }
+                    }
+
+                    QuickToggle {
+                        label: "Lock";
+                        icon: "L";
+                        enabled: false;
+                        toggled => { lock-pressed(); }
+                    }
+                }
+            }
+        }
+
+        // Brightness slider
+        Rectangle {
+            height: 80px;
+
+            VerticalBox {
+                padding: 16px;
+
+                Text {
+                    text: "BRIGHTNESS";
+                    color: Theme.on-surface-variant;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+
+                Slider {
+                    minimum: 0;
+                    maximum: 100;
+                    value: brightness * 100;
+                    changed(v) => { brightness-changed(v / 100); }
+                }
+            }
+        }
+
+        // Spacer
+        Rectangle { vertical-stretch: 1; background: Theme.background; }
+
+        HomeIndicator {}
+    }
+}
+
+// Main shell component
+export component FlickShell inherits Window {
+    in property <string> current-view: "home"; // "lock", "home", "quick-settings", "app"
+    in property <[AppCategory]> categories: [];
+    in property <string> lock-time: "12:00";
+    in property <string> lock-date: "Saturday, December 7";
+    in property <int> pin-length: 0;
+    in property <string> lock-error: "";
+    in property <float> brightness: 0.7;
+    in property <bool> wifi-enabled: true;
+    in property <bool> bluetooth-enabled: false;
+    in property <string> wifi-ssid: "WiFi";
+    in property <int> battery-percent: 85;
+
+    callback pin-digit-pressed(string);
+    callback pin-backspace-pressed();
+    callback pin-enter-pressed();
+    callback app-tapped(int);
+    callback app-long-pressed(int);
+    callback brightness-changed(float);
+    callback wifi-toggled();
+    callback bluetooth-toggled();
+    callback lock-pressed();
+
+    title: "Flick Shell";
+    background: Theme.background;
+
+    // Lock screen
+    if current-view == "lock": LockScreen {
+        time: lock-time;
+        date: lock-date;
+        pin-length: pin-length;
+        error-message: lock-error;
+        digit-pressed(d) => { pin-digit-pressed(d); }
+        backspace-pressed => { pin-backspace-pressed(); }
+        enter-pressed => { pin-enter-pressed(); }
+    }
+
+    // Home screen
+    if current-view == "home": HomeScreen {
+        categories: categories;
+        app-tapped(i) => { app-tapped(i); }
+        app-long-pressed(i) => { app-long-pressed(i); }
+    }
+
+    // Quick settings
+    if current-view == "quick-settings": QuickSettingsPanel {
+        brightness: brightness;
+        wifi-enabled: wifi-enabled;
+        bluetooth-enabled: bluetooth-enabled;
+        wifi-ssid: wifi-ssid;
+        battery-percent: battery-percent;
+        brightness-changed(v) => { brightness-changed(v); }
+        wifi-toggled => { wifi-toggled(); }
+        bluetooth-toggled => { bluetooth-toggled(); }
+        lock-pressed => { lock-pressed(); }
+    }
+}

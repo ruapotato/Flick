@@ -1,11 +1,18 @@
 [package]
-name = "flick-compositor"
+name = "flick-shell"
 version = "0.1.0"
 edition = "2021"
-description = "Flick mobile compositor - a wlroots-style compositor for mobile Linux"
-license = "MIT"
+description = "Flick mobile shell - a Wayland compositor with Slint UI for Linux phones"
+license = "GPL-3.0"
+
+[build-dependencies]
+slint-build = "=1.7.2"
 
 [dependencies]
+# Slint UI framework (GPL-compatible, OpenGL ES 2.0 support via FemtoVG)
+# Using 1.7 for Rust 1.85 compatibility
+slint = { version = "=1.7.2", default-features = false, features = ["compat-1-2", "renderer-femtovg"] }
+
 # Smithay - the Wayland compositor library (from git for latest features)
 smithay = { git = "https://github.com/Smithay/smithay", features = [
     "backend_drm",
