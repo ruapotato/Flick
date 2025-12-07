@@ -623,7 +623,23 @@ fn render_surface(
         let categories = state.shell.app_manager.get_category_info();
         app_grid.set_scroll(state.shell.home_scroll, categories.len());
 
-        for (rect, color) in app_grid.get_category_rects(&categories) {
+        // Calculate wiggle offsets if in wiggle mode
+        let wiggle_offsets: Vec<(f64, f64)> = if state.shell.wiggle_mode {
+            (0..categories.len())
+                .map(|i| state.shell.get_wiggle_offset(i))
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        // Prepare drag info
+        let dragging = state.shell.dragging_index.and_then(|idx| {
+            state.shell.drag_position.map(|pos| (idx, (pos.x, pos.y)))
+        });
+
+        // Use extended render function with wiggle and drag support
+        let wiggle_ref = if state.shell.wiggle_mode { Some(wiggle_offsets.as_slice()) } else { None };
+        for (rect, color) in app_grid.get_category_rects_ex(&categories, wiggle_ref, dragging) {
             let buffer = SolidColorBuffer::new(
                 (rect.width as i32, rect.height as i32),
                 color,
@@ -1277,6 +1293,22 @@ fn handle_input_event(
                 if state.shell.long_press_menu.is_some() {
                     // Touch on menu - track position for item selection
                     // Menu handling is done on touch up
+                } else if state.shell.wiggle_mode {
+                    // In wiggle mode - check for drag start or Done button
+                    // Done button bounds (same as in render)
+                    let btn_width = 100.0;
+                    let btn_height = 40.0;
+                    let btn_x = (state.screen_size.w as f64 - btn_width) / 2.0;
+                    let btn_y = state.screen_size.h as f64 - 80.0;
+
+                    if touch_pos.x >= btn_x && touch_pos.x <= btn_x + btn_width &&
+                       touch_pos.y >= btn_y && touch_pos.y <= btn_y + btn_height {
+                        // Touch on Done button - handled on touch_up
+                    } else if let Some(index) = state.shell.hit_test_category_index(touch_pos) {
+                        // Start dragging this category
+                        state.shell.start_drag(index, touch_pos);
+                        info!("Started dragging category at index {}", index);
+                    }
                 } else {
                     // Check if touch hit a category
                     if let Some(category) = state.shell.hit_test_category(touch_pos) {
@@ -1403,6 +1435,11 @@ fn handle_input_event(
                 state.shell.check_and_show_long_press();
             }
 
+            // Update drag position in wiggle mode
+            if state.shell.view == crate::shell::ShellView::Home && state.shell.wiggle_mode && state.shell.dragging_index.is_some() {
+                state.shell.update_drag(touch_pos);
+            }
+
             // Handle horizontal scrolling in app switcher
             if state.shell.view == crate::shell::ShellView::Switcher && state.shell.switcher_touch_start_x.is_some() {
                 let screen_h = state.screen_size.h as f64;
@@ -1491,12 +1528,43 @@ fn handle_input_event(
 
             // Handle home screen tap to launch app (only if not scrolling)
             if state.shell.view == crate::shell::ShellView::Home {
-                info!("touch_up: Home view, menu_open={}, just_opened={}, last_pos={:?}",
+                info!("touch_up: Home view, menu_open={}, just_opened={}, wiggle={}, dragging={:?}, last_pos={:?}",
                       state.shell.long_press_menu.is_some(),
                       state.shell.menu_just_opened,
+                      state.shell.wiggle_mode,
+                      state.shell.dragging_index,
                       last_touch_pos);
+
+                // Handle wiggle mode (reordering icons)
+                if state.shell.wiggle_mode {
+                    if let Some(pos) = last_touch_pos {
+                        // Check if Done button was tapped (button at bottom center)
+                        let btn_width = 100.0;
+                        let btn_height = 40.0;
+                        let btn_x = (state.screen_size.w as f64 - btn_width) / 2.0;
+                        let btn_y = state.screen_size.h as f64 - 80.0;
+                        if pos.x >= btn_x && pos.x <= btn_x + btn_width && pos.y >= btn_y && pos.y <= btn_y + btn_height {
+                            info!("Done button tapped, exiting wiggle mode");
+                            state.shell.wiggle_mode = false;
+                            state.shell.dragging_index = None;
+                            state.shell.drag_position = None;
+                        } else if state.shell.dragging_index.is_some() {
+                            // End drag - find drop position
+                            let drop_index = state.shell.hit_test_category_index(pos);
+                            let reordered = state.shell.end_drag(drop_index);
+                            if reordered {
+                                info!("Icon reordered to index {:?}", drop_index);
+                            }
+                        }
+                    } else {
+                        // No position, just cancel any drag
+                        state.shell.dragging_index = None;
+                        state.shell.drag_position = None;
+                    }
+                    state.shell.end_home_touch();
+                }
                 // If long press menu is open, handle menu interaction
-                if state.shell.long_press_menu.is_some() {
+                else if state.shell.long_press_menu.is_some() {
                     // If menu just opened on this touch, don't process tap - just clear the flag
                     if state.shell.menu_just_opened {
                         info!("Menu just opened, keeping it open");

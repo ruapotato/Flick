@@ -171,6 +171,12 @@ pub struct Shell {
     pub menu_just_opened: bool,
     /// Wiggle mode for rearranging icons
     pub wiggle_mode: bool,
+    /// When wiggle mode started (for animation)
+    pub wiggle_start_time: Option<std::time::Instant>,
+    /// Category being dragged (index in grid_order)
+    pub dragging_index: Option<usize>,
+    /// Current drag position
+    pub drag_position: Option<Point<f64, Logical>>,
 }
 
 impl Shell {
@@ -202,6 +208,9 @@ impl Shell {
             long_press_menu: None,
             menu_just_opened: false,
             wiggle_mode: false,
+            wiggle_start_time: None,
+            dragging_index: None,
+            drag_position: None,
         }
     }
 
@@ -293,6 +302,7 @@ impl Shell {
                     0 => {
                         // "Move" - enter wiggle mode
                         self.wiggle_mode = true;
+                        self.wiggle_start_time = Some(std::time::Instant::now());
                         self.long_press_menu = None;
                         Some(MenuAction::EnterWiggleMode)
                     }
@@ -328,6 +338,55 @@ impl Shell {
     /// Exit wiggle mode (after rearranging is done)
     pub fn exit_wiggle_mode(&mut self) {
         self.wiggle_mode = false;
+        self.wiggle_start_time = None;
+        self.dragging_index = None;
+        self.drag_position = None;
+    }
+
+    /// Start dragging a category in wiggle mode
+    pub fn start_drag(&mut self, index: usize, pos: Point<f64, Logical>) {
+        if self.wiggle_mode {
+            self.dragging_index = Some(index);
+            self.drag_position = Some(pos);
+        }
+    }
+
+    /// Update drag position
+    pub fn update_drag(&mut self, pos: Point<f64, Logical>) {
+        if self.dragging_index.is_some() {
+            self.drag_position = Some(pos);
+        }
+    }
+
+    /// End drag and reorder if needed - returns true if reordering happened
+    pub fn end_drag(&mut self, drop_index: Option<usize>) -> bool {
+        let dragging = self.dragging_index.take();
+        self.drag_position = None;
+
+        if let (Some(from), Some(to)) = (dragging, drop_index) {
+            if from != to {
+                self.app_manager.config.move_category(from, to);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Get wiggle offset for animation (returns x, y offset in pixels)
+    pub fn get_wiggle_offset(&self, index: usize) -> (f64, f64) {
+        if !self.wiggle_mode {
+            return (0.0, 0.0);
+        }
+        if let Some(start) = self.wiggle_start_time {
+            let elapsed = start.elapsed().as_secs_f64();
+            // Each icon wiggles with a slight phase offset
+            let phase = (index as f64) * 0.5;
+            let angle = (elapsed * 8.0 + phase).sin() * 0.05; // Small rotation effect via offset
+            let x_offset = angle * 10.0;
+            let y_offset = ((elapsed * 10.0 + phase).cos() * 2.0).abs();
+            return (x_offset, y_offset);
+        }
+        (0.0, 0.0)
     }
 
     /// Update scroll position based on touch movement
@@ -552,6 +611,23 @@ impl Shell {
         }
 
         tracing::debug!("No category hit at ({:.0},{:.0})", pos.x, pos.y);
+        None
+    }
+
+    /// Hit test for app grid - returns grid index if hit (for drag/drop)
+    pub fn hit_test_category_index(&self, pos: Point<f64, Logical>) -> Option<usize> {
+        let grid = app_grid::AppGridLayout::new(self.screen_size);
+        let categories = &self.app_manager.config.grid_order;
+
+        for i in 0..categories.len() {
+            let rect = grid.app_rect(i);
+            // Adjust for scroll offset - tiles scroll up as home_scroll increases
+            let adjusted_y = rect.y - self.home_scroll;
+            if pos.x >= rect.x && pos.x < rect.x + rect.width &&
+               pos.y >= adjusted_y && pos.y < adjusted_y + rect.height {
+                return Some(i);
+            }
+        }
         None
     }
 

@@ -67,22 +67,23 @@ impl AppCategory {
     }
 
     /// Get the desktop category strings that match this category
-    pub fn desktop_categories(&self) -> Vec<&'static str> {
+    /// Returns (primary categories, secondary categories) - primary matches are ranked higher
+    pub fn desktop_categories(&self) -> (Vec<&'static str>, Vec<&'static str>) {
         match self {
-            Self::Web => vec!["WebBrowser", "Network"],
-            Self::Email => vec!["Email", "ContactManagement"],
-            Self::Messages => vec!["InstantMessaging", "Chat", "IRCClient"],
-            Self::Phone => vec!["Telephony"],
-            Self::Camera => vec!["Camera", "Photography", "Recorder"],
-            Self::Photos => vec!["Photography", "Graphics", "Viewer", "2DGraphics"],
-            Self::Music => vec!["Audio", "Music", "Player"],
-            Self::Video => vec!["Video", "AudioVideo", "Player"],
-            Self::Files => vec!["FileManager", "FileTools", "Filesystem"],
-            Self::Terminal => vec!["TerminalEmulator", "System"],
-            Self::Calculator => vec!["Calculator", "Math"],
-            Self::Calendar => vec!["Calendar", "ProjectManagement"],
-            Self::Notes => vec!["TextEditor", "WordProcessor"],
-            Self::Settings => vec!["Settings", "System", "DesktopSettings"],
+            Self::Web => (vec!["WebBrowser"], vec!["Network"]),
+            Self::Email => (vec!["Email"], vec!["ContactManagement"]),
+            Self::Messages => (vec!["InstantMessaging", "Chat"], vec!["IRCClient"]),
+            Self::Phone => (vec!["Telephony"], vec![]),
+            Self::Camera => (vec!["Camera"], vec!["Photography", "Recorder"]),
+            Self::Photos => (vec!["Photography", "Viewer"], vec!["Graphics", "2DGraphics"]),
+            Self::Music => (vec!["Music", "Audio"], vec!["Player"]),
+            Self::Video => (vec!["Video"], vec!["AudioVideo"]),
+            Self::Files => (vec!["FileManager"], vec!["FileTools", "Filesystem"]),
+            Self::Terminal => (vec!["TerminalEmulator"], vec![]), // Only exact terminal matches
+            Self::Calculator => (vec!["Calculator"], vec!["Math"]),
+            Self::Calendar => (vec!["Calendar"], vec!["ProjectManagement"]),
+            Self::Notes => (vec!["TextEditor"], vec!["WordProcessor"]),
+            Self::Settings => (vec!["Settings", "DesktopSettings"], vec![]),
         }
     }
 
@@ -186,10 +187,30 @@ impl DesktopEntry {
         })
     }
 
+    /// Check if this entry matches a category, returning a score (0 = no match, higher = better)
+    pub fn match_score(&self, category: AppCategory) -> u32 {
+        let (primary, secondary) = category.desktop_categories();
+        let mut score = 0u32;
+
+        for cat in &self.categories {
+            if primary.contains(&cat.as_str()) {
+                score += 10; // Primary category match
+            } else if secondary.contains(&cat.as_str()) {
+                score += 1; // Secondary category match
+            }
+        }
+
+        // Boost terminal apps that have Terminal=true in their .desktop file
+        if category == AppCategory::Terminal && self.terminal {
+            score += 5;
+        }
+
+        score
+    }
+
     /// Check if this entry matches a category
     pub fn matches_category(&self, category: AppCategory) -> bool {
-        let cat_strings = category.desktop_categories();
-        self.categories.iter().any(|c| cat_strings.contains(&c.as_str()))
+        self.match_score(category) > 0
     }
 }
 
@@ -292,12 +313,22 @@ impl AppManager {
         tracing::info!("Scanned {} desktop entries", self.entries.len());
     }
 
-    /// Get all apps that match a category
+    /// Get all apps that match a category, sorted by match quality (best first)
     pub fn apps_for_category(&self, category: AppCategory) -> Vec<&DesktopEntry> {
-        self.entries
+        let mut matches: Vec<_> = self.entries
             .iter()
-            .filter(|e| e.matches_category(category))
-            .collect()
+            .filter_map(|e| {
+                let score = e.match_score(category);
+                if score > 0 { Some((e, score)) } else { None }
+            })
+            .collect();
+
+        // Sort by score descending, then by name alphabetically
+        matches.sort_by(|a, b| {
+            b.1.cmp(&a.1).then_with(|| a.0.name.cmp(&b.0.name))
+        });
+
+        matches.into_iter().map(|(e, _)| e).collect()
     }
 
     /// Set default apps for each category (first matching app)

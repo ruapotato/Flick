@@ -166,8 +166,20 @@ impl AppGrid {
         rects
     }
 
-    /// Get list of rectangles to render for the category grid
+    /// Get list of rectangles to render for the category grid (simple version)
     pub fn get_category_rects(&self, categories: &[CategoryInfo]) -> Vec<(Rect, Color)> {
+        self.get_category_rects_ex(categories, None, None)
+    }
+
+    /// Get list of rectangles to render for the category grid
+    /// wiggle_offsets: per-index (x, y) offset for wiggle animation
+    /// dragging: (index being dragged, current drag position)
+    pub fn get_category_rects_ex(
+        &self,
+        categories: &[CategoryInfo],
+        wiggle_offsets: Option<&[(f64, f64)]>,
+        dragging: Option<(usize, (f64, f64))>,
+    ) -> Vec<(Rect, Color)> {
         let mut rects = Vec::new();
 
         // Status bar (fixed at top)
@@ -179,10 +191,35 @@ impl AppGrid {
             let mut tile_rect = self.layout.app_content_rect(i);
             tile_rect.y += self.y_offset - self.scroll_offset;
 
+            // Apply wiggle offset if in wiggle mode
+            if let Some(offsets) = wiggle_offsets {
+                if let Some((wx, wy)) = offsets.get(i) {
+                    tile_rect.x += wx;
+                    tile_rect.y += wy;
+                }
+            }
+
+            // If this tile is being dragged, render it at drag position instead
+            let is_dragging = dragging.map(|(idx, _)| idx == i).unwrap_or(false);
+            if is_dragging {
+                if let Some((_, (dx, dy))) = dragging {
+                    // Center the tile on the drag position
+                    tile_rect.x = dx - tile_rect.width / 2.0;
+                    tile_rect.y = dy - tile_rect.height / 2.0;
+                }
+            }
+
             // Only render if visible on screen
             if tile_rect.y + tile_rect.height > 48.0 && tile_rect.y < self.layout.screen_size.h as f64 {
-                // Use the category's color
-                rects.push((tile_rect.clone(), cat_info.color));
+                // Use the category's color (brighter if dragging)
+                let mut color = cat_info.color;
+                if is_dragging {
+                    // Make dragged tile slightly brighter
+                    color[0] = (color[0] * 1.2).min(1.0);
+                    color[1] = (color[1] * 1.2).min(1.0);
+                    color[2] = (color[2] * 1.2).min(1.0);
+                }
+                rects.push((tile_rect.clone(), color));
 
                 // If there's no app available, show a dimmed overlay
                 if cat_info.available_count == 0 {
@@ -209,6 +246,20 @@ impl AppGrid {
                     rects.extend(count_rects);
                 }
             }
+        }
+
+        // In wiggle mode, show a "Done" button
+        if wiggle_offsets.is_some() {
+            let btn_width = 100.0;
+            let btn_height = 40.0;
+            let btn_x = (self.layout.screen_size.w as f64 - btn_width) / 2.0;
+            let btn_y = self.layout.screen_size.h as f64 - 80.0;
+            let btn_rect = Rect::new(btn_x, btn_y, btn_width, btn_height);
+            rects.push((btn_rect, [0.2, 0.6, 0.2, 1.0])); // Green button
+
+            // "Done" text
+            let text_rects = text::render_text_centered("Done", btn_x + btn_width / 2.0, btn_y + 12.0, 2.5, [1.0, 1.0, 1.0, 1.0]);
+            rects.extend(text_rects);
         }
 
         // Home indicator bar (fixed at bottom)
