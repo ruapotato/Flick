@@ -32,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // UI state
   bool _showAppSwitcher = false;
+  bool _showAppDrawer = false;
 
   @override
   void initState() {
@@ -85,11 +86,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // Update the appropriate animation based on edge
     switch (gesture.edge) {
       case GestureEdge.bottom:
-        // Swipe up - reveal app drawer/home
+        // Swipe up - reveal app drawer
+        if (gesture.isStart) {
+          setState(() => _showAppDrawer = true);
+        }
         if (gesture.isUpdate) {
           _bottomSheetController.value = gesture.progress.clamp(0.0, 1.0);
         } else if (gesture.isEnd) {
-          _finishAnimation(_bottomSheetController, gesture.isCompleted, gesture.velocity);
+          if (gesture.isCompleted) {
+            _bottomSheetController.animateTo(1.0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+            );
+          } else {
+            _bottomSheetController.animateTo(0.0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+            ).then((_) {
+              if (mounted) setState(() => _showAppDrawer = false);
+            });
+          }
           _activeGesture = null;
         }
         break;
@@ -216,6 +232,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
+  void _closeAppDrawer() {
+    _bottomSheetController.animateTo(0.0,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+    ).then((_) {
+      if (mounted) setState(() => _showAppDrawer = false);
+    });
+  }
+
   void _onWindowSelected(int windowId) {
     log.info('Switching to window: $windowId');
     WindowService.instance.focusWindow(windowId);
@@ -296,6 +321,91 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               );
             },
           ),
+
+          // App drawer overlay (swipe up from bottom)
+          if (_showAppDrawer)
+            AnimatedBuilder(
+              animation: _bottomSheetController,
+              builder: (context, child) {
+                final slideOffset = screenHeight * (1 - _bottomSheetController.value);
+                return Positioned.fill(
+                  child: GestureDetector(
+                    onTap: _closeAppDrawer,
+                    onVerticalDragEnd: (details) {
+                      if (details.velocity.pixelsPerSecond.dy > 300) {
+                        _closeAppDrawer();
+                      }
+                    },
+                    child: Stack(
+                      children: [
+                        // Dim background
+                        Container(
+                          color: Colors.black.withOpacity(0.5 * _bottomSheetController.value),
+                        ),
+                        // Sliding drawer
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: -screenHeight * 0.85 + (screenHeight * 0.85 * _bottomSheetController.value),
+                          height: screenHeight * 0.85,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: colorScheme.surface,
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(28),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 20,
+                                  offset: const Offset(0, -5),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                // Drag handle
+                                GestureDetector(
+                                  onVerticalDragEnd: (details) {
+                                    if (details.velocity.pixelsPerSecond.dy > 300) {
+                                      _closeAppDrawer();
+                                    }
+                                  },
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    child: Center(
+                                      child: Container(
+                                        width: 40,
+                                        height: 5,
+                                        decoration: BoxDecoration(
+                                          color: colorScheme.outline.withOpacity(0.5),
+                                          borderRadius: BorderRadius.circular(3),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                // App drawer content
+                                Expanded(
+                                  child: AppDrawer(
+                                    apps: MockApps.apps,
+                                    onAppTap: (app) {
+                                      _closeAppDrawer();
+                                      _launchApp(app);
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
 
           // App switcher overlay (swipe left from right)
           if (_showAppSwitcher)
