@@ -23,6 +23,12 @@ export struct AppCategory {
     color: color,
 }
 
+// Available app for picking default
+export struct AvailableApp {
+    name: string,
+    exec: string,
+}
+
 // Status bar at top of screen
 component StatusBar inherits Rectangle {
     in property <string> time: "12:00";
@@ -83,6 +89,256 @@ component HomeIndicator inherits Rectangle {
         height: 5px;
         border-radius: 2.5px;
         background: Theme.on-surface-variant.with-alpha(0.5);
+    }
+}
+
+// Popup menu button
+component PopupButton inherits Rectangle {
+    in property <string> label: "Button";
+    in property <bool> highlighted: false;
+
+    callback clicked();
+
+    height: 56px;
+    background: touch.pressed ? Theme.primary-container : (highlighted ? Theme.surface-variant : transparent);
+    border-radius: 12px;
+
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 20px;
+
+        Text {
+            text: label;
+            color: Theme.on-surface;
+            font-size: 16px;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// Long press popup menu - shows "Pick Default" and "Move" options
+component LongPressPopup inherits Rectangle {
+    in property <string> category-name: "App";
+    in property <bool> can-pick-default: true;  // Settings can't pick default
+
+    callback pick-default-clicked();
+    callback move-clicked();
+    callback close-clicked();
+
+    width: 280px;
+    height: can-pick-default ? 180px : 130px;
+    border-radius: 20px;
+    background: Theme.surface;
+    drop-shadow-blur: 20px;
+    drop-shadow-color: #000000aa;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+
+        // Title
+        Text {
+            text: category-name;
+            color: Theme.on-surface;
+            font-size: 18px;
+            font-weight: 600;
+            horizontal-alignment: center;
+        }
+
+        Rectangle { height: 8px; }
+
+        // Pick Default button (only if customizable)
+        if can-pick-default: PopupButton {
+            label: "Pick Default App";
+            clicked => { pick-default-clicked(); }
+        }
+
+        // Move button
+        PopupButton {
+            label: "Move Icon";
+            clicked => { move-clicked(); }
+        }
+    }
+
+    // Close when tapping outside (background touch area behind everything)
+}
+
+// App list item for pick default view
+component AppListItem inherits Rectangle {
+    in property <string> name: "App Name";
+    in property <bool> is-selected: false;
+
+    callback clicked();
+
+    height: 64px;
+    background: touch.pressed ? Theme.primary-container : (is-selected ? Theme.surface-variant : transparent);
+
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 20px;
+        spacing: 16px;
+
+        // App icon placeholder
+        Rectangle {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            background: Theme.surface-variant;
+
+            Text {
+                width: 100%;
+                height: 100%;
+                text: "•";
+                color: Theme.on-surface;
+                font-size: 20px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Text {
+            text: name;
+            color: Theme.on-surface;
+            font-size: 16px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        if is-selected: Text {
+            text: "✓";
+            color: Theme.primary;
+            font-size: 20px;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// Pick default app view - shows list of available apps for a category
+component PickDefaultView inherits Rectangle {
+    in property <string> category-name: "App";
+    in property <[AvailableApp]> available-apps: [];
+    in property <string> current-selection: "";
+
+    callback app-selected(string);  // Returns exec command
+    callback back-pressed();
+
+    width: 100%;
+    height: 100%;
+    background: Theme.background;
+
+    VerticalLayout {
+        // Header
+        Rectangle {
+            height: 80px;
+            background: Theme.surface;
+
+            HorizontalLayout {
+                padding: 20px;
+                spacing: 16px;
+
+                // Back button
+                Rectangle {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 22px;
+                    background: back-touch.pressed ? Theme.primary-container : Theme.surface-variant;
+
+                    Text {
+                        width: 100%;
+                        height: 100%;
+                        text: "<";
+                        color: Theme.on-surface;
+                        font-size: 20px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    back-touch := TouchArea {
+                        clicked => { back-pressed(); }
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+
+                    Text {
+                        text: "Pick Default";
+                        color: Theme.on-surface;
+                        font-size: 20px;
+                        font-weight: 600;
+                    }
+
+                    Text {
+                        text: category-name;
+                        color: Theme.on-surface-variant;
+                        font-size: 14px;
+                    }
+                }
+            }
+        }
+
+        // App list
+        ScrollView {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                padding: 8px;
+                spacing: 4px;
+
+                for app[i] in available-apps: AppListItem {
+                    name: app.name;
+                    is-selected: app.exec == current-selection;
+                    clicked => { app-selected(app.exec); }
+                }
+
+                // Empty state
+                if available-apps.length == 0: Rectangle {
+                    height: 100px;
+
+                    Text {
+                        text: "No apps available";
+                        color: Theme.on-surface-variant;
+                        font-size: 16px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Done button for wiggle mode
+component WiggleDoneButton inherits Rectangle {
+    callback clicked();
+
+    height: 56px;
+    background: Theme.primary;
+    border-radius: 28px;
+
+    HorizontalLayout {
+        alignment: center;
+
+        Text {
+            text: "Done";
+            color: Theme.on-surface;
+            font-size: 18px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
     }
 }
 
@@ -690,7 +946,7 @@ component QuickSettingsPanel inherits Rectangle {
 
 // Main shell component
 export component FlickShell inherits Window {
-    in property <string> current-view: "lock"; // "lock", "home", "quick-settings"
+    in property <string> current-view: "lock"; // "lock", "home", "quick-settings", "pick-default"
     in property <[AppCategory]> categories: [];
     in property <string> lock-time: "12:00";
     in property <string> lock-date: "Saturday, December 7";
@@ -702,6 +958,21 @@ export component FlickShell inherits Window {
     in property <string> wifi-ssid: "WiFi";
     in property <int> battery-percent: 85;
 
+    // Popup menu state
+    in property <bool> show-popup: false;
+    in property <string> popup-category-name: "";
+    in property <bool> popup-can-pick-default: true;
+    in property <float> popup-x: 100;
+    in property <float> popup-y: 200;
+
+    // Wiggle mode state
+    in property <bool> wiggle-mode: false;
+
+    // Pick default view state
+    in property <string> pick-default-category: "";
+    in property <[AvailableApp]> available-apps: [];
+    in property <string> current-app-selection: "";
+
     callback pin-digit-pressed(string);
     callback pin-backspace-pressed();
     callback pin-enter-pressed();
@@ -711,6 +982,14 @@ export component FlickShell inherits Window {
     callback wifi-toggled();
     callback bluetooth-toggled();
     callback lock-pressed();
+
+    // New callbacks for popup menu actions
+    callback popup-pick-default();
+    callback popup-move();
+    callback popup-close();
+    callback wiggle-done();
+    callback pick-default-selected(string);  // exec command
+    callback pick-default-back();
 
     title: "Flick Shell";
     background: Theme.background;
@@ -751,5 +1030,53 @@ export component FlickShell inherits Window {
         wifi-toggled => { wifi-toggled(); }
         bluetooth-toggled => { bluetooth-toggled(); }
         lock-pressed => { lock-pressed(); }
+    }
+
+    // Pick default app view
+    if current-view == "pick-default": PickDefaultView {
+        width: 100%;
+        height: 100%;
+        category-name: pick-default-category;
+        available-apps: available-apps;
+        current-selection: current-app-selection;
+        app-selected(exec) => { pick-default-selected(exec); }
+        back-pressed => { pick-default-back(); }
+    }
+
+    // Popup menu overlay (shown on top of home when long press)
+    if show-popup && current-view == "home": Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000088;
+
+        // Dismiss when tapping outside
+        TouchArea {
+            clicked => { popup-close(); }
+        }
+
+        // Centered popup
+        LongPressPopup {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            category-name: popup-category-name;
+            can-pick-default: popup-can-pick-default;
+            pick-default-clicked => { popup-pick-default(); }
+            move-clicked => { popup-move(); }
+            close-clicked => { popup-close(); }
+        }
+    }
+
+    // Wiggle mode done button (shown at bottom when in wiggle mode)
+    if wiggle-mode && current-view == "home": Rectangle {
+        x: (parent.width - 200px) / 2;
+        y: parent.height - 100px;
+        width: 200px;
+        height: 56px;
+
+        WiggleDoneButton {
+            width: 100%;
+            height: 100%;
+            clicked => { wiggle-done(); }
+        }
     }
 }

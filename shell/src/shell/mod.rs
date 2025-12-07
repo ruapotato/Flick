@@ -65,6 +65,8 @@ pub enum ShellView {
     Switcher,
     /// Quick settings / notifications panel
     QuickSettings,
+    /// Pick default app for a category
+    PickDefault,
 }
 
 /// Active gesture state for animations
@@ -183,6 +185,12 @@ pub struct Shell {
     pub dragging_index: Option<usize>,
     /// Current drag position
     pub drag_position: Option<Point<f64, Logical>>,
+    /// Whether popup menu is showing (for Slint state sync)
+    pub popup_showing: bool,
+    /// Category for popup menu / pick default view
+    pub popup_category: Option<apps::AppCategory>,
+    /// Flag to prevent processing touch on same event that opened pick default view
+    pub pick_default_just_opened: bool,
     /// Icon cache for app icons
     pub icon_cache: icons::IconCache,
     /// Lock screen configuration
@@ -200,11 +208,13 @@ impl Shell {
         let lock_state = lock_screen::LockScreenState::new(&lock_config);
 
         // Start at lock screen if lock is configured, otherwise home
-        let initial_view = if lock_config.method == lock_screen::LockMethod::None {
-            ShellView::Home
-        } else {
-            ShellView::LockScreen
-        };
+        // TODO: Re-enable lock screen once base shell is working
+        let initial_view = ShellView::Home; // Temporarily force Home for debugging
+        // let initial_view = if lock_config.method == lock_screen::LockMethod::None {
+        //     ShellView::Home
+        // } else {
+        //     ShellView::LockScreen
+        // };
 
         // Try to initialize Slint UI (may fail on some platforms)
         let slint_ui = match std::panic::catch_unwind(|| {
@@ -250,6 +260,9 @@ impl Shell {
             wiggle_start_time: None,
             dragging_index: None,
             drag_position: None,
+            popup_showing: false,
+            popup_category: None,
+            pick_default_just_opened: false,
             icon_cache: icons::IconCache::new(128), // 128px icons for larger tiles
             lock_config,
             lock_state,
@@ -408,12 +421,18 @@ impl Shell {
             scroll_offset: 0.0,
         });
         self.menu_just_opened = true; // Don't close on this touch release
+
+        // Also set Slint popup state
+        self.popup_showing = true;
+        self.popup_category = Some(category);
     }
 
     /// Close long press menu
     pub fn close_long_press_menu(&mut self) {
         self.long_press_menu = None;
         self.menu_just_opened = false;
+        // Also close Slint popup
+        self.popup_showing = false;
     }
 
     /// Handle menu item selection - returns true if menu should close
@@ -428,6 +447,7 @@ impl Shell {
                         self.wiggle_mode = true;
                         self.wiggle_start_time = Some(std::time::Instant::now());
                         self.long_press_menu = None;
+                        self.popup_showing = false;  // Must also reset popup_showing
                         Some(MenuAction::EnterWiggleMode)
                     }
                     1 => {
@@ -447,6 +467,7 @@ impl Shell {
                     self.app_manager.set_category_app(category, exec);
                     self.preload_icons(); // Reload icons after changing selection
                     self.long_press_menu = None;
+                    self.popup_showing = false;  // Must also reset popup_showing
                     Some(MenuAction::AppSelected)
                 } else {
                     None
@@ -692,7 +713,7 @@ impl Shell {
                 // Show during gesture animations
                 self.gesture.edge.is_some()
             }
-            ShellView::LockScreen | ShellView::Home | ShellView::Switcher | ShellView::QuickSettings => true,
+            ShellView::LockScreen | ShellView::Home | ShellView::Switcher | ShellView::QuickSettings | ShellView::PickDefault => true,
         }
     }
 
@@ -701,6 +722,50 @@ impl Shell {
         // Go back to app if there are apps, otherwise home
         self.view = if has_windows { ShellView::App } else { ShellView::Home };
         self.gesture = GestureState::default();
+    }
+
+    /// Show popup menu for a category (after long press)
+    pub fn show_popup(&mut self, category: apps::AppCategory) {
+        self.popup_showing = true;
+        self.popup_category = Some(category);
+    }
+
+    /// Hide popup menu
+    pub fn hide_popup(&mut self) {
+        self.popup_showing = false;
+    }
+
+    /// Enter wiggle mode for rearranging icons
+    pub fn enter_wiggle_mode(&mut self) {
+        self.popup_showing = false;
+        self.wiggle_mode = true;
+        self.wiggle_start_time = Some(std::time::Instant::now());
+    }
+
+    /// Enter pick default view for a category
+    pub fn enter_pick_default(&mut self, category: apps::AppCategory) {
+        // Clear the long press menu state (like enter_wiggle_mode does)
+        self.long_press_menu = None;
+        self.menu_just_opened = false;
+        self.popup_showing = false;
+        self.popup_category = Some(category);
+        self.view = ShellView::PickDefault;
+        self.pick_default_just_opened = true;  // Don't process touch on same event
+    }
+
+    /// Exit pick default view (go back to home)
+    pub fn exit_pick_default(&mut self) {
+        self.popup_category = None;
+        self.view = ShellView::Home;
+        self.pick_default_just_opened = false;
+    }
+
+    /// Select a new default app for the current pick default category
+    pub fn select_default_app(&mut self, exec: &str) {
+        if let Some(category) = self.popup_category {
+            self.app_manager.set_category_app(category, exec.to_string());
+            self.exit_pick_default();
+        }
     }
 
     /// Handle touch on the shell (returns app exec if app was tapped)
@@ -718,68 +783,142 @@ impl Shell {
     }
 
     /// Hit test for app grid - returns category if hit
+    /// Uses Slint's layout constants to match visual display
     pub fn hit_test_category(&self, pos: Point<f64, Logical>) -> Option<apps::AppCategory> {
-        let grid = app_grid::AppGridLayout::new(self.screen_size);
         let categories = &self.app_manager.config.grid_order;
+        let width = self.screen_size.w as f64;
 
-        for (i, category) in categories.iter().enumerate() {
-            let rect = grid.app_rect(i);
-            // Adjust for scroll offset - tiles scroll up as home_scroll increases
-            let adjusted_y = rect.y - self.home_scroll;
-            tracing::debug!("Category {} '{}': rect ({:.0},{:.0} {:.0}x{:.0}), touch ({:.0},{:.0}), scroll={:.0}",
-                i, category.display_name(), rect.x, adjusted_y, rect.width, rect.height, pos.x, pos.y, self.home_scroll);
-            if pos.x >= rect.x && pos.x < rect.x + rect.width &&
-               pos.y >= adjusted_y && pos.y < adjusted_y + rect.height {
-                tracing::info!("Hit category {} '{}'", i, category.display_name());
-                return Some(*category);
-            }
+        // Match Slint HomeScreen layout constants exactly
+        let status_bar_height = 48.0;
+        let padding = 24.0;
+        let row_height = 140.0;
+        let row_spacing = 16.0;
+        let col_spacing = 12.0;
+        let columns = 4;
+
+        // Grid starts after status bar + padding
+        let grid_start_y = status_bar_height + padding;
+
+        // Check if above the grid
+        if pos.y < grid_start_y - self.home_scroll {
+            tracing::debug!("Touch above grid at ({:.0},{:.0})", pos.x, pos.y);
+            return None;
         }
 
-        tracing::debug!("No category hit at ({:.0},{:.0})", pos.x, pos.y);
-        None
+        // Calculate grid dimensions
+        let grid_width = width - 2.0 * padding;
+        let col_width = (grid_width - (columns - 1) as f64 * col_spacing) / columns as f64;
+
+        // Adjust touch position for scroll
+        let scroll_adjusted_y = pos.y + self.home_scroll;
+        let relative_y = scroll_adjusted_y - grid_start_y;
+
+        // Calculate row (accounting for spacing)
+        let row_with_spacing = row_height + row_spacing;
+        let row = (relative_y / row_with_spacing) as usize;
+
+        // Check if tap is between rows (in the spacing)
+        let y_in_row = relative_y - (row as f64 * row_with_spacing);
+        if y_in_row > row_height {
+            tracing::debug!("Touch in row gap at ({:.0},{:.0})", pos.x, pos.y);
+            return None;
+        }
+
+        // Calculate column
+        let relative_x = pos.x - padding;
+        if relative_x < 0.0 || relative_x > grid_width {
+            tracing::debug!("Touch outside grid horizontally at ({:.0},{:.0})", pos.x, pos.y);
+            return None;
+        }
+
+        let col_with_spacing = col_width + col_spacing;
+        let col = (relative_x / col_with_spacing) as usize;
+
+        // Check if tap is between columns (in the spacing)
+        let x_in_col = relative_x - (col as f64 * col_with_spacing);
+        if x_in_col > col_width {
+            tracing::debug!("Touch in column gap at ({:.0},{:.0})", pos.x, pos.y);
+            return None;
+        }
+
+        // Calculate index
+        let index = row * columns + col;
+
+        tracing::debug!("Hit test: pos({:.0},{:.0}) scroll={:.0} -> row={}, col={}, index={}",
+            pos.x, pos.y, self.home_scroll, row, col, index);
+
+        // Return category if valid index
+        if index < categories.len() {
+            let category = categories[index];
+            tracing::info!("Hit category {} '{}'", index, category.display_name());
+            Some(category)
+        } else {
+            tracing::debug!("Index {} out of range ({})", index, categories.len());
+            None
+        }
     }
 
     /// Hit test for app grid - returns grid index if hit (for drag/drop)
     /// Also handles dropping below/after the last item
+    /// Uses Slint's layout constants to match visual display
     pub fn hit_test_category_index(&self, pos: Point<f64, Logical>) -> Option<usize> {
-        let grid = app_grid::AppGridLayout::new(self.screen_size);
         let categories = &self.app_manager.config.grid_order;
         let num_categories = categories.len();
+        let width = self.screen_size.w as f64;
 
         if num_categories == 0 {
             return None;
         }
 
+        // Match Slint HomeScreen layout constants exactly
+        let status_bar_height = 48.0;
+        let padding = 24.0;
+        let row_height = 140.0;
+        let row_spacing = 16.0;
+        let col_spacing = 12.0;
+        let columns = 4;
+
+        // Grid starts after status bar + padding
+        let grid_start_y = status_bar_height + padding;
+
+        // Calculate grid dimensions
+        let grid_width = width - 2.0 * padding;
+        let col_width = (grid_width - (columns - 1) as f64 * col_spacing) / columns as f64;
+        let row_with_spacing = row_height + row_spacing;
+        let col_with_spacing = col_width + col_spacing;
+
+        // Helper to get rect for an index
+        let get_rect = |index: usize| -> (f64, f64, f64, f64) {
+            let row = index / columns;
+            let col = index % columns;
+            let x = padding + col as f64 * col_with_spacing;
+            let y = grid_start_y + row as f64 * row_with_spacing - self.home_scroll;
+            (x, y, col_width, row_height)
+        };
+
         // First check for exact hit on a tile
         for i in 0..num_categories {
-            let rect = grid.app_rect(i);
-            // Adjust for scroll offset - tiles scroll up as home_scroll increases
-            let adjusted_y = rect.y - self.home_scroll;
-            if pos.x >= rect.x && pos.x < rect.x + rect.width &&
-               pos.y >= adjusted_y && pos.y < adjusted_y + rect.height {
+            let (x, y, w, h) = get_rect(i);
+            if pos.x >= x && pos.x < x + w && pos.y >= y && pos.y < y + h {
                 return Some(i);
             }
         }
 
         // If not on a tile, check if below/after the last row
-        // Get the last tile's position
-        let last_rect = grid.app_rect(num_categories - 1);
-        let last_adjusted_y = last_rect.y - self.home_scroll;
+        let (_, last_y, _, last_h) = get_rect(num_categories - 1);
 
         // If below the last tile, return the last index (for appending)
-        if pos.y > last_adjusted_y + last_rect.height {
+        if pos.y > last_y + last_h {
             return Some(num_categories - 1);
         }
 
         // Check if in empty space after the last tile in its row
-        let last_col = (num_categories - 1) % grid.columns;
-        if last_col < grid.columns - 1 {
-            // There's empty space in the last row
-            let last_row_y = last_rect.y;
-            let adjusted_row_y = last_row_y - self.home_scroll;
-            if pos.y >= adjusted_row_y && pos.y < adjusted_row_y + last_rect.height {
+        let last_col = (num_categories - 1) % columns;
+        if last_col < columns - 1 {
+            let (last_x, last_row_y, last_w, _) = get_rect(num_categories - 1);
+            if pos.y >= last_row_y && pos.y < last_row_y + row_height {
                 // Check if in the empty space after last tile
-                if pos.x > last_rect.x + last_rect.width {
+                if pos.x > last_x + last_w {
                     return Some(num_categories - 1);
                 }
             }

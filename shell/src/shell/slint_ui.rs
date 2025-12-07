@@ -16,6 +16,14 @@ use tracing::info;
 // Include the generated Slint code
 slint::include_modules!();
 
+/// Actions that can be triggered from popup menu
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PopupAction {
+    PickDefault,
+    Move,
+    Close,
+}
+
 /// Slint UI state for the shell
 pub struct SlintShell {
     /// The Slint window adapter
@@ -28,6 +36,12 @@ pub struct SlintShell {
     pixel_buffer: RefCell<Vec<u8>>,
     /// Pending app tap index (set by callback, polled by compositor)
     pending_app_tap: Rc<RefCell<Option<i32>>>,
+    /// Whether popup is showing (needed for hit testing)
+    popup_showing: RefCell<bool>,
+    /// Whether popup can pick default
+    popup_can_pick: RefCell<bool>,
+    /// Wiggle mode state
+    wiggle_mode: RefCell<bool>,
 }
 
 impl SlintShell {
@@ -72,6 +86,9 @@ impl SlintShell {
             size,
             pixel_buffer,
             pending_app_tap,
+            popup_showing: RefCell::new(false),
+            popup_can_pick: RefCell::new(true),
+            wiggle_mode: RefCell::new(false),
         }
     }
 
@@ -136,6 +153,63 @@ impl SlintShell {
     /// Set battery percentage
     pub fn set_battery_percent(&self, percent: i32) {
         self.shell.set_battery_percent(percent);
+    }
+
+    /// Show/hide the long press popup menu
+    pub fn set_show_popup(&self, show: bool) {
+        *self.popup_showing.borrow_mut() = show;
+        self.shell.set_show_popup(show);
+    }
+
+    /// Set the popup category name
+    pub fn set_popup_category_name(&self, name: &str) {
+        self.shell.set_popup_category_name(name.into());
+    }
+
+    /// Set whether popup can pick default (false for Settings)
+    pub fn set_popup_can_pick_default(&self, can_pick: bool) {
+        *self.popup_can_pick.borrow_mut() = can_pick;
+        self.shell.set_popup_can_pick_default(can_pick);
+    }
+
+    /// Set wiggle mode state
+    pub fn set_wiggle_mode(&self, wiggle: bool) {
+        *self.wiggle_mode.borrow_mut() = wiggle;
+        self.shell.set_wiggle_mode(wiggle);
+    }
+
+    /// Check if popup is showing
+    pub fn is_popup_showing(&self) -> bool {
+        *self.popup_showing.borrow()
+    }
+
+    /// Check if wiggle mode is active
+    pub fn is_wiggle_mode(&self) -> bool {
+        *self.wiggle_mode.borrow()
+    }
+
+    /// Set the category name for pick default view
+    pub fn set_pick_default_category(&self, name: &str) {
+        self.shell.set_pick_default_category(name.into());
+    }
+
+    /// Set the current app selection (exec command)
+    pub fn set_current_app_selection(&self, exec: &str) {
+        self.shell.set_current_app_selection(exec.into());
+    }
+
+    /// Set available apps for pick default view
+    pub fn set_available_apps(&self, apps: Vec<(String, String)>) {
+        let model: Vec<AvailableApp> = apps
+            .into_iter()
+            .map(|(name, exec)| AvailableApp {
+                name: name.into(),
+                exec: exec.into(),
+            })
+            .collect();
+
+        let model_rc = std::rc::Rc::new(slint::VecModel::from(model));
+        self.shell.set_available_apps(model_rc.into());
     }
 
     /// Set app categories for home screen
@@ -358,6 +432,148 @@ impl SlintShell {
             let index = row * 4 + col;
             info!("Hit test: tap at ({}, {}) -> row={}, col={}, index={}",
                   x, y, row, col, index);
+            Some(index)
+        } else {
+            None
+        }
+    }
+
+    /// Hit test a tap on the popup menu
+    /// Returns the action if a button was tapped
+    pub fn hit_test_popup(&self, x: f32, y: f32) -> Option<PopupAction> {
+        if !*self.popup_showing.borrow() {
+            return None;
+        }
+
+        let width = self.size.w as f32;
+        let height = self.size.h as f32;
+
+        // Popup dimensions (matching shell.slint LongPressPopup)
+        let popup_width = 280.0;
+        let can_pick = *self.popup_can_pick.borrow();
+        let popup_height = if can_pick { 180.0 } else { 130.0 };
+
+        // Popup is centered
+        let popup_left = (width - popup_width) / 2.0;
+        let popup_top = (height - popup_height) / 2.0;
+        let popup_right = popup_left + popup_width;
+        let popup_bottom = popup_top + popup_height;
+
+        // Check if tap is outside popup (dismiss)
+        if x < popup_left || x > popup_right || y < popup_top || y > popup_bottom {
+            info!("Popup hit test: tap outside -> Close");
+            return Some(PopupAction::Close);
+        }
+
+        // Inside popup - check which button
+        // Layout: 16px padding, title ~26px, 8px space, then buttons (56px each with 8px spacing)
+        let content_start_y = popup_top + 16.0 + 26.0 + 8.0; // After title
+
+        if can_pick {
+            // Two buttons: Pick Default (first), Move (second)
+            let pick_btn_top = content_start_y;
+            let pick_btn_bottom = pick_btn_top + 56.0;
+            let move_btn_top = pick_btn_bottom + 8.0;
+            let move_btn_bottom = move_btn_top + 56.0;
+
+            if y >= pick_btn_top && y <= pick_btn_bottom {
+                info!("Popup hit test: Pick Default");
+                return Some(PopupAction::PickDefault);
+            } else if y >= move_btn_top && y <= move_btn_bottom {
+                info!("Popup hit test: Move");
+                return Some(PopupAction::Move);
+            }
+        } else {
+            // Only Move button
+            let move_btn_top = content_start_y;
+            let move_btn_bottom = move_btn_top + 56.0;
+
+            if y >= move_btn_top && y <= move_btn_bottom {
+                info!("Popup hit test: Move");
+                return Some(PopupAction::Move);
+            }
+        }
+
+        None
+    }
+
+    /// Hit test a tap on the wiggle Done button
+    /// Returns true if the Done button was tapped
+    pub fn hit_test_wiggle_done(&self, x: f32, y: f32) -> bool {
+        if !*self.wiggle_mode.borrow() {
+            return false;
+        }
+
+        let width = self.size.w as f32;
+        let height = self.size.h as f32;
+
+        // Done button dimensions (matching shell.slint WiggleDoneButton position)
+        let btn_width = 200.0;
+        let btn_height = 56.0;
+        let btn_left = (width - btn_width) / 2.0;
+        let btn_top = height - 100.0;
+        let btn_right = btn_left + btn_width;
+        let btn_bottom = btn_top + btn_height;
+
+        if x >= btn_left && x <= btn_right && y >= btn_top && y <= btn_bottom {
+            info!("Wiggle Done button hit");
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Hit test a tap on the PickDefault view's back button
+    /// Returns true if back button was tapped
+    pub fn hit_test_pick_default_back(&self, x: f32, y: f32) -> bool {
+        // Header is 80px, back button is 44x44 at (20px padding, centered vertically)
+        let header_height = 80.0;
+        let padding = 20.0;
+        let btn_size = 44.0;
+
+        // Back button is at (20, 18) with size 44x44 (centered in 80px header)
+        let btn_left = padding;
+        let btn_top = (header_height - btn_size) / 2.0;
+        let btn_right = btn_left + btn_size;
+        let btn_bottom = btn_top + btn_size;
+
+        if x >= btn_left && x <= btn_right && y >= btn_top && y <= btn_bottom {
+            info!("PickDefault back button hit");
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Hit test a tap on the PickDefault view's app list
+    /// Returns the index of the tapped app, or None if not on an app
+    pub fn hit_test_pick_default_app(&self, x: f32, y: f32, app_count: usize) -> Option<usize> {
+        // Header is 80px, then ScrollView with VerticalLayout has padding: 8px
+        // App items are 64px with 4px spacing
+        let header_height = 80.0;
+        let list_padding = 8.0;  // padding in VerticalLayout inside ScrollView
+        let item_height = 64.0;
+        let item_spacing = 4.0;
+
+        // App list starts after header + padding
+        let list_start = header_height + list_padding;
+        if y < list_start {
+            return None;
+        }
+
+        let relative_y = y - list_start;
+        let item_with_spacing = item_height + item_spacing;
+        let index = (relative_y / item_with_spacing) as usize;
+
+        // Check if tap is in the spacing between items
+        let y_in_item = relative_y - (index as f32 * item_with_spacing);
+        if y_in_item > item_height {
+            return None; // In the gap between items
+        }
+
+        // Check if index is valid
+        if index < app_count {
+            info!("PickDefault app hit: index={}", index);
             Some(index)
         } else {
             None

@@ -663,8 +663,8 @@ fn render_surface(
     // Build Slint UI elements for shell views
     let mut slint_elements: Vec<HomeRenderElement<GlesRenderer>> = Vec::new();
 
-    // Render shell views using Slint (lock screen, home, quick settings)
-    if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings {
+    // Render shell views using Slint (lock screen, home, quick settings, pick default)
+    if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings || shell_view == ShellView::PickDefault {
         if let Some(ref slint_ui) = state.shell.slint_ui {
             // Update Slint UI state based on current view
             match shell_view {
@@ -691,6 +691,33 @@ fn render_surface(
                         })
                         .collect();
                     slint_ui.set_categories(slint_categories);
+
+                    // Sync popup state
+                    slint_ui.set_show_popup(state.shell.popup_showing);
+                    if let Some(category) = state.shell.popup_category {
+                        slint_ui.set_popup_category_name(category.display_name());
+                        slint_ui.set_popup_can_pick_default(category.is_customizable());
+                    }
+
+                    // Sync wiggle mode
+                    slint_ui.set_wiggle_mode(state.shell.wiggle_mode);
+                }
+                ShellView::PickDefault => {
+                    slint_ui.set_view("pick-default");
+                    if let Some(category) = state.shell.popup_category {
+                        slint_ui.set_pick_default_category(category.display_name());
+                        // Get available apps for this category
+                        let apps = state.shell.app_manager.apps_for_category(category);
+                        let available_apps: Vec<(String, String)> = apps
+                            .iter()
+                            .map(|app| (app.name.clone(), app.exec.clone()))
+                            .collect();
+                        slint_ui.set_available_apps(available_apps);
+                        // Set current selection
+                        if let Some(exec) = state.shell.app_manager.get_exec(category) {
+                            slint_ui.set_current_app_selection(&exec);
+                        }
+                    }
                 }
                 ShellView::QuickSettings => {
                     slint_ui.set_view("quick-settings");
@@ -997,7 +1024,7 @@ fn render_surface(
             &switcher_elements,
             bg_color,
         )
-    } else if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings {
+    } else if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings || shell_view == ShellView::PickDefault {
         // Shell views - render Slint UI
         surface_data.damage_tracker.render_output(
             renderer,
@@ -1473,7 +1500,7 @@ fn handle_input_event(
                         info!("Started dragging category at index {}", index);
                     }
                 } else {
-                    // Forward touch to Slint for app grid hit testing
+                    // Forward touch to Slint for visual feedback
                     info!("Dispatching touch to Slint at ({}, {}), slint_ui={}",
                           touch_pos.x, touch_pos.y, state.shell.slint_ui.is_some());
                     if let Some(ref slint_ui) = state.shell.slint_ui {
@@ -1481,8 +1508,19 @@ fn handle_input_event(
                     } else {
                         info!("WARNING: slint_ui is None!");
                     }
-                    // Keep track of scroll start for gesture detection
-                    state.shell.start_home_touch(touch_pos.y, None);
+
+                    // Detect which category was touched for long press tracking
+                    // Use shell.hit_test_category() which properly handles scroll offset
+                    let touched_category = state.shell.hit_test_category(touch_pos);
+
+                    // If touching a category, use start_category_touch for long press detection
+                    if let Some(category) = touched_category {
+                        info!("Touch down on category {:?}", category);
+                        state.shell.start_category_touch(touch_pos, category);
+                    } else {
+                        // Not on a category - just track for scrolling
+                        state.shell.start_home_touch(touch_pos.y, None);
+                    }
                 }
             }
 
@@ -1689,6 +1727,9 @@ fn handle_input_event(
             let last_touch_pos = state.gesture_recognizer.get_touch_position(slot_id);
 
             // Feed to gesture recognizer and handle completed gestures
+            // Track if an EDGE SWIPE gesture was handled so we don't also process as app tap
+            // Note: Tap and LongPress gestures should NOT block app launch processing
+            let mut edge_gesture_handled = false;
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {
                 debug!("Gesture completed: {:?}", gesture_event);
 
@@ -1697,6 +1738,7 @@ fn handle_input_event(
 
                 // Handle close gesture animation end
                 if let crate::input::GestureEvent::EdgeSwipeEnd { edge, completed, .. } = &gesture_event {
+                    edge_gesture_handled = true;  // Only edge swipes block app tap processing
                     if *edge == crate::input::Edge::Top {
                         state.end_close_gesture(*completed);
                     }
@@ -1790,8 +1832,8 @@ fn handle_input_event(
                 }
             }
 
-            // Handle home screen tap to launch app (only if not scrolling)
-            if state.shell.view == crate::shell::ShellView::Home {
+            // Handle home screen tap to launch app (only if not scrolling and not an edge gesture)
+            if state.shell.view == crate::shell::ShellView::Home && !edge_gesture_handled {
                 info!("touch_up: Home view, menu_open={}, just_opened={}, wiggle={}, dragging={:?}, last_pos={:?}",
                       state.shell.long_press_menu.is_some(),
                       state.shell.menu_just_opened,
@@ -1802,16 +1844,16 @@ fn handle_input_event(
                 // Handle wiggle mode (reordering icons)
                 if state.shell.wiggle_mode {
                     if let Some(pos) = last_touch_pos {
-                        // Check if Done button was tapped (button at bottom center)
-                        let btn_width = 100.0;
-                        let btn_height = 40.0;
-                        let btn_x = (state.screen_size.w as f64 - btn_width) / 2.0;
-                        let btn_y = state.screen_size.h as f64 - 80.0;
-                        if pos.x >= btn_x && pos.x <= btn_x + btn_width && pos.y >= btn_y && pos.y <= btn_y + btn_height {
+                        // Check if Done button was tapped using Slint hit testing
+                        let done_tapped = if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.hit_test_wiggle_done(pos.x as f32, pos.y as f32)
+                        } else {
+                            false
+                        };
+
+                        if done_tapped {
                             info!("Done button tapped, exiting wiggle mode");
-                            state.shell.wiggle_mode = false;
-                            state.shell.dragging_index = None;
-                            state.shell.drag_position = None;
+                            state.shell.exit_wiggle_mode();
                         } else if state.shell.dragging_index.is_some() {
                             // End drag - find drop position
                             let drop_index = state.shell.hit_test_category_index(pos);
@@ -1827,63 +1869,61 @@ fn handle_input_event(
                     }
                     state.shell.end_home_touch();
                 }
-                // If long press menu is open, handle menu interaction
-                else if state.shell.long_press_menu.is_some() {
+                // If popup/long press menu is open, handle menu interaction
+                else if state.shell.popup_showing {
                     // If menu just opened on this touch, don't process tap - just clear the flag
                     if state.shell.menu_just_opened {
-                        info!("Menu just opened, keeping it open");
+                        info!("Popup just opened, keeping it open");
                         state.shell.menu_just_opened = false;
                         state.shell.end_home_touch();
                     } else {
-                        use crate::shell::app_grid::hit_test_menu;
-
-                        // Use saved touch position (before it was removed from gesture recognizer)
+                        // Use Slint hit testing for popup
                         if let Some(pos) = last_touch_pos {
-                            // Check if tap was on a menu item
-                            let menu = state.shell.long_press_menu.as_ref().unwrap();
-                            info!("Menu tap at ({:.0}, {:.0}), screen={}x{}", pos.x, pos.y,
-                                  state.screen_size.w, state.screen_size.h);
-                            if let Some(index) = hit_test_menu(menu, state.screen_size, (pos.x, pos.y)) {
-                                info!("Menu item selected: {}", index);
-                                if let Some(action) = state.shell.handle_menu_tap(index) {
-                                    info!("Menu action: {:?}", action);
-                                    // MenuAction::EnterWiggleMode already sets wiggle_mode
-                                    // MenuAction::ShowAppList keeps menu open
-                                    // MenuAction::AppSelected closes menu
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                use crate::shell::slint_ui::PopupAction;
+
+                                if let Some(action) = slint_ui.hit_test_popup(pos.x as f32, pos.y as f32) {
+                                    info!("Popup action: {:?}", action);
+                                    match action {
+                                        PopupAction::PickDefault => {
+                                            // Get the category and enter pick default view
+                                            if let Some(category) = state.shell.popup_category {
+                                                state.shell.enter_pick_default(category);
+                                            }
+                                        }
+                                        PopupAction::Move => {
+                                            // Enter wiggle mode
+                                            state.shell.enter_wiggle_mode();
+                                        }
+                                        PopupAction::Close => {
+                                            state.shell.close_long_press_menu();
+                                        }
+                                    }
                                 }
-                            } else {
-                                // Tap outside menu - close it
-                                info!("Closing long press menu (tap outside)");
-                                state.shell.close_long_press_menu();
                             }
                         } else {
-                            // No touch position - just close menu
-                            info!("No touch position for menu, closing");
+                            // No touch position - just close popup
+                            info!("No touch position for popup, closing");
                             state.shell.close_long_press_menu();
                         }
                         // Clear touch state
                         state.shell.end_home_touch();
                     }
                 } else {
-                    // Use our own hit testing since MinimalSoftwareWindow doesn't process input
+                    // Use shell's hit testing which handles scroll offset properly
                     if let Some(pos) = last_touch_pos {
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            // Use our own hit testing instead of Slint's input handling
-                            if let Some(index) = slint_ui.hit_test_app_tap(pos.x as f32, pos.y as f32) {
-                                info!("App tap detected via hit test: index={}", index);
-                                // Get the category at this index and launch its default app
-                                let categories = state.shell.app_manager.get_category_info();
-                                if let Some(category) = categories.get(index as usize) {
-                                    if let Some(ref exec) = category.selected_exec {
-                                        info!("Launching app: {}", exec);
-                                        std::process::Command::new("sh")
-                                            .arg("-c")
-                                            .arg(exec)
-                                            .spawn()
-                                            .ok();
-                                        state.shell.app_launched();
-                                    }
-                                }
+                        // Use hit_test_category which accounts for scroll offset
+                        if let Some(category) = state.shell.hit_test_category(pos) {
+                            info!("App tap detected: category={:?}", category);
+                            // Use get_exec() which properly handles Settings (uses built-in Flick Settings)
+                            if let Some(exec) = state.shell.app_manager.get_exec(category) {
+                                info!("Launching app: {}", exec);
+                                std::process::Command::new("sh")
+                                    .arg("-c")
+                                    .arg(&exec)
+                                    .spawn()
+                                    .ok();
+                                state.shell.app_launched();
                             }
                         }
                     }
@@ -1958,6 +1998,39 @@ fn handle_input_event(
                 // Apply brightness to system backlight
                 let brightness = state.shell.get_qs_brightness();
                 state.system.set_brightness(brightness);
+            }
+
+            // Handle PickDefault view touch up
+            if state.shell.view == crate::shell::ShellView::PickDefault {
+                // If view just opened on this touch, don't process tap - just clear the flag
+                if state.shell.pick_default_just_opened {
+                    info!("PickDefault just opened, skipping touch processing");
+                    state.shell.pick_default_just_opened = false;
+                } else if let Some(pos) = last_touch_pos {
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        // Check back button first
+                        if slint_ui.hit_test_pick_default_back(pos.x as f32, pos.y as f32) {
+                            info!("PickDefault: back button pressed");
+                            state.shell.exit_pick_default();
+                        } else if let Some(category) = state.shell.popup_category {
+                            // Check app list
+                            let apps = state.shell.app_manager.apps_for_category(category);
+                            if let Some(index) = slint_ui.hit_test_pick_default_app(pos.x as f32, pos.y as f32, apps.len()) {
+                                if let Some(app) = apps.get(index) {
+                                    info!("PickDefault: selected app '{}' with exec '{}'", app.name, app.exec);
+                                    let exec = app.exec.clone();
+                                    state.shell.select_default_app(&exec);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Always clear home touch state at end of touch up to prevent stale long press detection
+            // This is a safety net in case view changed during gesture and normal handler was skipped
+            if edge_gesture_handled {
+                state.shell.end_home_touch();
             }
 
             if let Some(touch) = state.seat.get_touch() {
