@@ -314,11 +314,13 @@ impl Shell {
 
         for (i, app) in self.apps.iter().enumerate() {
             let rect = grid.app_rect(i);
+            // Adjust for scroll offset - tiles scroll up as home_scroll increases
+            let adjusted_y = rect.y - self.home_scroll;
             // Debug: log each rect
-            tracing::debug!("App {} '{}': rect ({:.0},{:.0} {:.0}x{:.0}), touch ({:.0},{:.0})",
-                i, app.exec, rect.x, rect.y, rect.width, rect.height, pos.x, pos.y);
+            tracing::debug!("App {} '{}': rect ({:.0},{:.0} {:.0}x{:.0}), touch ({:.0},{:.0}), scroll={:.0}",
+                i, app.exec, rect.x, adjusted_y, rect.width, rect.height, pos.x, pos.y, self.home_scroll);
             if pos.x >= rect.x && pos.x < rect.x + rect.width &&
-               pos.y >= rect.y && pos.y < rect.y + rect.height {
+               pos.y >= adjusted_y && pos.y < adjusted_y + rect.height {
                 tracing::info!("Hit app {} '{}'", i, app.exec);
                 return Some(i);
             }
