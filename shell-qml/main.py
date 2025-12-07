@@ -9,6 +9,11 @@ import signal
 import subprocess
 from pathlib import Path
 
+# Redirect stderr to log file for debugging
+log_file = Path(os.environ.get('XDG_RUNTIME_DIR', '/tmp')) / 'flick-shell.log'
+sys.stderr = open(log_file, 'w')
+print(f"Shell starting, logging to {log_file}", file=sys.stderr)
+
 from PySide6.QtCore import QObject, Signal, Slot, Property, QTimer, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType

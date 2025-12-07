@@ -80,22 +80,16 @@ ApplicationWindow {
     // This slides up from bottom when you swipe up
     Item {
         id: homeScreen
-        anchors.fill: parent
+        width: parent.width
+        height: parent.height
+        x: 0
 
-        // When swiping up, start from bottom and follow finger
-        transform: Translate {
-            y: {
-                if (activeEdge === "bottom") {
-                    // Swipe up - home slides up from bottom
-                    return root.height * (1 - gestureProgress)
-                }
-                return 0
-            }
+        // Swipe up from bottom
+        y: activeEdge === "bottom" ? root.height * (1 - gestureProgress) : 0
 
-            Behavior on y {
-                enabled: activeEdge === "" || gestureCompleted
-                NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
-            }
+        Behavior on y {
+            enabled: activeEdge === "" || gestureCompleted
+            NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
         }
 
         // Status bar
@@ -104,22 +98,34 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 52
+            height: 48
             color: "#16213e"
 
+            // Center - time
             Text {
+                id: timeText
                 anchors.centerIn: parent
                 text: Qt.formatTime(new Date(), "hh:mm")
                 color: "white"
-                font.pixelSize: 20
-                font.weight: Font.Medium
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
             }
 
             Timer {
                 interval: 1000
                 running: true
                 repeat: true
-                onTriggered: parent.children[0].text = Qt.formatTime(new Date(), "hh:mm")
+                onTriggered: timeText.text = Qt.formatTime(new Date(), "hh:mm")
+            }
+
+            // Battery percentage
+            Text {
+                anchors.right: parent.right
+                anchors.rightMargin: 16
+                anchors.verticalCenter: parent.verticalCenter
+                text: "85%"
+                color: "white"
+                font.pixelSize: 13
             }
         }
 
@@ -139,38 +145,67 @@ ApplicationWindow {
             model: root.apps
 
             delegate: Item {
+                id: appDelegate
                 width: appGrid.cellWidth
                 height: appGrid.cellHeight
 
                 Rectangle {
                     id: appTile
                     anchors.centerIn: parent
-                    width: parent.width - 12
-                    height: parent.height - 12
-                    radius: 20
-                    color: appMouse.pressed ? Qt.lighter(modelData.color, 1.3) : modelData.color
-                    scale: appMouse.pressed ? 0.95 : 1.0
+                    width: parent.width - 16
+                    height: parent.height - 16
+                    radius: 24
+                    color: modelData.color
+                    scale: appMouse.pressed ? 0.9 : 1.0
+                    opacity: appMouse.pressed ? 0.85 : 1.0
 
-                    Behavior on color { ColorAnimation { duration: 100 } }
-                    Behavior on scale { NumberAnimation { duration: 100 } }
+                    Behavior on scale {
+                        NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+                    }
+                    Behavior on opacity { NumberAnimation { duration: 100 } }
+
+                    // Highlight overlay when pressed
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: parent.radius
+                        color: "white"
+                        opacity: appMouse.pressed ? 0.2 : 0
+
+                        Behavior on opacity { NumberAnimation { duration: 100 } }
+                    }
 
                     Column {
                         anchors.centerIn: parent
-                        spacing: 10
+                        spacing: 12
 
-                        // Icon (simple shape for now)
-                        Rectangle {
-                            width: 56
-                            height: 56
-                            radius: 14
-                            color: Qt.rgba(1, 1, 1, 0.2)
+                        // Icon container with glow
+                        Item {
+                            width: 64
+                            height: 64
                             anchors.horizontalCenter: parent.horizontalCenter
+
+                            // Icon background
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 16
+                                color: Qt.rgba(1, 1, 1, 0.2)
+
+                                // Inner shadow effect
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: 2
+                                    radius: 14
+                                    color: "transparent"
+                                    border.width: 1
+                                    border.color: Qt.rgba(1, 1, 1, 0.1)
+                                }
+                            }
 
                             Text {
                                 anchors.centerIn: parent
                                 text: modelData.name.charAt(0)
                                 color: "white"
-                                font.pixelSize: 26
+                                font.pixelSize: 28
                                 font.weight: Font.Bold
                             }
                         }
@@ -178,7 +213,7 @@ ApplicationWindow {
                         Text {
                             text: modelData.name
                             color: "white"
-                            font.pixelSize: 13
+                            font.pixelSize: 14
                             font.weight: Font.Medium
                             anchors.horizontalCenter: parent.horizontalCenter
                         }
@@ -188,8 +223,29 @@ ApplicationWindow {
                         id: appMouse
                         anchors.fill: parent
                         onClicked: {
+                            // Launch animation
+                            launchAnim.start()
                             console.log("Launching:", modelData.exec)
                             appLauncher.launch(modelData.exec)
+                        }
+                    }
+
+                    // Launch "ripple" animation
+                    SequentialAnimation {
+                        id: launchAnim
+                        NumberAnimation {
+                            target: appTile
+                            property: "scale"
+                            to: 0.85
+                            duration: 80
+                            easing.type: Easing.InCubic
+                        }
+                        NumberAnimation {
+                            target: appTile
+                            property: "scale"
+                            to: 1.0
+                            duration: 200
+                            easing.type: Easing.OutBack
                         }
                     }
                 }
@@ -296,35 +352,61 @@ ApplicationWindow {
             spacing: 24
             leftMargin: 32
             rightMargin: 32
+            snapMode: ListView.SnapToItem
+            highlightRangeMode: ListView.StrictlyEnforceRange
+            preferredHighlightBegin: 32
+            preferredHighlightEnd: root.width * 0.7 + 32
 
             model: windowManager.windows
 
             delegate: Item {
+                id: cardDelegate
                 width: root.width * 0.7
                 height: windowList.height - 40
+
+                // Entrance animation
+                opacity: showingSwitcher ? 1 : 0
+
+                Behavior on opacity {
+                    NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                }
+
+                // Shadow behind card
+                Rectangle {
+                    anchors.fill: windowCard
+                    anchors.margins: -6
+                    radius: 34
+                    color: "#000000"
+                    opacity: 0.5
+                    z: -1
+                }
 
                 Rectangle {
                     id: windowCard
                     anchors.fill: parent
                     radius: 28
                     color: "#1a1a2e"
-                    scale: cardMouse.pressed ? 0.97 : 1.0
+                    scale: cardMouse.pressed ? 0.95 : 1.0
 
-                    Behavior on scale { NumberAnimation { duration: 100 } }
+                    Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
-                    // Preview area
+                    // Preview area with gradient
                     Rectangle {
+                        id: previewArea
                         anchors.fill: parent
-                        anchors.bottomMargin: 90
+                        anchors.bottomMargin: 80
                         radius: 28
-                        color: "#16213e"
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: "#1e3a5f" }
+                            GradientStop { position: 1.0; color: "#16213e" }
+                        }
 
                         // Bottom corners square
                         Rectangle {
                             anchors.bottom: parent.bottom
                             width: parent.width
                             height: 28
-                            color: parent.color
+                            color: "#16213e"
                         }
 
                         // App icon/letter
@@ -332,9 +414,30 @@ ApplicationWindow {
                             anchors.centerIn: parent
                             text: modelData.appClass ? modelData.appClass.charAt(0).toUpperCase() : "?"
                             color: "#e94560"
-                            font.pixelSize: 96
+                            font.pixelSize: 80
                             font.weight: Font.Bold
-                            opacity: 0.8
+                            opacity: 0.9
+                        }
+
+                        // App class label
+                        Rectangle {
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.margins: 16
+                            width: appClassText.width + 16
+                            height: appClassText.height + 8
+                            radius: 8
+                            color: Qt.rgba(0, 0, 0, 0.3)
+
+                            Text {
+                                id: appClassText
+                                anchors.centerIn: parent
+                                text: modelData.appClass || "App"
+                                color: "white"
+                                font.pixelSize: 12
+                                font.weight: Font.Medium
+                                opacity: 0.8
+                            }
                         }
                     }
 
@@ -342,23 +445,56 @@ ApplicationWindow {
                     Item {
                         anchors.bottom: parent.bottom
                         width: parent.width
-                        height: 90
+                        height: 80
 
                         Text {
                             anchors.centerIn: parent
                             text: modelData.title || modelData.appClass || "Unknown"
                             color: "white"
-                            font.pixelSize: 18
+                            font.pixelSize: 16
                             font.weight: Font.Medium
                             elide: Text.ElideRight
-                            width: parent.width - 40
+                            width: parent.width - 48
                             horizontalAlignment: Text.AlignHCenter
+                        }
+                    }
+
+                    // Close button on card
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.margins: 12
+                        width: 36
+                        height: 36
+                        radius: 18
+                        color: closeCardMouse.pressed ? "#e94560" : Qt.rgba(0, 0, 0, 0.4)
+                        opacity: closeCardMouse.containsMouse ? 1 : 0.7
+
+                        Behavior on color { ColorAnimation { duration: 100 } }
+                        Behavior on opacity { NumberAnimation { duration: 100 } }
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "✕"
+                            color: "white"
+                            font.pixelSize: 16
+                        }
+
+                        MouseArea {
+                            id: closeCardMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: {
+                                console.log("Close window:", modelData.id)
+                                // TODO: Send close request to compositor
+                            }
                         }
                     }
 
                     MouseArea {
                         id: cardMouse
                         anchors.fill: parent
+                        anchors.rightMargin: 48  // Avoid close button
                         onClicked: {
                             console.log("Focus window:", modelData.id)
                             windowManager.focusWindow(modelData.id)
@@ -370,13 +506,54 @@ ApplicationWindow {
             }
 
             // Empty state
-            Text {
+            Column {
                 anchors.centerIn: parent
-                text: "No apps running"
-                color: "#555"
-                font.pixelSize: 24
-                font.weight: Font.Light
+                spacing: 16
                 visible: windowList.count === 0
+                opacity: showingSwitcher ? 1 : 0
+
+                Behavior on opacity { NumberAnimation { duration: 300 } }
+
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 80
+                    height: 80
+                    radius: 40
+                    color: "#222"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "~"
+                        color: "#666"
+                        font.pixelSize: 36
+                    }
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "No apps running"
+                    color: "#666"
+                    font.pixelSize: 22
+                    font.weight: Font.Light
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Swipe right or tap outside to go back"
+                    color: "#444"
+                    font.pixelSize: 14
+                }
+            }
+        }
+
+        // Swipe right to dismiss app switcher
+        MouseArea {
+            anchors.fill: parent
+            z: -1  // Behind the cards
+            onClicked: {
+                showingSwitcher = false
+                activeEdge = ""
+                gestureProgress = 0
             }
         }
     }
@@ -389,34 +566,73 @@ ApplicationWindow {
         color: "transparent"
         visible: activeEdge === "top"
 
+        // Dark vignette from top
         Rectangle {
             anchors.fill: parent
-            color: "#000000"
-            opacity: gestureProgress * 0.7
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.9 * gestureProgress) }
+                GradientStop { position: 0.5; color: Qt.rgba(0, 0, 0, 0.6 * gestureProgress) }
+                GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.3 * gestureProgress) }
+            }
+        }
+
+        // Red danger zone indicator at threshold
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: parent.height * 0.15
+            visible: gestureProgress > 0.4
+            opacity: (gestureProgress - 0.4) * 2
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Qt.rgba(0.91, 0.27, 0.38, 0.4) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
         }
 
         // Close indicator that follows finger
         Item {
             anchors.horizontalCenter: parent.horizontalCenter
-            y: -100 + (gestureProgress * (parent.height * 0.4))
+            y: -120 + (gestureProgress * (parent.height * 0.45))
 
             Rectangle {
+                id: closeCircle
                 anchors.centerIn: parent
-                width: 80 + (gestureProgress * 40)
-                height: 80 + (gestureProgress * 40)
+                width: 72 + (gestureProgress * 48)
+                height: width
                 radius: width / 2
-                color: gestureProgress > 0.5 ? "#e94560" : "#333"
-                scale: gestureProgress > 0.8 ? 1.1 : 1.0
+                color: gestureProgress > 0.5 ? "#e94560" : "#2d2d2d"
+                border.width: 3
+                border.color: gestureProgress > 0.5 ? "#ff6b6b" : "#555"
+                scale: gestureProgress > 0.8 ? 1.15 : 1.0
 
                 Behavior on color { ColorAnimation { duration: 150 } }
-                Behavior on scale { NumberAnimation { duration: 150 } }
+                Behavior on border.color { ColorAnimation { duration: 150 } }
+                Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutBack } }
+
+                // Glow ring when ready to close
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: parent.width + 20
+                    height: parent.height + 20
+                    radius: width / 2
+                    color: "transparent"
+                    border.width: 4
+                    border.color: "#e94560"
+                    opacity: gestureProgress > 0.5 ? 0.6 : 0
+                    scale: gestureProgress > 0.5 ? 1.2 : 1.0
+
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                    Behavior on scale { NumberAnimation { duration: 200 } }
+                }
 
                 Text {
                     anchors.centerIn: parent
                     text: "✕"
                     color: "white"
-                    font.pixelSize: 32 + (gestureProgress * 16)
-                    opacity: 0.5 + (gestureProgress * 0.5)
+                    font.pixelSize: 28 + (gestureProgress * 20)
+                    font.weight: Font.Medium
+                    opacity: 0.6 + (gestureProgress * 0.4)
                 }
             }
         }
@@ -424,47 +640,142 @@ ApplicationWindow {
         // Text hint
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            y: parent.height * 0.55
+            y: parent.height * 0.6
             text: gestureProgress > 0.5 ? "Release to close" : "Pull down to close"
             color: "white"
-            font.pixelSize: 18
-            opacity: gestureProgress
+            font.pixelSize: 20
+            font.weight: Font.Light
+            opacity: Math.min(gestureProgress * 1.5, 1)
+
+            Behavior on text { PropertyAnimation { duration: 0 } }
+        }
+
+        // Progress bar at top
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            width: parent.width * Math.min(gestureProgress * 2, 1)
+            height: 4
+            color: gestureProgress > 0.5 ? "#e94560" : "#4a4a6a"
+
+            Behavior on color { ColorAnimation { duration: 150 } }
         }
     }
 
     // ===== BACK GESTURE INDICATOR =====
-    // Shows when swiping right from left edge
-    Rectangle {
+    // Shows when swiping right from left edge - iOS style curved arrow
+    Item {
         id: backIndicator
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        width: activeEdge === "left" ? Math.max(20, gestureProgress * 120) : 0
-        color: "transparent"
-        visible: width > 0
+        width: 150
+        visible: activeEdge === "left"
+        opacity: gestureProgress
 
-        Behavior on width {
+        Behavior on opacity {
             enabled: activeEdge === ""
-            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: 200 }
         }
 
+        // Curved gradient background
         Rectangle {
-            anchors.fill: parent
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: Math.min(gestureProgress * 150, 100)
             gradient: Gradient {
                 orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.25 * gestureProgress) }
+                GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.15) }
                 GradientStop { position: 1.0; color: "transparent" }
+            }
+
+            Behavior on width {
+                enabled: activeEdge === ""
+                NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
             }
         }
 
-        // Arrow
+        // Arrow chevron that follows finger
+        Item {
+            id: arrowContainer
+            anchors.verticalCenter: parent.verticalCenter
+            x: -30 + (gestureProgress * 60)
+            width: 50
+            height: 50
+
+            Behavior on x {
+                enabled: activeEdge === ""
+                NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+            }
+
+            // Circle background
+            Rectangle {
+                anchors.centerIn: parent
+                width: 44 + (gestureProgress * 16)
+                height: width
+                radius: width / 2
+                color: gestureProgress > 0.6 ? Qt.rgba(1, 1, 1, 0.25) : Qt.rgba(1, 1, 1, 0.15)
+                scale: gestureProgress > 0.6 ? 1.1 : 1.0
+
+                Behavior on color { ColorAnimation { duration: 100 } }
+                Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutBack } }
+            }
+
+            // Chevron arrow
+            Text {
+                anchors.centerIn: parent
+                anchors.horizontalCenterOffset: -2
+                text: "‹"
+                color: "white"
+                font.pixelSize: 36 + (gestureProgress * 12)
+                font.weight: Font.Light
+                opacity: 0.7 + (gestureProgress * 0.3)
+                rotation: gestureProgress > 0.6 ? -5 : 0
+
+                Behavior on rotation { NumberAnimation { duration: 100 } }
+            }
+        }
+
+        // "Back" text hint (appears when almost complete)
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            x: 10 + (gestureProgress * 20)
-            text: "‹"
-            color: Qt.rgba(1, 1, 1, gestureProgress)
-            font.pixelSize: 48
-            font.weight: Font.Light
+            x: 60
+            text: "Back"
+            color: "white"
+            font.pixelSize: 16
+            font.weight: Font.Medium
+            opacity: Math.max(0, (gestureProgress - 0.5) * 2)
+
+            Behavior on opacity { NumberAnimation { duration: 100 } }
         }
+    }
+
+    // ===== EDGE HINTS =====
+    // Subtle indicators at screen edges showing swipe zones
+    Rectangle {
+        id: rightEdgeHint
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        width: 4
+        height: 80
+        radius: 2
+        color: "#4a4a6a"
+        opacity: activeEdge === "" && !showingSwitcher ? 0.5 : 0
+
+        Behavior on opacity { NumberAnimation { duration: 300 } }
+    }
+
+    Rectangle {
+        id: leftEdgeHint
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        width: 4
+        height: 80
+        radius: 2
+        color: "#4a4a6a"
+        opacity: activeEdge === "" && !showingSwitcher ? 0.5 : 0
+
+        Behavior on opacity { NumberAnimation { duration: 300 } }
     }
 }
