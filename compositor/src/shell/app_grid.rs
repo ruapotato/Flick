@@ -227,24 +227,16 @@ impl AppGrid {
                     rects.push((tile_rect.clone(), dimmed_color));
                 }
 
-                // Render category name below the tile
-                let text_scale = 2.5; // Each "pixel" is 2.5 actual pixels
-                let text_y = tile_rect.y + tile_rect.height + 8.0;
-                let text_center_x = tile_rect.x + tile_rect.width / 2.0;
-
-                // Use white text for visibility
-                let text_color: Color = [1.0, 1.0, 1.0, 1.0];
-                let text_rects = text::render_text_centered(&cat_info.name, text_center_x, text_y, text_scale, text_color);
+                // Render first letter of category name on the tile (single char = fewer rects)
+                let first_char = cat_info.name.chars().next().unwrap_or('?').to_string();
+                let text_scale = 4.0; // Larger scale for single letter
+                let char_width = 5.0 * text_scale;
+                let char_height = 7.0 * text_scale;
+                let text_x = tile_rect.x + (tile_rect.width - char_width) / 2.0;
+                let text_y = tile_rect.y + (tile_rect.height - char_height) / 2.0;
+                let text_color: Color = [1.0, 1.0, 1.0, 0.9];
+                let text_rects = text::render_text(&first_char, text_x, text_y, text_scale, text_color);
                 rects.extend(text_rects);
-
-                // Show count of available apps in a smaller text if more than 1
-                if cat_info.available_count > 1 {
-                    let count_text = format!("({})", cat_info.available_count);
-                    let count_y = text_y + 20.0; // Below the name
-                    let count_color: Color = [0.7, 0.7, 0.7, 1.0];
-                    let count_rects = text::render_text_centered(&count_text, text_center_x, count_y, 2.0, count_color);
-                    rects.extend(count_rects);
-                }
             }
         }
 
