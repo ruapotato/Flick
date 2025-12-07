@@ -615,11 +615,18 @@ impl Shell {
     }
 
     /// Hit test for app grid - returns grid index if hit (for drag/drop)
+    /// Also handles dropping below/after the last item
     pub fn hit_test_category_index(&self, pos: Point<f64, Logical>) -> Option<usize> {
         let grid = app_grid::AppGridLayout::new(self.screen_size);
         let categories = &self.app_manager.config.grid_order;
+        let num_categories = categories.len();
 
-        for i in 0..categories.len() {
+        if num_categories == 0 {
+            return None;
+        }
+
+        // First check for exact hit on a tile
+        for i in 0..num_categories {
             let rect = grid.app_rect(i);
             // Adjust for scroll offset - tiles scroll up as home_scroll increases
             let adjusted_y = rect.y - self.home_scroll;
@@ -628,6 +635,31 @@ impl Shell {
                 return Some(i);
             }
         }
+
+        // If not on a tile, check if below/after the last row
+        // Get the last tile's position
+        let last_rect = grid.app_rect(num_categories - 1);
+        let last_adjusted_y = last_rect.y - self.home_scroll;
+
+        // If below the last tile, return the last index (for appending)
+        if pos.y > last_adjusted_y + last_rect.height {
+            return Some(num_categories - 1);
+        }
+
+        // Check if in empty space after the last tile in its row
+        let last_col = (num_categories - 1) % grid.columns;
+        if last_col < grid.columns - 1 {
+            // There's empty space in the last row
+            let last_row_y = last_rect.y;
+            let adjusted_row_y = last_row_y - self.home_scroll;
+            if pos.y >= adjusted_row_y && pos.y < adjusted_row_y + last_rect.height {
+                // Check if in the empty space after last tile
+                if pos.x > last_rect.x + last_rect.width {
+                    return Some(num_categories - 1);
+                }
+            }
+        }
+
         None
     }
 

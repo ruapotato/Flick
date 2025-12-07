@@ -279,10 +279,11 @@ impl Flick {
 
     /// Close the focused app (topmost non-shell window)
     fn close_focused_app(&mut self) {
-        // Find topmost non-shell window (X11 or app window)
-        // Elements are in stacking order, last is top
+        // Find topmost app window (X11 or Wayland - anything that's not our shell)
+        // The shell window is the one without an app_id or with our shell's surface
+        // For now, we consider any window with a toplevel to be an app
         let app_window = self.space.elements()
-            .filter(|w| w.x11_surface().is_some()) // X11 windows are apps
+            .filter(|w| w.x11_surface().is_some() || w.toplevel().is_some())
             .last()
             .cloned();
 
@@ -290,6 +291,9 @@ impl Flick {
             if let Some(x11) = window.x11_surface() {
                 tracing::info!("Closing X11 window: {:?}", x11.window_id());
                 let _ = x11.close();
+            } else if let Some(toplevel) = window.toplevel() {
+                tracing::info!("Closing Wayland window");
+                toplevel.send_close();
             }
             self.space.unmap_elem(&window);
 
@@ -300,9 +304,9 @@ impl Flick {
 
     /// Start close gesture - find the top-most app window and track it
     pub fn start_close_gesture(&mut self) {
-        // Find the top-most X11 window (app) to animate
+        // Find the top-most app window (X11 or Wayland) to animate
         let app_window = self.space.elements()
-            .filter(|w| w.x11_surface().is_some())
+            .filter(|w| w.x11_surface().is_some() || w.toplevel().is_some())
             .last()
             .cloned();
 
@@ -339,13 +343,16 @@ impl Flick {
             if completed {
                 // Close the window
                 if let Some(x11) = window.x11_surface() {
-                    tracing::info!("Close gesture completed - closing window");
+                    tracing::info!("Close gesture completed - closing X11 window");
                     let _ = x11.close();
+                } else if let Some(toplevel) = window.toplevel() {
+                    tracing::info!("Close gesture completed - closing Wayland window");
+                    toplevel.send_close();
                 }
                 self.space.unmap_elem(&window);
 
                 // If no more windows, go to home screen
-                let has_windows = self.space.elements().any(|w| w.x11_surface().is_some());
+                let has_windows = self.space.elements().any(|w| w.x11_surface().is_some() || w.toplevel().is_some());
                 if !has_windows {
                     tracing::info!("No more windows, switching to Home view");
                     self.shell.view = crate::shell::ShellView::Home;
@@ -369,9 +376,9 @@ impl Flick {
             return;
         }
 
-        // Find the top-most X11 window (app) to animate
+        // Find the top-most app window (X11 or Wayland) to animate
         let app_window = self.space.elements()
-            .filter(|w| w.x11_surface().is_some())
+            .filter(|w| w.x11_surface().is_some() || w.toplevel().is_some())
             .last()
             .cloned();
 

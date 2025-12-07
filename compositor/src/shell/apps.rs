@@ -6,9 +6,10 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
 
 /// Predefined app categories that appear on the home screen
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AppCategory {
     Web,
     Email,
@@ -215,7 +216,7 @@ impl DesktopEntry {
 }
 
 /// App configuration - stores user preferences for which apps to use
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     /// Selected app exec command per category
     pub selections: HashMap<AppCategory, String>,
@@ -233,6 +234,43 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
+    /// Get the config file path
+    fn config_path() -> Option<PathBuf> {
+        std::env::var("HOME").ok().map(|home| {
+            PathBuf::from(home).join(".local/state/flick/app_config.json")
+        })
+    }
+
+    /// Load config from file, or return default if not found
+    pub fn load() -> Self {
+        if let Some(path) = Self::config_path() {
+            if let Ok(contents) = fs::read_to_string(&path) {
+                if let Ok(config) = serde_json::from_str(&contents) {
+                    tracing::info!("Loaded app config from {:?}", path);
+                    return config;
+                }
+            }
+        }
+        Self::default()
+    }
+
+    /// Save config to file
+    pub fn save(&self) {
+        if let Some(path) = Self::config_path() {
+            // Ensure parent directory exists
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            if let Ok(json) = serde_json::to_string_pretty(self) {
+                if let Err(e) = fs::write(&path, json) {
+                    tracing::warn!("Failed to save app config: {:?}", e);
+                } else {
+                    tracing::info!("Saved app config to {:?}", path);
+                }
+            }
+        }
+    }
+
     /// Get the selected exec command for a category, or None if not set
     pub fn get_selected(&self, category: AppCategory) -> Option<&str> {
         self.selections.get(&category).map(|s| s.as_str())
@@ -267,7 +305,7 @@ impl AppManager {
     pub fn new() -> Self {
         let mut manager = Self {
             entries: Vec::new(),
-            config: AppConfig::default(),
+            config: AppConfig::load(), // Load saved config or use default
             cached_category_info: Vec::new(),
         };
         manager.scan_apps();
@@ -412,12 +450,14 @@ impl AppManager {
     pub fn set_category_app(&mut self, category: AppCategory, exec: String) {
         self.config.set_selected(category, exec);
         self.rebuild_cache();
+        self.config.save(); // Persist changes
     }
 
     /// Move a category and rebuild cache
     pub fn move_category(&mut self, from: usize, to: usize) {
         self.config.move_category(from, to);
         self.rebuild_cache();
+        self.config.save(); // Persist changes
     }
 }
 
