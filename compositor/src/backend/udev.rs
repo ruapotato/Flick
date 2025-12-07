@@ -149,6 +149,10 @@ pub fn run() -> Result<()> {
     let needs_buffer_reset = Rc::new(RefCell::new(false));
     let needs_buffer_reset_for_notifier = needs_buffer_reset.clone();
 
+    // Track modifier state for VT switching (needed in session notifier too)
+    let modifiers = Rc::new(RefCell::new(ModifierState::default()));
+    let modifiers_for_notifier = modifiers.clone();
+
     // Add session notifier to event loop
     loop_handle
         .insert_source(notifier, move |event, _, _state| match event {
@@ -161,12 +165,13 @@ pub fn run() -> Result<()> {
                 *session_active_for_notifier.borrow_mut() = true;
                 // Mark that we need to reset buffers after VT switch
                 *needs_buffer_reset_for_notifier.borrow_mut() = true;
+                // Reset modifier state - keys may have been released while on other VT
+                *modifiers_for_notifier.borrow_mut() = ModifierState::default();
+                info!("Reset modifier state after VT switch");
             }
         })
         .map_err(|e| anyhow::anyhow!("Failed to insert session source: {:?}", e))?;
 
-    // Track modifier state for VT switching
-    let modifiers = Rc::new(RefCell::new(ModifierState::default()));
     let session_for_input = session.clone();
     let modifiers_for_input = modifiers.clone();
 
@@ -1602,16 +1607,14 @@ fn handle_input_event(
                     }
                 } else if let Some(exec) = state.shell.end_home_touch() {
                     info!("Launching app: {}", exec);
-                    // Launch via XWayland
-                    if let Ok(display) = std::env::var("XWAYLAND_DISPLAY").or_else(|_| Ok::<_, ()>(":1".to_string())) {
-                        let cmd = format!("DISPLAY={} {}", display, exec);
-                        std::process::Command::new("sh")
-                            .arg("-c")
-                            .arg(&cmd)
-                            .spawn()
-                            .ok();
-                        state.shell.app_launched();
-                    }
+                    // Launch app - native Wayland apps use WAYLAND_DISPLAY,
+                    // X11 apps fall back to XWayland via DISPLAY if available
+                    std::process::Command::new("sh")
+                        .arg("-c")
+                        .arg(&exec)
+                        .spawn()
+                        .ok();
+                    state.shell.app_launched();
                 }
             }
 
