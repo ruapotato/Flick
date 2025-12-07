@@ -77,13 +77,8 @@ smithay::backend::renderer::element::render_elements! {
     Window=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
 }
 
-// Icon texture storage - loaded on demand, cached for reuse
-// Note: Texture rendering WIP - need to integrate with element pipeline
-use std::sync::{Arc, Mutex};
-lazy_static::lazy_static! {
-    static ref ICON_TEXTURES: Arc<Mutex<std::collections::HashMap<String, Option<TextureBuffer<GlesTexture>>>>> =
-        Arc::new(Mutex::new(std::collections::HashMap::new()));
-}
+// Icon texture rendering will be done in a separate pass after shell solid colors
+// This avoids complex type unification issues with smithay's render element system
 
 /// Per-GPU state
 struct GpuData {
