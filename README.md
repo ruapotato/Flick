@@ -82,10 +82,10 @@ flick/
 │   │   │   └── gestures.rs    # Touch gesture recognition
 │   │   ├── shell/             # Integrated shell UI
 │   │   │   ├── mod.rs         # Shell state and coordination
-│   │   │   ├── renderer.rs    # GLES rendering for shell UI
 │   │   │   ├── app_grid.rs    # Home screen app launcher grid
 │   │   │   ├── app_switcher.rs# Recent apps view (Android-style)
-│   │   │   └── gestures.rs    # Gesture overlay animations
+│   │   │   ├── quick_settings.rs # Quick settings/notifications panel
+│   │   │   └── overlay.rs     # Gesture overlay animations
 │   │   └── backend/
 │   │       └── udev.rs        # DRM/KMS backend, rendering, input
 │   └── Cargo.toml
@@ -97,13 +97,13 @@ flick/
 
 ## Gestures
 
-Edge swipe gestures (inspired by N9/webOS/iOS):
+Edge swipe gestures (inspired by N9/webOS/iOS/Android):
 
 | Gesture | Action |
 |---------|--------|
 | Swipe up from bottom edge | Go home (show app grid) |
 | Swipe down from top edge | Close current app (with drag animation) |
-| Swipe right from left edge | Back (in-app navigation) |
+| Swipe right from left edge | Quick settings panel (notifications/toggles) |
 | Swipe left from right edge | App switcher (Android-style card stack) |
 
 ## Shell UI Components
@@ -114,14 +114,19 @@ Edge swipe gestures (inspired by N9/webOS/iOS):
 - Slides up from bottom on swipe-up gesture
 
 ### App Switcher
-- Android-style vertical card stack
-- Shows all open windows at 50% size
-- Swipe/scroll through cards
+- Android-style horizontal card stack
+- Shows all open windows at 65% size
+- Swipe/scroll through cards horizontally
 - Tap card to switch to app
 - Only appears when apps are open
 
+### Quick Settings Panel
+- Android-style notification/settings panel
+- Quick toggles for WiFi, Bluetooth, DND, etc.
+- Notifications list below toggles
+- Swipe right from left edge to open
+
 ### Gesture Overlays
-- Back indicator (left edge) - iOS-style curved arrow
 - Close indicator (top edge) - follows finger with danger zone
 - Visual feedback during all gestures
 
@@ -146,12 +151,12 @@ Logs are written to `~/.local/state/flick/compositor.log.*`
 - [x] Session management (libseat)
 - [x] XWayland support (X11 apps)
 - [x] Touch gesture recognition
-- [x] Integrated shell UI (in progress)
+- [x] Integrated shell UI
   - [x] Gesture overlays
-  - [ ] App grid home screen
-  - [ ] App switcher
-- [ ] Quick settings panel
-- [ ] Notification system
+  - [x] App grid home screen
+  - [x] App switcher
+  - [x] Quick settings panel
+- [ ] Notification system (IPC integration)
 - [ ] Lock screen
 
 ## License

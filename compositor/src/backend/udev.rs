@@ -567,6 +567,8 @@ fn render_surface(
         colors::BACKGROUND
     } else if shell_view == ShellView::Switcher {
         [0.0, 0.3, 0.0, 1.0]  // Dark green for Switcher - should be visible
+    } else if shell_view == ShellView::QuickSettings {
+        [0.1, 0.1, 0.15, 1.0]  // Dark blue-gray for Quick Settings
     } else {
         [0.05, 0.05, 0.15, 1.0]
     };
@@ -584,6 +586,30 @@ fn render_surface(
         app_grid.set_scroll(state.shell.home_scroll, state.shell.apps.len());
 
         for (rect, color) in app_grid.get_render_rects(&state.shell.apps) {
+            let buffer = SolidColorBuffer::new(
+                (rect.width as i32, rect.height as i32),
+                color,
+            );
+            let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                (rect.x as i32, rect.y as i32).into();
+            let element = SolidColorRenderElement::from_buffer(
+                &buffer,
+                loc,
+                scale as f64,
+                1.0,
+                Kind::Unspecified,
+            );
+            shell_elements.push(element);
+        }
+    }
+
+    // Quick Settings panel rendering
+    if shell_view == ShellView::QuickSettings {
+        use crate::shell::quick_settings::QuickSettingsPanel;
+        let mut panel = QuickSettingsPanel::new(state.screen_size);
+        panel.set_progress(1.0);  // Fully visible
+
+        for (rect, color) in panel.get_render_rects() {
             let buffer = SolidColorBuffer::new(
                 (rect.width as i32, rect.height as i32),
                 color,
@@ -855,7 +881,7 @@ fn render_surface(
 
     // Render based on what view we're in
     // Force age=0 for shell views to ensure full redraw (damage tracker may cache window content)
-    let effective_age = if shell_view == ShellView::Home || shell_view == ShellView::Switcher {
+    let effective_age = if shell_view == ShellView::Home || shell_view == ShellView::Switcher || shell_view == ShellView::QuickSettings {
         0 // Force full redraw
     } else {
         _age as usize
@@ -879,8 +905,8 @@ fn render_surface(
             &switcher_elements,
             bg_color,
         )
-    } else if shell_view == ShellView::Home {
-        // Render shell elements (home screen)
+    } else if shell_view == ShellView::Home || shell_view == ShellView::QuickSettings {
+        // Render shell elements (home screen or quick settings)
         surface_data.damage_tracker.render_output(
             renderer,
             &mut fb,

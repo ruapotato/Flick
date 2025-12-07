@@ -3,11 +3,13 @@
 //! Components:
 //! - App grid (home screen)
 //! - App switcher (Android-style card stack)
-//! - Gesture overlays (back, close indicators)
+//! - Quick settings panel (notifications/toggles)
+//! - Gesture overlays (close indicators)
 
 pub mod primitives;
 pub mod app_grid;
 pub mod app_switcher;
+pub mod quick_settings;
 pub mod overlay;
 pub mod text;
 
@@ -54,6 +56,8 @@ pub enum ShellView {
     Home,
     /// App switcher overlay
     Switcher,
+    /// Quick settings / notifications panel
+    QuickSettings,
 }
 
 /// Active gesture state for animations
@@ -260,7 +264,9 @@ impl Shell {
                             // Swipe down - close app (handled by compositor)
                         }
                         Edge::Left => {
-                            // Swipe right - back (sent to app)
+                            // Swipe right from left edge - quick settings panel
+                            tracing::info!("Gesture completed: switching to QuickSettings view");
+                            self.view = ShellView::QuickSettings;
                         }
                     }
                 }
@@ -298,8 +304,15 @@ impl Shell {
                 // Show during gesture animations
                 self.gesture.edge.is_some()
             }
-            ShellView::Home | ShellView::Switcher => true,
+            ShellView::Home | ShellView::Switcher | ShellView::QuickSettings => true,
         }
+    }
+
+    /// Close quick settings panel (go back to previous view)
+    pub fn close_quick_settings(&mut self) {
+        // Go back to app if there are apps, otherwise home
+        self.view = ShellView::App;
+        self.gesture = GestureState::default();
     }
 
     /// Handle touch on the shell (returns app exec if app was tapped)

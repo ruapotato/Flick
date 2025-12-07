@@ -425,15 +425,13 @@ impl GestureRecognizer {
 /// Actions that can be triggered by gestures
 #[derive(Debug, Clone)]
 pub enum GestureAction {
-    /// Go back in app (swipe from left edge to right)
-    Back,
     /// Open app switcher (swipe from right edge to left)
     AppSwitcher,
     /// Close current app (swipe from top edge down)
     CloseApp,
     /// Open app drawer/grid (swipe from bottom edge up)
     AppDrawer,
-    /// Open quick settings (reserved for future)
+    /// Open quick settings panel (swipe from left edge to right)
     QuickSettings,
     /// Go home
     Home,
@@ -448,13 +446,13 @@ pub enum GestureAction {
 /// Map gestures to actions based on Flick UX:
 /// - Swipe up from bottom -> App drawer/grid
 /// - Swipe down from top -> Close current app
-/// - Swipe right from left edge -> Back in app
+/// - Swipe right from left edge -> Quick settings panel
 /// - Swipe left from right edge -> App switcher
 pub fn gesture_to_action(event: &GestureEvent) -> GestureAction {
     match event {
-        // Left edge swipe right = Back
+        // Left edge swipe right = Quick Settings
         GestureEvent::EdgeSwipeEnd { edge: Edge::Left, completed: true, .. } => {
-            GestureAction::Back
+            GestureAction::QuickSettings
         }
         // Right edge swipe left = App Switcher
         GestureEvent::EdgeSwipeEnd { edge: Edge::Right, completed: true, .. } => {
