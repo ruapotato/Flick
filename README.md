@@ -153,9 +153,12 @@ Edge swipe gestures (N9/iPhone inspired):
 | Swipe up from bottom edge | Go home (show shell) |
 | Swipe down from top edge | Close current app |
 | Swipe right from left edge | Back (in-app navigation) |
-| Swipe left from right edge | App switcher (TODO) |
+| Swipe left from right edge | App switcher |
 
-Gestures are detected by the compositor and communicated to the shell via IPC file (`$XDG_RUNTIME_DIR/flick-gesture`).
+Gestures are detected by the compositor and communicated to the shell via IPC files:
+- `$XDG_RUNTIME_DIR/flick-gesture` - Gesture events from compositor to shell
+- `$XDG_RUNTIME_DIR/flick-windows` - List of open windows
+- `$XDG_RUNTIME_DIR/flick-focus` - Focus request from shell to compositor
 
 ## Logging
 
@@ -239,7 +242,7 @@ RUST_LOG=debug cargo run -- --shell foot
 - [x] Logging infrastructure
 - [x] Touch gesture support (edge swipes)
 - [x] XWayland support (X11 apps)
-- [ ] App switcher UI
+- [x] App switcher UI
 - [ ] Multi-window management
 - [ ] Layer-shell protocol
 - [ ] Quick settings panel

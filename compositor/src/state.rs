@@ -292,6 +292,97 @@ impl Flick {
         }
     }
 
+    /// Write the list of open windows to IPC file for shell to read
+    pub fn update_window_list(&self) {
+        use std::io::Write;
+
+        if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+            let window_list_file = format!("{}/flick-windows", runtime_dir);
+            match std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&window_list_file)
+            {
+                Ok(mut file) => {
+                    let timestamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis())
+                        .unwrap_or(0);
+
+                    let mut content = format!("{}\n", timestamp);
+
+                    // Collect X11 windows (apps)
+                    for window in self.space.elements() {
+                        if let Some(x11) = window.x11_surface() {
+                            let window_id = x11.window_id();
+                            let title = x11.title();
+                            let title = if title.is_empty() { "Unknown".to_string() } else { title };
+                            let class = x11.class();
+                            let class = if class.is_empty() { "unknown".to_string() } else { class };
+                            // Format: id|title|class
+                            content.push_str(&format!("{}|{}|{}\n", window_id, title, class));
+                        }
+                    }
+
+                    if let Err(e) = file.write_all(content.as_bytes()) {
+                        tracing::warn!("Failed to write window list: {:?}", e);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to open window list file: {:?}", e);
+                }
+            }
+        }
+    }
+
+    /// Check for focus request from shell and focus the requested window
+    pub fn check_focus_request(&mut self) {
+        if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+            let focus_file = format!("{}/flick-focus", runtime_dir);
+
+            if let Ok(content) = std::fs::read_to_string(&focus_file) {
+                let content = content.trim();
+                if !content.is_empty() {
+                    // Clear the file immediately to prevent re-processing
+                    let _ = std::fs::write(&focus_file, "");
+
+                    if let Ok(window_id) = content.parse::<u32>() {
+                        self.focus_window_by_id(window_id);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Focus a window by its X11 window ID
+    fn focus_window_by_id(&mut self, window_id: u32) {
+        let target_window = self.space.elements()
+            .find(|w| {
+                w.x11_surface()
+                    .map(|x11| x11.window_id() == window_id)
+                    .unwrap_or(false)
+            })
+            .cloned();
+
+        if let Some(window) = target_window {
+            // Raise to top
+            let loc = self.space.element_location(&window).unwrap_or_default();
+            self.space.map_element(window.clone(), loc, true);
+            tracing::info!("Focused window ID: {}", window_id);
+
+            // Set keyboard focus
+            if let Some(x11) = window.x11_surface() {
+                if let Some(wl_surface) = x11.wl_surface() {
+                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                    if let Some(keyboard) = self.seat.get_keyboard() {
+                        keyboard.set_focus(self, Some(wl_surface), serial);
+                    }
+                }
+            }
+        }
+    }
+
     /// Dispatch Wayland clients - processes incoming client requests
     /// This must be called regularly for the compositor to respond to clients
     pub fn dispatch_clients(&mut self) {

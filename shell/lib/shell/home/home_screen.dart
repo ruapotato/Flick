@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../core/app_model.dart';
 import '../../core/gesture_service.dart';
+import '../../core/window_service.dart';
 import '../../core/logger.dart';
 import 'app_grid.dart';
+import 'app_switcher.dart';
 
 /// Main home screen of Flick shell
 class HomeScreen extends StatefulWidget {
@@ -16,12 +18,15 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _showDrawer = false;
+  bool _showAppSwitcher = false;
   StreamSubscription<GestureAction>? _gestureSubscription;
 
   @override
   void initState() {
     super.initState();
     _gestureSubscription = GestureService.instance.gestures.listen(_handleGesture);
+    // Initialize window service
+    WindowService.instance;
   }
 
   @override
@@ -35,15 +40,21 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (action) {
       case GestureAction.appDrawer:
         // Swipe up from bottom - compositor brings home to front
-        // Close drawer if it was open
-        if (_showDrawer) {
-          setState(() => _showDrawer = false);
+        // Close overlays if open
+        if (_showDrawer || _showAppSwitcher) {
+          setState(() {
+            _showDrawer = false;
+            _showAppSwitcher = false;
+          });
         }
         break;
       case GestureAction.back:
-        // Swipe from left edge - go back / close drawer
-        if (_showDrawer) {
-          setState(() => _showDrawer = false);
+        // Swipe from left edge - go back / close overlays
+        if (_showDrawer || _showAppSwitcher) {
+          setState(() {
+            _showDrawer = false;
+            _showAppSwitcher = false;
+          });
         }
         // TODO: Send back event to focused app via compositor
         break;
@@ -54,12 +65,18 @@ class _HomeScreenState extends State<HomeScreen> {
       case GestureAction.appSwitcher:
         // Swipe from right edge - show app switcher
         log.info('App switcher requested');
-        // TODO: Show app switcher overlay with window thumbnails
+        setState(() {
+          _showAppSwitcher = true;
+          _showDrawer = false;
+        });
         break;
       case GestureAction.home:
-        // Go home - close drawer if open
-        if (_showDrawer) {
-          setState(() => _showDrawer = false);
+        // Go home - close overlays if open
+        if (_showDrawer || _showAppSwitcher) {
+          setState(() {
+            _showDrawer = false;
+            _showAppSwitcher = false;
+          });
         }
         break;
       case GestureAction.quickSettings:
@@ -248,6 +265,25 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+
+          // App switcher overlay
+          if (_showAppSwitcher)
+            ListenableBuilder(
+              listenable: WindowService.instance,
+              builder: (context, child) {
+                return AppSwitcher(
+                  windows: WindowService.instance.windows,
+                  onClose: () {
+                    setState(() => _showAppSwitcher = false);
+                  },
+                  onWindowSelected: (windowId) {
+                    log.info('Switching to window: $windowId');
+                    WindowService.instance.focusWindow(windowId);
+                    setState(() => _showAppSwitcher = false);
+                  },
+                );
+              },
+            ),
         ],
       ),
     );

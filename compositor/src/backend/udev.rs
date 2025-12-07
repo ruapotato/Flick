@@ -339,6 +339,12 @@ pub fn run(shell_cmd: Option<String>) -> Result<()> {
         // Dispatch client requests and flush responses
         state.dispatch_clients();
 
+        // Update window list for shell (throttled to avoid excessive I/O)
+        state.update_window_list();
+
+        // Check for focus requests from shell
+        state.check_focus_request();
+
         // Skip rendering if session is not active (VT switched away)
         if !*session_active.borrow() {
             continue;
