@@ -635,19 +635,25 @@ fn render_surface(
                 continue;
             }
 
-            // Get window title - try title first, then class, then fallback
+            // Get window title - try title first, then instance, then class, then fallback
             let title = window.x11_surface()
                 .map(|x11| {
                     let t = x11.title();
                     if !t.is_empty() {
                         t
                     } else {
-                        // Try class name as fallback
-                        let c = x11.class();
-                        if !c.is_empty() {
-                            c
+                        // Try instance name as fallback (res_name part of WM_CLASS)
+                        let inst = x11.instance();
+                        if !inst.is_empty() {
+                            inst
                         } else {
-                            format!("Window {}", i + 1)
+                            // Try class name as fallback (res_class part of WM_CLASS)
+                            let c = x11.class();
+                            if !c.is_empty() {
+                                c
+                            } else {
+                                format!("Window {}", i + 1)
+                            }
                         }
                     }
                 })
