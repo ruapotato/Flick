@@ -666,29 +666,31 @@ fn render_surface(
             // Render actual window content scaled into the card
             // Get window geometry (the actual content area)
             let window_geo = window.geometry();
-            let window_loc = state.space.element_location(&window).unwrap_or_default();
 
-            // Get window render elements
+            // Get window render elements at origin (0,0) so constrain_render_elements
+            // can properly position them. Using the actual window location would
+            // cause the content to be offset by that amount.
             let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
                 .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
                     renderer,
-                    (window_loc.x, window_loc.y).into(),
+                    (0, 0).into(),  // Render at origin
                     Scale::from(scale),
                     1.0,  // alpha
                 );
 
             // Constrain window elements to fit inside the card (with 4px padding)
-            // origin: where to render (top-left of card content area)
+            // origin: where to render (top-left of card content area on screen)
             let card_origin: smithay::utils::Point<i32, smithay::utils::Physical> =
                 (x_pos + 4, card_y + 4).into();
 
-            // constrain: the target area size (card content area)
+            // constrain: the cropping area - uses same coordinates as origin since
+            // we want to crop to the same region where we're placing the content
             let card_constrain: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
-                (0, 0).into(),
+                (0, 0).into(),  // Relative to origin
                 (card_width - 8, card_height - 8).into(),
             );
 
-            // reference: the source window area
+            // reference: the source window area (window is rendered at 0,0)
             let window_reference: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
                 (0, 0).into(),
                 (window_geo.size.w, window_geo.size.h).into(),
@@ -701,7 +703,7 @@ fn render_surface(
                 window_reference,
                 ConstrainScaleBehavior::Fit,
                 ConstrainAlign::CENTER,
-                Scale::from(1.0),  // scale factor
+                Scale::from(scale),  // Use actual output scale
             );
 
             // Add constrained window elements
@@ -1128,18 +1130,38 @@ fn handle_input_event(
             info!("Touch down at ({:.0}, {:.0}), screen size: {:?}", touch_pos.x, touch_pos.y, screen);
 
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
-                info!("Gesture started: {:?}", gesture_event);
-                // Update integrated shell state
-                state.shell.handle_gesture(&gesture_event);
-
-                // Start close gesture animation when swiping from top
-                if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
-                    if *edge == crate::input::Edge::Top {
-                        state.start_close_gesture();
+                // In Switcher view, ignore left/right edge gestures to allow horizontal scrolling
+                let should_process = if state.shell.view == crate::shell::ShellView::Switcher {
+                    if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
+                        // Only process top/bottom edge gestures in Switcher (for going home/closing)
+                        // Cancel left/right edge gestures to allow horizontal scrolling
+                        if *edge == crate::input::Edge::Left || *edge == crate::input::Edge::Right {
+                            state.gesture_recognizer.touch_cancel(); // Cancel the edge gesture
+                            false
+                        } else {
+                            true
+                        }
+                    } else {
+                        true
                     }
-                    // Start home gesture animation when swiping from bottom
-                    if *edge == crate::input::Edge::Bottom {
-                        state.start_home_gesture();
+                } else {
+                    true
+                };
+
+                if should_process {
+                    info!("Gesture started: {:?}", gesture_event);
+                    // Update integrated shell state
+                    state.shell.handle_gesture(&gesture_event);
+
+                    // Start close gesture animation when swiping from top
+                    if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
+                        if *edge == crate::input::Edge::Top {
+                            state.start_close_gesture();
+                        }
+                        // Start home gesture animation when swiping from bottom
+                        if *edge == crate::input::Edge::Bottom {
+                            state.start_home_gesture();
+                        }
                     }
                 }
             }
@@ -1165,34 +1187,24 @@ fn handle_input_event(
                 let start_x = 32i32;
                 let scroll_offset = state.shell.switcher_scroll as i32;
 
-                // Collect windows and find which card was tapped
+                // Collect windows and find which card was touched
                 let windows: Vec<_> = state.space.elements().cloned().collect();
-                let mut tapped_window = None;
+                let mut touched_index = None;
 
-                for (i, window) in windows.iter().enumerate() {
+                for (i, _window) in windows.iter().enumerate() {
                     // Calculate card position for this window
                     let x_pos = (start_x + (i as i32 * card_spacing) - scroll_offset) as f64;
 
                     // Check if touch is within this card
                     if touch_pos.x >= x_pos && touch_pos.x < x_pos + card_width as f64 &&
                        touch_pos.y >= card_y as f64 && touch_pos.y < (card_y + card_height) as f64 {
-                        info!("Switcher: tapped card {} at x={}", i, x_pos);
-                        tapped_window = Some(window.clone());
+                        touched_index = Some(i);
                         break;
                     }
                 }
 
-                if let Some(window) = tapped_window {
-                    // Raise window and focus it
-                    if let Some(keyboard) = state.seat.get_keyboard() {
-                        if let Some(toplevel) = window.toplevel() {
-                            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                            keyboard.set_focus(state, Some(toplevel.wl_surface().clone()), serial);
-                        }
-                    }
-                    state.space.raise_element(&window, true);
-                    state.shell.switch_to_app();
-                }
+                // Start tracking touch - don't switch app yet, wait for touch up
+                state.shell.start_switcher_touch(touch_pos.x, touched_index);
             }
 
             if let Some(touch) = state.seat.get_touch() {
@@ -1264,6 +1276,17 @@ fn handle_input_event(
                 state.shell.update_home_scroll(touch_pos.y);
             }
 
+            // Handle horizontal scrolling in app switcher
+            if state.shell.view == crate::shell::ShellView::Switcher && state.shell.switcher_touch_start_x.is_some() {
+                let screen_h = state.screen_size.h as f64;
+                let card_height = (screen_h * 0.65) as i32;
+                let screen_w = state.screen_size.w as f64;
+                let card_width = (card_height as f64 * (screen_w / screen_h)) as i32;
+                let card_spacing = card_width + 24;
+                let num_windows = state.space.elements().count();
+                state.shell.update_switcher_scroll(touch_pos.x, num_windows, card_spacing);
+            }
+
             if let Some(touch) = state.seat.get_touch() {
                 // Find surface under touch point
                 let under = state.space.element_under(touch_pos)
@@ -1331,6 +1354,25 @@ fn handle_input_event(
                             .spawn()
                             .ok();
                         state.shell.app_launched();
+                    }
+                }
+            }
+
+            // Handle app switcher tap to switch app (only if not scrolling)
+            if state.shell.view == crate::shell::ShellView::Switcher {
+                if let Some(window_index) = state.shell.end_switcher_touch() {
+                    let windows: Vec<_> = state.space.elements().cloned().collect();
+                    if let Some(window) = windows.get(window_index) {
+                        info!("Switcher: switching to window {}", window_index);
+                        // Raise window and focus it
+                        if let Some(keyboard) = state.seat.get_keyboard() {
+                            if let Some(toplevel) = window.toplevel() {
+                                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                keyboard.set_focus(state, Some(toplevel.wl_surface().clone()), serial);
+                            }
+                        }
+                        state.space.raise_element(window, true);
+                        state.shell.switch_to_app();
                     }
                 }
             }

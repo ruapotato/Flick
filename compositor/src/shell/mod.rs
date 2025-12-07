@@ -96,11 +96,16 @@ pub struct Shell {
     pub switcher_scroll: f64,
     /// Scroll offset for app grid (home screen)
     pub home_scroll: f64,
-    /// Touch tracking for scrolling
+    /// Touch tracking for scrolling (home screen - vertical)
     pub scroll_touch_start_y: Option<f64>,
     pub scroll_touch_last_y: Option<f64>,
+    /// Touch tracking for app switcher (horizontal)
+    pub switcher_touch_start_x: Option<f64>,
+    pub switcher_touch_last_x: Option<f64>,
     /// Pending app launch (exec command) - waits for touch up to confirm tap vs scroll
     pub pending_app_launch: Option<String>,
+    /// Pending switcher window index - waits for touch up to confirm tap vs scroll
+    pub pending_switcher_index: Option<usize>,
     /// Whether current touch is scrolling (moved significantly)
     pub is_scrolling: bool,
 }
@@ -117,7 +122,10 @@ impl Shell {
             home_scroll: 0.0,
             scroll_touch_start_y: None,
             scroll_touch_last_y: None,
+            switcher_touch_start_x: None,
+            switcher_touch_last_x: None,
             pending_app_launch: None,
+            pending_switcher_index: None,
             is_scrolling: false,
         }
     }
@@ -162,6 +170,54 @@ impl Shell {
         self.pending_app_launch = None;
         self.is_scrolling = false;
         app
+    }
+
+    /// Start tracking a touch on app switcher (potential horizontal scroll or tap)
+    pub fn start_switcher_touch(&mut self, x: f64, pending_index: Option<usize>) {
+        self.switcher_touch_start_x = Some(x);
+        self.switcher_touch_last_x = Some(x);
+        self.pending_switcher_index = pending_index;
+        self.is_scrolling = false;
+    }
+
+    /// Update horizontal scroll position based on touch movement
+    /// Returns true if scrolling is happening
+    pub fn update_switcher_scroll(&mut self, x: f64, num_windows: usize, card_spacing: i32) -> bool {
+        if let Some(start_x) = self.switcher_touch_start_x {
+            let total_delta = (x - start_x).abs();
+            // If moved more than 20 pixels, it's a scroll, not a tap
+            if total_delta > 20.0 {
+                self.is_scrolling = true;
+                self.pending_switcher_index = None; // Cancel pending window switch
+            }
+        }
+
+        if let Some(last_x) = self.switcher_touch_last_x {
+            let delta = last_x - x; // Scroll right when finger moves left
+            // Calculate max scroll based on number of windows
+            let max_scroll = if num_windows > 0 {
+                ((num_windows - 1) as i32 * card_spacing) as f64
+            } else {
+                0.0
+            };
+            self.switcher_scroll = (self.switcher_scroll + delta).clamp(0.0, max_scroll);
+        }
+        self.switcher_touch_last_x = Some(x);
+        self.is_scrolling
+    }
+
+    /// End switcher touch gesture - returns window index if this was a tap (not scroll)
+    pub fn end_switcher_touch(&mut self) -> Option<usize> {
+        let index = if !self.is_scrolling {
+            self.pending_switcher_index.take()
+        } else {
+            None
+        };
+        self.switcher_touch_start_x = None;
+        self.switcher_touch_last_x = None;
+        self.pending_switcher_index = None;
+        self.is_scrolling = false;
+        index
     }
 
     /// Update gesture state from gesture events
