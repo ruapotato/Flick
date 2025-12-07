@@ -274,6 +274,8 @@ impl AppManager {
 
     /// Scan standard locations for .desktop files
     pub fn scan_apps(&mut self) {
+        use std::collections::HashSet;
+
         let mut paths = Vec::new();
 
         // System applications
@@ -294,6 +296,9 @@ impl AppManager {
         }
 
         self.entries.clear();
+        let mut seen_names: HashSet<String> = HashSet::new();
+        let mut seen_execs: HashSet<String> = HashSet::new();
+
         for dir in paths {
             if let Ok(entries) = fs::read_dir(&dir) {
                 for entry in entries.filter_map(|e| e.ok()) {
@@ -302,7 +307,16 @@ impl AppManager {
                         if let Some(desktop) = DesktopEntry::parse(&path) {
                             // Skip entries with no exec or hidden entries
                             if !desktop.exec.is_empty() {
-                                self.entries.push(desktop);
+                                // Deduplicate by name and exec command
+                                let name_key = desktop.name.to_lowercase();
+                                let exec_key = desktop.exec.split_whitespace().next()
+                                    .unwrap_or(&desktop.exec).to_string();
+
+                                if !seen_names.contains(&name_key) && !seen_execs.contains(&exec_key) {
+                                    seen_names.insert(name_key);
+                                    seen_execs.insert(exec_key);
+                                    self.entries.push(desktop);
+                                }
                             }
                         }
                     }
@@ -310,7 +324,7 @@ impl AppManager {
             }
         }
 
-        tracing::info!("Scanned {} desktop entries", self.entries.len());
+        tracing::info!("Scanned {} desktop entries (deduplicated)", self.entries.len());
     }
 
     /// Get all apps that match a category, sorted by match quality (best first)
