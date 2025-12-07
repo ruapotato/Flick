@@ -214,7 +214,7 @@ impl Shell {
             wiggle_start_time: None,
             dragging_index: None,
             drag_position: None,
-            icon_cache: icons::IconCache::new(64), // 64px icons
+            icon_cache: icons::IconCache::new(128), // 128px icons for larger tiles
         };
 
         // Preload icons for all categories

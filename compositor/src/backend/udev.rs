@@ -685,7 +685,7 @@ fn render_surface(
         }
 
         // Render icons for categories - collect first, then insert at front so they render on top
-        let icon_infos = app_grid.get_icon_render_info(&categories, 64, wiggle_ref, dragging);
+        let icon_infos = app_grid.get_icon_render_info(&categories, 128, wiggle_ref, dragging);
         let mut icon_elements: Vec<HomeRenderElement<GlesRenderer>> = Vec::new();
         for icon_info in icon_infos {
             // Get the icon data from cache (using non-mutable get_cached for render loop)
@@ -1031,7 +1031,7 @@ fn render_surface(
             &switcher_elements,
             bg_color,
         )
-    } else if shell_view == ShellView::Home || home_gesture_active {
+    } else if shell_view == ShellView::Home {
         // Render home screen with icons (HomeRenderElement)
         surface_data.damage_tracker.render_output(
             renderer,
@@ -1039,6 +1039,24 @@ fn render_surface(
             effective_age,
             &home_elements,
             bg_color,
+        )
+    } else if home_gesture_active {
+        // During home gesture: render app window sliding UP, with home background showing behind
+        use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+        use smithay::desktop::space::SpaceRenderElements;
+
+        let window_elements: Vec<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>> = state
+            .space
+            .render_elements_for_output(renderer, output, scale as f32)
+            .unwrap_or_default();
+
+        // Render windows with home background (window position is updated by update_home_gesture)
+        surface_data.damage_tracker.render_output(
+            renderer,
+            &mut fb,
+            0, // Force full redraw during gesture
+            &window_elements,
+            bg_color, // Home background color shows through as window slides up
         )
     } else if shell_view == ShellView::QuickSettings {
         // Render quick settings (SolidColorRenderElement only)
@@ -1355,8 +1373,10 @@ fn handle_input_event(
                         if *edge == crate::input::Edge::Top {
                             state.start_close_gesture();
                         }
-                        // Home gesture (bottom swipe) animates the home screen directly via shell.gesture.progress
-                        // No need to animate the app window
+                        // Start home gesture animation when swiping from bottom
+                        if *edge == crate::input::Edge::Bottom {
+                            state.start_home_gesture();
+                        }
                     }
                 }
             }
@@ -1499,7 +1519,10 @@ fn handle_input_event(
                     if *edge == crate::input::Edge::Top {
                         state.update_close_gesture(*progress);
                     }
-                    // Home gesture (bottom) animates home screen via shell.gesture.progress - no extra update needed
+                    // Update home gesture animation when swiping from bottom
+                    if *edge == crate::input::Edge::Bottom {
+                        state.update_home_gesture(*progress);
+                    }
                 }
             }
 
