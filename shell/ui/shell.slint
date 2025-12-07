@@ -25,16 +25,21 @@ export struct AppCategory {
 
 // Status bar at top of screen
 component StatusBar inherits Rectangle {
+    in property <string> time: "12:00";
+    in property <int> battery: 85;
+    in property <bool> wifi: true;
+
     height: 48px;
     background: transparent;
 
-    HorizontalBox {
-        padding: 12px;
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
         spacing: 8px;
 
         // Time (left)
         Text {
-            text: "12:00";
+            text: time;
             color: Theme.on-surface;
             font-size: 16px;
             font-weight: 600;
@@ -44,21 +49,21 @@ component StatusBar inherits Rectangle {
         Rectangle { horizontal-stretch: 1; }
 
         // Status icons (right)
-        HorizontalBox {
+        HorizontalLayout {
             spacing: 12px;
 
-            // WiFi
+            // WiFi indicator
             Text {
-                text: "W";
-                color: Theme.primary;
+                text: wifi ? "W" : "-";
+                color: wifi ? Theme.primary : Theme.on-surface-variant;
                 font-size: 14px;
                 vertical-alignment: center;
             }
 
             // Battery
             Text {
-                text: "85%";
-                color: Theme.success;
+                text: battery + "%";
+                color: battery > 20 ? Theme.success : Theme.error;
                 font-size: 14px;
                 vertical-alignment: center;
             }
@@ -89,15 +94,15 @@ component AppTile inherits Rectangle {
 
     callback clicked();
 
-    width: 88px;
-    height: 110px;
+    width: 100%;
+    height: 100%;
 
-    VerticalBox {
+    VerticalLayout {
         alignment: center;
         spacing: 8px;
         padding: 4px;
 
-        // App icon
+        // App icon circle
         Rectangle {
             width: 64px;
             height: 64px;
@@ -105,17 +110,14 @@ component AppTile inherits Rectangle {
             background: tile-color;
 
             Text {
+                width: 100%;
+                height: 100%;
                 text: icon;
                 color: Theme.on-surface;
                 font-size: 28px;
                 font-weight: 700;
                 horizontal-alignment: center;
                 vertical-alignment: center;
-            }
-
-            // Touch ripple effect
-            touch := TouchArea {
-                clicked => { root.clicked(); }
             }
         }
 
@@ -126,7 +128,12 @@ component AppTile inherits Rectangle {
             font-size: 12px;
             horizontal-alignment: center;
             overflow: elide;
+            max-width: 80px;
         }
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
     }
 }
 
@@ -138,19 +145,27 @@ component QuickToggle inherits Rectangle {
 
     callback toggled();
 
-    width: 72px;
-    height: 72px;
+    width: 80px;
+    height: 80px;
     border-radius: 16px;
     background: enabled ? Theme.primary : Theme.surface-variant;
 
-    VerticalBox {
+    VerticalLayout {
         alignment: center;
+        spacing: 4px;
 
         Text {
             text: icon;
             color: Theme.on-surface;
             font-size: 24px;
             font-weight: 600;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: label;
+            color: Theme.on-surface.with-alpha(0.8);
+            font-size: 10px;
             horizontal-alignment: center;
         }
     }
@@ -160,7 +175,7 @@ component QuickToggle inherits Rectangle {
     }
 }
 
-// PIN button - must be defined before PinPad
+// PIN button
 component PinButton inherits Rectangle {
     in property <string> digit: "0";
     callback clicked();
@@ -171,6 +186,8 @@ component PinButton inherits Rectangle {
     background: touch.pressed ? Theme.primary : Theme.surface-variant;
 
     Text {
+        width: 100%;
+        height: 100%;
         text: digit;
         color: Theme.on-surface;
         font-size: 28px;
@@ -188,40 +205,38 @@ component PinButton inherits Rectangle {
 component PinPad inherits Rectangle {
     callback digit-pressed(string);
     callback backspace-pressed();
-    callback enter-pressed();
 
-    GridBox {
+    width: 280px;
+    height: 320px;
+
+    GridLayout {
         spacing: 16px;
         padding: 16px;
 
-        // Row 1
         Row {
             PinButton { digit: "1"; clicked => { digit-pressed("1"); } }
             PinButton { digit: "2"; clicked => { digit-pressed("2"); } }
             PinButton { digit: "3"; clicked => { digit-pressed("3"); } }
         }
-        // Row 2
         Row {
             PinButton { digit: "4"; clicked => { digit-pressed("4"); } }
             PinButton { digit: "5"; clicked => { digit-pressed("5"); } }
             PinButton { digit: "6"; clicked => { digit-pressed("6"); } }
         }
-        // Row 3
         Row {
             PinButton { digit: "7"; clicked => { digit-pressed("7"); } }
             PinButton { digit: "8"; clicked => { digit-pressed("8"); } }
             PinButton { digit: "9"; clicked => { digit-pressed("9"); } }
         }
-        // Row 4
         Row {
-            Rectangle { width: 72px; height: 72px; } // Empty
+            Rectangle { width: 72px; height: 72px; background: transparent; }
             PinButton { digit: "0"; clicked => { digit-pressed("0"); } }
             PinButton { digit: "<"; clicked => { backspace-pressed(); } }
         }
     }
 }
 
-// Lock screen view
+// Lock screen view - fills entire screen
 component LockScreen inherits Rectangle {
     in property <string> time: "12:00";
     in property <string> date: "Saturday, December 7";
@@ -230,11 +245,12 @@ component LockScreen inherits Rectangle {
 
     callback digit-pressed(string);
     callback backspace-pressed();
-    callback enter-pressed();
 
+    width: 100%;
+    height: 100%;
     background: Theme.background;
 
-    VerticalBox {
+    VerticalLayout {
         alignment: center;
         spacing: 24px;
         padding: 32px;
@@ -256,10 +272,10 @@ component LockScreen inherits Rectangle {
             horizontal-alignment: center;
         }
 
-        Rectangle { height: 48px; }
+        Rectangle { height: 32px; }
 
         // PIN dots
-        HorizontalBox {
+        HorizontalLayout {
             alignment: center;
             spacing: 16px;
 
@@ -281,42 +297,188 @@ component LockScreen inherits Rectangle {
 
         Rectangle { height: 16px; }
 
-        // PIN pad
-        PinPad {
-            digit-pressed(d) => { root.digit-pressed(d); }
-            backspace-pressed => { root.backspace-pressed(); }
-            enter-pressed => { root.enter-pressed(); }
+        // PIN pad - centered
+        HorizontalLayout {
+            alignment: center;
+            PinPad {
+                digit-pressed(d) => { root.digit-pressed(d); }
+                backspace-pressed => { root.backspace-pressed(); }
+            }
         }
     }
 }
 
-// Home screen with app grid
+// Home screen with app grid - 4 columns
 component HomeScreen inherits Rectangle {
     in property <[AppCategory]> categories: [];
+    in property <string> time: "12:00";
+    in property <int> battery: 85;
 
     callback app-tapped(int);
-    callback app-long-pressed(int);
 
+    width: 100%;
+    height: 100%;
     background: Theme.background;
 
-    VerticalBox {
-        StatusBar {}
+    VerticalLayout {
+        StatusBar {
+            time: root.time;
+            battery: root.battery;
+            wifi: true;
+        }
 
-        // App grid - using VerticalLayout with wrapped HorizontalLayouts for grid effect
+        // App grid using a 4-column layout
         ScrollView {
             vertical-stretch: 1;
 
-            VerticalBox {
-                padding: 24px;
-                spacing: 16px;
+            VerticalLayout {
+                padding: 16px;
+                spacing: 8px;
                 alignment: start;
 
-                for cat[i] in categories: AppTile {
-                    name: cat.name;
-                    icon: cat.icon;
-                    tile-color: cat.color;
-                    clicked => { app-tapped(i); }
+                // Row 0 (items 0-3)
+                if categories.length > 0: HorizontalLayout {
+                    spacing: 8px;
+                    alignment: center;
+
+                    if categories.length > 0: Rectangle {
+                        width: 88px;
+                        height: 110px;
+                        AppTile {
+                            name: categories[0].name;
+                            icon: categories[0].icon;
+                            tile-color: categories[0].color;
+                            clicked => { app-tapped(0); }
+                        }
+                    }
+                    if categories.length > 1: Rectangle {
+                        width: 88px;
+                        height: 110px;
+                        AppTile {
+                            name: categories[1].name;
+                            icon: categories[1].icon;
+                            tile-color: categories[1].color;
+                            clicked => { app-tapped(1); }
+                        }
+                    }
+                    if categories.length > 2: Rectangle {
+                        width: 88px;
+                        height: 110px;
+                        AppTile {
+                            name: categories[2].name;
+                            icon: categories[2].icon;
+                            tile-color: categories[2].color;
+                            clicked => { app-tapped(2); }
+                        }
+                    }
+                    if categories.length > 3: Rectangle {
+                        width: 88px;
+                        height: 110px;
+                        AppTile {
+                            name: categories[3].name;
+                            icon: categories[3].icon;
+                            tile-color: categories[3].color;
+                            clicked => { app-tapped(3); }
+                        }
+                    }
                 }
+
+                // Row 1 (items 4-7)
+                if categories.length > 4: HorizontalLayout {
+                    spacing: 8px;
+                    alignment: center;
+
+                    if categories.length > 4: Rectangle {
+                        width: 88px;
+                        height: 110px;
+                        AppTile {
+                            name: categories[4].name;
+                            icon: categories[4].icon;
+                            tile-color: categories[4].color;
+                            clicked => { app-tapped(4); }
+                        }
+                    }
+                    if categories.length > 5: Rectangle {
+                        width: 88px;
+                        height: 110px;
+                        AppTile {
+                            name: categories[5].name;
+                            icon: categories[5].icon;
+                            tile-color: categories[5].color;
+                            clicked => { app-tapped(5); }
+                        }
+                    }
+                    if categories.length > 6: Rectangle {
+                        width: 88px;
+                        height: 110px;
+                        AppTile {
+                            name: categories[6].name;
+                            icon: categories[6].icon;
+                            tile-color: categories[6].color;
+                            clicked => { app-tapped(6); }
+                        }
+                    }
+                    if categories.length > 7: Rectangle {
+                        width: 88px;
+                        height: 110px;
+                        AppTile {
+                            name: categories[7].name;
+                            icon: categories[7].icon;
+                            tile-color: categories[7].color;
+                            clicked => { app-tapped(7); }
+                        }
+                    }
+                }
+
+                // Row 2 (items 8-11)
+                if categories.length > 8: HorizontalLayout {
+                    spacing: 8px;
+                    alignment: center;
+
+                    if categories.length > 8: Rectangle {
+                        width: 88px;
+                        height: 110px;
+                        AppTile {
+                            name: categories[8].name;
+                            icon: categories[8].icon;
+                            tile-color: categories[8].color;
+                            clicked => { app-tapped(8); }
+                        }
+                    }
+                    if categories.length > 9: Rectangle {
+                        width: 88px;
+                        height: 110px;
+                        AppTile {
+                            name: categories[9].name;
+                            icon: categories[9].icon;
+                            tile-color: categories[9].color;
+                            clicked => { app-tapped(9); }
+                        }
+                    }
+                    if categories.length > 10: Rectangle {
+                        width: 88px;
+                        height: 110px;
+                        AppTile {
+                            name: categories[10].name;
+                            icon: categories[10].icon;
+                            tile-color: categories[10].color;
+                            clicked => { app-tapped(10); }
+                        }
+                    }
+                    if categories.length > 11: Rectangle {
+                        width: 88px;
+                        height: 110px;
+                        AppTile {
+                            name: categories[11].name;
+                            icon: categories[11].icon;
+                            tile-color: categories[11].color;
+                            clicked => { app-tapped(11); }
+                        }
+                    }
+                }
+
+                // Spacer at bottom
+                Rectangle { vertical-stretch: 1; }
             }
         }
 
@@ -331,68 +493,75 @@ component QuickSettingsPanel inherits Rectangle {
     in property <bool> bluetooth-enabled: false;
     in property <string> wifi-ssid: "Home WiFi";
     in property <int> battery-percent: 85;
+    in property <string> time: "12:00";
 
     callback brightness-changed(float);
     callback wifi-toggled();
     callback bluetooth-toggled();
     callback lock-pressed();
 
+    width: 100%;
+    height: 100%;
     background: Theme.background;
 
-    VerticalBox {
-        // Header
+    VerticalLayout {
+        // Header with time and status
         Rectangle {
-            height: 64px;
+            height: 80px;
             background: Theme.primary-container;
 
-            HorizontalBox {
-                padding: 16px;
+            HorizontalLayout {
+                padding: 20px;
+                spacing: 16px;
 
                 Text {
-                    text: "12:00";
+                    text: time;
                     color: Theme.on-surface;
-                    font-size: 32px;
+                    font-size: 36px;
                     font-weight: 300;
                     vertical-alignment: center;
                 }
 
                 Rectangle { horizontal-stretch: 1; }
 
-                HorizontalBox {
-                    spacing: 8px;
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 4px;
 
                     Text {
                         text: wifi-ssid;
                         color: Theme.primary;
                         font-size: 14px;
-                        vertical-alignment: center;
+                        horizontal-alignment: right;
                     }
 
                     Text {
-                        text: battery-percent + "%";
+                        text: battery-percent + "% Battery";
                         color: battery-percent > 20 ? Theme.success : Theme.error;
-                        font-size: 14px;
-                        vertical-alignment: center;
+                        font-size: 12px;
+                        horizontal-alignment: right;
                     }
                 }
             }
         }
 
-        // Quick toggles
+        // Quick toggles section
         Rectangle {
             height: 140px;
+            background: Theme.surface;
 
-            VerticalBox {
+            VerticalLayout {
                 padding: 16px;
+                spacing: 12px;
 
                 Text {
-                    text: "QUICK SETTINGS";
+                    text: "Quick Settings";
                     color: Theme.on-surface-variant;
                     font-size: 12px;
                     font-weight: 600;
                 }
 
-                HorizontalBox {
+                HorizontalLayout {
                     spacing: 16px;
                     alignment: center;
 
@@ -422,29 +591,55 @@ component QuickSettingsPanel inherits Rectangle {
 
         // Brightness slider
         Rectangle {
-            height: 80px;
+            height: 100px;
+            background: Theme.surface;
 
-            VerticalBox {
+            VerticalLayout {
                 padding: 16px;
+                spacing: 12px;
 
                 Text {
-                    text: "BRIGHTNESS";
+                    text: "Brightness";
                     color: Theme.on-surface-variant;
                     font-size: 12px;
                     font-weight: 600;
                 }
 
-                Slider {
-                    minimum: 0;
-                    maximum: 100;
-                    value: brightness * 100;
-                    changed(v) => { brightness-changed(v / 100); }
+                HorizontalLayout {
+                    spacing: 12px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+
+                    Text {
+                        text: "O";
+                        color: Theme.on-surface-variant;
+                        font-size: 16px;
+                        vertical-alignment: center;
+                    }
+
+                    Slider {
+                        horizontal-stretch: 1;
+                        minimum: 0;
+                        maximum: 100;
+                        value: brightness * 100;
+                        changed(v) => { brightness-changed(v / 100); }
+                    }
+
+                    Text {
+                        text: "O";
+                        color: Theme.on-surface;
+                        font-size: 20px;
+                        vertical-alignment: center;
+                    }
                 }
             }
         }
 
         // Spacer
-        Rectangle { vertical-stretch: 1; background: Theme.background; }
+        Rectangle {
+            vertical-stretch: 1;
+            background: Theme.background;
+        }
 
         HomeIndicator {}
     }
@@ -452,7 +647,7 @@ component QuickSettingsPanel inherits Rectangle {
 
 // Main shell component
 export component FlickShell inherits Window {
-    in property <string> current-view: "home"; // "lock", "home", "quick-settings", "app"
+    in property <string> current-view: "lock"; // "lock", "home", "quick-settings"
     in property <[AppCategory]> categories: [];
     in property <string> lock-time: "12:00";
     in property <string> lock-date: "Saturday, December 7";
@@ -477,31 +672,38 @@ export component FlickShell inherits Window {
     title: "Flick Shell";
     background: Theme.background;
 
-    // Lock screen
+    // Lock screen - fills entire window
     if current-view == "lock": LockScreen {
+        width: 100%;
+        height: 100%;
         time: lock-time;
         date: lock-date;
         pin-length: pin-length;
         error-message: lock-error;
         digit-pressed(d) => { pin-digit-pressed(d); }
         backspace-pressed => { pin-backspace-pressed(); }
-        enter-pressed => { pin-enter-pressed(); }
     }
 
-    // Home screen
+    // Home screen - fills entire window
     if current-view == "home": HomeScreen {
+        width: 100%;
+        height: 100%;
         categories: categories;
+        time: lock-time;
+        battery: battery-percent;
         app-tapped(i) => { app-tapped(i); }
-        app-long-pressed(i) => { app-long-pressed(i); }
     }
 
-    // Quick settings
+    // Quick settings - fills entire window
     if current-view == "quick-settings": QuickSettingsPanel {
+        width: 100%;
+        height: 100%;
         brightness: brightness;
         wifi-enabled: wifi-enabled;
         bluetooth-enabled: bluetooth-enabled;
         wifi-ssid: wifi-ssid;
         battery-percent: battery-percent;
+        time: lock-time;
         brightness-changed(v) => { brightness-changed(v); }
         wifi-toggled => { wifi-toggled(); }
         bluetooth-toggled => { bluetooth-toggled(); }
