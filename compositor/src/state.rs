@@ -105,6 +105,10 @@ pub struct Flick {
 
     // Gesture recognition
     pub gesture_recognizer: GestureRecognizer,
+
+    // Close gesture animation state
+    pub close_gesture_window: Option<Window>,
+    pub close_gesture_original_y: i32,  // Original Y position
 }
 
 impl Flick {
@@ -184,6 +188,8 @@ impl Flick {
             xwm: None,
             xwayland_shell_state: None,
             gesture_recognizer: GestureRecognizer::new(screen_size),
+            close_gesture_window: None,
+            close_gesture_original_y: 0,
         }
     }
 
@@ -277,6 +283,60 @@ impl Flick {
         }
     }
 
+    /// Start close gesture - find the top-most app window and track it
+    pub fn start_close_gesture(&mut self) {
+        // Find the top-most X11 window (app) to animate
+        let app_window = self.space.elements()
+            .filter(|w| w.x11_surface().is_some())
+            .last()
+            .cloned();
+
+        if let Some(window) = app_window {
+            // Store original position
+            if let Some(loc) = self.space.element_location(&window) {
+                tracing::info!("Starting close gesture for window at y={}", loc.y);
+                self.close_gesture_original_y = loc.y;
+                self.close_gesture_window = Some(window);
+            }
+        }
+    }
+
+    /// Update close gesture - move the window down based on progress
+    pub fn update_close_gesture(&mut self, progress: f64) {
+        if let Some(ref window) = self.close_gesture_window.clone() {
+            // Calculate new Y position based on progress
+            let offset = (progress * (self.screen_size.h as f64 * 0.5)) as i32;
+            let new_y = self.close_gesture_original_y + offset;
+
+            // Move the window in the space
+            if let Some(loc) = self.space.element_location(window) {
+                self.space.map_element(window.clone(), (loc.x, new_y), false);
+            }
+        }
+    }
+
+    /// End close gesture - either close the window or animate it back
+    pub fn end_close_gesture(&mut self, completed: bool) {
+        if let Some(window) = self.close_gesture_window.take() {
+            if completed {
+                // Close the window
+                if let Some(x11) = window.x11_surface() {
+                    tracing::info!("Close gesture completed - closing window");
+                    let _ = x11.close();
+                }
+                self.space.unmap_elem(&window);
+                self.bring_shell_to_front();
+            } else {
+                // Cancel - restore original position
+                tracing::info!("Close gesture cancelled - restoring position");
+                if let Some(loc) = self.space.element_location(&window) {
+                    self.space.map_element(window, (loc.x, self.close_gesture_original_y), false);
+                }
+            }
+        }
+        self.close_gesture_original_y = 0;
+    }
+
     /// Write the list of open windows to IPC file for shell to read
     pub fn update_window_list(&self) {
         use std::io::Write;
@@ -297,8 +357,8 @@ impl Flick {
 
                     let mut content = format!("{}\n", timestamp);
 
-                    // Collect X11 windows (apps)
                     for window in self.space.elements() {
+                        // Check for X11 windows first
                         if let Some(x11) = window.x11_surface() {
                             let window_id = x11.window_id();
                             let title = x11.title();
@@ -308,6 +368,8 @@ impl Flick {
                             // Format: id|title|class
                             content.push_str(&format!("{}|{}|{}\n", window_id, title, class));
                         }
+                        // Note: Wayland native apps are not listed here since most apps
+                        // launched via the shell use XWayland (DISPLAY env is set)
                     }
 
                     if let Err(e) = file.write_all(content.as_bytes()) {

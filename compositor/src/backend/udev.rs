@@ -885,6 +885,11 @@ fn handle_input_event(
                     };
                     info!("Sending gesture start: edge={}", edge_str);
                     state.send_gesture_progress(edge_str, "start", 0.0, 0.0);
+
+                    // Start close gesture animation when swiping from top
+                    if edge == crate::input::Edge::Top {
+                        state.start_close_gesture();
+                    }
                 }
             }
 
@@ -946,6 +951,11 @@ fn handle_input_event(
                         crate::input::Edge::Bottom => "bottom",
                     };
                     state.send_gesture_progress(edge_str, "update", progress, velocity);
+
+                    // Update close gesture animation when swiping from top
+                    if edge == crate::input::Edge::Top {
+                        state.update_close_gesture(progress);
+                    }
                 }
             }
 
@@ -994,6 +1004,16 @@ fn handle_input_event(
                     };
                     let state_str = if *completed { "end_complete" } else { "end_cancel" };
                     state.send_gesture_progress(edge_str, state_str, if *completed { 1.0 } else { 0.0 }, *velocity);
+
+                    // Handle close gesture animation end
+                    if *edge == crate::input::Edge::Top {
+                        state.end_close_gesture(*completed);
+                        // Skip the normal gesture complete handling for top edge
+                        // since we handle the close ourselves
+                        if *completed {
+                            return;
+                        }
+                    }
                 }
 
                 // Handle window management for completed gestures

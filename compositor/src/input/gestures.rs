@@ -102,8 +102,11 @@ pub struct GestureConfig {
     /// Width of edge detection zone in pixels
     pub edge_threshold: f64,
 
-    /// Minimum distance for a swipe to register
+    /// Distance for swipe animation progress (larger = smoother following)
     pub swipe_threshold: f64,
+
+    /// Distance required to complete/trigger a swipe action
+    pub swipe_complete_threshold: f64,
 
     /// Time threshold for long press (ms)
     pub long_press_duration: Duration,
@@ -122,7 +125,8 @@ impl Default for GestureConfig {
     fn default() -> Self {
         Self {
             edge_threshold: 50.0,  // 50px edge zone for easier touch
-            swipe_threshold: 40.0, // 40px to complete a swipe
+            swipe_threshold: 300.0, // 300px for smooth finger-following animation
+            swipe_complete_threshold: 100.0, // 100px to trigger/complete the action
             long_press_duration: Duration::from_millis(500),
             tap_duration: Duration::from_millis(200),
             pinch_threshold: 50.0,
@@ -371,7 +375,7 @@ impl GestureRecognizer {
 
         let event = match &self.active_gesture {
             Some(ActiveGesture::EdgeSwipe { edge }) => {
-                let completed = point.distance() > self.config.swipe_threshold;
+                let completed = point.distance() > self.config.swipe_complete_threshold;
                 let velocity = match edge {
                     Edge::Left | Edge::Right => point.velocity.x,
                     Edge::Top | Edge::Bottom => point.velocity.y,
