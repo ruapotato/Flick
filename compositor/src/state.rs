@@ -51,6 +51,7 @@ use smithay::{
 
 use crate::input::{GestureRecognizer, GestureAction, gesture_to_action};
 use crate::viewport::Viewport;
+use crate::shell::Shell;
 
 /// Client-specific state
 #[derive(Default)]
@@ -109,6 +110,12 @@ pub struct Flick {
     // Close gesture animation state
     pub close_gesture_window: Option<Window>,
     pub close_gesture_original_y: i32,  // Original Y position
+    /// Home gesture state (swipe up from bottom - slides app upward)
+    pub home_gesture_window: Option<Window>,
+    pub home_gesture_original_y: i32,
+
+    // Integrated shell UI
+    pub shell: Shell,
 }
 
 impl Flick {
@@ -190,6 +197,9 @@ impl Flick {
             gesture_recognizer: GestureRecognizer::new(screen_size),
             close_gesture_window: None,
             close_gesture_original_y: 0,
+            home_gesture_window: None,
+            home_gesture_original_y: 0,
+            shell: Shell::new(screen_size),
         }
     }
 
@@ -228,8 +238,8 @@ impl Flick {
                 self.bring_shell_to_front();
             }
             GestureAction::AppSwitcher => {
-                // Also bring shell to front for app switcher
-                self.bring_shell_to_front();
+                // Don't bring shell to front - the shell shows its own app switcher overlay
+                // which appears on top of everything. Changing focus here causes timing issues.
             }
             GestureAction::CloseApp => {
                 // Close the topmost non-shell window
@@ -325,7 +335,13 @@ impl Flick {
                     let _ = x11.close();
                 }
                 self.space.unmap_elem(&window);
-                self.bring_shell_to_front();
+
+                // If no more windows, go to home screen
+                let has_windows = self.space.elements().any(|w| w.x11_surface().is_some());
+                if !has_windows {
+                    tracing::info!("No more windows, switching to Home view");
+                    self.shell.view = crate::shell::ShellView::Home;
+                }
             } else {
                 // Cancel - restore original position
                 tracing::info!("Close gesture cancelled - restoring position");
@@ -335,6 +351,66 @@ impl Flick {
             }
         }
         self.close_gesture_original_y = 0;
+    }
+
+    /// Start home gesture - find the top-most app window and track it for upward slide
+    pub fn start_home_gesture(&mut self) {
+        // Only start if we're viewing an app
+        if self.shell.view != crate::shell::ShellView::App {
+            return;
+        }
+
+        // Find the top-most X11 window (app) to animate
+        let app_window = self.space.elements()
+            .filter(|w| w.x11_surface().is_some())
+            .last()
+            .cloned();
+
+        if let Some(window) = app_window {
+            // Store original position
+            if let Some(loc) = self.space.element_location(&window) {
+                tracing::info!("Starting home gesture for window at y={}", loc.y);
+                self.home_gesture_original_y = loc.y;
+                self.home_gesture_window = Some(window);
+            }
+        }
+    }
+
+    /// Update home gesture - move the window UP based on progress (opposite of close gesture)
+    pub fn update_home_gesture(&mut self, progress: f64) {
+        if let Some(ref window) = self.home_gesture_window.clone() {
+            // Calculate new Y position - move UP (negative offset)
+            let offset = (progress * (self.screen_size.h as f64 * 0.8)) as i32;
+            let new_y = self.home_gesture_original_y - offset;
+
+            // Move the window in the space
+            if let Some(loc) = self.space.element_location(window) {
+                self.space.map_element(window.clone(), (loc.x, new_y), false);
+            }
+        }
+    }
+
+    /// End home gesture - either go to home or animate the window back
+    pub fn end_home_gesture(&mut self, completed: bool) {
+        if let Some(window) = self.home_gesture_window.take() {
+            if completed {
+                // Switch to home view
+                tracing::info!("Home gesture completed - switching to home");
+                self.shell.view = crate::shell::ShellView::Home;
+
+                // Restore window to original position (it will be hidden anyway)
+                if let Some(loc) = self.space.element_location(&window) {
+                    self.space.map_element(window, (loc.x, self.home_gesture_original_y), false);
+                }
+            } else {
+                // Cancel - restore original position
+                tracing::info!("Home gesture cancelled - restoring position");
+                if let Some(loc) = self.space.element_location(&window) {
+                    self.space.map_element(window, (loc.x, self.home_gesture_original_y), false);
+                }
+            }
+        }
+        self.home_gesture_original_y = 0;
     }
 
     /// Write the list of open windows to IPC file for shell to read
@@ -356,10 +432,14 @@ impl Flick {
                         .unwrap_or(0);
 
                     let mut content = format!("{}\n", timestamp);
+                    let mut window_count = 0;
+                    let mut x11_count = 0;
 
                     for window in self.space.elements() {
+                        window_count += 1;
                         // Check for X11 windows first
                         if let Some(x11) = window.x11_surface() {
+                            x11_count += 1;
                             let window_id = x11.window_id();
                             let title = x11.title();
                             let title = if title.is_empty() { "Unknown".to_string() } else { title };
@@ -367,9 +447,13 @@ impl Flick {
                             let class = if class.is_empty() { "unknown".to_string() } else { class };
                             // Format: id|title|class
                             content.push_str(&format!("{}|{}|{}\n", window_id, title, class));
+                            tracing::debug!("Window list: X11 {} - {} ({})", window_id, title, class);
                         }
-                        // Note: Wayland native apps are not listed here since most apps
-                        // launched via the shell use XWayland (DISPLAY env is set)
+                    }
+
+                    // Log periodically if windows exist but none are X11
+                    if window_count > 0 && x11_count == 0 {
+                        tracing::debug!("Window list: {} windows in space, 0 are X11", window_count);
                     }
 
                     if let Err(e) = file.write_all(content.as_bytes()) {

@@ -80,7 +80,7 @@ struct ModifierState {
     alt: bool,
 }
 
-pub fn run(shell_cmd: Option<String>) -> Result<()> {
+pub fn run() -> Result<()> {
     info!("Starting udev backend");
 
     // Create event loop
@@ -192,6 +192,8 @@ pub fn run(shell_cmd: Option<String>) -> Result<()> {
         state.screen_size = mode.size.to_logical(1);
         // Update gesture recognizer with actual screen size
         state.gesture_recognizer.screen_size = state.screen_size;
+        // Update shell with actual screen size
+        state.shell.screen_size = state.screen_size;
         info!("Screen size updated to: {:?}", state.screen_size);
     }
 
@@ -242,79 +244,7 @@ pub fn run(shell_cmd: Option<String>) -> Result<()> {
         })
         .map_err(|e| anyhow::anyhow!("Failed to insert udev source: {:?}", e))?;
 
-    // Start shell if requested
-    if let Some(cmd) = shell_cmd {
-        info!("Starting shell: {}", cmd);
-
-        // Get XDG_RUNTIME_DIR - where the Wayland socket is created
-        let xdg_runtime_dir = std::env::var("XDG_RUNTIME_DIR")
-            .unwrap_or_else(|_| "/run/user/1000".to_string());
-
-        info!("WAYLAND_DISPLAY={:?}", state.socket_name);
-        info!("XDG_RUNTIME_DIR={}", xdg_runtime_dir);
-
-        // Check if the socket exists
-        let socket_path = std::path::Path::new(&xdg_runtime_dir)
-            .join(state.socket_name.to_str().unwrap_or("wayland-0"));
-        info!("Socket path: {:?}, exists: {}", socket_path, socket_path.exists());
-
-        // Run wayland-info in a thread (so it doesn't block before event loop starts)
-        let socket_name_clone = state.socket_name.clone();
-        let xdg_clone = xdg_runtime_dir.clone();
-        std::thread::spawn(move || {
-            // Small delay to let the event loop start
-            std::thread::sleep(std::time::Duration::from_millis(500));
-
-            let wayland_info_output = std::process::Command::new("wayland-info")
-                .env("WAYLAND_DISPLAY", &socket_name_clone)
-                .env("XDG_RUNTIME_DIR", &xdg_clone)
-                .output();
-
-            match wayland_info_output {
-                Ok(output) => {
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    // Write to a file since we can't use tracing from a thread easily
-                    let _ = std::fs::write(
-                        format!("{}/wayland-info.log", xdg_clone),
-                        format!("STDOUT:\n{}\n\nSTDERR:\n{}", stdout, stderr)
-                    );
-                }
-                Err(e) => {
-                    let _ = std::fs::write(
-                        format!("{}/wayland-info.log", xdg_clone),
-                        format!("ERROR: {:?}", e)
-                    );
-                }
-            }
-        });
-
-        // Redirect shell output to a log file so we can debug issues
-        let shell_log_path = format!("{}/flick-shell.log", xdg_runtime_dir);
-        let shell_log = std::fs::File::create(&shell_log_path)
-            .unwrap_or_else(|_| std::fs::File::create("/tmp/flick-shell.log").unwrap());
-        let shell_log_err = shell_log.try_clone().unwrap();
-
-        let child = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&cmd)
-            .env("WAYLAND_DISPLAY", &state.socket_name)
-            .env("XDG_RUNTIME_DIR", &xdg_runtime_dir)
-            .env("WAYLAND_DEBUG", "1")  // Enable protocol debugging
-            .stdout(shell_log)
-            .stderr(shell_log_err)
-            .spawn();
-
-        match child {
-            Ok(child) => {
-                info!("Shell process started with PID: {}", child.id());
-                info!("Shell output logged to: {}", shell_log_path);
-            }
-            Err(e) => {
-                error!("Failed to start shell: {:?}", e);
-            }
-        }
-    }
+    // Shell is integrated - no need to start external process
 
     // Initialize XWayland
     info!("Starting XWayland...");
@@ -575,8 +505,11 @@ fn render_surface(
     state: &Flick,
     output: &Output,
 ) -> Result<()> {
-    use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-    use smithay::desktop::space::SpaceRenderElements;
+    use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
+    use smithay::backend::renderer::element::Kind;
+    use crate::shell::{ShellView, app_grid::AppGrid, overlay::GestureOverlay};
+    use crate::shell::primitives::{colors, Rect};
+    use crate::shell::text;
 
     // Should already be checked by caller, but double-check
     if !surface_data.ready_to_render || surface_data.frame_pending {
@@ -592,50 +525,309 @@ fn render_surface(
         }
     };
 
-    let window_count = state.space.elements().count();
-    if window_count > 0 {
-        debug!("Rendering {} windows", window_count);
-        // Log details of each window for debugging
-        for (i, window) in state.space.elements().enumerate() {
-            let geo = window.geometry();
-            let is_x11 = window.x11_surface().is_some();
-            debug!("  Window {}: x11={}, geometry={:?}", i, is_x11, geo);
-        }
-    }
-
-    // Get output size
-    let output_size = output
-        .current_mode()
-        .map(|m| m.size)
-        .unwrap_or_else(|| (1920, 1080).into());
-
     // Bind the dmabuf to the renderer
     let mut fb = renderer
         .bind(&mut dmabuf)
         .map_err(|e| anyhow::anyhow!("Failed to bind dmabuf: {:?}", e))?;
 
-    // Get render elements from space
     let scale = output.current_scale().fractional_scale();
-    let elements: Vec<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>> = state
-        .space
-        .render_elements_for_output(renderer, output, scale as f32)
-        .unwrap_or_default();
+    let shell_view = state.shell.view;
+    let gesture_active = state.shell.gesture.edge.is_some();
 
-    if !elements.is_empty() {
-        debug!("Got {} render elements to draw", elements.len());
+    // Check if home gesture is active early for background color decision
+    let bottom_gesture = state.shell.gesture.edge == Some(crate::input::Edge::Bottom);
+
+    // Choose background color based on state
+    let bg_color = if shell_view == ShellView::Home || gesture_active || bottom_gesture {
+        colors::BACKGROUND
+    } else if shell_view == ShellView::Switcher {
+        [0.0, 0.3, 0.0, 1.0]  // Dark green for Switcher - should be visible
+    } else {
+        [0.05, 0.05, 0.15, 1.0]
+    };
+
+    // Build shell UI elements (SolidColorRenderElement)
+    let mut shell_elements: Vec<SolidColorRenderElement> = Vec::new();
+
+    // Check if home gesture is active (bottom edge swipe from App view)
+    let home_gesture_active = shell_view == ShellView::App &&
+        state.shell.gesture.edge == Some(crate::input::Edge::Bottom);
+
+    if shell_view == ShellView::Home || home_gesture_active {
+        let mut app_grid = AppGrid::new(state.screen_size);
+        app_grid.set_progress(1.0, state.screen_size.h as f64);
+        app_grid.set_scroll(state.shell.home_scroll, state.shell.apps.len());
+
+        for (rect, color) in app_grid.get_render_rects(&state.shell.apps) {
+            let buffer = SolidColorBuffer::new(
+                (rect.width as i32, rect.height as i32),
+                color,
+            );
+            let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                (rect.x as i32, rect.y as i32).into();
+            let element = SolidColorRenderElement::from_buffer(
+                &buffer,
+                loc,
+                scale as f64,
+                1.0,
+                Kind::Unspecified,
+            );
+            shell_elements.push(element);
+        }
+    } else if shell_view == ShellView::Switcher {
+        // Full Switcher UI with window cards
+        // NOTE: Elements must be in FRONT-TO-BACK order (front first, background last)
+        let screen_w = state.screen_size.w as f64;
+        let screen_h = state.screen_size.h as f64;
+
+        let window_count = state.space.elements().count();
+        let card_width = (screen_w - 64.0) as i32;
+        let card_height = 350;
+        let card_spacing = 220;
+
+        // Colors for window cards
+        let card_colors = [
+            [0.2, 0.5, 0.8, 1.0],  // Blue
+            [0.8, 0.3, 0.3, 1.0],  // Red
+            [0.3, 0.7, 0.3, 1.0],  // Green
+            [0.7, 0.5, 0.2, 1.0],  // Orange
+            [0.6, 0.3, 0.7, 1.0],  // Purple
+            [0.3, 0.6, 0.6, 1.0],  // Teal
+        ];
+
+        // Build cards front-to-back (topmost card first)
+        // Collect positions, colors, and titles first, then render in reverse order
+        let mut card_data: Vec<(i32, [f32; 4], String)> = Vec::new();
+        let mut y_pos = 80i32;
+        for (i, window) in state.space.elements().enumerate() {
+            // Try to get window title from X11 surface (most apps run via XWayland)
+            let title = window.x11_surface()
+                .map(|x11| {
+                    let t = x11.title();
+                    if t.is_empty() { format!("Window {}", i + 1) } else { t }
+                })
+                .unwrap_or_else(|| format!("Window {}", i + 1));
+            card_data.push((y_pos, card_colors[i % card_colors.len()], title));
+            y_pos += card_spacing;
+        }
+
+        // Render cards front-to-back (last card is on top, so render it first)
+        for (_i, (y_pos, card_color, title)) in card_data.iter().enumerate().rev() {
+            // Window title text (frontmost - rendered first)
+            let text_scale = 2.5;
+            let text_color: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+            let text_x = 48.0;
+            let text_y = (*y_pos + card_height - 45) as f64;
+            let text_rects = text::render_text(title, text_x, text_y, text_scale, text_color);
+            for (rect, color) in text_rects {
+                let buffer = SolidColorBuffer::new(
+                    (rect.width as i32, rect.height as i32),
+                    color,
+                );
+                let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                    (rect.x as i32, rect.y as i32).into();
+                shell_elements.push(SolidColorRenderElement::from_buffer(
+                    &buffer, loc, scale as f64, 1.0, Kind::Unspecified,
+                ));
+            }
+
+            // Title bar (frontmost part of card)
+            let title_buffer = SolidColorBuffer::new(
+                (card_width, 60),
+                [0.12, 0.12, 0.16, 1.0],
+            );
+            let title_loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                (32, y_pos + card_height - 60).into();
+            shell_elements.push(SolidColorRenderElement::from_buffer(
+                &title_buffer, title_loc, scale as f64, 1.0, Kind::Unspecified,
+            ));
+
+            // Card preview area
+            let preview_buffer = SolidColorBuffer::new(
+                (card_width - 16, card_height - 76),
+                *card_color,
+            );
+            let preview_loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                (40, y_pos + 8).into();
+            shell_elements.push(SolidColorRenderElement::from_buffer(
+                &preview_buffer, preview_loc, scale as f64, 1.0, Kind::Unspecified,
+            ));
+
+            // Card background
+            let card_buffer = SolidColorBuffer::new(
+                (card_width, card_height),
+                [0.20, 0.20, 0.25, 1.0],
+            );
+            let card_loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                (32, *y_pos).into();
+            shell_elements.push(SolidColorRenderElement::from_buffer(
+                &card_buffer, card_loc, scale as f64, 1.0, Kind::Unspecified,
+            ));
+
+            // Card shadow (behind card)
+            let shadow_buffer = SolidColorBuffer::new(
+                (card_width + 4, card_height + 4),
+                [0.0, 0.0, 0.0, 0.5],
+            );
+            let shadow_loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                (30, y_pos - 2).into();
+            shell_elements.push(SolidColorRenderElement::from_buffer(
+                &shadow_buffer, shadow_loc, scale as f64, 1.0, Kind::Unspecified,
+            ));
+        }
+
+        // If no windows, show "No Apps" text
+        if window_count == 0 {
+            let no_apps_text = "NO APPS";
+            let text_scale = 4.0;
+            let text_color: [f32; 4] = [0.6, 0.6, 0.7, 1.0];
+            let text_width = text::text_width(no_apps_text) * text_scale;
+            let text_x = (screen_w - text_width) / 2.0;
+            let text_y = screen_h / 2.0 - 20.0;
+            let text_rects = text::render_text(no_apps_text, text_x, text_y, text_scale, text_color);
+            for (rect, color) in text_rects {
+                let buffer = SolidColorBuffer::new(
+                    (rect.width as i32, rect.height as i32),
+                    color,
+                );
+                let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                    (rect.x as i32, rect.y as i32).into();
+                shell_elements.push(SolidColorRenderElement::from_buffer(
+                    &buffer, loc, scale as f64, 1.0, Kind::Unspecified,
+                ));
+            }
+        }
+
+        // Header title text (in front of header bar)
+        let header_text = "RECENT APPS";
+        let header_text_scale = 2.5;
+        let header_text_color: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+        let header_text_width = text::text_width(header_text) * header_text_scale;
+        let header_text_x = (screen_w - header_text_width) / 2.0;
+        let header_text_y = 18.0;
+        let header_text_rects = text::render_text(header_text, header_text_x, header_text_y, header_text_scale, header_text_color);
+        for (rect, color) in header_text_rects {
+            let buffer = SolidColorBuffer::new(
+                (rect.width as i32, rect.height as i32),
+                color,
+            );
+            let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                (rect.x as i32, rect.y as i32).into();
+            shell_elements.push(SolidColorRenderElement::from_buffer(
+                &buffer, loc, scale as f64, 1.0, Kind::Unspecified,
+            ));
+        }
+
+        // Header bar (behind cards but in front of background)
+        let header_buffer = SolidColorBuffer::new(
+            (screen_w as i32, 60),
+            [0.15, 0.15, 0.20, 1.0],
+        );
+        let header_loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, 0).into();
+        shell_elements.push(SolidColorRenderElement::from_buffer(
+            &header_buffer, header_loc, scale as f64, 1.0, Kind::Unspecified,
+        ));
+
+        // Background (backmost - rendered last in array)
+        let bg_buffer = SolidColorBuffer::new(
+            (screen_w as i32, screen_h as i32),
+            [0.08, 0.08, 0.12, 1.0],
+        );
+        let bg_loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, 0).into();
+        shell_elements.push(SolidColorRenderElement::from_buffer(
+            &bg_buffer, bg_loc, scale as f64, 1.0, Kind::Unspecified,
+        ));
+
+        tracing::info!("Switcher: {} windows, {} elements", window_count, shell_elements.len());
     }
 
-    // Use damage tracker for proper rendering (handles textures, blending, etc.)
-    let render_res = surface_data.damage_tracker.render_output(
-        renderer,
-        &mut fb,
-        _age as usize,
-        &elements,
-        [0.1, 0.1, 0.3, 1.0],  // Dark blue background
-    );
+    // Add gesture overlay
+    if gesture_active {
+        let overlay = GestureOverlay::new(state.screen_size);
+        if let Some(edge) = state.shell.gesture.edge {
+            for (rect, color) in overlay.get_render_rects(edge, state.shell.gesture.progress) {
+                let buffer = SolidColorBuffer::new(
+                    (rect.width as i32, rect.height as i32),
+                    color,
+                );
+                let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                    (rect.x as i32, rect.y as i32).into();
+                let element = SolidColorRenderElement::from_buffer(
+                    &buffer,
+                    loc,
+                    scale as f64,
+                    1.0,
+                    Kind::Unspecified,
+                );
+                shell_elements.push(element);
+            }
+        }
+    }
+
+    // Render based on what view we're in
+    // Force age=0 for shell views to ensure full redraw (damage tracker may cache window content)
+    let effective_age = if shell_view == ShellView::Home || shell_view == ShellView::Switcher {
+        0 // Force full redraw
+    } else {
+        _age as usize
+    };
+
+    // For Switcher: use a fresh damage tracker to guarantee full redraw
+    // We need to store it separately due to lifetime issues
+    let mut switcher_tracker = if shell_view == ShellView::Switcher {
+        tracing::info!("Switcher: creating fresh damage tracker for full redraw");
+        Some(OutputDamageTracker::from_output(output))
+    } else {
+        None
+    };
+
+    let render_res = if shell_view == ShellView::Switcher {
+        let tracker = switcher_tracker.as_mut().unwrap();
+        tracker.render_output(
+            renderer,
+            &mut fb,
+            0,  // age=0 for full redraw
+            &shell_elements,
+            bg_color,
+        )
+    } else if shell_view == ShellView::Home {
+        // Render shell elements (home screen)
+        surface_data.damage_tracker.render_output(
+            renderer,
+            &mut fb,
+            effective_age,
+            &shell_elements,
+            bg_color,
+        )
+    } else {
+        // App view - render windows
+        use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+        use smithay::desktop::space::SpaceRenderElements;
+
+        let window_elements: Vec<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>> = state
+            .space
+            .render_elements_for_output(renderer, output, scale as f32)
+            .unwrap_or_default();
+
+        // Render windows (gesture overlays will be skipped for now - windows stay visible during gestures)
+        surface_data.damage_tracker.render_output(
+            renderer,
+            &mut fb,
+            _age as usize,
+            &window_elements,
+            bg_color,
+        )
+    };
 
     match render_res {
         Ok(render_output_result) => {
+            // Log render result for debugging
+            let has_damage = render_output_result.damage.is_some();
+            let damage_rects = render_output_result.damage.as_ref().map(|d| d.len()).unwrap_or(0);
+            if shell_view == ShellView::Switcher {
+                tracing::info!("Switcher render OK: has_damage={}, damage_rects={}", has_damage, damage_rects);
+            }
+
             // Get sync point from the render
             let sync_point = render_output_result.sync.clone();
 
@@ -648,6 +840,9 @@ fn render_surface(
                 Ok(_) => {
                     surface_data.frame_pending = true;
                     surface_data.ready_to_render = false;
+                    if shell_view == ShellView::Switcher {
+                        tracing::info!("Switcher frame queued successfully");
+                    }
                     debug!("Frame queued successfully");
                 }
                 Err(e) => {
@@ -658,6 +853,9 @@ fn render_surface(
         }
         Err(e) => {
             warn!("Render error: {:?}", e);
+            if shell_view == ShellView::Switcher {
+                tracing::error!("Switcher render FAILED: {:?}", e);
+            }
             surface_data.surface.reset_buffers();
         }
     }
@@ -875,21 +1073,63 @@ fn handle_input_event(
 
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
                 info!("Gesture started: {:?}", gesture_event);
-                // Send start event to shell
-                if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = gesture_event {
-                    let edge_str = match edge {
-                        crate::input::Edge::Left => "left",
-                        crate::input::Edge::Right => "right",
-                        crate::input::Edge::Top => "top",
-                        crate::input::Edge::Bottom => "bottom",
-                    };
-                    info!("Sending gesture start: edge={}", edge_str);
-                    state.send_gesture_progress(edge_str, "start", 0.0, 0.0);
+                // Update integrated shell state
+                state.shell.handle_gesture(&gesture_event);
 
-                    // Start close gesture animation when swiping from top
-                    if edge == crate::input::Edge::Top {
+                // Start close gesture animation when swiping from top
+                if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
+                    if *edge == crate::input::Edge::Top {
                         state.start_close_gesture();
                     }
+                    // Start home gesture animation when swiping from bottom
+                    if *edge == crate::input::Edge::Bottom {
+                        state.start_home_gesture();
+                    }
+                }
+            }
+
+            // Check if touch is on shell UI (home screen app grid)
+            // Don't launch immediately - wait for touch up to distinguish tap from scroll
+            if state.shell.view == crate::shell::ShellView::Home {
+                let pending_app = state.shell.handle_touch(touch_pos);
+                state.shell.start_home_touch(touch_pos.y, pending_app);
+            }
+
+            // Check if touch is on app switcher card
+            if state.shell.view == crate::shell::ShellView::Switcher {
+                // Card layout matches render code
+                let screen_w = state.screen_size.w as f64;
+                let card_width = screen_w - 64.0;
+                let card_height = 350.0;
+                let card_spacing = 220.0;
+                let card_x = 32.0;
+                let mut card_y = 80.0;
+
+                // Collect windows and find which card was tapped
+                let windows: Vec<_> = state.space.elements().cloned().collect();
+                let mut tapped_window = None;
+
+                for (i, window) in windows.iter().enumerate() {
+                    // Check if touch is within this card
+                    if touch_pos.x >= card_x && touch_pos.x < card_x + card_width &&
+                       touch_pos.y >= card_y && touch_pos.y < card_y + card_height {
+                        info!("Switcher: tapped card {} at y={}", i, card_y);
+                        tapped_window = Some(window.clone());
+                        break;
+                    }
+                    card_y += card_spacing;
+                }
+
+                if let Some(window) = tapped_window {
+                    // Raise window and focus it
+                    if let Some(keyboard) = state.seat.get_keyboard() {
+                        if let Some(toplevel) = window.toplevel() {
+                            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                            keyboard.set_focus(state, Some(toplevel.wl_surface().clone()), serial);
+                        }
+                    }
+                    state.space.raise_element(&window, true);
+                    state.shell.switch_to_app();
                 }
             }
 
@@ -942,21 +1182,24 @@ fn handle_input_event(
             let slot_id: i32 = event.slot().into();
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
                 debug!("Gesture update: {:?}", gesture_event);
-                // Send progress update to shell
-                if let crate::input::GestureEvent::EdgeSwipeUpdate { edge, progress, velocity, .. } = gesture_event {
-                    let edge_str = match edge {
-                        crate::input::Edge::Left => "left",
-                        crate::input::Edge::Right => "right",
-                        crate::input::Edge::Top => "top",
-                        crate::input::Edge::Bottom => "bottom",
-                    };
-                    state.send_gesture_progress(edge_str, "update", progress, velocity);
+                // Update integrated shell state
+                state.shell.handle_gesture(&gesture_event);
 
-                    // Update close gesture animation when swiping from top
-                    if edge == crate::input::Edge::Top {
-                        state.update_close_gesture(progress);
+                // Update close gesture animation when swiping from top
+                if let crate::input::GestureEvent::EdgeSwipeUpdate { edge, progress, .. } = &gesture_event {
+                    if *edge == crate::input::Edge::Top {
+                        state.update_close_gesture(*progress);
+                    }
+                    // Update home gesture animation when swiping from bottom
+                    if *edge == crate::input::Edge::Bottom {
+                        state.update_home_gesture(*progress);
                     }
                 }
+            }
+
+            // Handle scrolling on home screen
+            if state.shell.view == crate::shell::ShellView::Home && state.shell.scroll_touch_start_y.is_some() {
+                state.shell.update_home_scroll(touch_pos.y);
             }
 
             if let Some(touch) = state.seat.get_touch() {
@@ -994,31 +1237,40 @@ fn handle_input_event(
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {
                 debug!("Gesture completed: {:?}", gesture_event);
 
-                // Send end event with completion status
-                if let crate::input::GestureEvent::EdgeSwipeEnd { edge, completed, velocity, .. } = &gesture_event {
-                    let edge_str = match edge {
-                        crate::input::Edge::Left => "left",
-                        crate::input::Edge::Right => "right",
-                        crate::input::Edge::Top => "top",
-                        crate::input::Edge::Bottom => "bottom",
-                    };
-                    let state_str = if *completed { "end_complete" } else { "end_cancel" };
-                    state.send_gesture_progress(edge_str, state_str, if *completed { 1.0 } else { 0.0 }, *velocity);
+                // Update integrated shell state
+                state.shell.handle_gesture(&gesture_event);
 
-                    // Handle close gesture animation end
+                // Handle close gesture animation end
+                if let crate::input::GestureEvent::EdgeSwipeEnd { edge, completed, .. } = &gesture_event {
                     if *edge == crate::input::Edge::Top {
                         state.end_close_gesture(*completed);
-                        // Skip the normal gesture complete handling for top edge
-                        // since we handle the close ourselves
-                        if *completed {
-                            return;
-                        }
+                    }
+                    // Handle home gesture animation end
+                    if *edge == crate::input::Edge::Bottom {
+                        state.end_home_gesture(*completed);
                     }
                 }
 
-                // Handle window management for completed gestures
+                // Handle window management for completed gestures (still needed for close)
                 let action = gesture_to_action(&gesture_event);
                 state.handle_gesture_complete(&action);
+            }
+
+            // Handle home screen tap to launch app (only if not scrolling)
+            if state.shell.view == crate::shell::ShellView::Home {
+                if let Some(exec) = state.shell.end_home_touch() {
+                    info!("Launching app: {}", exec);
+                    // Launch via XWayland
+                    if let Ok(display) = std::env::var("XWAYLAND_DISPLAY").or_else(|_| Ok::<_, ()>(":1".to_string())) {
+                        let cmd = format!("DISPLAY={} {}", display, exec);
+                        std::process::Command::new("sh")
+                            .arg("-c")
+                            .arg(&cmd)
+                            .spawn()
+                            .ok();
+                        state.shell.app_launched();
+                    }
+                }
             }
 
             if let Some(touch) = state.seat.get_touch() {
@@ -1038,6 +1290,9 @@ fn handle_input_event(
             debug!("Touch cancel");
             // Reset gesture recognizer
             state.gesture_recognizer.touch_cancel();
+
+            // Reset home scroll state
+            state.shell.end_home_touch();
 
             if let Some(touch) = state.seat.get_touch() {
                 touch.cancel(state);
