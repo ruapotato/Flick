@@ -59,6 +59,7 @@ use smithay::xwayland::{XWayland, XWaylandEvent, xwm::X11Wm};
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
+use smithay::backend::renderer::element::memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement};
 use smithay::backend::renderer::{ImportAll, ImportMem};
 use smithay::backend::renderer::gles::GlesTexture;
 
@@ -77,8 +78,17 @@ smithay::backend::renderer::element::render_elements! {
     Window=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
 }
 
-// Icon texture rendering will be done in a separate pass after shell solid colors
-// This avoids complex type unification issues with smithay's render element system
+// Define a combined element type for the home screen that can hold both
+// solid color elements (for tile backgrounds, text) and memory buffer elements (for icons)
+smithay::backend::renderer::element::render_elements! {
+    /// Render elements for the home screen view
+    pub HomeRenderElement<R> where
+        R: ImportMem;
+    /// Solid color rectangles (tile backgrounds, text pixels)
+    Solid=SolidColorRenderElement,
+    /// Memory buffer elements (icons loaded from PNG files)
+    Icon=MemoryRenderBufferRenderElement<R>,
+}
 
 /// Per-GPU state
 struct GpuData {
@@ -589,7 +599,8 @@ fn render_surface(
         [0.05, 0.05, 0.15, 1.0]
     };
 
-    // Build shell UI elements (SolidColorRenderElement)
+    // Build shell UI elements (HomeRenderElement for Home view, SolidColorRenderElement otherwise)
+    let mut home_elements: Vec<HomeRenderElement<GlesRenderer>> = Vec::new();
     let mut shell_elements: Vec<SolidColorRenderElement> = Vec::new();
 
     // Check if home gesture is active (bottom edge swipe from App view)
@@ -609,13 +620,13 @@ fn render_surface(
                     );
                     let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
                         (rect.x as i32, rect.y as i32).into();
-                    SolidColorRenderElement::from_buffer(
+                    HomeRenderElement::Solid(SolidColorRenderElement::from_buffer(
                         &buffer,
                         loc,
                         scale as f64,
                         1.0,
                         Kind::Unspecified,
-                    )
+                    ))
                 })
                 .collect()
         } else {
@@ -623,11 +634,18 @@ fn render_surface(
         };
 
         // Add menu elements first so they appear on top
-        shell_elements.extend(menu_elements);
+        home_elements.extend(menu_elements);
 
         // Then add the app grid elements
         let mut app_grid = AppGrid::new(state.screen_size);
-        app_grid.set_progress(1.0, state.screen_size.h as f64);
+        // During home gesture, animate based on gesture progress
+        // When fully at home (not in gesture), progress = 1.0
+        let home_progress = if home_gesture_active {
+            state.shell.gesture.progress.min(1.0)
+        } else {
+            1.0
+        };
+        app_grid.set_progress(home_progress, state.screen_size.h as f64);
 
         // Use category grid instead of apps
         let categories = state.shell.app_manager.get_category_info();
@@ -656,15 +674,60 @@ fn render_surface(
             );
             let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
                 (rect.x as i32, rect.y as i32).into();
-            let element = SolidColorRenderElement::from_buffer(
+            let element = HomeRenderElement::Solid(SolidColorRenderElement::from_buffer(
                 &buffer,
                 loc,
                 scale as f64,
                 1.0,
                 Kind::Unspecified,
-            );
-            shell_elements.push(element);
+            ));
+            home_elements.push(element);
         }
+
+        // Render icons for categories - collect first, then insert at front so they render on top
+        let icon_infos = app_grid.get_icon_render_info(&categories, 64, wiggle_ref, dragging);
+        let mut icon_elements: Vec<HomeRenderElement<GlesRenderer>> = Vec::new();
+        for icon_info in icon_infos {
+            // Get the icon data from cache (using non-mutable get_cached for render loop)
+            // Icons must be preloaded elsewhere (e.g., when categories change)
+            if let Some(icon_data) = state.shell.icon_cache.get_cached(&icon_info.icon_name) {
+                // Create MemoryRenderBuffer from icon RGBA data
+                // PNG loaded via image crate's to_rgba8() gives [R,G,B,A] byte order
+                let mut mem_buffer = MemoryRenderBuffer::new(
+                    Fourcc::Abgr8888, // Actually means RGBA in little-endian (bytes stored as R,G,B,A)
+                    (icon_data.width as i32, icon_data.height as i32),
+                    1, // scale
+                    Transform::Normal,
+                    None,
+                );
+
+                // Write icon pixels into buffer
+                let icon_data_clone = icon_data.data.clone();
+                let _: Result<(), std::convert::Infallible> = mem_buffer.render().draw(|buffer| {
+                    buffer.copy_from_slice(&icon_data_clone);
+                    Ok(vec![Rectangle::from_size((icon_data.width as i32, icon_data.height as i32).into())])
+                });
+
+                // Create render element from buffer
+                let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
+                    (icon_info.x as i32, icon_info.y as i32).into();
+
+                if let Ok(icon_element) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    loc.to_f64(),
+                    &mem_buffer,
+                    None, // alpha
+                    None, // src
+                    None, // dst
+                    Kind::Unspecified,
+                ) {
+                    icon_elements.push(HomeRenderElement::Icon(icon_element));
+                }
+            }
+        }
+        // Insert icons at the front so they render on top of tiles
+        // (Smithay renders first element on top, last at back)
+        home_elements.splice(0..0, icon_elements);
     }
 
     // Quick Settings panel rendering
@@ -968,8 +1031,17 @@ fn render_surface(
             &switcher_elements,
             bg_color,
         )
-    } else if shell_view == ShellView::Home || shell_view == ShellView::QuickSettings {
-        // Render shell elements (home screen or quick settings)
+    } else if shell_view == ShellView::Home || home_gesture_active {
+        // Render home screen with icons (HomeRenderElement)
+        surface_data.damage_tracker.render_output(
+            renderer,
+            &mut fb,
+            effective_age,
+            &home_elements,
+            bg_color,
+        )
+    } else if shell_view == ShellView::QuickSettings {
+        // Render quick settings (SolidColorRenderElement only)
         surface_data.damage_tracker.render_output(
             renderer,
             &mut fb,
@@ -1283,10 +1355,8 @@ fn handle_input_event(
                         if *edge == crate::input::Edge::Top {
                             state.start_close_gesture();
                         }
-                        // Start home gesture animation when swiping from bottom
-                        if *edge == crate::input::Edge::Bottom {
-                            state.start_home_gesture();
-                        }
+                        // Home gesture (bottom swipe) animates the home screen directly via shell.gesture.progress
+                        // No need to animate the app window
                     }
                 }
             }
@@ -1429,10 +1499,7 @@ fn handle_input_event(
                     if *edge == crate::input::Edge::Top {
                         state.update_close_gesture(*progress);
                     }
-                    // Update home gesture animation when swiping from bottom
-                    if *edge == crate::input::Edge::Bottom {
-                        state.update_home_gesture(*progress);
-                    }
+                    // Home gesture (bottom) animates home screen via shell.gesture.progress - no extra update needed
                 }
             }
 

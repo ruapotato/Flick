@@ -89,6 +89,19 @@ impl AppGridLayout {
     }
 }
 
+/// Icon render information - position and icon name for rendering
+#[derive(Debug, Clone)]
+pub struct IconRenderInfo {
+    /// Icon name (to look up in IconCache)
+    pub icon_name: String,
+    /// X position (top-left of icon)
+    pub x: f64,
+    /// Y position (top-left of icon)
+    pub y: f64,
+    /// Icon size (icons are square)
+    pub size: u32,
+}
+
 /// App grid state
 pub struct AppGrid {
     /// Layout calculator
@@ -275,6 +288,63 @@ impl AppGrid {
         rects.reverse();
 
         rects
+    }
+
+    /// Get icon render info for all visible categories
+    /// Returns icon name and position for each category that has an icon
+    pub fn get_icon_render_info(
+        &self,
+        categories: &[CategoryInfo],
+        icon_size: u32,
+        wiggle_offsets: Option<&[(f64, f64)]>,
+        dragging: Option<(usize, (f64, f64))>,
+    ) -> Vec<IconRenderInfo> {
+        let mut icons = Vec::new();
+
+        for (i, cat_info) in categories.iter().enumerate() {
+            // Skip if no icon
+            let icon_name = match &cat_info.icon {
+                Some(name) => name.clone(),
+                None => continue,
+            };
+
+            let mut tile_rect = self.layout.app_content_rect(i);
+            tile_rect.y += self.y_offset - self.scroll_offset;
+
+            // Apply wiggle offset if in wiggle mode
+            if let Some(offsets) = wiggle_offsets {
+                if let Some((wx, wy)) = offsets.get(i) {
+                    tile_rect.x += wx;
+                    tile_rect.y += wy;
+                }
+            }
+
+            // If this tile is being dragged, use drag position instead
+            let is_dragging = dragging.map(|(idx, _)| idx == i).unwrap_or(false);
+            if is_dragging {
+                if let Some((_, (dx, dy))) = dragging {
+                    // Center the tile on the drag position
+                    tile_rect.x = dx - tile_rect.width / 2.0;
+                    tile_rect.y = dy - tile_rect.height / 2.0;
+                }
+            }
+
+            // Only include if visible on screen
+            if tile_rect.y + tile_rect.height > 48.0 && tile_rect.y < self.layout.screen_size.h as f64 {
+                // Center the icon within the tile
+                let icon_x = tile_rect.x + (tile_rect.width - icon_size as f64) / 2.0;
+                let icon_y = tile_rect.y + (tile_rect.height - icon_size as f64) / 2.0;
+
+                icons.push(IconRenderInfo {
+                    icon_name,
+                    x: icon_x,
+                    y: icon_y,
+                    size: icon_size,
+                });
+            }
+        }
+
+        icons
     }
 }
 

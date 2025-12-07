@@ -30,13 +30,26 @@ impl IconCache {
         }
     }
 
-    /// Get or load an icon by name
+    /// Get or load an icon by name (requires mutable access)
     pub fn get(&mut self, icon_name: &str) -> Option<&IconData> {
         if !self.cache.contains_key(icon_name) {
             let icon_data = self.load_icon(icon_name);
             self.cache.insert(icon_name.to_string(), icon_data);
         }
         self.cache.get(icon_name).and_then(|o| o.as_ref())
+    }
+
+    /// Get an already-cached icon (non-mutable, for use in render loops)
+    /// Returns None if the icon hasn't been loaded yet
+    pub fn get_cached(&self, icon_name: &str) -> Option<&IconData> {
+        self.cache.get(icon_name).and_then(|o| o.as_ref())
+    }
+
+    /// Preload icons for the given names (call this before rendering)
+    pub fn preload(&mut self, icon_names: &[&str]) {
+        for name in icon_names {
+            let _ = self.get(name);
+        }
     }
 
     /// Load an icon from disk

@@ -184,7 +184,7 @@ pub struct Shell {
 
 impl Shell {
     pub fn new(screen_size: Size<i32, Logical>) -> Self {
-        Self {
+        let mut shell = Self {
             view: ShellView::Home, // Start at home
             screen_size,
             gesture: GestureState::default(),
@@ -215,6 +215,24 @@ impl Shell {
             dragging_index: None,
             drag_position: None,
             icon_cache: icons::IconCache::new(64), // 64px icons
+        };
+
+        // Preload icons for all categories
+        shell.preload_icons();
+        shell
+    }
+
+    /// Preload icons for all categories into the cache
+    pub fn preload_icons(&mut self) {
+        let icon_names: Vec<String> = self.app_manager
+            .get_category_info()
+            .iter()
+            .filter_map(|info| info.icon.clone())
+            .collect();
+
+        tracing::info!("Preloading {} icons", icon_names.len());
+        for name in &icon_names {
+            let _ = self.icon_cache.get(name);
         }
     }
 
@@ -325,6 +343,7 @@ impl Shell {
                     let exec = entry.exec.clone();
                     let category = menu.category;
                     self.app_manager.set_category_app(category, exec);
+                    self.preload_icons(); // Reload icons after changing selection
                     self.long_press_menu = None;
                     Some(MenuAction::AppSelected)
                 } else {
