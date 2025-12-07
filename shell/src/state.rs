@@ -49,7 +49,7 @@ use smithay::{
     xwayland::{xwm::X11Wm, XWayland},
 };
 
-use crate::input::{GestureRecognizer, GestureAction, gesture_to_action};
+use crate::input::{GestureRecognizer, GestureAction};
 use crate::viewport::Viewport;
 use crate::shell::Shell;
 use crate::system::SystemStatus;

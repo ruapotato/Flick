@@ -3,7 +3,7 @@
 //! Shows open windows as overlapping cards that can be scrolled through.
 
 use smithay::utils::{Logical, Size};
-use super::primitives::{Rect, Color, colors};
+use super::primitives::{Rect, Color};
 
 /// Window info for the app switcher
 #[derive(Debug, Clone)]

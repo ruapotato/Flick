@@ -7,10 +7,9 @@
 //! - Process stats (CPU, RAM, IO)
 
 use std::fs;
-use std::io::{self, Write};
 use std::process::Command;
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Backlight controller
 pub struct Backlight {

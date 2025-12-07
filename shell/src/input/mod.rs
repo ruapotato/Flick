@@ -4,4 +4,3 @@ mod gestures;
 mod touch;
 
 pub use gestures::*;
-pub use touch::*;

@@ -19,7 +19,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use tracing::{info, error};
+use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use tracing_appender::rolling;
 

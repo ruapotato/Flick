@@ -11,7 +11,7 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferTyp
 use slint::platform::{Platform, WindowAdapter};
 use slint::{PhysicalSize, Rgb8Pixel, SharedPixelBuffer};
 use smithay::utils::{Logical, Size};
-use tracing::{debug, info};
+use tracing::info;
 
 // Include the generated Slint code
 slint::include_modules!();

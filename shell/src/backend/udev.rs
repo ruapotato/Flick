@@ -19,7 +19,7 @@ use smithay::{
             gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
             Fourcc,
         },
-        drm::{DrmDevice, DrmDeviceFd, DrmEvent, DrmEventMetadata, DrmEventTime, GbmBufferedSurface},
+        drm::{DrmDevice, DrmDeviceFd, DrmEvent, GbmBufferedSurface},
         egl::{EGLContext, EGLDisplay},
         input::InputEvent,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
@@ -40,28 +40,24 @@ use smithay::{
         },
         udev::{UdevBackend, UdevEvent},
     },
-    desktop::space::SpaceRenderElements,
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
-        calloop::{EventLoop, RegistrationToken},
+        calloop::EventLoop,
         drm::control::{connector, crtc, Device as DrmControlDevice, ModeTypeFlags},
         input::Libinput,
         wayland_server::Display,
     },
-    utils::{DeviceFd, Physical, Rectangle, Scale, Transform},
+    utils::{DeviceFd, Rectangle, Scale, Transform},
 };
 
 // Re-import libinput types for keyboard handling
-use smithay::reexports::input::event::keyboard::KeyboardEventTrait;
 
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::{XWayland, XWaylandEvent, xwm::X11Wm};
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
 use smithay::backend::renderer::element::memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement};
 use smithay::backend::renderer::{ImportAll, ImportMem};
-use smithay::backend::renderer::gles::GlesTexture;
 
 use crate::state::Flick;
 
@@ -612,8 +608,8 @@ fn render_surface(
     use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
     use smithay::backend::renderer::element::Kind;
     use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-    use crate::shell::{ShellView, app_grid::AppGrid, overlay::GestureOverlay};
-    use crate::shell::primitives::{colors, Rect};
+    use crate::shell::ShellView;
+    use crate::shell::primitives::colors;
     use crate::shell::text;
 
     // Should already be checked by caller, but double-check
@@ -642,6 +638,10 @@ fn render_surface(
     // Check if home gesture is active early for background color decision
     let bottom_gesture = state.shell.gesture.edge == Some(crate::input::Edge::Bottom);
 
+    // Check if home gesture is active (bottom edge swipe from App view)
+    let home_gesture_active = shell_view == ShellView::App &&
+        state.shell.gesture.edge == Some(crate::input::Edge::Bottom);
+
     // Choose background color based on state
     let bg_color = if shell_view == ShellView::LockScreen {
         [0.05, 0.05, 0.1, 1.0]  // Dark blue for lock screen
@@ -655,28 +655,59 @@ fn render_surface(
         [0.05, 0.05, 0.15, 1.0]
     };
 
-    // Build shell UI elements (HomeRenderElement for Home view, SolidColorRenderElement otherwise)
-    let mut home_elements: Vec<HomeRenderElement<GlesRenderer>> = Vec::new();
-    let mut shell_elements: Vec<SolidColorRenderElement> = Vec::new();
+    // Build Slint UI elements for shell views
+    let mut slint_elements: Vec<HomeRenderElement<GlesRenderer>> = Vec::new();
 
-    // Render lock screen if active
-    // For now, we'll render using Slint if available, otherwise fall back to old rendering
-    let mut slint_rendered = false;
-    if shell_view == ShellView::LockScreen {
-        // Try Slint rendering first
+    // Render shell views using Slint (lock screen, home, quick settings)
+    if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings {
         if let Some(ref slint_ui) = state.shell.slint_ui {
-            // Update Slint UI state
-            slint_ui.set_view("lock");
-            slint_ui.set_lock_time(&chrono::Local::now().format("%H:%M").to_string());
-            slint_ui.set_lock_date(&chrono::Local::now().format("%A, %B %e").to_string());
-            slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
-            if let Some(ref err) = state.shell.lock_state.error_message {
-                slint_ui.set_lock_error(err);
-            } else {
-                slint_ui.set_lock_error("");
+            // Update Slint UI state based on current view
+            match shell_view {
+                ShellView::LockScreen => {
+                    slint_ui.set_view("lock");
+                    slint_ui.set_lock_time(&chrono::Local::now().format("%H:%M").to_string());
+                    slint_ui.set_lock_date(&chrono::Local::now().format("%A, %B %e").to_string());
+                    slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
+                    if let Some(ref err) = state.shell.lock_state.error_message {
+                        slint_ui.set_lock_error(err);
+                    } else {
+                        slint_ui.set_lock_error("");
+                    }
+                }
+                ShellView::Home => {
+                    slint_ui.set_view("home");
+                    // Update categories
+                    let categories = state.shell.app_manager.get_category_info();
+                    let slint_categories: Vec<(String, String, [f32; 4])> = categories
+                        .iter()
+                        .map(|cat| {
+                            let icon = cat.icon.as_deref().unwrap_or(&cat.name[..1]).to_string();
+                            (cat.name.clone(), icon, cat.color)
+                        })
+                        .collect();
+                    slint_ui.set_categories(slint_categories);
+                }
+                ShellView::QuickSettings => {
+                    slint_ui.set_view("quick-settings");
+                    slint_ui.set_brightness(state.shell.quick_settings.brightness);
+                    // Get wifi/bluetooth enabled state from toggles
+                    let wifi_enabled = state.shell.quick_settings.toggles.iter()
+                        .find(|t| t.id == "wifi")
+                        .map(|t| t.enabled)
+                        .unwrap_or(false);
+                    let bluetooth_enabled = state.shell.quick_settings.toggles.iter()
+                        .find(|t| t.id == "bluetooth")
+                        .map(|t| t.enabled)
+                        .unwrap_or(false);
+                    slint_ui.set_wifi_enabled(wifi_enabled);
+                    slint_ui.set_bluetooth_enabled(bluetooth_enabled);
+                    slint_ui.set_wifi_ssid(state.shell.quick_settings.wifi_ssid.as_deref().unwrap_or(""));
+                    slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
+                }
+                _ => {}
             }
 
-            // Request redraw and render
+            // Render Slint UI to pixel buffer
             slint_ui.request_redraw();
             if let Some((width, height, pixels)) = slint_ui.render() {
                 // Create MemoryRenderBuffer from Slint's pixel output
@@ -706,187 +737,10 @@ fn render_surface(
                     None,
                     Kind::Unspecified,
                 ) {
-                    home_elements.push(HomeRenderElement::Icon(slint_element));
-                    slint_rendered = true;
-                    tracing::debug!("Slint lock screen rendered");
+                    slint_elements.push(HomeRenderElement::Icon(slint_element));
+                    tracing::debug!("Slint {:?} rendered", shell_view);
                 }
             }
-        }
-
-        // Fall back to old rendering if Slint didn't work
-        if !slint_rendered {
-            use crate::shell::lock_screen::render_lock_screen;
-            let lock_rects = render_lock_screen(
-                &state.shell.lock_state,
-                &state.shell.lock_config,
-                state.screen_size,
-            );
-
-            for (rect, color) in lock_rects {
-                let buffer = SolidColorBuffer::new(
-                    (rect.width as i32, rect.height as i32),
-                    color,
-                );
-                let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                    (rect.x as i32, rect.y as i32).into();
-                shell_elements.push(SolidColorRenderElement::from_buffer(
-                    &buffer,
-                    loc,
-                    scale as f64,
-                    1.0,
-                    Kind::Unspecified,
-                ));
-            }
-        }
-    }
-
-    // Check if home gesture is active (bottom edge swipe from App view)
-    let home_gesture_active = shell_view == ShellView::App &&
-        state.shell.gesture.edge == Some(crate::input::Edge::Bottom);
-
-    if shell_view == ShellView::Home || home_gesture_active {
-        // Collect menu elements first (will be rendered on top - first in array = front)
-        let menu_elements: Vec<_> = if let Some(ref menu) = state.shell.long_press_menu {
-            use crate::shell::app_grid::render_long_press_menu;
-            render_long_press_menu(menu, state.screen_size)
-                .into_iter()
-                .map(|(rect, color)| {
-                    let buffer = SolidColorBuffer::new(
-                        (rect.width as i32, rect.height as i32),
-                        color,
-                    );
-                    let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                        (rect.x as i32, rect.y as i32).into();
-                    HomeRenderElement::Solid(SolidColorRenderElement::from_buffer(
-                        &buffer,
-                        loc,
-                        scale as f64,
-                        1.0,
-                        Kind::Unspecified,
-                    ))
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
-
-        // Add menu elements first so they appear on top
-        home_elements.extend(menu_elements);
-
-        // Then add the app grid elements
-        let mut app_grid = AppGrid::new(state.screen_size);
-        // During home gesture, animate based on gesture progress
-        // When fully at home (not in gesture), progress = 1.0
-        let home_progress = if home_gesture_active {
-            state.shell.gesture.progress.min(1.0)
-        } else {
-            1.0
-        };
-        app_grid.set_progress(home_progress, state.screen_size.h as f64);
-
-        // Use category grid instead of apps
-        let categories = state.shell.app_manager.get_category_info();
-        app_grid.set_scroll(state.shell.home_scroll, categories.len());
-
-        // Calculate wiggle offsets if in wiggle mode
-        let wiggle_offsets: Vec<(f64, f64)> = if state.shell.wiggle_mode {
-            (0..categories.len())
-                .map(|i| state.shell.get_wiggle_offset(i))
-                .collect()
-        } else {
-            Vec::new()
-        };
-
-        // Prepare drag info
-        let dragging = state.shell.dragging_index.and_then(|idx| {
-            state.shell.drag_position.map(|pos| (idx, (pos.x, pos.y)))
-        });
-
-        // Use extended render function with wiggle and drag support
-        let wiggle_ref = if state.shell.wiggle_mode { Some(wiggle_offsets.as_slice()) } else { None };
-        for (rect, color) in app_grid.get_category_rects_ex(&categories, wiggle_ref, dragging) {
-            let buffer = SolidColorBuffer::new(
-                (rect.width as i32, rect.height as i32),
-                color,
-            );
-            let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                (rect.x as i32, rect.y as i32).into();
-            let element = HomeRenderElement::Solid(SolidColorRenderElement::from_buffer(
-                &buffer,
-                loc,
-                scale as f64,
-                1.0,
-                Kind::Unspecified,
-            ));
-            home_elements.push(element);
-        }
-
-        // Render icons for categories - collect first, then insert at front so they render on top
-        let icon_infos = app_grid.get_icon_render_info(&categories, 128, wiggle_ref, dragging);
-        let mut icon_elements: Vec<HomeRenderElement<GlesRenderer>> = Vec::new();
-        for icon_info in icon_infos {
-            // Get the icon data from cache (using non-mutable get_cached for render loop)
-            // Icons must be preloaded elsewhere (e.g., when categories change)
-            if let Some(icon_data) = state.shell.icon_cache.get_cached(&icon_info.icon_name) {
-                // Create MemoryRenderBuffer from icon RGBA data
-                // PNG loaded via image crate's to_rgba8() gives [R,G,B,A] byte order
-                let mut mem_buffer = MemoryRenderBuffer::new(
-                    Fourcc::Abgr8888, // Actually means RGBA in little-endian (bytes stored as R,G,B,A)
-                    (icon_data.width as i32, icon_data.height as i32),
-                    1, // scale
-                    Transform::Normal,
-                    None,
-                );
-
-                // Write icon pixels into buffer
-                let icon_data_clone = icon_data.data.clone();
-                let _: Result<(), std::convert::Infallible> = mem_buffer.render().draw(|buffer| {
-                    buffer.copy_from_slice(&icon_data_clone);
-                    Ok(vec![Rectangle::from_size((icon_data.width as i32, icon_data.height as i32).into())])
-                });
-
-                // Create render element from buffer
-                let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                    (icon_info.x as i32, icon_info.y as i32).into();
-
-                if let Ok(icon_element) = MemoryRenderBufferRenderElement::from_buffer(
-                    renderer,
-                    loc.to_f64(),
-                    &mem_buffer,
-                    None, // alpha
-                    None, // src
-                    None, // dst
-                    Kind::Unspecified,
-                ) {
-                    icon_elements.push(HomeRenderElement::Icon(icon_element));
-                }
-            }
-        }
-        // Insert icons at the front so they render on top of tiles
-        // (Smithay renders first element on top, last at back)
-        home_elements.splice(0..0, icon_elements);
-    }
-
-    // Quick Settings panel rendering
-    if shell_view == ShellView::QuickSettings {
-        let rects = state.shell.quick_settings.get_render_rects();
-        tracing::debug!("Quick Settings: rendering {} rectangles", rects.len());
-
-        for (rect, color) in rects {
-            let buffer = SolidColorBuffer::new(
-                (rect.width as i32, rect.height as i32),
-                color,
-            );
-            let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                (rect.x as i32, rect.y as i32).into();
-            let element = SolidColorRenderElement::from_buffer(
-                &buffer,
-                loc,
-                scale as f64,
-                1.0,
-                Kind::Unspecified,
-            );
-            shell_elements.push(element);
         }
     }
 
@@ -1119,39 +973,8 @@ fn render_surface(
         tracing::info!("Switcher: {} windows, {} elements", window_count, switcher_elements.len());
     }
 
-    // Add gesture overlay
-    if gesture_active {
-        let overlay = GestureOverlay::new(state.screen_size);
-        if let Some(edge) = state.shell.gesture.edge {
-            for (rect, color) in overlay.get_render_rects(edge, state.shell.gesture.progress) {
-                let buffer = SolidColorBuffer::new(
-                    (rect.width as i32, rect.height as i32),
-                    color,
-                );
-                let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                    (rect.x as i32, rect.y as i32).into();
-                let element = SolidColorRenderElement::from_buffer(
-                    &buffer,
-                    loc,
-                    scale as f64,
-                    1.0,
-                    Kind::Unspecified,
-                );
-                shell_elements.push(element);
-            }
-        }
-    }
-
     // Render based on what view we're in
-    // Force age=0 for shell views to ensure full redraw (damage tracker may cache window content)
-    let effective_age = if shell_view == ShellView::Home || shell_view == ShellView::Switcher || shell_view == ShellView::QuickSettings {
-        0 // Force full redraw
-    } else {
-        _age as usize
-    };
-
     // For Switcher: use a fresh damage tracker to guarantee full redraw
-    // We need to store it separately due to lifetime issues
     let mut switcher_tracker = if shell_view == ShellView::Switcher {
         tracing::info!("Switcher: creating fresh damage tracker for full redraw");
         Some(OutputDamageTracker::from_output(output))
@@ -1160,6 +983,7 @@ fn render_surface(
     };
 
     let render_res = if shell_view == ShellView::Switcher {
+        // Switcher view - render window cards
         let tracker = switcher_tracker.as_mut().unwrap();
         tracker.render_output(
             renderer,
@@ -1168,31 +992,13 @@ fn render_surface(
             &switcher_elements,
             bg_color,
         )
-    } else if shell_view == ShellView::LockScreen && slint_rendered {
-        // Render lock screen with Slint UI (in home_elements)
+    } else if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings {
+        // Shell views - render Slint UI
         surface_data.damage_tracker.render_output(
             renderer,
             &mut fb,
-            0, // Force full redraw for lock screen
-            &home_elements,
-            bg_color,
-        )
-    } else if shell_view == ShellView::LockScreen {
-        // Render lock screen with old rendering (shell_elements)
-        surface_data.damage_tracker.render_output(
-            renderer,
-            &mut fb,
-            0, // Force full redraw for lock screen
-            &shell_elements,
-            bg_color,
-        )
-    } else if shell_view == ShellView::Home {
-        // Render home screen with icons (HomeRenderElement)
-        surface_data.damage_tracker.render_output(
-            renderer,
-            &mut fb,
-            effective_age,
-            &home_elements,
+            0, // Force full redraw for Slint views
+            &slint_elements,
             bg_color,
         )
     } else if home_gesture_active {
@@ -1213,15 +1019,6 @@ fn render_surface(
             &window_elements,
             bg_color, // Home background color shows through as window slides up
         )
-    } else if shell_view == ShellView::QuickSettings {
-        // Render quick settings (SolidColorRenderElement only)
-        surface_data.damage_tracker.render_output(
-            renderer,
-            &mut fb,
-            effective_age,
-            &shell_elements,
-            bg_color,
-        )
     } else {
         // App view - render windows
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
@@ -1232,7 +1029,7 @@ fn render_surface(
             .render_elements_for_output(renderer, output, scale as f32)
             .unwrap_or_default();
 
-        // Render windows (gesture overlays will be skipped for now - windows stay visible during gestures)
+        // Render windows
         surface_data.damage_tracker.render_output(
             renderer,
             &mut fb,
@@ -1904,7 +1701,7 @@ fn handle_input_event(
 
             // Handle lock screen touch up
             if state.shell.view == crate::shell::ShellView::LockScreen {
-                use crate::shell::lock_screen::{LockInputMode, get_pin_button_rects, PIN_BUTTONS};
+                use crate::shell::lock_screen::{LockInputMode, PIN_BUTTONS};
 
                 match state.shell.lock_state.input_mode {
                     LockInputMode::Pin => {

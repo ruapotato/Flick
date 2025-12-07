@@ -3,7 +3,6 @@
 //! Loads PNG icons from standard XDG icon directories and caches them.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::fs;
 
 /// Icon cache storing loaded RGBA pixel data

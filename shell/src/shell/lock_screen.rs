@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use smithay::utils::{Logical, Point, Size};
-use super::primitives::{Rect, Color, colors};
+use super::primitives::{Rect, Color};
 use super::text;
 
 /// Lock screen authentication method
