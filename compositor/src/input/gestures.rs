@@ -121,8 +121,8 @@ pub struct GestureConfig {
 impl Default for GestureConfig {
     fn default() -> Self {
         Self {
-            edge_threshold: 40.0,  // 40px edge zone for easier touch
-            swipe_threshold: 50.0,
+            edge_threshold: 50.0,  // 50px edge zone for easier touch
+            swipe_threshold: 40.0, // 40px to complete a swipe
             long_press_duration: Duration::from_millis(500),
             tap_duration: Duration::from_millis(200),
             pinch_threshold: 50.0,

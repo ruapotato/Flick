@@ -869,8 +869,12 @@ fn handle_input_event(
 
             // Feed to gesture recognizer (use slot id or 0 for single-touch)
             let slot_id: i32 = event.slot().into();
+
+            // Debug: Log touch position and screen size
+            info!("Touch down at ({:.0}, {:.0}), screen size: {:?}", touch_pos.x, touch_pos.y, screen);
+
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
-                debug!("Gesture event: {:?}", gesture_event);
+                info!("Gesture started: {:?}", gesture_event);
                 // Send start event to shell
                 if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = gesture_event {
                     let edge_str = match edge {
@@ -879,6 +883,7 @@ fn handle_input_event(
                         crate::input::Edge::Top => "top",
                         crate::input::Edge::Bottom => "bottom",
                     };
+                    info!("Sending gesture start: edge={}", edge_str);
                     state.send_gesture_progress(edge_str, "start", 0.0, 0.0);
                 }
             }
