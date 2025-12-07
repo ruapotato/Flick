@@ -49,6 +49,7 @@ use smithay::{
     xwayland::{xwm::X11Wm, XWayland},
 };
 
+use crate::input::{GestureRecognizer, GestureAction, gesture_to_action};
 use crate::viewport::Viewport;
 
 /// Client-specific state
@@ -101,6 +102,9 @@ pub struct Flick {
     pub xwayland: Option<XWayland>,
     pub xwm: Option<X11Wm>,
     pub xwayland_shell_state: Option<XWaylandShellState>,
+
+    // Gesture recognition
+    pub gesture_recognizer: GestureRecognizer,
 }
 
 impl Flick {
@@ -179,6 +183,112 @@ impl Flick {
             xwayland: None,
             xwm: None,
             xwayland_shell_state: None,
+            gesture_recognizer: GestureRecognizer::new(screen_size),
+        }
+    }
+
+    /// Handle a gesture action - manage windows and notify shell
+    pub fn send_gesture_action(&mut self, action: &GestureAction) {
+        use std::io::Write;
+
+        // Don't send None actions
+        if matches!(action, GestureAction::None) {
+            return;
+        }
+
+        // Handle window management based on gesture
+        match action {
+            GestureAction::AppDrawer | GestureAction::Home => {
+                // Bring shell (non-X11 window) to front
+                self.bring_shell_to_front();
+            }
+            GestureAction::CloseApp => {
+                // Close the topmost non-shell window
+                self.close_focused_app();
+            }
+            _ => {}
+        }
+
+        let action_str = match action {
+            GestureAction::Back => "back",
+            GestureAction::AppSwitcher => "app_switcher",
+            GestureAction::QuickSettings => "quick_settings",
+            GestureAction::Home => "home",
+            GestureAction::AppDrawer => "app_drawer",
+            GestureAction::CloseApp => "close_app",
+            GestureAction::ZoomViewport { .. } => return, // Don't send zoom for now
+            GestureAction::PanViewport { .. } => return,  // Don't send pan for now
+            GestureAction::None => return,
+        };
+
+        if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+            let gesture_file = format!("{}/flick-gesture", runtime_dir);
+            match std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&gesture_file)
+            {
+                Ok(mut file) => {
+                    let timestamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis())
+                        .unwrap_or(0);
+                    let msg = format!("{}:{}", timestamp, action_str);
+                    if let Err(e) = file.write_all(msg.as_bytes()) {
+                        tracing::warn!("Failed to write gesture file: {:?}", e);
+                    } else {
+                        tracing::info!("Gesture action sent: {}", action_str);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to open gesture file: {:?}", e);
+                }
+            }
+        }
+    }
+
+    /// Bring the shell window (non-X11) to the front
+    fn bring_shell_to_front(&mut self) {
+        // Find the shell window (Wayland window, not X11)
+        let shell_window = self.space.elements()
+            .find(|w| w.x11_surface().is_none())
+            .cloned();
+
+        if let Some(window) = shell_window {
+            // Raise to top by re-mapping with activate=true
+            let loc = self.space.element_location(&window).unwrap_or_default();
+            self.space.map_element(window.clone(), loc, true);
+            tracing::info!("Shell brought to front");
+
+            // Set keyboard focus to shell
+            if let Some(surface) = window.toplevel().map(|t| t.wl_surface().clone()) {
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                if let Some(keyboard) = self.seat.get_keyboard() {
+                    keyboard.set_focus(self, Some(surface), serial);
+                }
+            }
+        }
+    }
+
+    /// Close the focused app (topmost non-shell window)
+    fn close_focused_app(&mut self) {
+        // Find topmost non-shell window (X11 or app window)
+        // Elements are in stacking order, last is top
+        let app_window = self.space.elements()
+            .filter(|w| w.x11_surface().is_some()) // X11 windows are apps
+            .last()
+            .cloned();
+
+        if let Some(window) = app_window {
+            if let Some(x11) = window.x11_surface() {
+                tracing::info!("Closing X11 window: {:?}", x11.window_id());
+                let _ = x11.close();
+            }
+            self.space.unmap_elem(&window);
+
+            // Bring shell to front after closing
+            self.bring_shell_to_front();
         }
     }
 

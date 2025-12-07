@@ -57,7 +57,7 @@ class MockApps {
       id: 'org.mozilla.firefox.x11',
       name: 'Firefox (X11)',
       icon: Icons.public,
-      exec: 'firefox',
+      exec: 'env MOZ_NO_REMOTE=1 firefox --new-instance --no-remote',
       categories: ['Network', 'WebBrowser'],
     ),
     AppInfo(

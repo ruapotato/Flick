@@ -122,6 +122,10 @@ pub fn run(shell_cmd: Option<String>) -> Result<()> {
     let session_active = Rc::new(RefCell::new(true));
     let session_active_for_notifier = session_active.clone();
 
+    // Track if we need to reset buffers after VT switch
+    let needs_buffer_reset = Rc::new(RefCell::new(false));
+    let needs_buffer_reset_for_notifier = needs_buffer_reset.clone();
+
     // Add session notifier to event loop
     loop_handle
         .insert_source(notifier, move |event, _, _state| match event {
@@ -132,6 +136,8 @@ pub fn run(shell_cmd: Option<String>) -> Result<()> {
             SessionEvent::ActivateSession => {
                 info!("Session activated - resuming rendering");
                 *session_active_for_notifier.borrow_mut() = true;
+                // Mark that we need to reset buffers after VT switch
+                *needs_buffer_reset_for_notifier.borrow_mut() = true;
             }
         })
         .map_err(|e| anyhow::anyhow!("Failed to insert session source: {:?}", e))?;
@@ -184,6 +190,8 @@ pub fn run(shell_cmd: Option<String>) -> Result<()> {
     // Update screen size to actual output size
     if let Some(mode) = output.current_mode() {
         state.screen_size = mode.size.to_logical(1);
+        // Update gesture recognizer with actual screen size
+        state.gesture_recognizer.screen_size = state.screen_size;
         info!("Screen size updated to: {:?}", state.screen_size);
     }
 
@@ -334,6 +342,18 @@ pub fn run(shell_cmd: Option<String>) -> Result<()> {
         // Skip rendering if session is not active (VT switched away)
         if !*session_active.borrow() {
             continue;
+        }
+
+        // Reset buffers after VT switch back
+        if *needs_buffer_reset.borrow() {
+            info!("Resetting GPU buffers after VT switch");
+            for (_crtc, surface_data_rc) in gpu.surfaces.iter() {
+                let mut surface_data = surface_data_rc.borrow_mut();
+                surface_data.surface.reset_buffers();
+                surface_data.frame_pending = false;
+                surface_data.ready_to_render = true;
+            }
+            *needs_buffer_reset.borrow_mut() = false;
         }
 
         // Render to each surface that is ready
@@ -569,6 +589,12 @@ fn render_surface(
     let window_count = state.space.elements().count();
     if window_count > 0 {
         debug!("Rendering {} windows", window_count);
+        // Log details of each window for debugging
+        for (i, window) in state.space.elements().enumerate() {
+            let geo = window.geometry();
+            let is_x11 = window.x11_surface().is_some();
+            debug!("  Window {}: x11={}, geometry={:?}", i, is_x11, geo);
+        }
     }
 
     // Get output size
@@ -829,13 +855,20 @@ fn handle_input_event(
             use smithay::backend::input::{TouchEvent, AbsolutePositionEvent};
 
             debug!("Touch down at slot {:?}", event.slot());
+            let screen = state.screen_size;
+            let touch_pos = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+                event.x_transformed(screen.w),
+                event.y_transformed(screen.h),
+            ));
+
+            // Feed to gesture recognizer (use slot id or 0 for single-touch)
+            let slot_id: i32 = event.slot().into();
+            if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
+                debug!("Gesture event: {:?}", gesture_event);
+            }
+
             if let Some(touch) = state.seat.get_touch() {
                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                let screen = state.screen_size;
-                let touch_pos = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
-                    event.x_transformed(screen.w),
-                    event.y_transformed(screen.h),
-                ));
 
                 // Find surface under touch point
                 let under = state.space.element_under(touch_pos)
@@ -873,13 +906,19 @@ fn handle_input_event(
             use smithay::backend::input::{TouchEvent, AbsolutePositionEvent};
 
             debug!("Touch motion at slot {:?}", event.slot());
-            if let Some(touch) = state.seat.get_touch() {
-                let screen = state.screen_size;
-                let touch_pos = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
-                    event.x_transformed(screen.w),
-                    event.y_transformed(screen.h),
-                ));
+            let screen = state.screen_size;
+            let touch_pos = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+                event.x_transformed(screen.w),
+                event.y_transformed(screen.h),
+            ));
 
+            // Feed to gesture recognizer
+            let slot_id: i32 = event.slot().into();
+            if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
+                debug!("Gesture update: {:?}", gesture_event);
+            }
+
+            if let Some(touch) = state.seat.get_touch() {
                 // Find surface under touch point
                 let under = state.space.element_under(touch_pos)
                     .map(|(window, loc)| {
@@ -905,7 +944,18 @@ fn handle_input_event(
         }
         InputEvent::TouchUp { event } => {
             use smithay::backend::input::TouchEvent;
+            use crate::input::gesture_to_action;
+
             debug!("Touch up at slot {:?}", event.slot());
+
+            // Feed to gesture recognizer and handle completed gestures
+            let slot_id: i32 = event.slot().into();
+            if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {
+                debug!("Gesture completed: {:?}", gesture_event);
+                let action = gesture_to_action(&gesture_event);
+                state.send_gesture_action(&action);
+            }
+
             if let Some(touch) = state.seat.get_touch() {
                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
@@ -921,8 +971,10 @@ fn handle_input_event(
         }
         InputEvent::TouchCancel { event: _ } => {
             debug!("Touch cancel");
+            // Reset gesture recognizer
+            state.gesture_recognizer.touch_cancel();
+
             if let Some(touch) = state.seat.get_touch() {
-                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                 touch.cancel(state);
             }
         }
@@ -981,7 +1033,18 @@ fn init_xwayland(
                             state.xwm = Some(wm);
 
                             // Set DISPLAY for child processes
-                            std::env::set_var("DISPLAY", format!(":{}", display_number));
+                            let display_str = format!(":{}", display_number);
+                            std::env::set_var("DISPLAY", &display_str);
+
+                            // Write display number to runtime file for shell to read
+                            if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+                                let display_file = format!("{}/flick-xwayland-display", runtime_dir);
+                                if let Err(e) = std::fs::write(&display_file, &display_str) {
+                                    warn!("Failed to write XWayland display file: {:?}", e);
+                                } else {
+                                    info!("Wrote XWayland display {} to {}", display_str, display_file);
+                                }
+                            }
                         }
                         Err(e) => {
                             error!("Failed to start X11 WM: {:?}", e);

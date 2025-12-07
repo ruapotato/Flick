@@ -140,9 +140,22 @@ The compositor handles input directly via libinput:
 
 - **Keyboard**: Full keyboard support with proper keymap handling
 - **Pointer/Mouse**: Motion and button events forwarded to focused window
-- **Touch**: Touch events supported (touchscreen devices)
+- **Touch**: Touch events with edge gesture recognition
 
 Click or tap on a window to focus it.
+
+## Gestures
+
+Edge swipe gestures (N9/iPhone inspired):
+
+| Gesture | Action |
+|---------|--------|
+| Swipe up from bottom edge | Go home (show shell) |
+| Swipe down from top edge | Close current app |
+| Swipe right from left edge | Back (in-app navigation) |
+| Swipe left from right edge | App switcher (TODO) |
+
+Gestures are detected by the compositor and communicated to the shell via IPC file (`$XDG_RUNTIME_DIR/flick-gesture`).
 
 ## Logging
 
@@ -224,7 +237,9 @@ RUST_LOG=debug cargo run -- --shell foot
 - [x] Session management (libseat)
 - [x] Flutter shell with app grid
 - [x] Logging infrastructure
-- [ ] Touch gesture support
+- [x] Touch gesture support (edge swipes)
+- [x] XWayland support (X11 apps)
+- [ ] App switcher UI
 - [ ] Multi-window management
 - [ ] Layer-shell protocol
 - [ ] Quick settings panel

@@ -121,7 +121,7 @@ pub struct GestureConfig {
 impl Default for GestureConfig {
     fn default() -> Self {
         Self {
-            edge_threshold: 20.0,
+            edge_threshold: 40.0,  // 40px edge zone for easier touch
             swipe_threshold: 50.0,
             long_press_duration: Duration::from_millis(500),
             tap_duration: Duration::from_millis(200),
@@ -421,16 +421,18 @@ impl GestureRecognizer {
 /// Actions that can be triggered by gestures
 #[derive(Debug, Clone)]
 pub enum GestureAction {
-    /// Go back (left edge swipe)
+    /// Go back in app (swipe from left edge to right)
     Back,
-    /// Open app switcher (bottom edge swipe up)
+    /// Open app switcher (swipe from right edge to left)
     AppSwitcher,
-    /// Open quick settings (top edge swipe down)
-    QuickSettings,
-    /// Go home (bottom edge swipe up and hold)
-    Home,
-    /// Open app drawer
+    /// Close current app (swipe from top edge down)
+    CloseApp,
+    /// Open app drawer/grid (swipe from bottom edge up)
     AppDrawer,
+    /// Open quick settings (reserved for future)
+    QuickSettings,
+    /// Go home
+    Home,
     /// Zoom viewport
     ZoomViewport { scale: f64, center: Point<f64, Logical> },
     /// Pan viewport
@@ -439,21 +441,28 @@ pub enum GestureAction {
     None,
 }
 
-/// Map gestures to actions
+/// Map gestures to actions based on Flick UX:
+/// - Swipe up from bottom -> App drawer/grid
+/// - Swipe down from top -> Close current app
+/// - Swipe right from left edge -> Back in app
+/// - Swipe left from right edge -> App switcher
 pub fn gesture_to_action(event: &GestureEvent) -> GestureAction {
     match event {
+        // Left edge swipe right = Back
         GestureEvent::EdgeSwipeEnd { edge: Edge::Left, completed: true, .. } => {
             GestureAction::Back
         }
-        GestureEvent::EdgeSwipeEnd { edge: Edge::Bottom, completed: true, velocity, .. } => {
-            if *velocity < -500.0 {
-                GestureAction::Home
-            } else {
-                GestureAction::AppSwitcher
-            }
+        // Right edge swipe left = App Switcher
+        GestureEvent::EdgeSwipeEnd { edge: Edge::Right, completed: true, .. } => {
+            GestureAction::AppSwitcher
         }
+        // Bottom edge swipe up = App Drawer
+        GestureEvent::EdgeSwipeEnd { edge: Edge::Bottom, completed: true, .. } => {
+            GestureAction::AppDrawer
+        }
+        // Top edge swipe down = Close App
         GestureEvent::EdgeSwipeEnd { edge: Edge::Top, completed: true, .. } => {
-            GestureAction::QuickSettings
+            GestureAction::CloseApp
         }
         GestureEvent::Pinch { scale, center, .. } => {
             GestureAction::ZoomViewport { scale: *scale, center: *center }

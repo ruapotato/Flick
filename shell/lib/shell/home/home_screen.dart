@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../core/app_model.dart';
+import '../../core/gesture_service.dart';
 import '../../core/logger.dart';
 import 'app_grid.dart';
 
@@ -14,20 +16,95 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _showDrawer = false;
+  StreamSubscription<GestureAction>? _gestureSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _gestureSubscription = GestureService.instance.gestures.listen(_handleGesture);
+  }
+
+  @override
+  void dispose() {
+    _gestureSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _handleGesture(GestureAction action) {
+    log.info('Handling gesture: $action');
+    switch (action) {
+      case GestureAction.appDrawer:
+        // Swipe up from bottom - compositor brings home to front
+        // Close drawer if it was open
+        if (_showDrawer) {
+          setState(() => _showDrawer = false);
+        }
+        break;
+      case GestureAction.back:
+        // Swipe from left edge - go back / close drawer
+        if (_showDrawer) {
+          setState(() => _showDrawer = false);
+        }
+        // TODO: Send back event to focused app via compositor
+        break;
+      case GestureAction.closeApp:
+        // Swipe down from top - compositor closes the app
+        // Nothing for shell to do, compositor handles it
+        break;
+      case GestureAction.appSwitcher:
+        // Swipe from right edge - show app switcher
+        log.info('App switcher requested');
+        // TODO: Show app switcher overlay with window thumbnails
+        break;
+      case GestureAction.home:
+        // Go home - close drawer if open
+        if (_showDrawer) {
+          setState(() => _showDrawer = false);
+        }
+        break;
+      case GestureAction.quickSettings:
+        log.info('Quick settings requested');
+        // TODO: Show quick settings panel
+        break;
+    }
+  }
+
+  /// Get XWayland display from compositor's runtime file
+  String _getXWaylandDisplay() {
+    final runtimeDir = Platform.environment['XDG_RUNTIME_DIR'] ?? '/run/user/1000';
+    final displayFile = File('$runtimeDir/flick-xwayland-display');
+    try {
+      if (displayFile.existsSync()) {
+        final display = displayFile.readAsStringSync().trim();
+        log.info('Read XWayland display from file: $display');
+        return display;
+      }
+    } catch (e) {
+      log.warn('Failed to read XWayland display file: $e');
+    }
+    // Fallback to :1 if file doesn't exist
+    log.warn('XWayland display file not found, falling back to :1');
+    return ':1';
+  }
 
   void _launchApp(AppInfo app) {
     log.info('Launching app: ${app.name} (${app.exec})');
 
+    // Get XWayland display from compositor
+    final xwaylandDisplay = _getXWaylandDisplay();
+
     // Build environment with DISPLAY for X11 apps
-    // ALWAYS use :1 - our XWayland runs there, system X is :0
     final env = Map<String, String>.from(Platform.environment);
-    env['DISPLAY'] = ':1';
-    log.info('Launching with DISPLAY=:1 for XWayland');
+    env['DISPLAY'] = xwaylandDisplay;
+
+    // Prepend DISPLAY to command to ensure it's set (detached mode can lose env vars)
+    final cmd = 'export DISPLAY=$xwaylandDisplay; ${app.exec}';
+    log.info('Launching with command: $cmd');
 
     // Launch the app using shell to handle arguments properly
     Process.start(
       '/bin/sh',
-      ['-c', app.exec],
+      ['-c', cmd],
       mode: ProcessStartMode.detached,
       environment: env,
     ).then((_) {

@@ -26,6 +26,10 @@ impl XwmHandler for Flick {
     fn map_window_request(&mut self, _xwm: XwmId, window: X11Surface) {
         tracing::info!("X11 map window request: {:?}", window.window_id());
 
+        // Log existing window geometry
+        let current_geo = window.geometry();
+        tracing::info!("X11 window current geometry: {:?}", current_geo);
+
         // Configure the window to fullscreen
         if let Some(output) = self.outputs.first() {
             let output_size = output
@@ -37,6 +41,8 @@ impl XwmHandler for Flick {
                 (0, 0).into(),
                 output_size.to_logical(1),
             );
+
+            tracing::info!("Configuring X11 window to fullscreen: {:?}", geo);
 
             // Configure the X11 window
             if let Err(e) = window.configure(geo) {
@@ -52,8 +58,13 @@ impl XwmHandler for Flick {
         // Create a Wayland window wrapper and add to space
         // Do this regardless of whether wl_surface is ready yet
         let win = Window::new_x11_window(window.clone());
-        self.space.map_element(win, (0, 0), false);
-        tracing::info!("X11 window added to space");
+
+        // Use activate=true to bring X11 window to front (on top of shell)
+        self.space.map_element(win, (0, 0), true);
+
+        // Log space state after mapping
+        let window_count = self.space.elements().count();
+        tracing::info!("X11 window added to space (activate=true), total windows: {}", window_count);
 
         // Set keyboard focus if surface is available
         if let Some(surface) = window.wl_surface() {
