@@ -217,6 +217,7 @@ pub fn run() -> Result<()> {
         state.gesture_recognizer.screen_size = state.screen_size;
         // Update shell with actual screen size
         state.shell.screen_size = state.screen_size;
+        state.shell.quick_settings.screen_size = state.screen_size;
         info!("Screen size updated to: {:?}", state.screen_size);
     }
 
@@ -605,11 +606,10 @@ fn render_surface(
 
     // Quick Settings panel rendering
     if shell_view == ShellView::QuickSettings {
-        use crate::shell::quick_settings::QuickSettingsPanel;
-        let mut panel = QuickSettingsPanel::new(state.screen_size);
-        panel.set_progress(1.0);  // Fully visible
+        let rects = state.shell.quick_settings.get_render_rects();
+        tracing::debug!("Quick Settings: rendering {} rectangles", rects.len());
 
-        for (rect, color) in panel.get_render_rects() {
+        for (rect, color) in rects {
             let buffer = SolidColorBuffer::new(
                 (rect.width as i32, rect.height as i32),
                 color,
@@ -1269,6 +1269,11 @@ fn handle_input_event(
                 state.shell.start_switcher_touch(touch_pos.x, touched_index);
             }
 
+            // Check if touch is on Quick Settings panel
+            if state.shell.view == crate::shell::ShellView::QuickSettings {
+                state.shell.start_qs_touch(touch_pos.x, touch_pos.y);
+            }
+
             // Only forward touch events to apps when in App view (not Home or Switcher)
             if state.shell.view == crate::shell::ShellView::App {
                 if let Some(touch) = state.seat.get_touch() {
@@ -1351,6 +1356,11 @@ fn handle_input_event(
                 let card_spacing = card_width + 24;
                 let num_windows = state.space.elements().count();
                 state.shell.update_switcher_scroll(touch_pos.x, num_windows, card_spacing);
+            }
+
+            // Handle scrolling/brightness on Quick Settings panel
+            if state.shell.view == crate::shell::ShellView::QuickSettings && state.shell.qs_touch_start_y.is_some() {
+                state.shell.update_qs_scroll(touch_pos.x, touch_pos.y);
             }
 
             // Only forward touch motion to apps when in App view (not Home or Switcher)
@@ -1448,6 +1458,11 @@ fn handle_input_event(
                         state.shell.switch_to_app();
                     }
                 }
+            }
+
+            // Handle Quick Settings touch up (toggle tap)
+            if state.shell.view == crate::shell::ShellView::QuickSettings {
+                state.shell.end_qs_touch();
             }
 
             if let Some(touch) = state.seat.get_touch() {

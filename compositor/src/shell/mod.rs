@@ -112,6 +112,13 @@ pub struct Shell {
     pub pending_switcher_index: Option<usize>,
     /// Whether current touch is scrolling (moved significantly)
     pub is_scrolling: bool,
+    /// Quick Settings panel state
+    pub quick_settings: quick_settings::QuickSettingsPanel,
+    /// Quick settings touch tracking
+    pub qs_touch_start_y: Option<f64>,
+    pub qs_touch_last_y: Option<f64>,
+    /// Pending toggle index for Quick Settings
+    pub pending_toggle_index: Option<usize>,
 }
 
 impl Shell {
@@ -131,6 +138,10 @@ impl Shell {
             pending_app_launch: None,
             pending_switcher_index: None,
             is_scrolling: false,
+            quick_settings: quick_settings::QuickSettingsPanel::new(screen_size),
+            qs_touch_start_y: None,
+            qs_touch_last_y: None,
+            pending_toggle_index: None,
         }
     }
 
@@ -350,5 +361,57 @@ impl Shell {
 
         tracing::debug!("No app hit at ({:.0},{:.0})", pos.x, pos.y);
         None
+    }
+
+    /// Start tracking a touch on Quick Settings panel
+    pub fn start_qs_touch(&mut self, x: f64, y: f64) {
+        self.qs_touch_start_y = Some(y);
+        self.qs_touch_last_y = Some(y);
+        self.is_scrolling = false;
+
+        // Check if touching a toggle button
+        self.pending_toggle_index = self.quick_settings.hit_test_toggle(x, y);
+
+        // Check if touching brightness slider
+        if let Some(brightness) = self.quick_settings.hit_test_brightness(x, y) {
+            self.quick_settings.set_brightness(brightness);
+        }
+    }
+
+    /// Update Quick Settings scroll based on touch movement
+    pub fn update_qs_scroll(&mut self, x: f64, y: f64) -> bool {
+        if let Some(start_y) = self.qs_touch_start_y {
+            let total_delta = (y - start_y).abs();
+            if total_delta > 30.0 {
+                self.is_scrolling = true;
+                self.pending_toggle_index = None;
+            }
+        }
+
+        if let Some(last_y) = self.qs_touch_last_y {
+            let delta = last_y - y;
+            self.quick_settings.scroll(delta);
+        }
+
+        // Update brightness if dragging on slider
+        if let Some(brightness) = self.quick_settings.hit_test_brightness(x, y) {
+            self.quick_settings.set_brightness(brightness);
+        }
+
+        self.qs_touch_last_y = Some(y);
+        self.is_scrolling
+    }
+
+    /// End Quick Settings touch - toggle if it was a tap
+    pub fn end_qs_touch(&mut self) {
+        if !self.is_scrolling {
+            if let Some(index) = self.pending_toggle_index.take() {
+                self.quick_settings.toggle(index);
+            }
+        }
+        self.qs_touch_start_y = None;
+        self.qs_touch_last_y = None;
+        self.pending_toggle_index = None;
+        self.is_scrolling = false;
     }
 }

@@ -49,6 +49,9 @@ serde_json = "1.0"
 # 2D graphics and text rendering
 femtovg = "0.9"
 
+# Lazy static for global state
+lazy_static = "1.4"
+
 [features]
 default = ["udev"]
 udev = []
