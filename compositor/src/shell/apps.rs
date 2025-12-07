@@ -258,6 +258,8 @@ pub struct AppManager {
     pub entries: Vec<DesktopEntry>,
     /// User configuration
     pub config: AppConfig,
+    /// Cached category info for fast rendering
+    cached_category_info: Vec<CategoryInfo>,
 }
 
 impl AppManager {
@@ -266,10 +268,34 @@ impl AppManager {
         let mut manager = Self {
             entries: Vec::new(),
             config: AppConfig::default(),
+            cached_category_info: Vec::new(),
         };
         manager.scan_apps();
         manager.set_defaults();
+        manager.rebuild_cache();
         manager
+    }
+
+    /// Rebuild the cached category info (call after any changes)
+    fn rebuild_cache(&mut self) {
+        self.cached_category_info = self.config.grid_order.iter().map(|&cat| {
+            let selected_exec = self.config.get_selected(cat).map(|s| s.to_string());
+            let available_apps = self.apps_for_category(cat);
+            let icon = selected_exec.as_ref().and_then(|exec| {
+                self.entries.iter()
+                    .find(|e| &e.exec == exec)
+                    .and_then(|e| e.icon.clone())
+            });
+
+            CategoryInfo {
+                category: cat,
+                name: cat.display_name().to_string(),
+                selected_exec,
+                available_count: available_apps.len(),
+                icon,
+                color: cat.default_color(),
+            }
+        }).collect();
     }
 
     /// Scan standard locations for .desktop files
@@ -377,26 +403,21 @@ impl AppManager {
             .and_then(|e| e.icon.clone())
     }
 
-    /// Get all categories with their current selection info
-    pub fn get_category_info(&self) -> Vec<CategoryInfo> {
-        self.config.grid_order.iter().map(|&cat| {
-            let selected_exec = self.config.get_selected(cat).map(|s| s.to_string());
-            let available_apps = self.apps_for_category(cat);
-            let icon = selected_exec.as_ref().and_then(|exec| {
-                self.entries.iter()
-                    .find(|e| &e.exec == exec)
-                    .and_then(|e| e.icon.clone())
-            });
+    /// Get all categories with their current selection info (cached for performance)
+    pub fn get_category_info(&self) -> &[CategoryInfo] {
+        &self.cached_category_info
+    }
 
-            CategoryInfo {
-                category: cat,
-                name: cat.display_name().to_string(),
-                selected_exec,
-                available_count: available_apps.len(),
-                icon,
-                color: cat.default_color(),
-            }
-        }).collect()
+    /// Update the selected app for a category and rebuild cache
+    pub fn set_category_app(&mut self, category: AppCategory, exec: String) {
+        self.config.set_selected(category, exec);
+        self.rebuild_cache();
+    }
+
+    /// Move a category and rebuild cache
+    pub fn move_category(&mut self, from: usize, to: usize) {
+        self.config.move_category(from, to);
+        self.rebuild_cache();
     }
 }
 

@@ -320,7 +320,7 @@ impl Shell {
                 if let Some(entry) = menu.available_apps.get(index) {
                     let exec = entry.exec.clone();
                     let category = menu.category;
-                    self.app_manager.config.set_selected(category, exec);
+                    self.app_manager.set_category_app(category, exec);
                     self.long_press_menu = None;
                     Some(MenuAction::AppSelected)
                 } else {
@@ -365,7 +365,7 @@ impl Shell {
 
         if let (Some(from), Some(to)) = (dragging, drop_index) {
             if from != to {
-                self.app_manager.config.move_category(from, to);
+                self.app_manager.move_category(from, to);
                 return true;
             }
         }
