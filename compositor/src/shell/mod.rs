@@ -143,8 +143,9 @@ impl Shell {
     pub fn update_home_scroll(&mut self, y: f64) -> bool {
         if let Some(start_y) = self.scroll_touch_start_y {
             let total_delta = (y - start_y).abs();
-            // If moved more than 20 pixels, it's a scroll, not a tap
-            if total_delta > 20.0 {
+            // If moved more than 40 pixels, it's a scroll, not a tap
+            // (increased from 20px for better tap reliability on touch screens)
+            if total_delta > 40.0 {
                 self.is_scrolling = true;
                 self.pending_app_launch = None; // Cancel pending app launch
             }
@@ -152,7 +153,14 @@ impl Shell {
 
         if let Some(last_y) = self.scroll_touch_last_y {
             let delta = last_y - y; // Scroll down when finger moves up
-            self.home_scroll = (self.home_scroll + delta).max(0.0);
+
+            // Calculate max scroll based on content height (must match AppGrid calculation)
+            let rows = (self.apps.len() + 2) / 3; // 3 columns
+            let cell_height = (self.screen_size.w as f64 - 32.0) / 3.0 * 1.2;
+            let content_height = rows as f64 * cell_height + 72.0; // top_offset = 72
+            let max_scroll = (content_height - self.screen_size.h as f64 + 100.0).max(0.0);
+
+            self.home_scroll = (self.home_scroll + delta).clamp(0.0, max_scroll);
         }
         self.scroll_touch_last_y = Some(y);
         self.is_scrolling
@@ -185,8 +193,9 @@ impl Shell {
     pub fn update_switcher_scroll(&mut self, x: f64, num_windows: usize, card_spacing: i32) -> bool {
         if let Some(start_x) = self.switcher_touch_start_x {
             let total_delta = (x - start_x).abs();
-            // If moved more than 20 pixels, it's a scroll, not a tap
-            if total_delta > 20.0 {
+            // If moved more than 40 pixels, it's a scroll, not a tap
+            // (increased from 20px for better tap reliability on touch screens)
+            if total_delta > 40.0 {
                 self.is_scrolling = true;
                 self.pending_switcher_index = None; // Cancel pending window switch
             }
