@@ -487,6 +487,11 @@ impl Shell {
         self.wiggle_start_time = None;
         self.dragging_index = None;
         self.drag_position = None;
+        // Ensure all popup/menu state is cleared for clean long press detection
+        self.long_press_menu = None;
+        self.menu_just_opened = false;
+        self.popup_showing = false;
+        self.popup_category = None;
     }
 
     /// Start dragging a category in wiggle mode
