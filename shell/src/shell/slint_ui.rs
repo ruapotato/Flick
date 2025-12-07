@@ -8,8 +8,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
-use slint::platform::{Platform, WindowAdapter};
-use slint::{PhysicalSize, Rgb8Pixel, SharedPixelBuffer};
+use slint::platform::{Platform, WindowAdapter, PointerEventButton, WindowEvent};
+use slint::{LogicalPosition, PhysicalSize, Rgb8Pixel, SharedPixelBuffer};
 use smithay::utils::{Logical, Size};
 use tracing::info;
 
@@ -26,6 +26,8 @@ pub struct SlintShell {
     size: Size<i32, Logical>,
     /// Pixel buffer for software rendering (RGBA8888)
     pixel_buffer: RefCell<Vec<u8>>,
+    /// Pending app tap index (set by callback, polled by compositor)
+    pending_app_tap: Rc<RefCell<Option<i32>>>,
 }
 
 impl SlintShell {
@@ -54,11 +56,22 @@ impl SlintShell {
         let buffer_size = (size.w * size.h * 4) as usize;
         let pixel_buffer = RefCell::new(vec![0u8; buffer_size]);
 
+        // Create pending app tap storage for callback communication
+        let pending_app_tap = Rc::new(RefCell::new(None));
+
+        // Connect the app-tapped callback
+        let pending_tap_clone = pending_app_tap.clone();
+        shell.on_app_tapped(move |index| {
+            info!("Slint app tapped callback: index={}", index);
+            *pending_tap_clone.borrow_mut() = Some(index);
+        });
+
         Self {
             window,
             shell,
             size,
             pixel_buffer,
+            pending_app_tap,
         }
     }
 
@@ -240,6 +253,115 @@ impl SlintShell {
     /// Process pending Slint events (timers, animations, etc.)
     pub fn process_events(&self) {
         slint::platform::update_timers_and_animations();
+    }
+
+    /// Dispatch touch/pointer down event to Slint
+    pub fn dispatch_pointer_pressed(&self, x: f32, y: f32) {
+        let window_size = self.window.size();
+        info!("Slint dispatch_pointer_pressed({}, {}) window_size={}x{}",
+              x, y, window_size.width, window_size.height);
+        let position = LogicalPosition::new(x, y);
+        // First move the pointer to the position (enter the TouchArea)
+        self.window.dispatch_event(WindowEvent::PointerMoved { position });
+        // Then press
+        self.window.dispatch_event(WindowEvent::PointerPressed {
+            position,
+            button: PointerEventButton::Left,
+        });
+        // Request redraw to process the input
+        self.window.request_redraw();
+        // Process events immediately
+        slint::platform::update_timers_and_animations();
+    }
+
+    /// Dispatch touch/pointer move event to Slint
+    pub fn dispatch_pointer_moved(&self, x: f32, y: f32) {
+        let position = LogicalPosition::new(x, y);
+        self.window.dispatch_event(WindowEvent::PointerMoved { position });
+    }
+
+    /// Dispatch touch/pointer up event to Slint
+    pub fn dispatch_pointer_released(&self, x: f32, y: f32) {
+        info!("Slint dispatch_pointer_released({}, {})", x, y);
+        let position = LogicalPosition::new(x, y);
+        self.window.dispatch_event(WindowEvent::PointerReleased {
+            position,
+            button: PointerEventButton::Left,
+        });
+        // Process events immediately to trigger callbacks
+        slint::platform::update_timers_and_animations();
+    }
+
+    /// Dispatch pointer exit event to Slint (touch cancelled or left area)
+    pub fn dispatch_pointer_exit(&self) {
+        self.window.dispatch_event(WindowEvent::PointerExited);
+    }
+
+    /// Poll for pending app tap (from Slint callback)
+    /// Returns the app index if there was a tap, and clears the pending state
+    pub fn take_pending_app_tap(&self) -> Option<i32> {
+        self.pending_app_tap.borrow_mut().take()
+    }
+
+    /// Hit test a tap position and return the app index if an app tile was tapped
+    /// This bypasses Slint's input handling which doesn't work with MinimalSoftwareWindow
+    pub fn hit_test_app_tap(&self, x: f32, y: f32) -> Option<i32> {
+        let width = self.size.w as f32;
+        let _height = self.size.h as f32;
+
+        // Layout constants matching shell.slint HomeScreen
+        let status_bar_height = 48.0;
+        let padding = 24.0;
+        let row_height = 140.0;
+        let row_spacing = 16.0;
+        let col_spacing = 12.0;
+
+        // Grid starts after status bar + padding
+        let grid_start_y = status_bar_height + padding;
+
+        // Check if tap is in the grid area
+        if y < grid_start_y {
+            return None;
+        }
+
+        // Calculate which row
+        let relative_y = y - grid_start_y;
+        let row_with_spacing = row_height + row_spacing;
+        let row = (relative_y / row_with_spacing) as i32;
+
+        // Check if tap is between rows (in the spacing)
+        let y_in_row = relative_y - (row as f32 * row_with_spacing);
+        if y_in_row > row_height {
+            return None; // In the gap between rows
+        }
+
+        // Calculate column (4 columns)
+        let grid_width = width - 2.0 * padding;
+        let col_width = (grid_width - 3.0 * col_spacing) / 4.0;
+        let relative_x = x - padding;
+
+        if relative_x < 0.0 || relative_x > grid_width {
+            return None;
+        }
+
+        let col_with_spacing = col_width + col_spacing;
+        let col = (relative_x / col_with_spacing) as i32;
+
+        // Check if tap is between columns (in the spacing)
+        let x_in_col = relative_x - (col as f32 * col_with_spacing);
+        if x_in_col > col_width {
+            return None; // In the gap between columns
+        }
+
+        // Calculate app index (row * 4 + col)
+        if col >= 0 && col < 4 && row >= 0 && row < 4 {
+            let index = row * 4 + col;
+            info!("Hit test: tap at ({}, {}) -> row={}, col={}, index={}",
+                  x, y, row, col, index);
+            Some(index)
+        } else {
+            None
+        }
     }
 }
 

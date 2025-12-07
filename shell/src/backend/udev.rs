@@ -288,6 +288,11 @@ pub fn run() -> Result<()> {
         // Update shell with actual screen size
         state.shell.screen_size = state.screen_size;
         state.shell.quick_settings.screen_size = state.screen_size;
+        // Update Slint UI with actual screen size
+        if let Some(ref mut slint_ui) = state.shell.slint_ui {
+            slint_ui.set_size(state.screen_size);
+            info!("Slint UI size updated to: {:?}", state.screen_size);
+        }
         info!("Screen size updated to: {:?}", state.screen_size);
     }
 
@@ -1444,6 +1449,8 @@ fn handle_input_event(
                 state.gesture_recognizer.active_gesture,
                 Some(crate::input::ActiveGesture::EdgeSwipe { .. })
             );
+            info!("Home touch check: view={:?}, edge_gesture_active={}, wiggle={}, long_press_menu={}",
+                  state.shell.view, edge_gesture_active, state.shell.wiggle_mode, state.shell.long_press_menu.is_some());
             if state.shell.view == crate::shell::ShellView::Home && !edge_gesture_active {
                 // If long press menu is open, handle menu interaction
                 if state.shell.long_press_menu.is_some() {
@@ -1466,12 +1473,16 @@ fn handle_input_event(
                         info!("Started dragging category at index {}", index);
                     }
                 } else {
-                    // Check if touch hit a category
-                    if let Some(category) = state.shell.hit_test_category(touch_pos) {
-                        state.shell.start_category_touch(touch_pos, category);
+                    // Forward touch to Slint for app grid hit testing
+                    info!("Dispatching touch to Slint at ({}, {}), slint_ui={}",
+                          touch_pos.x, touch_pos.y, state.shell.slint_ui.is_some());
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
                     } else {
-                        state.shell.start_home_touch(touch_pos.y, None);
+                        info!("WARNING: slint_ui is None!");
                     }
+                    // Keep track of scroll start for gesture detection
+                    state.shell.start_home_touch(touch_pos.y, None);
                 }
             }
 
@@ -1606,6 +1617,13 @@ fn handle_input_event(
                 // Check for long press (300ms without scrolling)
                 // This also runs in the render loop for cases where finger is completely still
                 state.shell.check_and_show_long_press();
+
+                // Forward touch motion to Slint (if not in wiggle mode)
+                if !state.shell.wiggle_mode {
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                    }
+                }
             }
 
             // Update drag position in wiggle mode
@@ -1846,16 +1864,31 @@ fn handle_input_event(
                         // Clear touch state
                         state.shell.end_home_touch();
                     }
-                } else if let Some(exec) = state.shell.end_home_touch() {
-                    info!("Launching app: {}", exec);
-                    // Launch app - native Wayland apps use WAYLAND_DISPLAY,
-                    // X11 apps fall back to XWayland via DISPLAY if available
-                    std::process::Command::new("sh")
-                        .arg("-c")
-                        .arg(&exec)
-                        .spawn()
-                        .ok();
-                    state.shell.app_launched();
+                } else {
+                    // Use our own hit testing since MinimalSoftwareWindow doesn't process input
+                    if let Some(pos) = last_touch_pos {
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            // Use our own hit testing instead of Slint's input handling
+                            if let Some(index) = slint_ui.hit_test_app_tap(pos.x as f32, pos.y as f32) {
+                                info!("App tap detected via hit test: index={}", index);
+                                // Get the category at this index and launch its default app
+                                let categories = state.shell.app_manager.get_category_info();
+                                if let Some(category) = categories.get(index as usize) {
+                                    if let Some(ref exec) = category.selected_exec {
+                                        info!("Launching app: {}", exec);
+                                        std::process::Command::new("sh")
+                                            .arg("-c")
+                                            .arg(exec)
+                                            .spawn()
+                                            .ok();
+                                        state.shell.app_launched();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Clear the old touch state
+                    state.shell.end_home_touch();
                 }
             }
 

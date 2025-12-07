@@ -96,43 +96,54 @@ component AppTile inherits Rectangle {
 
     width: 100%;
     height: 100%;
+    // Visual feedback when pressed
+    background: touch-area.pressed ? Theme.surface-variant.with-alpha(0.3) : transparent;
 
     VerticalLayout {
         alignment: center;
-        spacing: 8px;
-        padding: 4px;
+        spacing: 10px;
 
-        // App icon circle
-        Rectangle {
-            width: 64px;
-            height: 64px;
-            border-radius: 16px;
-            background: tile-color;
+        // Icon row - centered
+        HorizontalLayout {
+            alignment: center;
 
-            Text {
-                width: 100%;
-                height: 100%;
-                text: icon;
-                color: Theme.on-surface;
-                font-size: 28px;
-                font-weight: 700;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+            Rectangle {
+                width: 80px;
+                height: 80px;
+                border-radius: 20px;
+                background: tile-color;
+
+                Text {
+                    width: 100%;
+                    height: 100%;
+                    text: icon;
+                    color: Theme.on-surface;
+                    font-size: 36px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
             }
         }
 
-        // App name
-        Text {
-            text: name;
-            color: Theme.on-surface-variant;
-            font-size: 12px;
-            horizontal-alignment: center;
-            overflow: elide;
-            max-width: 80px;
+        // Name row - centered
+        HorizontalLayout {
+            alignment: center;
+
+            Text {
+                text: name;
+                color: Theme.on-surface-variant;
+                font-size: 14px;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
         }
     }
 
-    TouchArea {
+    // TouchArea with explicit size - named so we can reference pressed state
+    touch-area := TouchArea {
+        width: 100%;
+        height: 100%;
         clicked => { root.clicked(); }
     }
 }
@@ -308,7 +319,7 @@ component LockScreen inherits Rectangle {
     }
 }
 
-// Home screen with app grid - 4 columns
+// Home screen with app grid - 4 columns, flexible layout
 component HomeScreen inherits Rectangle {
     in property <[AppCategory]> categories: [];
     in property <string> time: "12:00";
@@ -327,54 +338,51 @@ component HomeScreen inherits Rectangle {
             wifi: true;
         }
 
-        // App grid using a 4-column layout
-        ScrollView {
+        // App grid area - fills remaining space
+        Rectangle {
             vertical-stretch: 1;
+            background: Theme.background;
 
             VerticalLayout {
-                padding: 16px;
-                spacing: 8px;
+                padding: 24px;
+                spacing: 16px;
                 alignment: start;
 
                 // Row 0 (items 0-3)
                 if categories.length > 0: HorizontalLayout {
-                    spacing: 8px;
-                    alignment: center;
+                    spacing: 12px;
+                    height: 140px;
 
-                    if categories.length > 0: Rectangle {
-                        width: 88px;
-                        height: 110px;
-                        AppTile {
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 0: AppTile {
                             name: categories[0].name;
                             icon: categories[0].icon;
                             tile-color: categories[0].color;
                             clicked => { app-tapped(0); }
                         }
                     }
-                    if categories.length > 1: Rectangle {
-                        width: 88px;
-                        height: 110px;
-                        AppTile {
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 1: AppTile {
                             name: categories[1].name;
                             icon: categories[1].icon;
                             tile-color: categories[1].color;
                             clicked => { app-tapped(1); }
                         }
                     }
-                    if categories.length > 2: Rectangle {
-                        width: 88px;
-                        height: 110px;
-                        AppTile {
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 2: AppTile {
                             name: categories[2].name;
                             icon: categories[2].icon;
                             tile-color: categories[2].color;
                             clicked => { app-tapped(2); }
                         }
                     }
-                    if categories.length > 3: Rectangle {
-                        width: 88px;
-                        height: 110px;
-                        AppTile {
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 3: AppTile {
                             name: categories[3].name;
                             icon: categories[3].icon;
                             tile-color: categories[3].color;
@@ -385,43 +393,39 @@ component HomeScreen inherits Rectangle {
 
                 // Row 1 (items 4-7)
                 if categories.length > 4: HorizontalLayout {
-                    spacing: 8px;
-                    alignment: center;
+                    spacing: 12px;
+                    height: 140px;
 
-                    if categories.length > 4: Rectangle {
-                        width: 88px;
-                        height: 110px;
-                        AppTile {
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 4: AppTile {
                             name: categories[4].name;
                             icon: categories[4].icon;
                             tile-color: categories[4].color;
                             clicked => { app-tapped(4); }
                         }
                     }
-                    if categories.length > 5: Rectangle {
-                        width: 88px;
-                        height: 110px;
-                        AppTile {
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 5: AppTile {
                             name: categories[5].name;
                             icon: categories[5].icon;
                             tile-color: categories[5].color;
                             clicked => { app-tapped(5); }
                         }
                     }
-                    if categories.length > 6: Rectangle {
-                        width: 88px;
-                        height: 110px;
-                        AppTile {
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 6: AppTile {
                             name: categories[6].name;
                             icon: categories[6].icon;
                             tile-color: categories[6].color;
                             clicked => { app-tapped(6); }
                         }
                     }
-                    if categories.length > 7: Rectangle {
-                        width: 88px;
-                        height: 110px;
-                        AppTile {
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 7: AppTile {
                             name: categories[7].name;
                             icon: categories[7].icon;
                             tile-color: categories[7].color;
@@ -432,47 +436,86 @@ component HomeScreen inherits Rectangle {
 
                 // Row 2 (items 8-11)
                 if categories.length > 8: HorizontalLayout {
-                    spacing: 8px;
-                    alignment: center;
+                    spacing: 12px;
+                    height: 140px;
 
-                    if categories.length > 8: Rectangle {
-                        width: 88px;
-                        height: 110px;
-                        AppTile {
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 8: AppTile {
                             name: categories[8].name;
                             icon: categories[8].icon;
                             tile-color: categories[8].color;
                             clicked => { app-tapped(8); }
                         }
                     }
-                    if categories.length > 9: Rectangle {
-                        width: 88px;
-                        height: 110px;
-                        AppTile {
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 9: AppTile {
                             name: categories[9].name;
                             icon: categories[9].icon;
                             tile-color: categories[9].color;
                             clicked => { app-tapped(9); }
                         }
                     }
-                    if categories.length > 10: Rectangle {
-                        width: 88px;
-                        height: 110px;
-                        AppTile {
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 10: AppTile {
                             name: categories[10].name;
                             icon: categories[10].icon;
                             tile-color: categories[10].color;
                             clicked => { app-tapped(10); }
                         }
                     }
-                    if categories.length > 11: Rectangle {
-                        width: 88px;
-                        height: 110px;
-                        AppTile {
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 11: AppTile {
                             name: categories[11].name;
                             icon: categories[11].icon;
                             tile-color: categories[11].color;
                             clicked => { app-tapped(11); }
+                        }
+                    }
+                }
+
+                // Row 3 (items 12-15)
+                if categories.length > 12: HorizontalLayout {
+                    spacing: 12px;
+                    height: 140px;
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 12: AppTile {
+                            name: categories[12].name;
+                            icon: categories[12].icon;
+                            tile-color: categories[12].color;
+                            clicked => { app-tapped(12); }
+                        }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 13: AppTile {
+                            name: categories[13].name;
+                            icon: categories[13].icon;
+                            tile-color: categories[13].color;
+                            clicked => { app-tapped(13); }
+                        }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 14: AppTile {
+                            name: categories[14].name;
+                            icon: categories[14].icon;
+                            tile-color: categories[14].color;
+                            clicked => { app-tapped(14); }
+                        }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if categories.length > 15: AppTile {
+                            name: categories[15].name;
+                            icon: categories[15].icon;
+                            tile-color: categories[15].color;
+                            clicked => { app-tapped(15); }
                         }
                     }
                 }
