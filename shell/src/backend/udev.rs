@@ -111,12 +111,13 @@ struct SurfaceData {
     ready_to_render: bool,
 }
 
-/// Keyboard modifier state for tracking Ctrl+Alt+Shift
+/// Keyboard modifier state for tracking Ctrl+Alt+Shift+Super
 #[derive(Default)]
 struct ModifierState {
     ctrl: bool,
     alt: bool,
     shift: bool,
+    super_key: bool,
 }
 
 /// Convert evdev keycode to character (simplified US QWERTY layout)
@@ -1247,8 +1248,8 @@ fn handle_input_event(
             let evdev_keycode = raw_keycode.saturating_sub(8);
             debug!("Keyboard event: xkb_keycode={}, evdev_keycode={}, pressed={}", raw_keycode, evdev_keycode, pressed);
 
-            // Track modifier state for VT switching and password input
-            // Evdev keycodes: 29=LCtrl, 97=RCtrl, 56=LAlt, 100=RAlt, 42=LShift, 54=RShift
+            // Track modifier state for VT switching, shortcuts, and password input
+            // Evdev keycodes: 29=LCtrl, 97=RCtrl, 56=LAlt, 100=RAlt, 42=LShift, 54=RShift, 125=LSuper, 126=RSuper
             match evdev_keycode {
                 29 | 97 => {
                     modifiers.borrow_mut().ctrl = pressed;
@@ -1258,6 +1259,9 @@ fn handle_input_event(
                 }
                 42 | 54 => {
                     modifiers.borrow_mut().shift = pressed;
+                }
+                125 | 126 => {
+                    modifiers.borrow_mut().super_key = pressed;
                 }
                 _ => {}
             }
@@ -1275,6 +1279,28 @@ fn handle_input_event(
                         }
                         return;
                     }
+                }
+            }
+
+            // Power button (evdev keycode 116) locks the screen
+            if evdev_keycode == 116 && pressed {
+                if state.shell.view != crate::shell::ShellView::LockScreen {
+                    info!("Power button pressed, locking screen");
+                    state.shell.lock();
+                }
+                return;
+            }
+
+            // Super+L (evdev: L=38) locks the screen
+            if evdev_keycode == 38 && pressed {
+                let mods = modifiers.borrow();
+                if mods.super_key {
+                    drop(mods); // Release borrow before calling lock()
+                    if state.shell.view != crate::shell::ShellView::LockScreen {
+                        info!("Super+L pressed, locking screen");
+                        state.shell.lock();
+                    }
+                    return;
                 }
             }
 

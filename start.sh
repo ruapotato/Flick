@@ -8,7 +8,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSITOR_DIR="$SCRIPT_DIR/compositor"
+SHELL_DIR="$SCRIPT_DIR/shell"
 
 # Colors
 RED='\033[0;31m'
@@ -49,19 +49,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Build compositor if needed
-cd "$COMPOSITOR_DIR"
+# Build shell if needed
+cd "$SHELL_DIR"
 if [ ! -f target/release/flick ] || [ Cargo.toml -nt target/release/flick ] || [ -n "$(find src -newer target/release/flick 2>/dev/null)" ]; then
-    echo -e "${YELLOW}Building compositor (release)...${NC}"
+    echo -e "${YELLOW}Building shell (release)...${NC}"
     cargo build --release
 fi
 
-echo -e "${GREEN}Starting Flick compositor...${NC}"
+echo -e "${GREEN}Starting Flick shell...${NC}"
 [ -n "$TIMEOUT" ] && echo -e "  Timeout: ${TIMEOUT}s"
-echo -e "  Logs: ~/.local/state/flick/compositor.log.*"
+echo -e "  Logs: ~/.local/state/flick/flick.log.*"
 echo ""
 
-# Run compositor
+# Run shell
 if [ -n "$TIMEOUT" ]; then
     timeout "$TIMEOUT" ./target/release/flick || EXIT_CODE=$?
     if [ "$EXIT_CODE" = "124" ]; then

@@ -8,6 +8,9 @@ use std::fs;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
+/// Path to Flick's built-in Settings app
+pub const FLICK_SETTINGS_EXEC: &str = "/home/david/Flick/apps/flick_settings/build/linux/x64/release/bundle/flick_settings";
+
 /// Predefined app categories that appear on the home screen
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AppCategory {
@@ -86,6 +89,12 @@ impl AppCategory {
             Self::Notes => (vec!["TextEditor"], vec!["WordProcessor"]),
             Self::Settings => (vec!["Settings", "DesktopSettings"], vec![]),
         }
+    }
+
+    /// Check if users can customize which app is used for this category
+    /// Settings is always Flick Settings and cannot be changed
+    pub fn is_customizable(&self) -> bool {
+        !matches!(self, Self::Settings)
     }
 
     /// Get a default color for this category (used as fallback if no icon)
@@ -422,6 +431,10 @@ impl AppManager {
 
     /// Get the exec command for a category (selected or default)
     pub fn get_exec(&self, category: AppCategory) -> Option<String> {
+        // Settings always uses Flick's built-in Settings app
+        if category == AppCategory::Settings {
+            return Some(FLICK_SETTINGS_EXEC.to_string());
+        }
         // First try user selection
         if let Some(exec) = self.config.get_selected(category) {
             return Some(exec.to_string());

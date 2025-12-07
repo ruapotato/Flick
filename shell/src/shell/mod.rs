@@ -356,6 +356,13 @@ impl Shell {
             return false; // Menu already open
         }
         if let Some(category) = self.check_long_press() {
+            // Skip long press menu for non-customizable categories (like Settings)
+            if !category.is_customizable() {
+                tracing::debug!("Long press on non-customizable category {:?}, ignoring", category);
+                self.long_press_start = None;
+                self.long_press_category = None;
+                return false;
+            }
             if let Some(pos) = self.long_press_position {
                 tracing::info!("Long press triggered for {:?} at ({:.0}, {:.0})", category, pos.x, pos.y);
                 self.show_long_press_menu(category, pos);
