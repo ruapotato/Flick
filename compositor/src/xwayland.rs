@@ -102,6 +102,13 @@ impl XwmHandler for Flick {
 
         if let Some(win) = to_remove {
             self.space.unmap_elem(&win);
+
+            // If no more X11 windows, switch to Home view
+            let has_windows = self.space.elements().any(|w| w.x11_surface().is_some());
+            if !has_windows {
+                tracing::info!("No more windows after unmap, switching to Home view");
+                self.shell.view = crate::shell::ShellView::Home;
+            }
         }
     }
 

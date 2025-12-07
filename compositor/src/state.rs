@@ -315,9 +315,10 @@ impl Flick {
     pub fn update_close_gesture(&mut self, progress: f64) {
         if let Some(ref window) = self.close_gesture_window.clone() {
             // Calculate new Y position based on progress
-            // Move window 1:1 with finger using screen height for full movement
-            let screen_height = self.screen_size.h as f64;
-            let offset = (progress * screen_height) as i32;
+            // progress = finger_distance / swipe_threshold (300px)
+            // So offset = progress * 300 gives 1:1 finger tracking
+            let swipe_threshold = 300.0;
+            let offset = (progress * swipe_threshold) as i32;
             let new_y = self.close_gesture_original_y + offset;
 
             // Move the window in the space
@@ -382,9 +383,10 @@ impl Flick {
     pub fn update_home_gesture(&mut self, progress: f64) {
         if let Some(ref window) = self.home_gesture_window.clone() {
             // Calculate new Y position - move UP (negative offset)
-            // Move window 1:1 with finger using screen height for full movement
-            let screen_height = self.screen_size.h as f64;
-            let offset = (progress * screen_height) as i32;
+            // progress = finger_distance / swipe_threshold (300px)
+            // So offset = progress * 300 gives 1:1 finger tracking
+            let swipe_threshold = 300.0;
+            let offset = (progress * swipe_threshold) as i32;
             let new_y = self.home_gesture_original_y - offset;
 
             // Move the window in the space

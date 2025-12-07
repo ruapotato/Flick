@@ -308,7 +308,7 @@ impl GestureRecognizer {
                 Some(GestureEvent::EdgeSwipeUpdate {
                     edge: *edge,
                     fingers: self.points.len() as u32,
-                    progress: progress.clamp(0.0, 1.0),
+                    progress: progress.max(0.0), // No upper clamp - allow full screen movement
                     velocity: match edge {
                         Edge::Left | Edge::Right => point.velocity.x,
                         Edge::Top | Edge::Bottom => point.velocity.y,
