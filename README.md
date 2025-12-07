@@ -161,4 +161,4 @@ Logs are written to `~/.local/state/flick/compositor.log.*`
 
 ## License
 
-MIT
+GPL3 - David Hamner
