@@ -1035,11 +1035,12 @@ fn handle_input_event(
                 pointer_pos.x = pointer_pos.x.clamp(0.0, screen.w as f64);
                 pointer_pos.y = pointer_pos.y.clamp(0.0, screen.h as f64);
 
-                // Find surface under pointer
+                // Find surface under pointer (handles both Wayland and X11 windows)
                 let under = state.space.element_under(pointer_pos)
                     .map(|(window, loc)| {
                         let surface = window.toplevel()
-                            .map(|t| t.wl_surface().clone());
+                            .map(|t| t.wl_surface().clone())
+                            .or_else(|| window.x11_surface().and_then(|x| x.wl_surface()));
                         (surface, loc)
                     });
 
@@ -1070,11 +1071,12 @@ fn handle_input_event(
                     event.y_transformed(screen.h),
                 ));
 
-                // Find surface under pointer
+                // Find surface under pointer (handles both Wayland and X11 windows)
                 let under = state.space.element_under(pointer_pos)
                     .map(|(window, loc)| {
                         let surface = window.toplevel()
-                            .map(|t| t.wl_surface().clone());
+                            .map(|t| t.wl_surface().clone())
+                            .or_else(|| window.x11_surface().and_then(|x| x.wl_surface()));
                         (surface, loc)
                     });
 
@@ -1107,10 +1109,13 @@ fn handle_input_event(
                 if button_state == ButtonState::Pressed {
                     let pointer_pos = pointer.current_location();
                     if let Some((window, _)) = state.space.element_under(pointer_pos) {
-                        if let Some(toplevel) = window.toplevel() {
-                            let wl_surface = toplevel.wl_surface().clone();
+                        // Handle both Wayland and X11 windows
+                        let wl_surface = window.toplevel()
+                            .map(|t| t.wl_surface().clone())
+                            .or_else(|| window.x11_surface().and_then(|x| x.wl_surface()));
+                        if let Some(surface) = wl_surface {
                             if let Some(keyboard) = state.seat.get_keyboard() {
-                                keyboard.set_focus(state, Some(wl_surface), serial);
+                                keyboard.set_focus(state, Some(surface), serial);
                                 debug!("Keyboard focus set via click");
                             }
                         }
@@ -1225,11 +1230,12 @@ fn handle_input_event(
             if let Some(touch) = state.seat.get_touch() {
                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
-                // Find surface under touch point
+                // Find surface under touch point (handles both Wayland and X11 windows)
                 let under = state.space.element_under(touch_pos)
                     .map(|(window, loc)| {
                         let surface = window.toplevel()
-                            .map(|t| t.wl_surface().clone());
+                            .map(|t| t.wl_surface().clone())
+                            .or_else(|| window.x11_surface().and_then(|x| x.wl_surface()));
                         (surface, loc)
                     });
 
@@ -1303,11 +1309,12 @@ fn handle_input_event(
             }
 
             if let Some(touch) = state.seat.get_touch() {
-                // Find surface under touch point
+                // Find surface under touch point (handles both Wayland and X11 windows)
                 let under = state.space.element_under(touch_pos)
                     .map(|(window, loc)| {
                         let surface = window.toplevel()
-                            .map(|t| t.wl_surface().clone());
+                            .map(|t| t.wl_surface().clone())
+                            .or_else(|| window.x11_surface().and_then(|x| x.wl_surface()));
                         (surface, loc)
                     });
 
@@ -1379,11 +1386,14 @@ fn handle_input_event(
                     let windows: Vec<_> = state.space.elements().cloned().collect();
                     if let Some(window) = windows.get(window_index) {
                         info!("Switcher: switching to window {}", window_index);
-                        // Raise window and focus it
+                        // Raise window and focus it (handles both Wayland and X11 windows)
                         if let Some(keyboard) = state.seat.get_keyboard() {
-                            if let Some(toplevel) = window.toplevel() {
+                            let wl_surface = window.toplevel()
+                                .map(|t| t.wl_surface().clone())
+                                .or_else(|| window.x11_surface().and_then(|x| x.wl_surface()));
+                            if let Some(surface) = wl_surface {
                                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                                keyboard.set_focus(state, Some(toplevel.wl_surface().clone()), serial);
+                                keyboard.set_focus(state, Some(surface), serial);
                             }
                         }
                         state.space.raise_element(window, true);
