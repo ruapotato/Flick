@@ -871,6 +871,16 @@ fn handle_input_event(
             let slot_id: i32 = event.slot().into();
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
                 debug!("Gesture event: {:?}", gesture_event);
+                // Send start event to shell
+                if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = gesture_event {
+                    let edge_str = match edge {
+                        crate::input::Edge::Left => "left",
+                        crate::input::Edge::Right => "right",
+                        crate::input::Edge::Top => "top",
+                        crate::input::Edge::Bottom => "bottom",
+                    };
+                    state.send_gesture_progress(edge_str, "start", 0.0, 0.0);
+                }
             }
 
             if let Some(touch) = state.seat.get_touch() {
@@ -922,6 +932,16 @@ fn handle_input_event(
             let slot_id: i32 = event.slot().into();
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
                 debug!("Gesture update: {:?}", gesture_event);
+                // Send progress update to shell
+                if let crate::input::GestureEvent::EdgeSwipeUpdate { edge, progress, velocity, .. } = gesture_event {
+                    let edge_str = match edge {
+                        crate::input::Edge::Left => "left",
+                        crate::input::Edge::Right => "right",
+                        crate::input::Edge::Top => "top",
+                        crate::input::Edge::Bottom => "bottom",
+                    };
+                    state.send_gesture_progress(edge_str, "update", progress, velocity);
+                }
             }
 
             if let Some(touch) = state.seat.get_touch() {
@@ -958,8 +978,22 @@ fn handle_input_event(
             let slot_id: i32 = event.slot().into();
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {
                 debug!("Gesture completed: {:?}", gesture_event);
+
+                // Send end event with completion status
+                if let crate::input::GestureEvent::EdgeSwipeEnd { edge, completed, velocity, .. } = &gesture_event {
+                    let edge_str = match edge {
+                        crate::input::Edge::Left => "left",
+                        crate::input::Edge::Right => "right",
+                        crate::input::Edge::Top => "top",
+                        crate::input::Edge::Bottom => "bottom",
+                    };
+                    let state_str = if *completed { "end_complete" } else { "end_cancel" };
+                    state.send_gesture_progress(edge_str, state_str, if *completed { 1.0 } else { 0.0 }, *velocity);
+                }
+
+                // Handle window management for completed gestures
                 let action = gesture_to_action(&gesture_event);
-                state.send_gesture_action(&action);
+                state.handle_gesture_complete(&action);
             }
 
             if let Some(touch) = state.seat.get_touch() {

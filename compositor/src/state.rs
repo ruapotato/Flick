@@ -187,39 +187,10 @@ impl Flick {
         }
     }
 
-    /// Handle a gesture action - manage windows and notify shell
-    pub fn send_gesture_action(&mut self, action: &GestureAction) {
+    /// Send gesture progress to shell for interactive animations
+    /// Format: timestamp|edge|state|progress|velocity
+    pub fn send_gesture_progress(&self, edge: &str, state: &str, progress: f64, velocity: f64) {
         use std::io::Write;
-
-        // Don't send None actions
-        if matches!(action, GestureAction::None) {
-            return;
-        }
-
-        // Handle window management based on gesture
-        match action {
-            GestureAction::AppDrawer | GestureAction::Home => {
-                // Bring shell (non-X11 window) to front
-                self.bring_shell_to_front();
-            }
-            GestureAction::CloseApp => {
-                // Close the topmost non-shell window
-                self.close_focused_app();
-            }
-            _ => {}
-        }
-
-        let action_str = match action {
-            GestureAction::Back => "back",
-            GestureAction::AppSwitcher => "app_switcher",
-            GestureAction::QuickSettings => "quick_settings",
-            GestureAction::Home => "home",
-            GestureAction::AppDrawer => "app_drawer",
-            GestureAction::CloseApp => "close_app",
-            GestureAction::ZoomViewport { .. } => return, // Don't send zoom for now
-            GestureAction::PanViewport { .. } => return,  // Don't send pan for now
-            GestureAction::None => return,
-        };
 
         if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
             let gesture_file = format!("{}/flick-gesture", runtime_dir);
@@ -232,19 +203,33 @@ impl Flick {
                 Ok(mut file) => {
                     let timestamp = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_millis())
+                        .map(|d| d.as_micros())  // Use microseconds for finer granularity
                         .unwrap_or(0);
-                    let msg = format!("{}:{}", timestamp, action_str);
-                    if let Err(e) = file.write_all(msg.as_bytes()) {
-                        tracing::warn!("Failed to write gesture file: {:?}", e);
-                    } else {
-                        tracing::info!("Gesture action sent: {}", action_str);
-                    }
+                    let msg = format!("{}|{}|{}|{:.3}|{:.1}", timestamp, edge, state, progress, velocity);
+                    let _ = file.write_all(msg.as_bytes());
                 }
-                Err(e) => {
-                    tracing::warn!("Failed to open gesture file: {:?}", e);
-                }
+                Err(_) => {}
             }
+        }
+    }
+
+    /// Handle a completed gesture action - manage windows and notify shell
+    pub fn handle_gesture_complete(&mut self, action: &GestureAction) {
+        // Handle window management based on gesture
+        match action {
+            GestureAction::AppDrawer | GestureAction::Home => {
+                // Bring shell to front for home gestures
+                self.bring_shell_to_front();
+            }
+            GestureAction::AppSwitcher => {
+                // Also bring shell to front for app switcher
+                self.bring_shell_to_front();
+            }
+            GestureAction::CloseApp => {
+                // Close the topmost non-shell window
+                self.close_focused_app();
+            }
+            _ => {}
         }
     }
 
