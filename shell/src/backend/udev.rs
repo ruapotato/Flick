@@ -220,6 +220,73 @@ fn evdev_to_char(keycode: u32, shift: bool) -> Option<char> {
     Some(c)
 }
 
+/// Convert character to evdev keycode (US QWERTY layout)
+/// Returns (keycode, needs_shift)
+fn char_to_evdev(c: char) -> Option<(u32, bool)> {
+    let (keycode, shift) = match c {
+        // Numbers (row 1)
+        '1' => (2, false),  '!' => (2, true),
+        '2' => (3, false),  '@' => (3, true),
+        '3' => (4, false),  '#' => (4, true),
+        '4' => (5, false),  '$' => (5, true),
+        '5' => (6, false),  '%' => (6, true),
+        '6' => (7, false),  '^' => (7, true),
+        '7' => (8, false),  '&' => (8, true),
+        '8' => (9, false),  '*' => (9, true),
+        '9' => (10, false), '(' => (10, true),
+        '0' => (11, false), ')' => (11, true),
+        '-' => (12, false), '_' => (12, true),
+        '=' => (13, false), '+' => (13, true),
+
+        // Row 2: qwertyuiop
+        'q' => (16, false), 'Q' => (16, true),
+        'w' => (17, false), 'W' => (17, true),
+        'e' => (18, false), 'E' => (18, true),
+        'r' => (19, false), 'R' => (19, true),
+        't' => (20, false), 'T' => (20, true),
+        'y' => (21, false), 'Y' => (21, true),
+        'u' => (22, false), 'U' => (22, true),
+        'i' => (23, false), 'I' => (23, true),
+        'o' => (24, false), 'O' => (24, true),
+        'p' => (25, false), 'P' => (25, true),
+        '[' => (26, false), '{' => (26, true),
+        ']' => (27, false), '}' => (27, true),
+        '\\' => (43, false), '|' => (43, true),
+
+        // Row 3: asdfghjkl
+        'a' => (30, false), 'A' => (30, true),
+        's' => (31, false), 'S' => (31, true),
+        'd' => (32, false), 'D' => (32, true),
+        'f' => (33, false), 'F' => (33, true),
+        'g' => (34, false), 'G' => (34, true),
+        'h' => (35, false), 'H' => (35, true),
+        'j' => (36, false), 'J' => (36, true),
+        'k' => (37, false), 'K' => (37, true),
+        'l' => (38, false), 'L' => (38, true),
+        ';' => (39, false), ':' => (39, true),
+        '\'' => (40, false), '"' => (40, true),
+        '`' => (41, false), '~' => (41, true),
+
+        // Row 4: zxcvbnm
+        'z' => (44, false), 'Z' => (44, true),
+        'x' => (45, false), 'X' => (45, true),
+        'c' => (46, false), 'C' => (46, true),
+        'v' => (47, false), 'V' => (47, true),
+        'b' => (48, false), 'B' => (48, true),
+        'n' => (49, false), 'N' => (49, true),
+        'm' => (50, false), 'M' => (50, true),
+        ',' => (51, false), '<' => (51, true),
+        '.' => (52, false), '>' => (52, true),
+        '/' => (53, false), '?' => (53, true),
+
+        // Space
+        ' ' => (57, false),
+
+        _ => return None,
+    };
+    Some((keycode, shift))
+}
+
 pub fn run() -> Result<()> {
     info!("Starting udev backend");
 
@@ -1762,23 +1829,135 @@ fn render_surface(
             [0.1, 0.1, 0.18, 1.0],
         )
     } else {
-        // App view - render windows
+        // App view - render windows (with optional keyboard overlay)
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
         use smithay::desktop::space::SpaceRenderElements;
 
-        let window_elements: Vec<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>> = state
-            .space
-            .render_elements_for_output(renderer, output, scale as f32)
-            .unwrap_or_default();
+        // Check if keyboard should be rendered on top of app
+        let keyboard_visible = state.shell.slint_ui.as_ref()
+            .map(|ui| ui.is_keyboard_visible())
+            .unwrap_or(false);
 
-        // Render windows
-        surface_data.damage_tracker.render_output(
-            renderer,
-            &mut fb,
-            _age as usize,
-            &window_elements,
-            bg_color,
-        )
+        if keyboard_visible {
+            // Render with keyboard overlay - need to use combined element type
+            let mut app_keyboard_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
+
+            // First, add keyboard overlay (FRONT - rendered first in front-to-back order)
+            // Only render the keyboard portion (bottom 280px) of the Slint UI
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                // Set view to app for keyboard-only render
+                slint_ui.set_view("app");
+                slint_ui.process_events();
+                slint_ui.request_redraw();
+
+                if let Some((width, height, pixels)) = slint_ui.render() {
+                    // Keyboard height is 22% of screen, minimum 200px (matches Slint)
+                    let keyboard_height: u32 = std::cmp::max(200, (height as f32 * 0.22) as u32);
+                    let keyboard_y = height.saturating_sub(keyboard_height);
+                    tracing::info!("Keyboard render: slint buffer {}x{}, keyboard_height={}, keyboard_y={}, pixels.len={}",
+                        width, height, keyboard_height, keyboard_y, pixels.len());
+
+                    // Create a smaller buffer just for the keyboard
+                    let mut keyboard_pixels = Vec::with_capacity((width * keyboard_height * 4) as usize);
+
+                    // Copy only the keyboard rows from the full render
+                    for y in keyboard_y..height {
+                        let row_start = (y * width * 4) as usize;
+                        let row_end = row_start + (width * 4) as usize;
+                        if row_end <= pixels.len() {
+                            keyboard_pixels.extend_from_slice(&pixels[row_start..row_end]);
+                        }
+                    }
+                    tracing::info!("Keyboard pixels copied: {} bytes, expected {}",
+                        keyboard_pixels.len(), width * keyboard_height * 4);
+
+                    let mut mem_buffer = MemoryRenderBuffer::new(
+                        Fourcc::Abgr8888,
+                        (width as i32, keyboard_height as i32),
+                        1,
+                        Transform::Normal,
+                        None,
+                    );
+
+                    let _: Result<(), std::convert::Infallible> = mem_buffer.render().draw(|buffer| {
+                        if keyboard_pixels.len() == buffer.len() {
+                            buffer.copy_from_slice(&keyboard_pixels);
+                        }
+                        Ok(vec![Rectangle::from_size((width as i32, keyboard_height as i32).into())])
+                    });
+
+                    // Position keyboard at bottom of screen
+                    let keyboard_y_pos = state.screen_size.h as i32 - keyboard_height as i32;
+                    let loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, keyboard_y_pos).into();
+                    if let Ok(slint_element) = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        loc.to_f64(),
+                        &mem_buffer,
+                        None,
+                        None,
+                        None,
+                        Kind::Unspecified,
+                    ) {
+                        // Add keyboard overlay FIRST (on top in front-to-back)
+                        app_keyboard_elements.push(SwitcherRenderElement::Icon(slint_element));
+                        tracing::info!("App view: keyboard overlay added (cropped to {}px at y={})", keyboard_height, keyboard_y_pos);
+                    }
+                }
+            }
+
+            // Then add window elements (BEHIND keyboard)
+            for window in state.space.elements() {
+                if let Some(loc) = state.space.element_location(window) {
+                    use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
+
+                    let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
+                        .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                            renderer,
+                            (0, 0).into(),
+                            Scale::from(scale),
+                            1.0,
+                        );
+
+                    let screen_w = state.screen_size.w;
+                    let screen_h = state.screen_size.h;
+                    let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
+                        (0, 0).into(),
+                        (screen_w, screen_h).into(),
+                    );
+
+                    for elem in window_render_elements {
+                        let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(1.0));
+                        let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (loc.x, loc.y).into();
+                        let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Relative);
+                        if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
+                            app_keyboard_elements.push(cropped.into());
+                        }
+                    }
+                }
+            }
+
+            surface_data.damage_tracker.render_output(
+                renderer,
+                &mut fb,
+                0, // Force full redraw when keyboard visible
+                &app_keyboard_elements,
+                bg_color,
+            )
+        } else {
+            // Normal app view without keyboard
+            let window_elements: Vec<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>> = state
+                .space
+                .render_elements_for_output(renderer, output, scale as f32)
+                .unwrap_or_default();
+
+            surface_data.damage_tracker.render_output(
+                renderer,
+                &mut fb,
+                _age as usize,
+                &window_elements,
+                bg_color,
+            )
+        }
     };
 
     match render_res {
@@ -1931,6 +2110,44 @@ fn handle_input_event(
                     }
                     return;
                 }
+            }
+
+            // Debug: Log all key presses to find correct keycode
+            if pressed {
+                info!("KEY PRESSED: evdev_keycode={}, xkb_keycode={}", evdev_keycode, raw_keycode);
+            }
+
+            // Super+K (evdev: K=37) toggles on-screen keyboard
+            if evdev_keycode == 37 && pressed {
+                let mods = modifiers.borrow();
+                if mods.super_key {
+                    drop(mods);
+                    info!("Super+K pressed - toggling on-screen keyboard");
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        let visible = slint_ui.is_keyboard_visible();
+                        info!("Current keyboard visibility: {}, setting to: {}", visible, !visible);
+                        slint_ui.set_keyboard_visible(!visible);
+                        info!("On-screen keyboard toggled: {}", !visible);
+                    } else {
+                        error!("slint_ui is None - cannot toggle keyboard");
+                    }
+                    return;
+                }
+            }
+
+            // F12 (evdev keycode 88) also toggles on-screen keyboard for testing
+            // Note: F1-F10 are 59-68, F11=87, F12=88
+            if evdev_keycode == 88 && pressed {
+                info!("F12 pressed - toggling on-screen keyboard");
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    let visible = slint_ui.is_keyboard_visible();
+                    info!("Current keyboard visibility: {}, setting to: {}", visible, !visible);
+                    slint_ui.set_keyboard_visible(!visible);
+                    info!("On-screen keyboard toggled: {}", !visible);
+                } else {
+                    error!("slint_ui is None - cannot toggle keyboard");
+                }
+                return;
             }
 
             // Handle keyboard input for lock screen password mode
@@ -2120,10 +2337,27 @@ fn handle_input_event(
             // Debug: Log touch position and screen size
             info!("Touch down at ({:.0}, {:.0}), screen size: {:?}", touch_pos.x, touch_pos.y, screen);
 
+            // Check if keyboard is visible and touch is in keyboard area
+            let keyboard_visible = state.shell.slint_ui.as_ref()
+                .map(|ui| ui.is_keyboard_visible())
+                .unwrap_or(false);
+            let keyboard_height = std::cmp::max(200, (state.screen_size.h as f32 * 0.22) as i32);
+            let keyboard_top = state.screen_size.h - keyboard_height;
+            let touch_on_keyboard = keyboard_visible && touch_pos.y >= keyboard_top as f64;
+
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
                 info!("Gesture touch_down returned: {:?}", gesture_event);
+
+                // Skip gesture processing if touch is on keyboard
+                let should_process = if touch_on_keyboard {
+                    // Cancel edge gestures when touching keyboard to prevent home gesture
+                    if let crate::input::GestureEvent::EdgeSwipeStart { .. } = &gesture_event {
+                        state.gesture_recognizer.touch_cancel();
+                        info!("Cancelled edge gesture - touch is on keyboard");
+                    }
+                    false
                 // In Switcher view, ignore left/right edge gestures to allow horizontal scrolling
-                let should_process = if state.shell.view == crate::shell::ShellView::Switcher {
+                } else if state.shell.view == crate::shell::ShellView::Switcher {
                     if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
                         // Only process top/bottom edge gestures in Switcher (for going home/closing)
                         // Cancel left/right edge gestures to allow horizontal scrolling
@@ -2340,6 +2574,17 @@ fn handle_input_event(
                 // Dispatch to Slint for toggle visual feedback and callbacks
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                }
+            }
+
+            // Handle keyboard touch when keyboard is visible
+            // Dispatch to Slint so keyboard callbacks fire, but don't block app touches
+            // Keyboard is at bottom of screen, so only dispatch if touch is in keyboard area
+            if touch_on_keyboard {
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    // Touch is on keyboard - dispatch to Slint
+                    slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                    info!("Keyboard touch at ({}, {})", touch_pos.x, touch_pos.y);
                 }
             }
 
@@ -2905,6 +3150,202 @@ fn handle_input_event(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // Handle on-screen keyboard input
+            // This works in any view where keyboard is visible and an app has focus
+            // First, collect keyboard state and actions to avoid borrow conflicts
+            let keyboard_actions: Vec<crate::shell::slint_ui::KeyboardAction> = {
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    if slint_ui.is_keyboard_visible() {
+                        // Dispatch pointer release to Slint to trigger keyboard key callbacks
+                        if let Some(pos) = last_touch_pos {
+                            slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
+                        }
+                        // Get pending keyboard actions
+                        slint_ui.take_pending_keyboard_actions()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                }
+            };
+
+            // Now process keyboard actions with full mutable access to state
+            for action in keyboard_actions {
+                use crate::shell::slint_ui::KeyboardAction;
+                info!("Processing keyboard action: {:?}", action);
+                match action {
+                    KeyboardAction::Character(ch) => {
+                        // Inject character as key press + release
+                        if let Some(c) = ch.chars().next() {
+                            if let Some((keycode, needs_shift)) = char_to_evdev(c) {
+                                if let Some(keyboard) = state.seat.get_keyboard() {
+                                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                    let time = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_millis() as u32;
+
+                                    // XKB keycodes = evdev + 8
+                                    let xkb_keycode = keycode + 8;
+
+                                    // If shift is needed, press shift first
+                                    if needs_shift {
+                                        keyboard.input::<(), _>(
+                                            state,
+                                            smithay::input::keyboard::Keycode::new(42 + 8), // Left Shift (evdev 42 -> xkb 50)
+                                            smithay::backend::input::KeyState::Pressed,
+                                            serial,
+                                            time,
+                                            |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                                        );
+                                    }
+
+                                    // Press the key
+                                    keyboard.input::<(), _>(
+                                        state,
+                                        smithay::input::keyboard::Keycode::new(xkb_keycode),
+                                        smithay::backend::input::KeyState::Pressed,
+                                        serial,
+                                        time,
+                                        |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                                    );
+
+                                    // Release the key
+                                    keyboard.input::<(), _>(
+                                        state,
+                                        smithay::input::keyboard::Keycode::new(xkb_keycode),
+                                        smithay::backend::input::KeyState::Released,
+                                        serial,
+                                        time + 1,
+                                        |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                                    );
+
+                                    // Release shift if we pressed it
+                                    if needs_shift {
+                                        keyboard.input::<(), _>(
+                                            state,
+                                            smithay::input::keyboard::Keycode::new(42 + 8), // Left Shift (evdev 42 -> xkb 50)
+                                            smithay::backend::input::KeyState::Released,
+                                            serial,
+                                            time + 2,
+                                            |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                                        );
+                                    }
+
+                                    info!("Injected character '{}' (keycode={}, shift={})", c, keycode, needs_shift);
+                                }
+                            }
+                        }
+                    }
+                    KeyboardAction::Backspace => {
+                        if let Some(keyboard) = state.seat.get_keyboard() {
+                            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                            let time = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis() as u32;
+
+                            // Backspace: evdev 14 -> xkb 22
+                            keyboard.input::<(), _>(
+                                state,
+                                smithay::input::keyboard::Keycode::new(14 + 8),
+                                smithay::backend::input::KeyState::Pressed,
+                                serial,
+                                time,
+                                |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                            );
+                            keyboard.input::<(), _>(
+                                state,
+                                smithay::input::keyboard::Keycode::new(14 + 8),
+                                smithay::backend::input::KeyState::Released,
+                                serial,
+                                time + 1,
+                                |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                            );
+                            info!("Injected Backspace");
+                        }
+                    }
+                    KeyboardAction::Enter => {
+                        if let Some(keyboard) = state.seat.get_keyboard() {
+                            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                            let time = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis() as u32;
+
+                            // Enter: evdev 28 -> xkb 36
+                            keyboard.input::<(), _>(
+                                state,
+                                smithay::input::keyboard::Keycode::new(28 + 8),
+                                smithay::backend::input::KeyState::Pressed,
+                                serial,
+                                time,
+                                |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                            );
+                            keyboard.input::<(), _>(
+                                state,
+                                smithay::input::keyboard::Keycode::new(28 + 8),
+                                smithay::backend::input::KeyState::Released,
+                                serial,
+                                time + 1,
+                                |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                            );
+                            info!("Injected Enter");
+                        }
+                    }
+                    KeyboardAction::Space => {
+                        if let Some(keyboard) = state.seat.get_keyboard() {
+                            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                            let time = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis() as u32;
+
+                            // Space: evdev 57 -> xkb 65
+                            keyboard.input::<(), _>(
+                                state,
+                                smithay::input::keyboard::Keycode::new(57 + 8),
+                                smithay::backend::input::KeyState::Pressed,
+                                serial,
+                                time,
+                                |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                            );
+                            keyboard.input::<(), _>(
+                                state,
+                                smithay::input::keyboard::Keycode::new(57 + 8),
+                                smithay::backend::input::KeyState::Released,
+                                serial,
+                                time + 1,
+                                |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                            );
+                            info!("Injected Space");
+                        }
+                    }
+                    KeyboardAction::ShiftToggled => {
+                        // Update Slint keyboard shift state
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.toggle_keyboard_shift();
+                        }
+                        info!("Keyboard shift toggled");
+                    }
+                    KeyboardAction::LayoutToggled => {
+                        // Update Slint keyboard layout
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.toggle_keyboard_layout();
+                        }
+                        info!("Keyboard layout toggled");
+                    }
+                    KeyboardAction::Hide => {
+                        // Hide the keyboard
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.set_keyboard_visible(false);
+                        }
+                        info!("Keyboard hidden");
                     }
                 }
             }

@@ -38,6 +38,25 @@ pub enum QuickSettingsAction {
     BrightnessChanged(f32),
 }
 
+/// Actions that can be triggered from the on-screen keyboard
+#[derive(Debug, Clone, PartialEq)]
+pub enum KeyboardAction {
+    /// A character key was pressed
+    Character(String),
+    /// Backspace key
+    Backspace,
+    /// Enter/Return key
+    Enter,
+    /// Space key
+    Space,
+    /// Shift was toggled
+    ShiftToggled,
+    /// Layout was toggled (letters <-> numbers/symbols)
+    LayoutToggled,
+    /// Hide keyboard requested
+    Hide,
+}
+
 /// Slint UI state for the shell
 pub struct SlintShell {
     /// The Slint window adapter
@@ -60,6 +79,8 @@ pub struct SlintShell {
     popup_can_pick: RefCell<bool>,
     /// Wiggle mode state
     wiggle_mode: RefCell<bool>,
+    /// Pending keyboard actions (set by callbacks, polled by compositor)
+    pending_keyboard_actions: Rc<RefCell<Vec<KeyboardAction>>>,
 }
 
 impl SlintShell {
@@ -168,6 +189,52 @@ impl SlintShell {
             *switcher_tap_clone.borrow_mut() = Some(window_id);
         });
 
+        // Create pending keyboard actions storage
+        let pending_keyboard_actions = Rc::new(RefCell::new(Vec::new()));
+
+        // Connect keyboard callbacks
+        let kb_clone = pending_keyboard_actions.clone();
+        shell.on_keyboard_key_pressed(move |ch| {
+            info!("Slint keyboard key pressed: {}", ch);
+            kb_clone.borrow_mut().push(KeyboardAction::Character(ch.to_string()));
+        });
+
+        let kb_clone = pending_keyboard_actions.clone();
+        shell.on_keyboard_backspace(move || {
+            info!("Slint keyboard backspace");
+            kb_clone.borrow_mut().push(KeyboardAction::Backspace);
+        });
+
+        let kb_clone = pending_keyboard_actions.clone();
+        shell.on_keyboard_enter(move || {
+            info!("Slint keyboard enter");
+            kb_clone.borrow_mut().push(KeyboardAction::Enter);
+        });
+
+        let kb_clone = pending_keyboard_actions.clone();
+        shell.on_keyboard_space(move || {
+            info!("Slint keyboard space");
+            kb_clone.borrow_mut().push(KeyboardAction::Space);
+        });
+
+        let kb_clone = pending_keyboard_actions.clone();
+        shell.on_keyboard_shift_toggled(move || {
+            info!("Slint keyboard shift toggled");
+            kb_clone.borrow_mut().push(KeyboardAction::ShiftToggled);
+        });
+
+        let kb_clone = pending_keyboard_actions.clone();
+        shell.on_keyboard_layout_toggled(move || {
+            info!("Slint keyboard layout toggled");
+            kb_clone.borrow_mut().push(KeyboardAction::LayoutToggled);
+        });
+
+        let kb_clone = pending_keyboard_actions.clone();
+        shell.on_keyboard_hide(move || {
+            info!("Slint keyboard hide");
+            kb_clone.borrow_mut().push(KeyboardAction::Hide);
+        });
+
         Self {
             window,
             shell,
@@ -179,6 +246,7 @@ impl SlintShell {
             popup_showing: RefCell::new(false),
             popup_can_pick: RefCell::new(true),
             wiggle_mode: RefCell::new(false),
+            pending_keyboard_actions,
         }
     }
 
@@ -760,6 +828,67 @@ impl SlintShell {
         } else {
             None
         }
+    }
+
+    // ============== Keyboard Methods ==============
+
+    /// Show or hide the on-screen keyboard
+    pub fn set_keyboard_visible(&self, visible: bool) {
+        info!("Setting keyboard visible: {}", visible);
+        self.shell.set_keyboard_visible(visible);
+    }
+
+    /// Check if the keyboard is currently visible
+    pub fn is_keyboard_visible(&self) -> bool {
+        self.shell.get_keyboard_visible()
+    }
+
+    /// Set keyboard shift state
+    pub fn set_keyboard_shifted(&self, shifted: bool) {
+        self.shell.set_keyboard_shifted(shifted);
+    }
+
+    /// Get keyboard shift state
+    pub fn is_keyboard_shifted(&self) -> bool {
+        self.shell.get_keyboard_shifted()
+    }
+
+    /// Set keyboard caps lock state
+    pub fn set_keyboard_caps_lock(&self, caps_lock: bool) {
+        self.shell.set_keyboard_caps_lock(caps_lock);
+    }
+
+    /// Get keyboard caps lock state
+    pub fn is_keyboard_caps_lock(&self) -> bool {
+        self.shell.get_keyboard_caps_lock()
+    }
+
+    /// Set keyboard layout (0 = letters, 1 = numbers/symbols)
+    pub fn set_keyboard_layout(&self, layout: i32) {
+        self.shell.set_keyboard_layout(layout);
+    }
+
+    /// Get keyboard layout
+    pub fn get_keyboard_layout(&self) -> i32 {
+        self.shell.get_keyboard_layout()
+    }
+
+    /// Toggle keyboard shift state
+    pub fn toggle_keyboard_shift(&self) {
+        let shifted = self.is_keyboard_shifted();
+        self.set_keyboard_shifted(!shifted);
+    }
+
+    /// Toggle keyboard layout between letters and symbols
+    pub fn toggle_keyboard_layout(&self) {
+        let layout = self.get_keyboard_layout();
+        self.set_keyboard_layout(if layout == 0 { 1 } else { 0 });
+    }
+
+    /// Poll for pending keyboard actions (from Slint callbacks)
+    /// Returns all pending actions and clears the pending state
+    pub fn take_pending_keyboard_actions(&self) -> Vec<KeyboardAction> {
+        std::mem::take(&mut *self.pending_keyboard_actions.borrow_mut())
     }
 }
 

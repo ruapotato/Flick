@@ -1400,6 +1400,204 @@ component QuickSettingsPanel inherits Rectangle {
     }
 }
 
+// On-Screen Keyboard Key - scales to fill available space
+component KeyboardKey inherits Rectangle {
+    in property <string> label: "";
+    in property <string> shift-label: "";  // Label when shift is active
+    in property <bool> shifted: false;
+    in property <float> width-factor: 1.0;  // 1.0 = normal, 1.5 = 1.5x width, etc.
+    in property <bool> is-special: false;  // Special keys (shift, backspace, etc.)
+    in property <bool> is-active: false;  // For toggle keys like shift
+
+    callback pressed();
+
+    // Use stretch to fill available space proportionally
+    horizontal-stretch: width-factor;
+    vertical-stretch: 1;
+    border-radius: 6px;
+    background: touch.pressed ? Theme.primary : (is-special ? (is-active ? Theme.primary-container : #2a2a3a) : Theme.surface-variant);
+
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.shifted && root.shift-label != "" ? root.shift-label : root.label;
+        color: Theme.on-surface;
+        font-size: is-special ? 12px : 16px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => { root.pressed(); }
+    }
+}
+
+// On-Screen Keyboard - scales to fill available space
+component OnScreenKeyboard inherits Rectangle {
+    in property <bool> shifted: false;
+    in property <bool> caps-lock: false;
+    in property <int> layout: 0;  // 0 = letters, 1 = numbers/symbols
+    in property <length> container-height: 720px;  // Parent height passed in
+
+    callback key-pressed(string);  // The character or key name
+    callback shift-toggled();
+    callback caps-toggled();
+    callback backspace-pressed();
+    callback enter-pressed();
+    callback space-pressed();
+    callback layout-toggled();  // Switch between letters and symbols
+    callback hide-keyboard();
+
+    width: 100%;
+    // Height is ~22% of screen height, minimum 200px for usability
+    height: max(200px, container-height * 0.22);
+    background: Theme.background;
+
+    property <bool> show-shift: shifted || caps-lock;
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        padding: 6px;
+        spacing: 6px;
+
+        // Row 1: q w e r t y u i o p (or 1 2 3 4 5 6 7 8 9 0)
+        HorizontalLayout {
+            spacing: 4px;
+            vertical-stretch: 1;
+
+            if layout == 0: KeyboardKey { label: "q"; shift-label: "Q"; shifted: show-shift; pressed => { key-pressed(show-shift ? "Q" : "q"); } }
+            if layout == 0: KeyboardKey { label: "w"; shift-label: "W"; shifted: show-shift; pressed => { key-pressed(show-shift ? "W" : "w"); } }
+            if layout == 0: KeyboardKey { label: "e"; shift-label: "E"; shifted: show-shift; pressed => { key-pressed(show-shift ? "E" : "e"); } }
+            if layout == 0: KeyboardKey { label: "r"; shift-label: "R"; shifted: show-shift; pressed => { key-pressed(show-shift ? "R" : "r"); } }
+            if layout == 0: KeyboardKey { label: "t"; shift-label: "T"; shifted: show-shift; pressed => { key-pressed(show-shift ? "T" : "t"); } }
+            if layout == 0: KeyboardKey { label: "y"; shift-label: "Y"; shifted: show-shift; pressed => { key-pressed(show-shift ? "Y" : "y"); } }
+            if layout == 0: KeyboardKey { label: "u"; shift-label: "U"; shifted: show-shift; pressed => { key-pressed(show-shift ? "U" : "u"); } }
+            if layout == 0: KeyboardKey { label: "i"; shift-label: "I"; shifted: show-shift; pressed => { key-pressed(show-shift ? "I" : "i"); } }
+            if layout == 0: KeyboardKey { label: "o"; shift-label: "O"; shifted: show-shift; pressed => { key-pressed(show-shift ? "O" : "o"); } }
+            if layout == 0: KeyboardKey { label: "p"; shift-label: "P"; shifted: show-shift; pressed => { key-pressed(show-shift ? "P" : "p"); } }
+
+            if layout == 1: KeyboardKey { label: "1"; shift-label: "!"; shifted: show-shift; pressed => { key-pressed(show-shift ? "!" : "1"); } }
+            if layout == 1: KeyboardKey { label: "2"; shift-label: "@"; shifted: show-shift; pressed => { key-pressed(show-shift ? "@" : "2"); } }
+            if layout == 1: KeyboardKey { label: "3"; shift-label: "#"; shifted: show-shift; pressed => { key-pressed(show-shift ? "#" : "3"); } }
+            if layout == 1: KeyboardKey { label: "4"; shift-label: "$"; shifted: show-shift; pressed => { key-pressed(show-shift ? "$" : "4"); } }
+            if layout == 1: KeyboardKey { label: "5"; shift-label: "%"; shifted: show-shift; pressed => { key-pressed(show-shift ? "%" : "5"); } }
+            if layout == 1: KeyboardKey { label: "6"; shift-label: "^"; shifted: show-shift; pressed => { key-pressed(show-shift ? "^" : "6"); } }
+            if layout == 1: KeyboardKey { label: "7"; shift-label: "&"; shifted: show-shift; pressed => { key-pressed(show-shift ? "&" : "7"); } }
+            if layout == 1: KeyboardKey { label: "8"; shift-label: "*"; shifted: show-shift; pressed => { key-pressed(show-shift ? "*" : "8"); } }
+            if layout == 1: KeyboardKey { label: "9"; shift-label: "("; shifted: show-shift; pressed => { key-pressed(show-shift ? "(" : "9"); } }
+            if layout == 1: KeyboardKey { label: "0"; shift-label: ")"; shifted: show-shift; pressed => { key-pressed(show-shift ? ")" : "0"); } }
+        }
+
+        // Row 2: a s d f g h j k l (or symbols)
+        HorizontalLayout {
+            spacing: 4px;
+            vertical-stretch: 1;
+
+            if layout == 0: KeyboardKey { label: "a"; shift-label: "A"; shifted: show-shift; pressed => { key-pressed(show-shift ? "A" : "a"); } }
+            if layout == 0: KeyboardKey { label: "s"; shift-label: "S"; shifted: show-shift; pressed => { key-pressed(show-shift ? "S" : "s"); } }
+            if layout == 0: KeyboardKey { label: "d"; shift-label: "D"; shifted: show-shift; pressed => { key-pressed(show-shift ? "D" : "d"); } }
+            if layout == 0: KeyboardKey { label: "f"; shift-label: "F"; shifted: show-shift; pressed => { key-pressed(show-shift ? "F" : "f"); } }
+            if layout == 0: KeyboardKey { label: "g"; shift-label: "G"; shifted: show-shift; pressed => { key-pressed(show-shift ? "G" : "g"); } }
+            if layout == 0: KeyboardKey { label: "h"; shift-label: "H"; shifted: show-shift; pressed => { key-pressed(show-shift ? "H" : "h"); } }
+            if layout == 0: KeyboardKey { label: "j"; shift-label: "J"; shifted: show-shift; pressed => { key-pressed(show-shift ? "J" : "j"); } }
+            if layout == 0: KeyboardKey { label: "k"; shift-label: "K"; shifted: show-shift; pressed => { key-pressed(show-shift ? "K" : "k"); } }
+            if layout == 0: KeyboardKey { label: "l"; shift-label: "L"; shifted: show-shift; pressed => { key-pressed(show-shift ? "L" : "l"); } }
+
+            if layout == 1: KeyboardKey { label: "-"; shift-label: "_"; shifted: show-shift; pressed => { key-pressed(show-shift ? "_" : "-"); } }
+            if layout == 1: KeyboardKey { label: "="; shift-label: "+"; shifted: show-shift; pressed => { key-pressed(show-shift ? "+" : "="); } }
+            if layout == 1: KeyboardKey { label: "["; shift-label: "{"; shifted: show-shift; pressed => { key-pressed(show-shift ? "{" : "["); } }
+            if layout == 1: KeyboardKey { label: "]"; shift-label: "}"; shifted: show-shift; pressed => { key-pressed(show-shift ? "}" : "]"); } }
+            if layout == 1: KeyboardKey { label: "\\"; shift-label: "|"; shifted: show-shift; pressed => { key-pressed(show-shift ? "|" : "\\"); } }
+            if layout == 1: KeyboardKey { label: ";"; shift-label: ":"; shifted: show-shift; pressed => { key-pressed(show-shift ? ":" : ";"); } }
+            if layout == 1: KeyboardKey { label: "'"; shift-label: "\""; shifted: show-shift; pressed => { key-pressed(show-shift ? "\"" : "'"); } }
+            if layout == 1: KeyboardKey { label: ","; shift-label: "<"; shifted: show-shift; pressed => { key-pressed(show-shift ? "<" : ","); } }
+            if layout == 1: KeyboardKey { label: "."; shift-label: ">"; shifted: show-shift; pressed => { key-pressed(show-shift ? ">" : "."); } }
+        }
+
+        // Row 3: shift z x c v b n m backspace
+        HorizontalLayout {
+            spacing: 4px;
+            vertical-stretch: 1;
+
+            KeyboardKey {
+                label: "SHIFT";
+                width-factor: 1.5;
+                is-special: true;
+                is-active: show-shift;
+                pressed => { shift-toggled(); }
+            }
+
+            if layout == 0: KeyboardKey { label: "z"; shift-label: "Z"; shifted: show-shift; pressed => { key-pressed(show-shift ? "Z" : "z"); } }
+            if layout == 0: KeyboardKey { label: "x"; shift-label: "X"; shifted: show-shift; pressed => { key-pressed(show-shift ? "X" : "x"); } }
+            if layout == 0: KeyboardKey { label: "c"; shift-label: "C"; shifted: show-shift; pressed => { key-pressed(show-shift ? "C" : "c"); } }
+            if layout == 0: KeyboardKey { label: "v"; shift-label: "V"; shifted: show-shift; pressed => { key-pressed(show-shift ? "V" : "v"); } }
+            if layout == 0: KeyboardKey { label: "b"; shift-label: "B"; shifted: show-shift; pressed => { key-pressed(show-shift ? "B" : "b"); } }
+            if layout == 0: KeyboardKey { label: "n"; shift-label: "N"; shifted: show-shift; pressed => { key-pressed(show-shift ? "N" : "n"); } }
+            if layout == 0: KeyboardKey { label: "m"; shift-label: "M"; shifted: show-shift; pressed => { key-pressed(show-shift ? "M" : "m"); } }
+
+            if layout == 1: KeyboardKey { label: "/"; shift-label: "?"; shifted: show-shift; pressed => { key-pressed(show-shift ? "?" : "/"); } }
+            if layout == 1: KeyboardKey { label: "`"; shift-label: "~"; shifted: show-shift; pressed => { key-pressed(show-shift ? "~" : "`"); } }
+            if layout == 1: KeyboardKey { label: "@"; pressed => { key-pressed("@"); } }
+            if layout == 1: KeyboardKey { label: "#"; pressed => { key-pressed("#"); } }
+            if layout == 1: KeyboardKey { label: "&"; pressed => { key-pressed("&"); } }
+            if layout == 1: KeyboardKey { label: "*"; pressed => { key-pressed("*"); } }
+            if layout == 1: KeyboardKey { label: "("; pressed => { key-pressed("("); } }
+
+            KeyboardKey {
+                label: "DEL";
+                width-factor: 1.5;
+                is-special: true;
+                pressed => { backspace-pressed(); }
+            }
+        }
+
+        // Row 4: 123/ABC space . enter
+        HorizontalLayout {
+            spacing: 4px;
+            vertical-stretch: 1;
+
+            KeyboardKey {
+                label: layout == 0 ? "123" : "ABC";
+                width-factor: 1.5;
+                is-special: true;
+                pressed => { layout-toggled(); }
+            }
+
+            KeyboardKey { label: ","; pressed => { key-pressed(","); } }
+
+            KeyboardKey {
+                label: "SPACE";
+                width-factor: 5.0;
+                is-special: true;
+                pressed => { space-pressed(); }
+            }
+
+            KeyboardKey { label: "."; pressed => { key-pressed("."); } }
+
+            KeyboardKey {
+                label: "ENTER";
+                width-factor: 1.5;
+                is-special: true;
+                pressed => { enter-pressed(); }
+            }
+        }
+
+        // Hide keyboard button row (smaller than other rows)
+        HorizontalLayout {
+            spacing: 4px;
+            vertical-stretch: 0.6;
+
+            KeyboardKey {
+                label: "⌨ HIDE";
+                width-factor: 3.0;
+                is-special: true;
+                pressed => { hide-keyboard(); }
+            }
+        }
+    }
+}
+
 // App Switcher panel - stacked card layout (cards rendered by compositor)
 component AppSwitcherPanel inherits Rectangle {
     in property <[WindowCard]> windows: [];
@@ -1501,6 +1699,12 @@ export component FlickShell inherits Window {
     in property <[WindowCard]> switcher-windows: [];
     in property <float> switcher-scroll: 0;
 
+    // Keyboard state
+    in property <bool> keyboard-visible: false;
+    in property <bool> keyboard-shifted: false;
+    in property <bool> keyboard-caps-lock: false;
+    in property <int> keyboard-layout: 0;  // 0 = letters, 1 = numbers/symbols
+
     callback pin-digit-pressed(string);
     callback pin-backspace-pressed();
     callback pin-enter-pressed();
@@ -1528,12 +1732,22 @@ export component FlickShell inherits Window {
     callback pick-default-back();
     callback switcher-window-tapped(int);  // Window ID
 
-    title: "Flick Shell";
-    // DEBUG: Always bright red to test Window rendering
-    background: #ff0000;
+    // Keyboard callbacks
+    callback keyboard-key-pressed(string);  // Character pressed
+    callback keyboard-backspace();
+    callback keyboard-enter();
+    callback keyboard-space();
+    callback keyboard-shift-toggled();
+    callback keyboard-layout-toggled();
+    callback keyboard-hide();
 
-    // Home screen - ALWAYS visible as base layer
-    HomeScreen {
+    title: "Flick Shell";
+    // Transparent background when in app view (keyboard only), otherwise dark
+    // Use explicit #00000000 for full transparency
+    background: current-view == "app" ? #00000000 : #1a1a2e;
+
+    // Home screen - visible except in app view (where we only show keyboard overlay)
+    if current-view != "app": HomeScreen {
         width: 100%;
         height: 100%;
         categories: categories;
@@ -1646,5 +1860,22 @@ export component FlickShell inherits Window {
             height: 100%;
             clicked => { wiggle-done(); }
         }
+    }
+
+    // On-screen keyboard - slides up from bottom
+    OnScreenKeyboard {
+        y: keyboard-visible ? parent.height - self.height : parent.height;
+        width: 100%;
+        container-height: parent.height;
+        shifted: keyboard-shifted;
+        caps-lock: keyboard-caps-lock;
+        layout: keyboard-layout;
+        key-pressed(ch) => { keyboard-key-pressed(ch); }
+        shift-toggled => { keyboard-shift-toggled(); }
+        backspace-pressed => { keyboard-backspace(); }
+        enter-pressed => { keyboard-enter(); }
+        space-pressed => { keyboard-space(); }
+        layout-toggled => { keyboard-layout-toggled(); }
+        hide-keyboard => { keyboard-hide(); }
     }
 }
