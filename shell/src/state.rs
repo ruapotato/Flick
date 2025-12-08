@@ -116,6 +116,8 @@ pub struct Flick {
     /// Home gesture state (swipe up from bottom - slides app upward)
     pub home_gesture_window: Option<Window>,
     pub home_gesture_original_y: i32,
+    /// Track if home gesture has passed keyboard threshold (for keyboard-first gesture)
+    pub home_gesture_past_keyboard: bool,
 
     /// Switcher transition gesture (swipe from right - app shrinks into card)
     pub switcher_gesture_active: bool,
@@ -225,6 +227,7 @@ impl Flick {
             close_gesture_original_y: 0,
             home_gesture_window: None,
             home_gesture_original_y: 0,
+            home_gesture_past_keyboard: false,
             switcher_gesture_active: false,
             switcher_gesture_progress: 0.0,
             qs_gesture_active: false,
@@ -401,7 +404,13 @@ impl Flick {
         self.close_gesture_original_y = 0;
     }
 
+    /// Get keyboard height in pixels
+    pub fn get_keyboard_height(&self) -> i32 {
+        std::cmp::max(200, (self.screen_size.h as f32 * 0.22) as i32)
+    }
+
     /// Start home gesture - find the top-most app window and track it for upward slide
+    /// Also starts showing the keyboard progressively (if not already visible)
     pub fn start_home_gesture(&mut self) {
         // Only start if we're viewing an app
         if self.shell.view != crate::shell::ShellView::App {
@@ -420,11 +429,31 @@ impl Flick {
                 tracing::info!("Starting home gesture for window at y={}", loc.y);
                 self.home_gesture_original_y = loc.y;
                 self.home_gesture_window = Some(window);
+
+                // Check if keyboard is already visible
+                let keyboard_already_visible = self.shell.slint_ui.as_ref()
+                    .map(|ui| ui.is_keyboard_visible())
+                    .unwrap_or(false);
+
+                if keyboard_already_visible {
+                    // Keyboard already visible - start past keyboard threshold
+                    // (this is a pure home gesture)
+                    self.home_gesture_past_keyboard = true;
+                    tracing::info!("Home gesture: keyboard already visible, going directly to home mode");
+                } else {
+                    // Show keyboard as part of the gesture
+                    self.home_gesture_past_keyboard = false;
+                    if let Some(ref slint_ui) = self.shell.slint_ui {
+                        tracing::info!("Home gesture: showing keyboard");
+                        slint_ui.set_keyboard_visible(true);
+                    }
+                }
             }
         }
     }
 
-    /// Update home gesture - move the window UP based on progress (opposite of close gesture)
+    /// Update home gesture - move the window UP based on progress
+    /// If we pass keyboard height, hide keyboard and continue to home
     pub fn update_home_gesture(&mut self, progress: f64) {
         if let Some(ref window) = self.home_gesture_window.clone() {
             // Calculate new Y position - move UP (negative offset)
@@ -434,6 +463,20 @@ impl Flick {
             let offset = (progress * swipe_threshold) as i32;
             let new_y = self.home_gesture_original_y - offset;
 
+            let keyboard_height = self.get_keyboard_height();
+
+            // Check if we've crossed the keyboard threshold
+            if offset > keyboard_height && !self.home_gesture_past_keyboard {
+                tracing::info!("Home gesture: passed keyboard threshold ({}px > {}px), hiding keyboard",
+                    offset, keyboard_height);
+                self.home_gesture_past_keyboard = true;
+
+                // Hide keyboard - user wants to go home, not just show keyboard
+                if let Some(ref slint_ui) = self.shell.slint_ui {
+                    slint_ui.set_keyboard_visible(false);
+                }
+            }
+
             // Move the window in the space
             if let Some(loc) = self.space.element_location(window) {
                 self.space.map_element(window.clone(), (loc.x, new_y), false);
@@ -441,27 +484,65 @@ impl Flick {
         }
     }
 
-    /// End home gesture - either go to home or animate the window back
+    /// End home gesture - behavior depends on how far user swiped:
+    /// - Released before keyboard height: keep keyboard visible, stay in app
+    /// - Released after keyboard height: go home (keyboard already hidden)
     pub fn end_home_gesture(&mut self, completed: bool) {
+        let keyboard_height = self.get_keyboard_height();
+        let past_keyboard = self.home_gesture_past_keyboard;
+
         if let Some(window) = self.home_gesture_window.take() {
-            if completed {
-                // Switch to home view
-                tracing::info!("Home gesture completed - switching to home");
-                self.shell.view = crate::shell::ShellView::Home;
+            // Calculate how far we actually moved
+            let current_y = self.space.element_location(&window)
+                .map(|loc| loc.y)
+                .unwrap_or(self.home_gesture_original_y);
+            let actual_offset = self.home_gesture_original_y - current_y;
+
+            if completed && past_keyboard {
+                // Swiped past keyboard threshold and completed - go home
+                tracing::info!("Home gesture completed past keyboard - switching to home");
+                self.shell.set_view(crate::shell::ShellView::Home);
 
                 // Restore window to original position (it will be hidden anyway)
                 if let Some(loc) = self.space.element_location(&window) {
                     self.space.map_element(window, (loc.x, self.home_gesture_original_y), false);
                 }
+            } else if !past_keyboard && actual_offset > 20 {
+                // Released before keyboard threshold with some movement - keep keyboard, stay in app
+                tracing::info!("Home gesture released within keyboard zone ({}px) - keeping keyboard visible",
+                    actual_offset);
+
+                // Restore window position
+                if let Some(loc) = self.space.element_location(&window) {
+                    self.space.map_element(window.clone(), (loc.x, self.home_gesture_original_y), false);
+                }
+
+                // Resize windows for keyboard
+                self.resize_windows_for_keyboard(true);
+
+                // Save keyboard state for this window
+                if let Some(toplevel) = window.toplevel() {
+                    let surface_id = toplevel.wl_surface().id();
+                    self.window_keyboard_state.insert(surface_id, true);
+                }
             } else {
-                // Cancel - restore original position
-                tracing::info!("Home gesture cancelled - restoring position");
+                // Cancelled or barely moved - restore original state
+                tracing::info!("Home gesture cancelled - restoring position, hiding keyboard");
+
+                // Restore window position
                 if let Some(loc) = self.space.element_location(&window) {
                     self.space.map_element(window, (loc.x, self.home_gesture_original_y), false);
                 }
+
+                // Hide keyboard since gesture was cancelled
+                if let Some(ref slint_ui) = self.shell.slint_ui {
+                    slint_ui.set_keyboard_visible(false);
+                }
             }
         }
+
         self.home_gesture_original_y = 0;
+        self.home_gesture_past_keyboard = false;
     }
 
     /// Resize windows for keyboard visibility
