@@ -1384,12 +1384,14 @@ fn render_surface(
         let screen_w = state.screen_size.w;
         let screen_h = state.screen_size.h;
 
-        // Current view slides right based on progress
-        let slide_offset = (progress * screen_w as f64 * 0.85) as i32;
+        // Current view slides right following finger 1:1
+        // progress = finger_distance / 300, so finger_distance = progress * 300
+        let swipe_threshold = 300.0;
+        let slide_offset = (progress * swipe_threshold) as i32;
 
         let mut qs_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
 
-        // QS panel slides in from left
+        // QS panel slides in from left (starts at -screen_w, moves with finger)
         let qs_x_offset = -screen_w + slide_offset;
 
         // Render QS Slint UI at offset position
