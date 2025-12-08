@@ -2130,7 +2130,10 @@ fn handle_input_event(
                     // Update quick settings transition when swiping from left
                     if *edge == crate::input::Edge::Left {
                         state.qs_gesture_active = true;
-                        state.qs_gesture_progress = progress.clamp(0.0, 1.0);
+                        // Don't clamp to 1.0 - allow full screen swipe
+                        // Max progress = screen_w / 300 (swipe_threshold)
+                        let max_progress = state.screen_size.w as f64 / 300.0;
+                        state.qs_gesture_progress = progress.clamp(0.0, max_progress);
                         tracing::info!("QS gesture UPDATE: progress={:.2}", state.qs_gesture_progress);
                     }
                 }
