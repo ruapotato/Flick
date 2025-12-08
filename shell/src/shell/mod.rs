@@ -321,10 +321,24 @@ impl Shell {
         false
     }
 
+    /// Set the shell view, hiding keyboard when leaving App view
+    pub fn set_view(&mut self, new_view: ShellView) {
+        // Hide keyboard when leaving App view
+        if self.view == ShellView::App && new_view != ShellView::App {
+            if let Some(ref slint_ui) = self.slint_ui {
+                if slint_ui.is_keyboard_visible() {
+                    tracing::info!("Hiding keyboard - leaving App view for {:?}", new_view);
+                    slint_ui.set_keyboard_visible(false);
+                }
+            }
+        }
+        self.view = new_view;
+    }
+
     /// Unlock and transition to home screen
     pub fn unlock(&mut self) {
         tracing::info!("Lock screen unlocked");
-        self.view = ShellView::Home;
+        self.set_view(ShellView::Home);
         self.lock_state.reset_input();
         self.lock_state.failed_attempts = 0;
         self.lock_state.error_message = None;
@@ -334,7 +348,7 @@ impl Shell {
     pub fn lock(&mut self) {
         tracing::info!("Locking screen");
         if self.lock_config.method != lock_screen::LockMethod::None {
-            self.view = ShellView::LockScreen;
+            self.set_view(ShellView::LockScreen);
             self.lock_state = lock_screen::LockScreenState::new(&self.lock_config);
         }
     }
@@ -815,12 +829,12 @@ impl Shell {
                     match edge {
                         Edge::Bottom => {
                             // Swipe up - go home
-                            self.view = ShellView::Home;
+                            self.set_view(ShellView::Home);
                         }
                         Edge::Right => {
                             // Swipe left from right edge - app switcher
                             tracing::info!("Gesture completed: switching to Switcher view");
-                            self.view = ShellView::Switcher;
+                            self.set_view(ShellView::Switcher);
                         }
                         Edge::Top => {
                             // Swipe down - close app (handled by compositor)
@@ -828,7 +842,7 @@ impl Shell {
                         Edge::Left => {
                             // Swipe right from left edge - quick settings panel
                             tracing::info!("Gesture completed: switching to QuickSettings view");
-                            self.view = ShellView::QuickSettings;
+                            self.set_view(ShellView::QuickSettings);
                         }
                     }
                 }
@@ -843,19 +857,19 @@ impl Shell {
 
     /// Called when an app is launched - switch to app view
     pub fn app_launched(&mut self) {
-        self.view = ShellView::App;
+        self.set_view(ShellView::App);
         self.gesture = GestureState::default();
     }
 
     /// Called when switching to an app from switcher
     pub fn switch_to_app(&mut self) {
-        self.view = ShellView::App;
+        self.set_view(ShellView::App);
         self.gesture = GestureState::default();
     }
 
     /// Close the app switcher (go back to current app, or home if no apps)
     pub fn close_switcher(&mut self, has_windows: bool) {
-        self.view = if has_windows { ShellView::App } else { ShellView::Home };
+        self.set_view(if has_windows { ShellView::App } else { ShellView::Home });
         self.gesture = GestureState::default();
         self.switcher_scroll = 0.0;
         self.switcher_velocity = 0.0;
@@ -868,7 +882,7 @@ impl Shell {
     /// num_windows: total number of windows
     /// card_spacing: spacing between cards in the switcher
     pub fn open_switcher(&mut self, num_windows: usize, card_spacing: f64) {
-        self.view = ShellView::Switcher;
+        self.set_view(ShellView::Switcher);
         self.gesture = GestureState::default();
         // Set scroll so the topmost window (last index) is centered
         // In switcher: card_scroll_pos = i * card_spacing - scroll_offset
@@ -904,7 +918,7 @@ impl Shell {
     /// Close quick settings panel (go back to previous view)
     pub fn close_quick_settings(&mut self, has_windows: bool) {
         // Go back to app if there are apps, otherwise home
-        self.view = if has_windows { ShellView::App } else { ShellView::Home };
+        self.set_view(if has_windows { ShellView::App } else { ShellView::Home });
         self.gesture = GestureState::default();
     }
 
@@ -936,14 +950,14 @@ impl Shell {
         self.menu_just_opened = false;
         self.popup_showing = false;
         self.popup_category = Some(category);
-        self.view = ShellView::PickDefault;
+        self.set_view(ShellView::PickDefault);
         self.pick_default_just_opened = true;  // Don't process touch on same event
     }
 
     /// Exit pick default view (go back to home)
     pub fn exit_pick_default(&mut self) {
         self.popup_category = None;
-        self.view = ShellView::Home;
+        self.set_view(ShellView::Home);
         self.pick_default_just_opened = false;
     }
 

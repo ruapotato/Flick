@@ -831,6 +831,11 @@ impl OutputHandler for Flick {}
 
 impl TextInputHandler for Flick {
     fn text_input_enabled(&mut self) {
+        // Only show keyboard when in App view (not Home, Switcher, QuickSettings, etc.)
+        if self.shell.view != crate::shell::ShellView::App {
+            tracing::info!("Text input enabled but not in App view - ignoring");
+            return;
+        }
         tracing::info!("Text input enabled - showing on-screen keyboard");
         // Show keyboard and resize windows
         if let Some(ref slint_ui) = self.shell.slint_ui {
