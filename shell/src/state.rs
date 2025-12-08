@@ -127,6 +127,7 @@ pub struct Flick {
     pub keyboard_dismiss_active: bool,
     pub keyboard_dismiss_start_y: f64,
     pub keyboard_dismiss_offset: f64,
+    pub keyboard_initial_touch_pos: Option<smithay::utils::Point<f64, smithay::utils::Logical>>,
     pub keyboard_last_touch_pos: Option<smithay::utils::Point<f64, smithay::utils::Logical>>,
 
     // Integrated shell UI
@@ -224,6 +225,7 @@ impl Flick {
             keyboard_dismiss_active: false,
             keyboard_dismiss_start_y: 0.0,
             keyboard_dismiss_offset: 0.0,
+            keyboard_initial_touch_pos: None,
             keyboard_last_touch_pos: None,
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),

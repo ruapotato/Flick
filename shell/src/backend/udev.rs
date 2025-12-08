@@ -1905,8 +1905,9 @@ fn render_surface(
                 }
             }
 
-            // Then add window elements (BEHIND keyboard)
-            for window in state.space.elements() {
+            // Then add ONLY the topmost window (BEHIND keyboard)
+            // The topmost window is the last one in elements() - the one that was raised
+            if let Some(window) = state.space.elements().last() {
                 if let Some(loc) = state.space.element_location(window) {
                     use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
 
@@ -2356,6 +2357,7 @@ fn handle_input_event(
                 state.keyboard_dismiss_active = true;
                 state.keyboard_dismiss_start_y = touch_pos.y;
                 state.keyboard_dismiss_offset = 0.0;
+                state.keyboard_initial_touch_pos = Some(touch_pos);
                 state.keyboard_last_touch_pos = Some(touch_pos);
                 info!("Started keyboard dismiss tracking at y={}", touch_pos.y);
             }
@@ -3211,10 +3213,30 @@ fn handle_input_event(
                 false
             };
 
-            // Get keyboard touch position (saved separately since gesture was cancelled)
-            let keyboard_touch_pos = state.keyboard_last_touch_pos.take();
+            // Get keyboard touch positions (saved separately since gesture was cancelled)
+            let keyboard_initial_pos = state.keyboard_initial_touch_pos.take();
+            let keyboard_last_pos = state.keyboard_last_touch_pos.take();
             // Track if touch started on keyboard to skip forwarding touch.up to apps
-            let touch_was_on_keyboard = keyboard_touch_pos.is_some();
+            let touch_was_on_keyboard = keyboard_initial_pos.is_some();
+
+            // For small drags (< 15px), use initial touch position to ensure key registers
+            let keyboard_touch_pos = match (keyboard_initial_pos, keyboard_last_pos) {
+                (Some(initial), Some(last)) => {
+                    let dx = (last.x - initial.x).abs();
+                    let dy = (last.y - initial.y).abs();
+                    let drag_distance = (dx * dx + dy * dy).sqrt();
+                    if drag_distance < 15.0 {
+                        // Small drag - use initial position for reliable key press
+                        Some(initial)
+                    } else {
+                        // Larger drag - use last position (might be dismiss gesture)
+                        Some(last)
+                    }
+                }
+                (Some(initial), None) => Some(initial),
+                (None, Some(last)) => Some(last),
+                (None, None) => None,
+            };
 
             // Reset keyboard dismiss state
             state.keyboard_dismiss_active = false;
@@ -3228,7 +3250,6 @@ fn handle_input_event(
                     // Only process key presses if keyboard wasn't dismissed by swipe
                     if slint_ui.is_keyboard_visible() && !keyboard_was_dismissed {
                         // Dispatch pointer release to Slint to trigger keyboard key callbacks
-                        // Use keyboard_touch_pos since gesture recognizer position was cleared
                         if let Some(pos) = keyboard_touch_pos.or(last_touch_pos) {
                             slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
                         }
