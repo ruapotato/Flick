@@ -728,6 +728,7 @@ fn render_surface(
                     }
                 }
                 ShellView::QuickSettings => {
+                    tracing::info!("Rendering QuickSettings view via Slint");
                     slint_ui.set_view("quick-settings");
                     slint_ui.set_brightness(state.shell.quick_settings.brightness);
                     // Get wifi/bluetooth enabled state from toggles
@@ -752,7 +753,9 @@ fn render_surface(
 
             // Render Slint UI to pixel buffer
             slint_ui.request_redraw();
-            if let Some((width, height, pixels)) = slint_ui.render() {
+            let render_result = slint_ui.render();
+            tracing::info!("Slint render result: {:?}", render_result.as_ref().map(|(w, h, _)| (*w, *h)));
+            if let Some((width, height, pixels)) = render_result {
                 // Create MemoryRenderBuffer from Slint's pixel output
                 let mut mem_buffer = MemoryRenderBuffer::new(
                     Fourcc::Abgr8888, // RGBA in little-endian byte order
@@ -771,7 +774,7 @@ fn render_surface(
 
                 // Create render element
                 let loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, 0).into();
-                if let Ok(slint_element) = MemoryRenderBufferRenderElement::from_buffer(
+                match MemoryRenderBufferRenderElement::from_buffer(
                     renderer,
                     loc.to_f64(),
                     &mem_buffer,
@@ -780,11 +783,20 @@ fn render_surface(
                     None,
                     Kind::Unspecified,
                 ) {
-                    slint_elements.push(HomeRenderElement::Icon(slint_element));
-                    tracing::debug!("Slint {:?} rendered", shell_view);
+                    Ok(slint_element) => {
+                        slint_elements.push(HomeRenderElement::Icon(slint_element));
+                        tracing::info!("Slint {:?} element created and pushed", shell_view);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to create Slint render element: {:?}", e);
+                    }
                 }
             }
+        } else {
+            tracing::warn!("slint_ui is None, cannot render {:?}", shell_view);
         }
+    } else {
+        tracing::debug!("View {:?} not rendered via Slint (not in Slint render list)", shell_view);
     }
 
     // Switcher uses a separate element type that can hold both solid colors and window content
@@ -1037,6 +1049,7 @@ fn render_surface(
         )
     } else if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings || shell_view == ShellView::PickDefault {
         // Shell views - render Slint UI
+        tracing::info!("Rendering {:?} with {} slint_elements, bg={:?}", shell_view, slint_elements.len(), bg_color);
         surface_data.damage_tracker.render_output(
             renderer,
             &mut fb,
