@@ -739,6 +739,9 @@ fn render_surface(
                 _ => {}
             }
 
+            // Process Slint events (timers, animations) before rendering
+            slint_ui.process_events();
+
             // Render Slint UI to pixel buffer
             slint_ui.request_redraw();
             if let Some((width, height, pixels)) = slint_ui.render() {

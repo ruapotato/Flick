@@ -133,8 +133,9 @@ component LongPressPopup inherits Rectangle {
     height: can-pick-default ? 180px : 130px;
     border-radius: 20px;
     background: Theme.surface;
-    drop-shadow-blur: 20px;
-    drop-shadow-color: #000000aa;
+    // Note: drop-shadow not supported in software renderer
+    border-width: 1px;
+    border-color: Theme.surface-variant;
 
     VerticalLayout {
         padding: 16px;
@@ -347,60 +348,104 @@ component AppTile inherits Rectangle {
     in property <string> name: "App";
     in property <string> icon: "A";
     in property <color> tile-color: Theme.primary;
+    in property <bool> wiggling: false;
+    in property <int> wiggle-phase: 0;  // Phase offset for varied animation
+    in property <bool> is-dragging: false;  // True when this tile is being dragged
 
     callback clicked();
+    callback drag-started(float, float);  // x, y position
+    callback drag-moved(float, float);    // x, y position
+    callback drag-ended(float, float);    // x, y position
 
     width: 100%;
     height: 100%;
-    // Visual feedback when pressed
-    background: touch-area.pressed ? Theme.surface-variant.with-alpha(0.3) : transparent;
+    // Visual feedback when pressed or dragging
+    background: (touch-area.pressed || is-dragging) ? Theme.surface-variant.with-alpha(0.3) : transparent;
+    // Scale up slightly when dragging
+    opacity: is-dragging ? 0.8 : 1.0;
 
-    VerticalLayout {
-        alignment: center;
-        spacing: 10px;
+    // Wiggle animation state - use x/y offset instead of rotation (software renderer compatible)
+    property <float> wiggle-time: 0;
+    property <length> wiggle-x: wiggling && !is-dragging ? sin((wiggle-time * 12 + wiggle-phase * 0.7) * 1rad) * 3px : 0px;
+    property <length> wiggle-y: wiggling && !is-dragging ? cos((wiggle-time * 10 + wiggle-phase * 0.5) * 1rad) * 2px : 0px;
 
-        // Icon row - centered
-        HorizontalLayout {
-            alignment: center;
+    // Animate the wiggle time continuously when wiggling
+    states [
+        wiggle-active when wiggling && !is-dragging: {
+            wiggle-time: 1000000;
+            in {
+                animate wiggle-time { duration: 1000000s; }
+            }
+        }
+    ]
 
-            Rectangle {
-                width: 80px;
-                height: 80px;
-                border-radius: 20px;
-                background: tile-color;
+    // Container for the icon with wiggle offset (not in a layout so we can position it)
+    Rectangle {
+        x: (parent.width - 80px) / 2 + root.wiggle-x;
+        y: 10px + root.wiggle-y;
+        width: 80px;
+        height: 80px;
+        border-radius: 20px;
+        background: tile-color;
 
-                Text {
-                    width: 100%;
-                    height: 100%;
-                    text: icon;
-                    color: Theme.on-surface;
-                    font-size: 36px;
-                    font-weight: 700;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+        Text {
+            width: 100%;
+            height: 100%;
+            text: icon;
+            color: Theme.on-surface;
+            font-size: 36px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    // Name label at bottom
+    Text {
+        x: 0;
+        y: 100px;
+        width: 100%;
+        height: 30px;
+        text: name;
+        color: Theme.on-surface-variant;
+        font-size: 14px;
+        horizontal-alignment: center;
+        overflow: elide;
+    }
+
+    // Track if we started a drag
+    property <bool> drag-active: false;
+
+    // TouchArea - handles both clicks and drag gestures during wiggle mode
+    touch-area := TouchArea {
+        width: 100%;
+        height: 100%;
+
+        clicked => {
+            if !wiggling {
+                root.clicked();
+            }
+        }
+
+        pointer-event(event) => {
+            if wiggling {
+                if event.kind == PointerEventKind.down {
+                    root.drag-active = true;
+                    root.drag-started(self.mouse-x / 1px, self.mouse-y / 1px);
+                } else if event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel {
+                    if root.drag-active {
+                        root.drag-active = false;
+                        root.drag-ended(self.mouse-x / 1px, self.mouse-y / 1px);
+                    }
                 }
             }
         }
 
-        // Name row - centered
-        HorizontalLayout {
-            alignment: center;
-
-            Text {
-                text: name;
-                color: Theme.on-surface-variant;
-                font-size: 14px;
-                horizontal-alignment: center;
-                overflow: elide;
+        moved => {
+            if wiggling && root.drag-active {
+                root.drag-moved(self.mouse-x / 1px, self.mouse-y / 1px);
             }
         }
-    }
-
-    // TouchArea with explicit size - named so we can reference pressed state
-    touch-area := TouchArea {
-        width: 100%;
-        height: 100%;
-        clicked => { root.clicked(); }
     }
 }
 
@@ -580,8 +625,13 @@ component HomeScreen inherits Rectangle {
     in property <[AppCategory]> categories: [];
     in property <string> time: "12:00";
     in property <int> battery: 85;
+    in property <bool> wiggle-mode: false;
+    in property <int> dragging-index: -1;  // Index of tile being dragged, -1 if none
 
     callback app-tapped(int);
+    callback drag-started(int, float, float);  // index, x, y
+    callback drag-moved(int, float, float);    // index, x, y
+    callback drag-ended(int, float, float);    // index, x, y
 
     width: 100%;
     height: 100%;
@@ -615,6 +665,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[0].name;
                             icon: categories[0].icon;
                             tile-color: categories[0].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 0;
                             clicked => { app-tapped(0); }
                         }
                     }
@@ -624,6 +676,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[1].name;
                             icon: categories[1].icon;
                             tile-color: categories[1].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 1;
                             clicked => { app-tapped(1); }
                         }
                     }
@@ -633,6 +687,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[2].name;
                             icon: categories[2].icon;
                             tile-color: categories[2].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 2;
                             clicked => { app-tapped(2); }
                         }
                     }
@@ -642,6 +698,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[3].name;
                             icon: categories[3].icon;
                             tile-color: categories[3].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 3;
                             clicked => { app-tapped(3); }
                         }
                     }
@@ -658,6 +716,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[4].name;
                             icon: categories[4].icon;
                             tile-color: categories[4].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 4;
                             clicked => { app-tapped(4); }
                         }
                     }
@@ -667,6 +727,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[5].name;
                             icon: categories[5].icon;
                             tile-color: categories[5].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 5;
                             clicked => { app-tapped(5); }
                         }
                     }
@@ -676,6 +738,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[6].name;
                             icon: categories[6].icon;
                             tile-color: categories[6].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 6;
                             clicked => { app-tapped(6); }
                         }
                     }
@@ -685,6 +749,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[7].name;
                             icon: categories[7].icon;
                             tile-color: categories[7].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 7;
                             clicked => { app-tapped(7); }
                         }
                     }
@@ -701,6 +767,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[8].name;
                             icon: categories[8].icon;
                             tile-color: categories[8].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 8;
                             clicked => { app-tapped(8); }
                         }
                     }
@@ -710,6 +778,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[9].name;
                             icon: categories[9].icon;
                             tile-color: categories[9].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 9;
                             clicked => { app-tapped(9); }
                         }
                     }
@@ -719,6 +789,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[10].name;
                             icon: categories[10].icon;
                             tile-color: categories[10].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 10;
                             clicked => { app-tapped(10); }
                         }
                     }
@@ -728,6 +800,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[11].name;
                             icon: categories[11].icon;
                             tile-color: categories[11].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 11;
                             clicked => { app-tapped(11); }
                         }
                     }
@@ -744,6 +818,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[12].name;
                             icon: categories[12].icon;
                             tile-color: categories[12].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 12;
                             clicked => { app-tapped(12); }
                         }
                     }
@@ -753,6 +829,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[13].name;
                             icon: categories[13].icon;
                             tile-color: categories[13].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 13;
                             clicked => { app-tapped(13); }
                         }
                     }
@@ -762,6 +840,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[14].name;
                             icon: categories[14].icon;
                             tile-color: categories[14].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 14;
                             clicked => { app-tapped(14); }
                         }
                     }
@@ -771,6 +851,8 @@ component HomeScreen inherits Rectangle {
                             name: categories[15].name;
                             icon: categories[15].icon;
                             tile-color: categories[15].color;
+                            wiggling: root.wiggle-mode;
+                            wiggle-phase: 15;
                             clicked => { app-tapped(15); }
                         }
                     }
@@ -1013,6 +1095,7 @@ export component FlickShell inherits Window {
         categories: categories;
         time: lock-time;
         battery: battery-percent;
+        wiggle-mode: root.wiggle-mode;
         app-tapped(i) => { app-tapped(i); }
     }
 
