@@ -1376,8 +1376,10 @@ fn render_surface(
             [0.1, 0.1, 0.12, 1.0], // Switcher background
         )
     } else if state.qs_gesture_active {
-        // During quick settings gesture: slide current view right, reveal QS from left
+        // During quick settings gesture: slide current view right, reveal QS panel from left
+        // Use simple solid color panel for smooth animation (full UI renders on completion)
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+        use smithay::backend::renderer::element::solid::SolidColorBuffer;
         use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
 
         let progress = state.qs_gesture_progress;
@@ -1385,62 +1387,29 @@ fn render_surface(
         let screen_h = state.screen_size.h;
 
         // Current view slides right based on progress
-        let slide_offset = (progress * screen_w as f64 * 0.8) as i32; // Slide up to 80% of screen width
+        let slide_offset = (progress * screen_w as f64 * 0.85) as i32;
 
         let mut qs_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
 
-        // First add quick settings (sliding in from left - behind current view)
-        // QS starts off-screen to the left, slides to visible
-        let qs_x_offset = -screen_w + slide_offset;
-
-        // Render QS Slint UI at offset position
-        if let Some(ref slint_ui) = state.shell.slint_ui {
-            // Set up quick settings view
-            slint_ui.set_view("quick-settings");
-            slint_ui.set_brightness(state.shell.quick_settings.brightness);
-            slint_ui.set_wifi_enabled(state.system.wifi_enabled);
-            slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
-            slint_ui.set_dnd_enabled(state.system.dnd.enabled);
-            slint_ui.set_flashlight_enabled(crate::system::Flashlight::is_on());
-            slint_ui.set_airplane_enabled(crate::system::AirplaneMode::is_enabled());
-            slint_ui.set_rotation_locked(state.system.rotation_lock.locked);
-            slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
-            slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
-
-            slint_ui.process_events();
-            slint_ui.request_redraw();
-
-            if let Some((width, height, pixels)) = slint_ui.render() {
-                let mut mem_buffer = MemoryRenderBuffer::new(
-                    Fourcc::Abgr8888,
-                    (width as i32, height as i32),
-                    1,
-                    Transform::Normal,
-                    None,
-                );
-
-                let pixels_clone = pixels.clone();
-                let _: Result<(), std::convert::Infallible> = mem_buffer.render().draw(|buffer| {
-                    buffer.copy_from_slice(&pixels_clone);
-                    Ok(vec![Rectangle::from_size((width as i32, height as i32).into())])
-                });
-
-                let qs_loc: smithay::utils::Point<f64, smithay::utils::Physical> = (qs_x_offset as f64, 0.0).into();
-                if let Ok(slint_element) = MemoryRenderBufferRenderElement::from_buffer(
-                    renderer,
-                    qs_loc,
-                    &mem_buffer,
-                    None,
-                    None,
-                    None,
-                    Kind::Unspecified,
-                ) {
-                    qs_elements.push(SwitcherRenderElement::Icon(slint_element));
-                }
-            }
+        // Add QS panel background (solid color sliding in from left - fast!)
+        // Panel reveals from left edge as current view slides right
+        let panel_width = slide_offset.max(0);
+        if panel_width > 0 {
+            let panel_buffer = SolidColorBuffer::new(
+                (panel_width, screen_h),
+                [0.1, 0.1, 0.18, 1.0], // QS background color
+            );
+            let panel_bg = SolidColorRenderElement::from_buffer(
+                &panel_buffer,
+                (0, 0),
+                Scale::from(1.0),
+                1.0,
+                Kind::Unspecified,
+            );
+            qs_elements.push(SwitcherRenderElement::Solid(panel_bg));
         }
 
-        // Then add current view (app windows) sliding to the right - on top
+        // Add windows sliding to the right (home grid not shown during gesture for performance)
         let windows: Vec<_> = state.space.elements().cloned().collect();
         for window in windows.iter() {
             if let Some(loc) = state.space.element_location(window) {
@@ -1452,7 +1421,6 @@ fn render_surface(
                         1.0,
                     );
 
-                // Large crop rect to avoid clipping
                 let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
                     (-screen_w, -screen_h).into(),
                     (screen_w * 3, screen_h * 3).into(),
@@ -1460,11 +1428,10 @@ fn render_surface(
 
                 for elem in window_render_elements {
                     let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(1.0));
-                    // Offset by slide_offset to the right
                     let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (loc.x + slide_offset, loc.y).into();
                     let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Relative);
                     if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
-                        qs_elements.insert(0, cropped.into()); // Insert at front for on-top rendering
+                        qs_elements.insert(0, cropped.into());
                     }
                 }
             }
@@ -1473,9 +1440,9 @@ fn render_surface(
         surface_data.damage_tracker.render_output(
             renderer,
             &mut fb,
-            0, // Force full redraw during gesture
+            0,
             &qs_elements,
-            [0.1, 0.1, 0.15, 1.0], // QS background color
+            [0.1, 0.1, 0.18, 1.0],
         )
     } else {
         // App view - render windows
