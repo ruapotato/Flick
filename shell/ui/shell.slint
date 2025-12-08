@@ -1196,22 +1196,11 @@ export component FlickShell inherits Window {
     callback pick-default-back();
 
     title: "Flick Shell";
-    background: Theme.background;
+    // DEBUG: Always bright red to test Window rendering
+    background: #ff0000;
 
-    // Lock screen - fills entire window
-    if current-view == "lock": LockScreen {
-        width: 100%;
-        height: 100%;
-        time: lock-time;
-        date: lock-date;
-        pin-length: pin-length;
-        error-message: lock-error;
-        digit-pressed(d) => { pin-digit-pressed(d); }
-        backspace-pressed => { pin-backspace-pressed(); }
-    }
-
-    // Home screen - fills entire window
-    if current-view == "home": HomeScreen {
+    // Home screen - ALWAYS visible as base layer
+    HomeScreen {
         width: 100%;
         height: 100%;
         categories: categories;
@@ -1225,8 +1214,9 @@ export component FlickShell inherits Window {
         app-tapped(i) => { app-tapped(i); }
     }
 
-    // Quick settings - fills entire window
-    if current-view == "quick-settings": QuickSettingsPanel {
+    // Quick settings - slides down as overlay on top of home
+    QuickSettingsPanel {
+        y: current-view == "quick-settings" ? 0px : -parent.height;
         width: 100%;
         height: 100%;
         brightness: brightness;
@@ -1239,6 +1229,19 @@ export component FlickShell inherits Window {
         wifi-toggled => { wifi-toggled(); }
         bluetooth-toggled => { bluetooth-toggled(); }
         lock-pressed => { lock-pressed(); }
+    }
+
+    // Lock screen - overlay on top of everything when locked
+    LockScreen {
+        y: current-view == "lock" ? 0px : -parent.height;
+        width: 100%;
+        height: 100%;
+        time: lock-time;
+        date: lock-date;
+        pin-length: pin-length;
+        error-message: lock-error;
+        digit-pressed(d) => { pin-digit-pressed(d); }
+        backspace-pressed => { pin-backspace-pressed(); }
     }
 
     // Pick default app view

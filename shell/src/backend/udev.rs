@@ -760,6 +760,13 @@ fn render_surface(
             let render_result = slint_ui.render();
             tracing::info!("Slint render result: {:?}", render_result.as_ref().map(|(w, h, _)| (*w, *h)));
             if let Some((width, height, pixels)) = render_result {
+                // DEBUG: Sample center pixel from Slint output
+                let center_offset = (width * height * 2) as usize; // middle of RGBA buffer
+                if pixels.len() > center_offset + 4 {
+                    let sample = (pixels[center_offset], pixels[center_offset+1], pixels[center_offset+2], pixels[center_offset+3]);
+                    tracing::info!("UDEV: {:?} Slint center pixel RGBA={:?}", shell_view, sample);
+                }
+
                 // Create MemoryRenderBuffer from Slint's pixel output
                 let mut mem_buffer = MemoryRenderBuffer::new(
                     Fourcc::Abgr8888, // RGBA in little-endian byte order
@@ -1034,8 +1041,8 @@ fn render_surface(
 
     // Render based on what view we're in
     // For Switcher: use a fresh damage tracker to guarantee full redraw
-    let mut switcher_tracker = if shell_view == ShellView::Switcher {
-        tracing::info!("Switcher: creating fresh damage tracker for full redraw");
+    let mut fresh_tracker = if shell_view == ShellView::Switcher {
+        tracing::info!("{:?}: creating fresh damage tracker for full redraw", shell_view);
         Some(OutputDamageTracker::from_output(output))
     } else {
         None
@@ -1043,7 +1050,7 @@ fn render_surface(
 
     let render_res = if shell_view == ShellView::Switcher {
         // Switcher view - render window cards
-        let tracker = switcher_tracker.as_mut().unwrap();
+        let tracker = fresh_tracker.as_mut().unwrap();
         tracker.render_output(
             renderer,
             &mut fb,
@@ -1051,7 +1058,7 @@ fn render_surface(
             &switcher_elements,
             bg_color,
         )
-    } else if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings || shell_view == ShellView::PickDefault {
+    } else if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::PickDefault || shell_view == ShellView::QuickSettings {
         // Shell views - render Slint UI
         tracing::info!("Rendering {:?} with {} slint_elements, bg={:?}", shell_view, slint_elements.len(), bg_color);
         surface_data.damage_tracker.render_output(
@@ -1105,7 +1112,7 @@ fn render_surface(
             let has_damage = render_output_result.damage.is_some();
             let damage_rects = render_output_result.damage.as_ref().map(|d| d.len()).unwrap_or(0);
             if shell_view == ShellView::Switcher {
-                tracing::info!("Switcher render OK: has_damage={}, damage_rects={}", has_damage, damage_rects);
+                tracing::info!("{:?} render OK: has_damage={}, damage_rects={}", shell_view, has_damage, damage_rects);
             }
 
             // Get sync point from the render
@@ -1121,7 +1128,7 @@ fn render_surface(
                     surface_data.frame_pending = true;
                     surface_data.ready_to_render = false;
                     if shell_view == ShellView::Switcher {
-                        tracing::info!("Switcher frame queued successfully");
+                        tracing::info!("{:?} frame queued successfully", shell_view);
                     }
                     debug!("Frame queued successfully");
                 }
@@ -1165,6 +1172,23 @@ fn handle_input_event(
         Event,
     };
     use smithay::input::keyboard::FilterResult;
+
+    // Log ALL input events to debug touch handling
+    match &event {
+        InputEvent::TouchDown { .. } => info!("INPUT: TouchDown event received"),
+        InputEvent::TouchMotion { .. } => {} // too spammy
+        InputEvent::TouchUp { .. } => info!("INPUT: TouchUp event received"),
+        InputEvent::PointerMotionAbsolute { event } => {
+            use smithay::backend::input::AbsolutePositionEvent;
+            info!("INPUT: PointerMotionAbsolute at ({:.0}, {:.0})",
+                event.x_transformed(1920), event.y_transformed(1200));
+        }
+        InputEvent::PointerMotion { .. } => {} // spammy relative motion
+        InputEvent::PointerButton { .. } => info!("INPUT: PointerButton event received"),
+        InputEvent::TabletToolProximity { .. } => info!("INPUT: TabletToolProximity"),
+        InputEvent::TabletToolTip { .. } => info!("INPUT: TabletToolTip"),
+        _ => {}
+    }
 
     match event {
         InputEvent::Keyboard { event } => {
@@ -1422,6 +1446,7 @@ fn handle_input_event(
             info!("Touch down at ({:.0}, {:.0}), screen size: {:?}", touch_pos.x, touch_pos.y, screen);
 
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
+                info!("Gesture touch_down returned: {:?}", gesture_event);
                 // In Switcher view, ignore left/right edge gestures to allow horizontal scrolling
                 let should_process = if state.shell.view == crate::shell::ShellView::Switcher {
                     if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
@@ -1456,6 +1481,10 @@ fn handle_input_event(
                         }
                     }
                 }
+            } else {
+                // No edge gesture detected - log for debugging
+                info!("Touch down at ({:.0}, {:.0}) - no edge detected (edge_threshold={})",
+                      touch_pos.x, touch_pos.y, state.gesture_recognizer.config.edge_threshold);
             }
 
             // Handle lock screen touch - block all other interactions
@@ -1757,7 +1786,7 @@ fn handle_input_event(
             use smithay::backend::input::TouchEvent;
             use crate::input::gesture_to_action;
 
-            debug!("Touch up at slot {:?}", event.slot());
+            info!("Touch up at slot {:?}", event.slot());
 
             // Save touch position BEFORE touch_up removes it from gesture recognizer
             let slot_id: i32 = event.slot().into();
@@ -1768,7 +1797,7 @@ fn handle_input_event(
             // Note: Tap and LongPress gestures should NOT block app launch processing
             let mut edge_gesture_handled = false;
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {
-                debug!("Gesture completed: {:?}", gesture_event);
+                info!("Gesture completed: {:?}", gesture_event);
 
                 // Update integrated shell state
                 state.shell.handle_gesture(&gesture_event);

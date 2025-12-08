@@ -50,7 +50,9 @@ impl SlintShell {
         info!("Creating Slint shell with size {:?}", size);
 
         // Create the minimal software window
-        let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
+        // IMPORTANT: Use NewBuffer because we create a fresh buffer each frame
+        // ReusedBuffer would only repaint damaged areas, leaving the rest black
+        let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
         window.set_size(PhysicalSize::new(size.w as u32, size.h as u32));
 
         // Set up the Slint platform
@@ -301,6 +303,10 @@ impl SlintShell {
         // Track if we actually drew
         let drew = std::cell::Cell::new(false);
 
+        // ALWAYS force a redraw for debugging - bypass draw_if_needed check
+        // This ensures we render every frame regardless of Slint's "needs redraw" state
+        self.window.request_redraw();
+
         // Use draw_if_needed which renders if the window needs repainting
         self.window.draw_if_needed(|renderer| {
             drew.set(true);
@@ -337,7 +343,15 @@ impl SlintShell {
 
         // Log if we drew or not
         if drew.get() {
-            tracing::debug!("Slint draw_if_needed: rendered");
+            // Sample some pixels to verify content
+            let buffer = self.pixel_buffer.borrow();
+            let center = (width * height * 2) as usize; // Middle of buffer
+            let sample = if buffer.len() > center + 4 {
+                (buffer[center], buffer[center+1], buffer[center+2], buffer[center+3])
+            } else {
+                (0, 0, 0, 0)
+            };
+            tracing::debug!("Slint draw_if_needed: rendered, center pixel RGBA={:?}", sample);
         } else {
             tracing::warn!("Slint draw_if_needed: skipped (no repaint needed)");
         }
