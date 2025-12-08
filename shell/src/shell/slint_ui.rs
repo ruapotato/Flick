@@ -24,6 +24,20 @@ pub enum PopupAction {
     Close,
 }
 
+/// Actions that can be triggered from Quick Settings
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum QuickSettingsAction {
+    WifiToggle,
+    BluetoothToggle,
+    DndToggle,
+    FlashlightToggle,
+    AirplaneToggle,
+    RotationToggle,
+    Lock,
+    Settings,
+    BrightnessChanged(f32),
+}
+
 /// Slint UI state for the shell
 pub struct SlintShell {
     /// The Slint window adapter
@@ -36,6 +50,8 @@ pub struct SlintShell {
     pixel_buffer: RefCell<Vec<u8>>,
     /// Pending app tap index (set by callback, polled by compositor)
     pending_app_tap: Rc<RefCell<Option<i32>>>,
+    /// Pending Quick Settings actions (set by callbacks, polled by compositor)
+    pending_qs_actions: Rc<RefCell<Vec<QuickSettingsAction>>>,
     /// Whether popup is showing (needed for hit testing)
     popup_showing: RefCell<bool>,
     /// Whether popup can pick default
@@ -82,12 +98,71 @@ impl SlintShell {
             *pending_tap_clone.borrow_mut() = Some(index);
         });
 
+        // Create pending Quick Settings actions storage
+        let pending_qs_actions = Rc::new(RefCell::new(Vec::new()));
+
+        // Connect Quick Settings callbacks
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_wifi_toggled(move || {
+            info!("Slint WiFi toggle callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::WifiToggle);
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_bluetooth_toggled(move || {
+            info!("Slint Bluetooth toggle callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::BluetoothToggle);
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_dnd_toggled(move || {
+            info!("Slint DND toggle callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::DndToggle);
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_flashlight_toggled(move || {
+            info!("Slint Flashlight toggle callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::FlashlightToggle);
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_airplane_toggled(move || {
+            info!("Slint Airplane toggle callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::AirplaneToggle);
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_rotation_toggled(move || {
+            info!("Slint Rotation toggle callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::RotationToggle);
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_lock_pressed(move || {
+            info!("Slint Lock button callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::Lock);
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_settings_pressed(move || {
+            info!("Slint Settings button callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::Settings);
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_brightness_changed(move |value| {
+            info!("Slint Brightness changed callback: {}", value);
+            qs_clone.borrow_mut().push(QuickSettingsAction::BrightnessChanged(value));
+        });
+
         Self {
             window,
             shell,
             size,
             pixel_buffer,
             pending_app_tap,
+            pending_qs_actions,
             popup_showing: RefCell::new(false),
             popup_can_pick: RefCell::new(true),
             wiggle_mode: RefCell::new(false),
@@ -145,6 +220,26 @@ impl SlintShell {
     /// Set Bluetooth enabled state
     pub fn set_bluetooth_enabled(&self, enabled: bool) {
         self.shell.set_bluetooth_enabled(enabled);
+    }
+
+    /// Set Do Not Disturb enabled state
+    pub fn set_dnd_enabled(&self, enabled: bool) {
+        self.shell.set_dnd_enabled(enabled);
+    }
+
+    /// Set Flashlight enabled state
+    pub fn set_flashlight_enabled(&self, enabled: bool) {
+        self.shell.set_flashlight_enabled(enabled);
+    }
+
+    /// Set Airplane mode enabled state
+    pub fn set_airplane_enabled(&self, enabled: bool) {
+        self.shell.set_airplane_enabled(enabled);
+    }
+
+    /// Set Rotation locked state
+    pub fn set_rotation_locked(&self, locked: bool) {
+        self.shell.set_rotation_locked(locked);
     }
 
     /// Set WiFi SSID
@@ -417,6 +512,12 @@ impl SlintShell {
     /// Returns the app index if there was a tap, and clears the pending state
     pub fn take_pending_app_tap(&self) -> Option<i32> {
         self.pending_app_tap.borrow_mut().take()
+    }
+
+    /// Poll for pending Quick Settings actions (from Slint callbacks)
+    /// Returns all pending actions and clears the pending state
+    pub fn take_pending_qs_actions(&self) -> Vec<QuickSettingsAction> {
+        std::mem::take(&mut *self.pending_qs_actions.borrow_mut())
     }
 
     /// Hit test a tap position and return the app index if an app tile was tapped

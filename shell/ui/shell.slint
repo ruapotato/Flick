@@ -80,6 +80,17 @@ export struct AvailableApp {
     exec: string,
 }
 
+// Notification data structure
+export struct Notification {
+    id: int,
+    app-name: string,
+    app-icon: string,
+    title: string,
+    body: string,
+    time: string,
+    urgency: int,  // 0=low, 1=normal, 2=critical
+}
+
 // Status bar at top of screen
 component StatusBar inherits Rectangle {
     in property <string> time: "12:00";
@@ -487,6 +498,105 @@ component AppTile inherits Rectangle {
                 root.drag-moved(self.mouse-x / 1px, self.mouse-y / 1px);
             }
         }
+    }
+}
+
+// Notification card component
+component NotificationCard inherits Rectangle {
+    in property <string> app-name: "App";
+    in property <string> app-icon: "📱";
+    in property <string> title: "Notification";
+    in property <string> body: "Message body";
+    in property <string> time: "now";
+    in property <int> urgency: 1;
+
+    callback dismissed();
+    callback tapped();
+
+    height: 80px;
+    border-radius: 12px;
+    background: urgency == 2 ? Theme.error.with-alpha(0.2) : Theme.surface-variant;
+    clip: true;
+
+    HorizontalLayout {
+        padding: 12px;
+        spacing: 12px;
+
+        // App icon
+        Rectangle {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: Theme.primary.with-alpha(0.2);
+
+            Text {
+                text: app-icon;
+                font-size: 20px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        // Content
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            alignment: center;
+
+            HorizontalLayout {
+                Text {
+                    text: app-name;
+                    color: Theme.on-surface;
+                    font-size: 12px;
+                    font-weight: 600;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: time;
+                    color: Theme.on-surface-variant;
+                    font-size: 10px;
+                }
+            }
+
+            Text {
+                text: title;
+                color: Theme.on-surface;
+                font-size: 14px;
+                font-weight: 500;
+                overflow: elide;
+            }
+
+            Text {
+                text: body;
+                color: Theme.on-surface-variant;
+                font-size: 12px;
+                overflow: elide;
+            }
+        }
+
+        // Dismiss button
+        Rectangle {
+            width: 24px;
+            height: 24px;
+            border-radius: 12px;
+            background: Theme.surface;
+
+            Text {
+                text: "×";
+                color: Theme.on-surface-variant;
+                font-size: 16px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            TouchArea {
+                clicked => { root.dismissed(); }
+            }
+        }
+    }
+
+    TouchArea {
+        clicked => { root.tapped(); }
     }
 }
 
@@ -987,38 +1097,57 @@ component HomeScreen inherits Rectangle {
     }
 }
 
-// Quick settings panel
+// Quick settings panel - comprehensive iOS/Android-style control center
 component QuickSettingsPanel inherits Rectangle {
     in property <float> brightness: 0.7;
     in property <bool> wifi-enabled: true;
     in property <bool> bluetooth-enabled: false;
+    in property <bool> dnd-enabled: false;
+    in property <bool> flashlight-enabled: false;
+    in property <bool> airplane-enabled: false;
+    in property <bool> rotation-locked: false;
     in property <string> wifi-ssid: "Home WiFi";
     in property <int> battery-percent: 85;
     in property <string> time: "12:00";
+    in property <[Notification]> notifications: [];
 
     callback brightness-changed(float);
     callback wifi-toggled();
     callback bluetooth-toggled();
+    callback dnd-toggled();
+    callback flashlight-toggled();
+    callback airplane-toggled();
+    callback rotation-toggled();
     callback lock-pressed();
+    callback settings-pressed();
+    callback notification-dismissed(int);
+    callback notification-tapped(int);
+    callback clear-all-notifications();
 
     width: 100%;
     height: 100%;
     background: Theme.background;
 
     VerticalLayout {
+        padding: 0px;
+        spacing: 1px;
+
         // Header with time and status
         Rectangle {
-            height: 80px;
-            background: Theme.primary-container;
+            height: 72px;
+            background: Theme.surface;
 
             HorizontalLayout {
-                padding: 20px;
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-top: 16px;
+                padding-bottom: 16px;
                 spacing: 16px;
 
                 Text {
                     text: time;
                     color: Theme.on-surface;
-                    font-size: 36px;
+                    font-size: 32px;
                     font-weight: 300;
                     vertical-alignment: center;
                 }
@@ -1027,44 +1156,55 @@ component QuickSettingsPanel inherits Rectangle {
 
                 VerticalLayout {
                     alignment: center;
-                    spacing: 4px;
+                    spacing: 2px;
 
-                    Text {
-                        text: wifi-ssid;
-                        color: Theme.primary;
-                        font-size: 14px;
-                        horizontal-alignment: right;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+
+                        // WiFi indicator
+                        Text {
+                            text: wifi-enabled ? "W" : "";
+                            color: Theme.primary;
+                            font-size: 12px;
+                        }
+                        // Bluetooth indicator
+                        Text {
+                            text: bluetooth-enabled ? "B" : "";
+                            color: Theme.primary;
+                            font-size: 12px;
+                        }
+                        // DND indicator
+                        Text {
+                            text: dnd-enabled ? "🌙" : "";
+                            font-size: 12px;
+                        }
                     }
 
                     Text {
-                        text: battery-percent + "% Battery";
-                        color: battery-percent > 20 ? Theme.success : Theme.error;
-                        font-size: 12px;
+                        text: battery-percent + "%";
+                        color: battery-percent > 20 ? Theme.on-surface : Theme.error;
+                        font-size: 14px;
+                        font-weight: 500;
                         horizontal-alignment: right;
                     }
                 }
             }
         }
 
-        // Quick toggles section
+        // Quick toggles - 2 rows of 4
         Rectangle {
-            height: 140px;
+            height: 200px;
             background: Theme.surface;
 
             VerticalLayout {
                 padding: 16px;
                 spacing: 12px;
 
-                Text {
-                    text: "Quick Settings";
-                    color: Theme.on-surface-variant;
-                    font-size: 12px;
-                    font-weight: 600;
-                }
-
+                // Row 1
                 HorizontalLayout {
-                    spacing: 16px;
-                    alignment: center;
+                    spacing: 12px;
+                    alignment: space-around;
 
                     QuickToggle {
                         label: "WiFi";
@@ -1074,17 +1214,58 @@ component QuickSettingsPanel inherits Rectangle {
                     }
 
                     QuickToggle {
-                        label: "BT";
+                        label: "Bluetooth";
                         icon: "B";
                         enabled: bluetooth-enabled;
                         toggled => { bluetooth-toggled(); }
                     }
 
                     QuickToggle {
+                        label: "DND";
+                        icon: "🌙";
+                        enabled: dnd-enabled;
+                        toggled => { dnd-toggled(); }
+                    }
+
+                    QuickToggle {
+                        label: "Flash";
+                        icon: "🔦";
+                        enabled: flashlight-enabled;
+                        toggled => { flashlight-toggled(); }
+                    }
+                }
+
+                // Row 2
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: space-around;
+
+                    QuickToggle {
+                        label: "Airplane";
+                        icon: "✈";
+                        enabled: airplane-enabled;
+                        toggled => { airplane-toggled(); }
+                    }
+
+                    QuickToggle {
+                        label: "Rotate";
+                        icon: "🔄";
+                        enabled: rotation-locked;
+                        toggled => { rotation-toggled(); }
+                    }
+
+                    QuickToggle {
                         label: "Lock";
-                        icon: "L";
+                        icon: "🔒";
                         enabled: false;
                         toggled => { lock-pressed(); }
+                    }
+
+                    QuickToggle {
+                        label: "Settings";
+                        icon: "⚙";
+                        enabled: false;
+                        toggled => { settings-pressed(); }
                     }
                 }
             }
@@ -1092,52 +1273,120 @@ component QuickSettingsPanel inherits Rectangle {
 
         // Brightness slider
         Rectangle {
-            height: 100px;
+            height: 70px;
             background: Theme.surface;
 
-            VerticalLayout {
+            HorizontalLayout {
                 padding: 16px;
                 spacing: 12px;
 
                 Text {
-                    text: "Brightness";
+                    text: "☀";
                     color: Theme.on-surface-variant;
-                    font-size: 12px;
-                    font-weight: 600;
+                    font-size: 18px;
+                    vertical-alignment: center;
                 }
 
-                HorizontalLayout {
-                    spacing: 12px;
-                    padding-left: 8px;
-                    padding-right: 8px;
+                BrightnessSlider {
+                    horizontal-stretch: 1;
+                    value: brightness;
+                    changed(v) => { brightness-changed(v); }
+                }
 
-                    Text {
-                        text: "☀";
-                        color: Theme.on-surface-variant;
-                        font-size: 16px;
-                        vertical-alignment: center;
-                    }
-
-                    BrightnessSlider {
-                        horizontal-stretch: 1;
-                        value: brightness;
-                        changed(v) => { brightness-changed(v); }
-                    }
-
-                    Text {
-                        text: "☀";
-                        color: Theme.on-surface;
-                        font-size: 20px;
-                        vertical-alignment: center;
-                    }
+                Text {
+                    text: "☀";
+                    color: Theme.on-surface;
+                    font-size: 22px;
+                    vertical-alignment: center;
                 }
             }
         }
 
-        // Spacer
+        // Notifications section
         Rectangle {
             vertical-stretch: 1;
             background: Theme.background;
+
+            VerticalLayout {
+                padding: 16px;
+                spacing: 8px;
+
+                // Notifications header
+                HorizontalLayout {
+                    height: 30px;
+
+                    Text {
+                        text: "Notifications";
+                        color: Theme.on-surface;
+                        font-size: 14px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    Rectangle {
+                        width: 80px;
+                        height: 28px;
+                        border-radius: 14px;
+                        background: notifications.length > 0 ? Theme.surface-variant : transparent;
+                        visible: notifications.length > 0;
+
+                        Text {
+                            text: "Clear all";
+                            color: Theme.primary;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => { clear-all-notifications(); }
+                        }
+                    }
+                }
+
+                // Notification list or empty state
+                if notifications.length == 0: Rectangle {
+                    vertical-stretch: 1;
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 8px;
+
+                        Text {
+                            text: "🔔";
+                            font-size: 48px;
+                            horizontal-alignment: center;
+                        }
+
+                        Text {
+                            text: "No notifications";
+                            color: Theme.on-surface-variant;
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                        }
+
+                        Text {
+                            text: "You're all caught up!";
+                            color: Theme.on-surface-variant.with-alpha(0.6);
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+
+                // Notification cards
+                for notification[idx] in notifications: NotificationCard {
+                    app-name: notification.app-name;
+                    app-icon: notification.app-icon;
+                    title: notification.title;
+                    body: notification.body;
+                    time: notification.time;
+                    urgency: notification.urgency;
+                    dismissed => { notification-dismissed(notification.id); }
+                    tapped => { notification-tapped(notification.id); }
+                }
+            }
         }
 
         HomeIndicator {}
@@ -1155,8 +1404,13 @@ export component FlickShell inherits Window {
     in property <float> brightness: 0.7;
     in property <bool> wifi-enabled: true;
     in property <bool> bluetooth-enabled: false;
+    in property <bool> dnd-enabled: false;
+    in property <bool> flashlight-enabled: false;
+    in property <bool> airplane-enabled: false;
+    in property <bool> rotation-locked: false;
     in property <string> wifi-ssid: "WiFi";
     in property <int> battery-percent: 85;
+    in property <[Notification]> notifications: [];
 
     // Popup menu state
     in property <bool> show-popup: false;
@@ -1185,9 +1439,17 @@ export component FlickShell inherits Window {
     callback brightness-changed(float);
     callback wifi-toggled();
     callback bluetooth-toggled();
+    callback dnd-toggled();
+    callback flashlight-toggled();
+    callback airplane-toggled();
+    callback rotation-toggled();
     callback lock-pressed();
+    callback settings-pressed();
+    callback notification-dismissed(int);
+    callback notification-tapped(int);
+    callback clear-all-notifications();
 
-    // New callbacks for popup menu actions
+    // Callbacks for popup menu actions
     callback popup-pick-default();
     callback popup-move();
     callback popup-close();
@@ -1222,13 +1484,26 @@ export component FlickShell inherits Window {
         brightness: brightness;
         wifi-enabled: wifi-enabled;
         bluetooth-enabled: bluetooth-enabled;
+        dnd-enabled: dnd-enabled;
+        flashlight-enabled: flashlight-enabled;
+        airplane-enabled: airplane-enabled;
+        rotation-locked: rotation-locked;
         wifi-ssid: wifi-ssid;
         battery-percent: battery-percent;
+        notifications: notifications;
         time: lock-time;
         brightness-changed(v) => { brightness-changed(v); }
         wifi-toggled => { wifi-toggled(); }
         bluetooth-toggled => { bluetooth-toggled(); }
+        dnd-toggled => { dnd-toggled(); }
+        flashlight-toggled => { flashlight-toggled(); }
+        airplane-toggled => { airplane-toggled(); }
+        rotation-toggled => { rotation-toggled(); }
         lock-pressed => { lock-pressed(); }
+        settings-pressed => { settings-pressed(); }
+        notification-dismissed(id) => { notification-dismissed(id); }
+        notification-tapped(id) => { notification-tapped(id); }
+        clear-all-notifications => { clear-all-notifications(); }
     }
 
     // Lock screen - overlay on top of everything when locked

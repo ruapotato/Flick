@@ -735,18 +735,14 @@ fn render_surface(
                     tracing::info!("Rendering QuickSettings view via Slint");
                     slint_ui.set_view("quick-settings");
                     slint_ui.set_brightness(state.shell.quick_settings.brightness);
-                    // Get wifi/bluetooth enabled state from toggles
-                    let wifi_enabled = state.shell.quick_settings.toggles.iter()
-                        .find(|t| t.id == "wifi")
-                        .map(|t| t.enabled)
-                        .unwrap_or(false);
-                    let bluetooth_enabled = state.shell.quick_settings.toggles.iter()
-                        .find(|t| t.id == "bluetooth")
-                        .map(|t| t.enabled)
-                        .unwrap_or(false);
-                    slint_ui.set_wifi_enabled(wifi_enabled);
-                    slint_ui.set_bluetooth_enabled(bluetooth_enabled);
-                    slint_ui.set_wifi_ssid(state.shell.quick_settings.wifi_ssid.as_deref().unwrap_or(""));
+                    // Sync all toggle states from system
+                    slint_ui.set_wifi_enabled(state.system.wifi_enabled);
+                    slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
+                    slint_ui.set_dnd_enabled(state.system.dnd.enabled);
+                    slint_ui.set_flashlight_enabled(crate::system::Flashlight::is_on());
+                    slint_ui.set_airplane_enabled(crate::system::AirplaneMode::is_enabled());
+                    slint_ui.set_rotation_locked(state.system.rotation_lock.locked);
+                    slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
                     slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
                 }
                 _ => {}
@@ -1623,6 +1619,10 @@ fn handle_input_event(
             // Check if touch is on Quick Settings panel
             if state.shell.view == crate::shell::ShellView::QuickSettings {
                 state.shell.start_qs_touch(touch_pos.x, touch_pos.y);
+                // Dispatch to Slint for toggle visual feedback and callbacks
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                }
             }
 
             // Only forward touch events to apps when in App view (not Home or Switcher)
@@ -1752,6 +1752,10 @@ fn handle_input_event(
                 // Apply brightness to system backlight in real-time while dragging
                 let brightness = state.shell.get_qs_brightness();
                 state.system.set_brightness(brightness);
+                // Dispatch to Slint for brightness slider interaction
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                }
             }
 
             // Only forward touch motion to apps when in App view (not Home or Switcher)
@@ -2034,46 +2038,87 @@ fn handle_input_event(
 
             // Handle Quick Settings touch up (toggle tap) and sync brightness
             if state.shell.view == crate::shell::ShellView::QuickSettings {
-                // Execute system action if a toggle was tapped
-                if let Some(toggle_id) = state.shell.end_qs_touch() {
-                    use crate::system::{WifiManager, BluetoothManager, AirplaneMode, Flashlight};
-                    match toggle_id.as_str() {
-                        "wifi" => {
-                            WifiManager::toggle();
-                            state.system.wifi_enabled = WifiManager::is_enabled();
-                            state.system.wifi_ssid = WifiManager::current_connection();
-                            info!("WiFi toggled: {}", if state.system.wifi_enabled { "ON" } else { "OFF" });
-                        }
-                        "bluetooth" => {
-                            BluetoothManager::toggle();
-                            state.system.bluetooth_enabled = BluetoothManager::is_enabled();
-                            info!("Bluetooth toggled: {}", if state.system.bluetooth_enabled { "ON" } else { "OFF" });
-                        }
-                        "airplane" => {
-                            AirplaneMode::toggle();
-                            state.system.wifi_enabled = WifiManager::is_enabled();
-                            state.system.bluetooth_enabled = BluetoothManager::is_enabled();
-                            info!("Airplane mode toggled");
-                        }
-                        "flashlight" => {
-                            Flashlight::toggle();
-                            info!("Flashlight toggled");
-                        }
-                        "dnd" => {
-                            state.system.dnd.toggle();
-                            info!("Do Not Disturb: {}", if state.system.dnd.enabled { "ON" } else { "OFF" });
-                        }
-                        "rotation" => {
-                            state.system.rotation_lock.toggle();
-                            info!("Rotation lock: {}", if state.system.rotation_lock.locked { "ON" } else { "OFF" });
-                        }
-                        _ => {
-                            info!("Unknown toggle: {}", toggle_id);
+                use crate::system::{WifiManager, BluetoothManager, AirplaneMode, Flashlight};
+                use crate::shell::slint_ui::QuickSettingsAction;
+
+                // Clear old coordinate-based touch tracking
+                state.shell.end_qs_touch();
+
+                // Dispatch pointer release to Slint to trigger callbacks
+                if let Some(pos) = last_touch_pos {
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
+
+                        // Poll for Slint callback actions
+                        let actions = slint_ui.take_pending_qs_actions();
+                        for action in actions {
+                            match action {
+                                QuickSettingsAction::WifiToggle => {
+                                    WifiManager::toggle();
+                                    state.system.wifi_enabled = WifiManager::is_enabled();
+                                    state.system.wifi_ssid = WifiManager::current_connection();
+                                    info!("WiFi toggled: {}", if state.system.wifi_enabled { "ON" } else { "OFF" });
+                                }
+                                QuickSettingsAction::BluetoothToggle => {
+                                    BluetoothManager::toggle();
+                                    state.system.bluetooth_enabled = BluetoothManager::is_enabled();
+                                    info!("Bluetooth toggled: {}", if state.system.bluetooth_enabled { "ON" } else { "OFF" });
+                                }
+                                QuickSettingsAction::DndToggle => {
+                                    state.system.dnd.toggle();
+                                    info!("Do Not Disturb: {}", if state.system.dnd.enabled { "ON" } else { "OFF" });
+                                }
+                                QuickSettingsAction::FlashlightToggle => {
+                                    Flashlight::toggle();
+                                    info!("Flashlight toggled");
+                                }
+                                QuickSettingsAction::AirplaneToggle => {
+                                    AirplaneMode::toggle();
+                                    state.system.wifi_enabled = WifiManager::is_enabled();
+                                    state.system.bluetooth_enabled = BluetoothManager::is_enabled();
+                                    info!("Airplane mode toggled");
+                                }
+                                QuickSettingsAction::RotationToggle => {
+                                    state.system.rotation_lock.toggle();
+                                    info!("Rotation lock: {}", if state.system.rotation_lock.locked { "ON" } else { "OFF" });
+                                }
+                                QuickSettingsAction::Lock => {
+                                    info!("Lock button pressed - locking screen");
+                                    state.shell.lock();
+                                }
+                                QuickSettingsAction::Settings => {
+                                    info!("Settings button pressed - launching settings app");
+                                    // Get the settings app exec command
+                                    use crate::shell::apps::AppCategory;
+                                    if let Some(exec) = state.shell.app_manager.get_exec(AppCategory::Settings) {
+                                        let exec_clone = exec.clone();
+                                        // Close quick settings (need to check if any windows exist)
+                                        let has_windows = state.space.elements().count() > 0;
+                                        state.shell.close_quick_settings(has_windows);
+                                        // Launch the settings app
+                                        if let Err(e) = std::process::Command::new("sh")
+                                            .arg("-c")
+                                            .arg(&exec_clone)
+                                            .spawn()
+                                        {
+                                            tracing::error!("Failed to launch settings app '{}': {}", exec_clone, e);
+                                        } else {
+                                            state.shell.switch_to_app();
+                                        }
+                                    } else {
+                                        info!("No settings app configured");
+                                    }
+                                }
+                                QuickSettingsAction::BrightnessChanged(value) => {
+                                    state.system.set_brightness(value);
+                                    info!("Brightness set to {:.0}%", value * 100.0);
+                                }
+                            }
                         }
                     }
                 }
 
-                // Apply brightness to system backlight
+                // Apply brightness to system backlight (in case of drag)
                 let brightness = state.shell.get_qs_brightness();
                 state.system.set_brightness(brightness);
             }
