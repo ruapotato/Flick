@@ -932,12 +932,21 @@ fn render_surface(
         // Build card data with window references
         let windows: Vec<_> = state.space.elements().cloned().collect();
 
+        // Sort windows by distance from focused position (focused card rendered first = on top)
+        // Front-to-back order means first rendered = in front
+        let mut sorted_indices: Vec<usize> = (0..windows.len()).collect();
+        sorted_indices.sort_by(|&a, &b| {
+            let dist_a = ((a as f64 * card_spacing - scroll_offset) / card_spacing).abs();
+            let dist_b = ((b as f64 * card_spacing - scroll_offset) / card_spacing).abs();
+            dist_a.partial_cmp(&dist_b).unwrap()
+        });
+
         // First pass: collect card backgrounds (rendered behind window content)
-        // We need to render backgrounds from front to back so overlapping works correctly
         let mut card_backgrounds: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
 
-        // Render cards from back to front (reversed iteration puts front cards first in output)
-        for (i, window) in windows.iter().enumerate().rev() {
+        // Render cards sorted by distance from center (closest = on top)
+        for &i in sorted_indices.iter() {
+            let window = &windows[i];
             // Calculate card position relative to scroll
             let card_scroll_pos = i as f64 * card_spacing - scroll_offset;
             let normalized_pos = card_scroll_pos / card_spacing;
@@ -1039,8 +1048,9 @@ fn render_surface(
         // Add card backgrounds after window content (they render behind)
         switcher_elements.extend(card_backgrounds);
 
-        // Second pass: render window titles below cards
-        for (i, window) in windows.iter().enumerate().rev() {
+        // Second pass: render window titles below cards (same sorted order)
+        for &i in sorted_indices.iter() {
+            let window = &windows[i];
             let card_scroll_pos = i as f64 * card_spacing - scroll_offset;
             let normalized_pos = card_scroll_pos / card_spacing;
             let distance = normalized_pos.abs();
