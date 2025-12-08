@@ -119,6 +119,10 @@ pub struct Flick {
     pub switcher_gesture_active: bool,
     pub switcher_gesture_progress: f64,
 
+    /// Quick settings transition gesture (swipe from left - slides in from left)
+    pub qs_gesture_active: bool,
+    pub qs_gesture_progress: f64,
+
     // Integrated shell UI
     pub shell: Shell,
 
@@ -209,6 +213,8 @@ impl Flick {
             home_gesture_original_y: 0,
             switcher_gesture_active: false,
             switcher_gesture_progress: 0.0,
+            qs_gesture_active: false,
+            qs_gesture_progress: 0.0,
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
         }

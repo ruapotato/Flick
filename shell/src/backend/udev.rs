@@ -1375,6 +1375,108 @@ fn render_surface(
             &transition_elements,
             [0.1, 0.1, 0.12, 1.0], // Switcher background
         )
+    } else if state.qs_gesture_active {
+        // During quick settings gesture: slide current view right, reveal QS from left
+        use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+        use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
+
+        let progress = state.qs_gesture_progress;
+        let screen_w = state.screen_size.w;
+        let screen_h = state.screen_size.h;
+
+        // Current view slides right based on progress
+        let slide_offset = (progress * screen_w as f64 * 0.8) as i32; // Slide up to 80% of screen width
+
+        let mut qs_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
+
+        // First add quick settings (sliding in from left - behind current view)
+        // QS starts off-screen to the left, slides to visible
+        let qs_x_offset = -screen_w + slide_offset;
+
+        // Render QS Slint UI at offset position
+        if let Some(ref slint_ui) = state.shell.slint_ui {
+            // Set up quick settings view
+            slint_ui.set_view("quick-settings");
+            slint_ui.set_brightness(state.shell.quick_settings.brightness);
+            slint_ui.set_wifi_enabled(state.system.wifi_enabled);
+            slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
+            slint_ui.set_dnd_enabled(state.system.dnd.enabled);
+            slint_ui.set_flashlight_enabled(crate::system::Flashlight::is_on());
+            slint_ui.set_airplane_enabled(crate::system::AirplaneMode::is_enabled());
+            slint_ui.set_rotation_locked(state.system.rotation_lock.locked);
+            slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
+            slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
+
+            slint_ui.process_events();
+            slint_ui.request_redraw();
+
+            if let Some((width, height, pixels)) = slint_ui.render() {
+                let mut mem_buffer = MemoryRenderBuffer::new(
+                    Fourcc::Abgr8888,
+                    (width as i32, height as i32),
+                    1,
+                    Transform::Normal,
+                    None,
+                );
+
+                let pixels_clone = pixels.clone();
+                let _: Result<(), std::convert::Infallible> = mem_buffer.render().draw(|buffer| {
+                    buffer.copy_from_slice(&pixels_clone);
+                    Ok(vec![Rectangle::from_size((width as i32, height as i32).into())])
+                });
+
+                let qs_loc: smithay::utils::Point<f64, smithay::utils::Physical> = (qs_x_offset as f64, 0.0).into();
+                if let Ok(slint_element) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    qs_loc,
+                    &mem_buffer,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    qs_elements.push(SwitcherRenderElement::Icon(slint_element));
+                }
+            }
+        }
+
+        // Then add current view (app windows) sliding to the right - on top
+        let windows: Vec<_> = state.space.elements().cloned().collect();
+        for window in windows.iter() {
+            if let Some(loc) = state.space.element_location(window) {
+                let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
+                    .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                        renderer,
+                        (0, 0).into(),
+                        Scale::from(scale),
+                        1.0,
+                    );
+
+                // Large crop rect to avoid clipping
+                let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
+                    (-screen_w, -screen_h).into(),
+                    (screen_w * 3, screen_h * 3).into(),
+                );
+
+                for elem in window_render_elements {
+                    let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(1.0));
+                    // Offset by slide_offset to the right
+                    let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (loc.x + slide_offset, loc.y).into();
+                    let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Relative);
+                    if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
+                        qs_elements.insert(0, cropped.into()); // Insert at front for on-top rendering
+                    }
+                }
+            }
+        }
+
+        surface_data.damage_tracker.render_output(
+            renderer,
+            &mut fb,
+            0, // Force full redraw during gesture
+            &qs_elements,
+            [0.1, 0.1, 0.15, 1.0], // QS background color
+        )
     } else {
         // App view - render windows
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
@@ -1768,6 +1870,11 @@ fn handle_input_event(
                         if *edge == crate::input::Edge::Bottom {
                             state.start_home_gesture();
                         }
+                        // Start quick settings transition when swiping from left
+                        if *edge == crate::input::Edge::Left {
+                            state.qs_gesture_active = true;
+                            state.qs_gesture_progress = 0.0;
+                        }
                     }
                 }
             } else {
@@ -2021,6 +2128,11 @@ fn handle_input_event(
                         state.switcher_gesture_active = true;
                         state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
                     }
+                    // Update quick settings transition when swiping from left
+                    if *edge == crate::input::Edge::Left {
+                        state.qs_gesture_active = true;
+                        state.qs_gesture_progress = progress.clamp(0.0, 1.0);
+                    }
                 }
             }
 
@@ -2162,11 +2274,18 @@ fn handle_input_event(
                             state.shell.open_switcher(num_windows, card_spacing);
                         }
                     }
-                    // Sync Quick Settings with system status when opening it
-                    if *edge == crate::input::Edge::Left && *completed {
-                        state.system.refresh();
-                        state.shell.sync_quick_settings(&state.system);
-                        info!("Quick Settings opened - synced with system status");
+                    // Handle quick settings transition end
+                    if *edge == crate::input::Edge::Left {
+                        // Reset gesture state
+                        state.qs_gesture_active = false;
+                        state.qs_gesture_progress = 0.0;
+
+                        // Sync Quick Settings with system status when opening it
+                        if *completed {
+                            state.system.refresh();
+                            state.shell.sync_quick_settings(&state.system);
+                            info!("Quick Settings opened - synced with system status");
+                        }
                     }
                 }
 
