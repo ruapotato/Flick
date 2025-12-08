@@ -719,8 +719,8 @@ fn render_surface(
         [0.05, 0.05, 0.15, 1.0]
     };
 
-    tracing::info!("render_surface: view={:?}, gesture_active={}, bg_color={:?}",
-                   shell_view, gesture_active, bg_color);
+    tracing::info!("render_surface: view={:?}, gesture_active={}, qs_gesture_active={}, qs_progress={:.2}, bg_color={:?}",
+                   shell_view, gesture_active, state.qs_gesture_active, state.qs_gesture_progress, bg_color);
 
     // Build Slint UI elements for shell views
     let mut slint_elements: Vec<HomeRenderElement<GlesRenderer>> = Vec::new();
@@ -1170,8 +1170,8 @@ fn render_surface(
             &switcher_elements,
             bg_color,
         )
-    } else if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::PickDefault || shell_view == ShellView::QuickSettings {
-        // Shell views - render Slint UI
+    } else if (shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::PickDefault || shell_view == ShellView::QuickSettings) && !state.qs_gesture_active {
+        // Shell views - render Slint UI (but not during QS gesture transition)
         tracing::info!("Rendering {:?} with {} slint_elements, bg={:?}", shell_view, slint_elements.len(), bg_color);
         surface_data.damage_tracker.render_output(
             renderer,
@@ -1874,6 +1874,7 @@ fn handle_input_event(
                         if *edge == crate::input::Edge::Left {
                             state.qs_gesture_active = true;
                             state.qs_gesture_progress = 0.0;
+                            tracing::info!("QS gesture STARTED: qs_gesture_active=true");
                         }
                     }
                 }
@@ -2132,6 +2133,7 @@ fn handle_input_event(
                     if *edge == crate::input::Edge::Left {
                         state.qs_gesture_active = true;
                         state.qs_gesture_progress = progress.clamp(0.0, 1.0);
+                        tracing::info!("QS gesture UPDATE: progress={:.2}", state.qs_gesture_progress);
                     }
                 }
             }
