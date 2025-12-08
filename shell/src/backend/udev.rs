@@ -942,9 +942,9 @@ fn render_surface(
                     Kind::Unspecified,
                 ) {
                     Ok(slint_element) => {
-                        // For Switcher, save the element to add to switcher_elements later
-                        // For other views, add to slint_elements as normal
-                        if shell_view == ShellView::Switcher {
+                        // For Switcher (not during home gesture), save the element to add to switcher_elements later
+                        // For other views (or Switcher during home gesture), add to slint_elements as normal
+                        if shell_view == ShellView::Switcher && !switcher_home_gesture_active {
                             switcher_slint_element = Some(slint_element);
                             tracing::info!("Slint {:?} element saved for switcher_elements", shell_view);
                         } else {
