@@ -1694,13 +1694,18 @@ fn handle_input_event(
 
                 let scroll_offset = state.shell.switcher_scroll;
 
-                // Collect windows and find which card was touched
-                // Check front-to-back (reverse order) since front cards overlay back cards
+                // Collect windows and sort by z-order (closest to center = on top)
                 let windows: Vec<_> = state.space.elements().cloned().collect();
-                let mut touched_index = None;
+                let mut sorted_indices: Vec<usize> = (0..windows.len()).collect();
+                sorted_indices.sort_by(|&a, &b| {
+                    let dist_a = ((a as f64 * card_spacing - scroll_offset) / card_spacing).abs();
+                    let dist_b = ((b as f64 * card_spacing - scroll_offset) / card_spacing).abs();
+                    dist_a.partial_cmp(&dist_b).unwrap()
+                });
 
-                for (i, _window) in windows.iter().enumerate() {
-                    // Calculate card position (same formula as render)
+                // Check cards in z-order (front to back), first hit wins
+                let mut touched_index = None;
+                for &i in sorted_indices.iter() {
                     let card_scroll_pos = i as f64 * card_spacing - scroll_offset;
                     let normalized_pos = card_scroll_pos / card_spacing;
                     let distance = normalized_pos.abs();
@@ -1716,7 +1721,7 @@ fn handle_input_event(
                     if touch_pos.x >= x_offset && touch_pos.x < x_offset + card_width &&
                        touch_pos.y >= y_pos && touch_pos.y < y_pos + card_height {
                         touched_index = Some(i);
-                        // Don't break - keep checking so we hit the frontmost (last) card
+                        break; // First hit in z-order wins
                     }
                 }
 
