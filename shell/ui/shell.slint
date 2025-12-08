@@ -1,7 +1,7 @@
 // Flick Shell UI - Mobile-first Linux shell
 // Uses Slint declarative UI with Material Design inspired styling
 
-import { Button, VerticalBox, HorizontalBox, GridBox, ScrollView, Slider } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, GridBox, ScrollView } from "std-widgets.slint";
 
 // Color scheme - dark mobile theme
 global Theme {
@@ -14,6 +14,57 @@ global Theme {
     out property <color> on-surface-variant: #a0a0b0;
     out property <color> error: #ff6b6b;
     out property <color> success: #4ade80;
+}
+
+// Simple brightness slider (custom, software renderer compatible)
+component BrightnessSlider inherits Rectangle {
+    in property <float> value: 0.5;  // 0.0 to 1.0
+    callback changed(float);
+
+    height: 40px;
+    background: Theme.surface-variant;
+    border-radius: 8px;
+
+    // Track background
+    Rectangle {
+        x: 8px;
+        y: (parent.height - 8px) / 2;
+        width: parent.width - 16px;
+        height: 8px;
+        border-radius: 4px;
+        background: Theme.background;
+
+        // Filled portion
+        Rectangle {
+            width: parent.width * root.value;
+            height: 100%;
+            border-radius: 4px;
+            background: Theme.primary;
+        }
+    }
+
+    // Thumb
+    Rectangle {
+        x: 8px + (parent.width - 16px - 24px) * root.value;
+        y: (parent.height - 24px) / 2;
+        width: 24px;
+        height: 24px;
+        border-radius: 12px;
+        background: Theme.on-surface;
+    }
+
+    touch := TouchArea {
+        moved => {
+            if self.pressed {
+                // Calculate new value: (mouse-x - 8px) / (width - 16px), clamped 0-1
+                root.changed(max(0.0, min(1.0, (self.mouse-x - 8px) / (parent.width - 16px))));
+            }
+        }
+        clicked => {
+            // Calculate new value on click
+            root.changed(max(0.0, min(1.0, (self.mouse-x - 8px) / (parent.width - 16px))));
+        }
+    }
 }
 
 // App category for home screen
@@ -1061,22 +1112,20 @@ component QuickSettingsPanel inherits Rectangle {
                     padding-right: 8px;
 
                     Text {
-                        text: "O";
+                        text: "☀";
                         color: Theme.on-surface-variant;
                         font-size: 16px;
                         vertical-alignment: center;
                     }
 
-                    Slider {
+                    BrightnessSlider {
                         horizontal-stretch: 1;
-                        minimum: 0;
-                        maximum: 100;
-                        value: brightness * 100;
-                        changed(v) => { brightness-changed(v / 100); }
+                        value: brightness;
+                        changed(v) => { brightness-changed(v); }
                     }
 
                     Text {
-                        text: "O";
+                        text: "☀";
                         color: Theme.on-surface;
                         font-size: 20px;
                         vertical-alignment: center;
