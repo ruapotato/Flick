@@ -3092,14 +3092,20 @@ fn handle_input_event(
                             info!("App tap detected: category={:?}", category);
                             // Use get_exec() which properly handles Settings (uses built-in Flick Settings)
                             if let Some(exec) = state.shell.app_manager.get_exec(category) {
-                                info!("Launching app: {}", exec);
-                                std::process::Command::new("sh")
-                                    .arg("-c")
-                                    .arg(&exec)
-                                    .spawn()
-                                    .ok();
-                                // Don't call app_launched() here - stay on Home until window appears
-                                // The view will switch to App when the window is actually mapped
+                                // First, try to focus an existing window for this app
+                                if state.try_focus_existing_app(&exec) {
+                                    info!("Focused existing window for: {}", exec);
+                                } else {
+                                    // No existing window found, launch new instance
+                                    info!("Launching app: {}", exec);
+                                    std::process::Command::new("sh")
+                                        .arg("-c")
+                                        .arg(&exec)
+                                        .spawn()
+                                        .ok();
+                                    // Don't call app_launched() here - stay on Home until window appears
+                                    // The view will switch to App when the window is actually mapped
+                                }
                             }
                         }
                     }
@@ -3193,18 +3199,26 @@ fn handle_input_event(
                                     // Get the settings app exec command
                                     use crate::shell::apps::AppCategory;
                                     if let Some(exec) = state.shell.app_manager.get_exec(AppCategory::Settings) {
-                                        let exec_clone = exec.clone();
-                                        // Close quick settings (need to check if any windows exist)
-                                        let has_windows = state.space.elements().count() > 0;
-                                        state.shell.close_quick_settings(has_windows);
-                                        // Launch the settings app
-                                        // Don't call switch_to_app() - view will switch when window is mapped
-                                        if let Err(e) = std::process::Command::new("sh")
-                                            .arg("-c")
-                                            .arg(&exec_clone)
-                                            .spawn()
-                                        {
-                                            tracing::error!("Failed to launch settings app '{}': {}", exec_clone, e);
+                                        // First, try to focus an existing settings window
+                                        if state.try_focus_existing_app(&exec) {
+                                            info!("Focused existing settings window");
+                                            // Close quick settings since we're switching to app
+                                            state.shell.close_quick_settings(true);
+                                        } else {
+                                            // No existing window, launch new instance
+                                            let exec_clone = exec.clone();
+                                            // Close quick settings (need to check if any windows exist)
+                                            let has_windows = state.space.elements().count() > 0;
+                                            state.shell.close_quick_settings(has_windows);
+                                            // Launch the settings app
+                                            // Don't call switch_to_app() - view will switch when window is mapped
+                                            if let Err(e) = std::process::Command::new("sh")
+                                                .arg("-c")
+                                                .arg(&exec_clone)
+                                                .spawn()
+                                            {
+                                                tracing::error!("Failed to launch settings app '{}': {}", exec_clone, e);
+                                            }
                                         }
                                     } else {
                                         info!("No settings app configured");

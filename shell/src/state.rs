@@ -724,6 +724,73 @@ impl Flick {
         }
     }
 
+    /// Try to find and focus an existing window matching the exec command
+    /// Returns true if a window was found and focused, false if we should launch a new instance
+    pub fn try_focus_existing_app(&mut self, exec: &str) -> bool {
+        // Extract the binary name from the exec command
+        // e.g., "/usr/bin/vlc %u" -> "vlc", "env VAR=val firefox" -> "firefox"
+        let binary_name = exec
+            .split_whitespace()
+            .find(|part| !part.starts_with('%') && !part.contains('=') && *part != "env")
+            .map(|s| s.rsplit('/').next().unwrap_or(s))
+            .unwrap_or("")
+            .to_lowercase();
+
+        if binary_name.is_empty() {
+            return false;
+        }
+
+        tracing::info!("Looking for existing window matching binary: {}", binary_name);
+
+        // Find a window whose app_id or class matches the binary name
+        let matching_window = self.space.elements()
+            .find(|window| {
+                // Check X11 window class/instance
+                if let Some(x11) = window.x11_surface() {
+                    let class = x11.class().to_lowercase();
+                    let instance = x11.instance().to_lowercase();
+                    if class.contains(&binary_name) || instance.contains(&binary_name)
+                       || binary_name.contains(&class) || binary_name.contains(&instance) {
+                        tracing::info!("Found matching X11 window: class={}, instance={}", class, instance);
+                        return true;
+                    }
+                }
+                // For Wayland windows, we can check if wl_surface matches
+                // TODO: Add proper app_id checking when we have a way to access it
+                false
+            })
+            .cloned();
+
+        if let Some(window) = matching_window {
+            // Raise window to top
+            let loc = self.space.element_location(&window).unwrap_or_default();
+            self.space.map_element(window.clone(), loc, true);
+
+            // Set keyboard focus
+            if let Some(x11) = window.x11_surface() {
+                if let Some(wl_surface) = x11.wl_surface() {
+                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                    if let Some(keyboard) = self.seat.get_keyboard() {
+                        keyboard.set_focus(self, Some(wl_surface), serial);
+                    }
+                }
+            } else if let Some(toplevel) = window.toplevel() {
+                let wl_surface = toplevel.wl_surface().clone();
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                if let Some(keyboard) = self.seat.get_keyboard() {
+                    keyboard.set_focus(self, Some(wl_surface), serial);
+                }
+            }
+
+            // Switch to App view
+            self.shell.set_view(crate::shell::ShellView::App);
+            tracing::info!("Focused existing window instead of launching new instance");
+            return true;
+        }
+
+        false
+    }
+
     /// Focus a window by its X11 window ID
     fn focus_window_by_id(&mut self, window_id: u32) {
         let target_window = self.space.elements()
