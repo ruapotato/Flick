@@ -453,7 +453,11 @@ impl Flick {
     }
 
     /// Update home gesture - move the window UP based on progress
-    /// If we pass keyboard height, hide keyboard and continue to home
+    /// Keyboard visibility is dynamic based on finger position:
+    /// - Within keyboard zone: keyboard visible
+    /// - In buffer zone (just past keyboard): keyboard still visible, can snap back
+    /// - Past buffer zone: keyboard hidden, committed to going home
+    /// - If finger moves back into range, keyboard reappears
     pub fn update_home_gesture(&mut self, progress: f64) {
         if let Some(ref window) = self.home_gesture_window.clone() {
             // Calculate new Y position - move UP (negative offset)
@@ -464,16 +468,31 @@ impl Flick {
             let new_y = self.home_gesture_original_y - offset;
 
             let keyboard_height = self.get_keyboard_height();
+            let buffer_zone = 60; // Buffer zone above keyboard where user can still change mind
+            let commit_threshold = keyboard_height + buffer_zone;
 
-            // Check if we've crossed the keyboard threshold
-            if offset > keyboard_height && !self.home_gesture_past_keyboard {
-                tracing::info!("Home gesture: passed keyboard threshold ({}px > {}px), hiding keyboard",
-                    offset, keyboard_height);
-                self.home_gesture_past_keyboard = true;
+            // Dynamically update keyboard visibility based on current finger position
+            // This allows user to change their mind mid-gesture
+            if let Some(ref slint_ui) = self.shell.slint_ui {
+                let was_past = self.home_gesture_past_keyboard;
 
-                // Hide keyboard - user wants to go home, not just show keyboard
-                if let Some(ref slint_ui) = self.shell.slint_ui {
-                    slint_ui.set_keyboard_visible(false);
+                if offset >= commit_threshold {
+                    // Past the buffer zone - committed to going home
+                    if !was_past {
+                        tracing::info!("Home gesture: committed to home ({}px >= {}px), hiding keyboard",
+                            offset, commit_threshold);
+                        slint_ui.set_keyboard_visible(false);
+                        self.home_gesture_past_keyboard = true;
+                    }
+                } else {
+                    // Within keyboard zone or buffer zone - keyboard should be visible
+                    // This handles the "changed mind" case where user drags up then back down
+                    if was_past {
+                        tracing::info!("Home gesture: back in range ({}px < {}px), showing keyboard",
+                            offset, commit_threshold);
+                        slint_ui.set_keyboard_visible(true);
+                        self.home_gesture_past_keyboard = false;
+                    }
                 }
             }
 
@@ -484,11 +503,10 @@ impl Flick {
         }
     }
 
-    /// End home gesture - behavior depends on how far user swiped:
-    /// - Released before keyboard height: keep keyboard visible, stay in app
-    /// - Released after keyboard height: go home (keyboard already hidden)
+    /// End home gesture - behavior depends on finger position at release:
+    /// - If keyboard still visible (within buffer zone): snap keyboard into place, stay in app
+    /// - If keyboard hidden (past buffer zone): go home
     pub fn end_home_gesture(&mut self, completed: bool) {
-        let keyboard_height = self.get_keyboard_height();
         let past_keyboard = self.home_gesture_past_keyboard;
 
         if let Some(window) = self.home_gesture_window.take() {
@@ -498,18 +516,18 @@ impl Flick {
                 .unwrap_or(self.home_gesture_original_y);
             let actual_offset = self.home_gesture_original_y - current_y;
 
-            if completed && past_keyboard {
-                // Swiped past keyboard threshold and completed - go home
-                tracing::info!("Home gesture completed past keyboard - switching to home");
+            if past_keyboard {
+                // User went past the buffer zone - keyboard is already hidden, go home
+                tracing::info!("Home gesture: past buffer zone (offset={}px) - going home", actual_offset);
                 self.shell.set_view(crate::shell::ShellView::Home);
 
                 // Restore window to original position (it will be hidden anyway)
                 if let Some(loc) = self.space.element_location(&window) {
                     self.space.map_element(window, (loc.x, self.home_gesture_original_y), false);
                 }
-            } else if !past_keyboard && actual_offset > 20 {
-                // Released before keyboard threshold with some movement - keep keyboard, stay in app
-                tracing::info!("Home gesture released within keyboard zone ({}px) - keeping keyboard visible",
+            } else if actual_offset > 20 {
+                // Released within keyboard/buffer zone with some movement - snap keyboard into place
+                tracing::info!("Home gesture: within buffer zone (offset={}px) - snapping keyboard into place",
                     actual_offset);
 
                 // Restore window position
@@ -517,7 +535,7 @@ impl Flick {
                     self.space.map_element(window.clone(), (loc.x, self.home_gesture_original_y), false);
                 }
 
-                // Resize windows for keyboard
+                // Resize windows for keyboard (this ensures proper layout)
                 self.resize_windows_for_keyboard(true);
 
                 // Save keyboard state for this window
@@ -526,8 +544,8 @@ impl Flick {
                     self.window_keyboard_state.insert(surface_id, true);
                 }
             } else {
-                // Cancelled or barely moved - restore original state
-                tracing::info!("Home gesture cancelled - restoring position, hiding keyboard");
+                // Barely moved - cancel the gesture
+                tracing::info!("Home gesture cancelled (offset={}px) - hiding keyboard", actual_offset);
 
                 // Restore window position
                 if let Some(loc) = self.space.element_location(&window) {
