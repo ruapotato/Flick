@@ -3098,7 +3098,8 @@ fn handle_input_event(
                                     .arg(&exec)
                                     .spawn()
                                     .ok();
-                                state.shell.app_launched();
+                                // Don't call app_launched() here - stay on Home until window appears
+                                // The view will switch to App when the window is actually mapped
                             }
                         }
                     }
@@ -3197,14 +3198,13 @@ fn handle_input_event(
                                         let has_windows = state.space.elements().count() > 0;
                                         state.shell.close_quick_settings(has_windows);
                                         // Launch the settings app
+                                        // Don't call switch_to_app() - view will switch when window is mapped
                                         if let Err(e) = std::process::Command::new("sh")
                                             .arg("-c")
                                             .arg(&exec_clone)
                                             .spawn()
                                         {
                                             tracing::error!("Failed to launch settings app '{}': {}", exec_clone, e);
-                                        } else {
-                                            state.shell.switch_to_app();
                                         }
                                     } else {
                                         info!("No settings app configured");

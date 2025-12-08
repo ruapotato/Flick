@@ -922,6 +922,11 @@ impl XdgShellHandler for Flick {
         // Add to space at origin
         self.space.map_element(window, (0, 0), false);
 
+        // Switch to App view now that we have a real window
+        // This avoids flashing to a random old app when launching from Home
+        self.shell.set_view(crate::shell::ShellView::App);
+        tracing::info!("Switched to App view for new window");
+
         // Set keyboard focus to this window
         let wl_surface = surface.wl_surface().clone();
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();

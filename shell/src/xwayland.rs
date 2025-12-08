@@ -62,9 +62,13 @@ impl XwmHandler for Flick {
         // Use activate=true to bring X11 window to front (on top of shell)
         self.space.map_element(win, (0, 0), true);
 
+        // Switch to App view now that we have a real window
+        // This avoids flashing to a random old app when launching from Home
+        self.shell.view = crate::shell::ShellView::App;
+
         // Log space state after mapping
         let window_count = self.space.elements().count();
-        tracing::info!("X11 window added to space (activate=true), total windows: {}", window_count);
+        tracing::info!("X11 window added to space (activate=true), total windows: {}, switched to App view", window_count);
 
         // Set keyboard focus if surface is available
         if let Some(surface) = window.wl_surface() {
