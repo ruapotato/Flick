@@ -36,3 +36,26 @@ converted to render elements in `udev.rs`.
 - Edge swipes: 50px from screen edge to start
 - Tap vs scroll threshold: 40px movement
 - Gesture progress: 0.0 to 1.0+ based on finger travel
+
+## Slint Software Renderer Buffer Management
+
+**CRITICAL**: When using `MinimalSoftwareWindow`, the `RepaintBufferType` must match
+your buffer allocation strategy:
+
+- `RepaintBufferType::NewBuffer` - Use when creating a **fresh buffer each frame**
+- `RepaintBufferType::ReusedBuffer` - Use when **reusing the same buffer** between frames
+
+If you create a new buffer each frame but use `ReusedBuffer`, Slint will only repaint
+"damaged" regions, leaving the rest of the buffer uninitialized (black). This causes
+the symptom: **first frame renders correctly, subsequent frames are black**.
+
+```rust
+// CORRECT: New buffer each frame = NewBuffer type
+let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+
+// In render():
+let mut buffer = SharedPixelBuffer::new(width, height);  // Fresh each frame
+renderer.render(buffer.make_mut_slice(), width as usize);
+```
+
+The fix in `slint_ui.rs` was changing from `ReusedBuffer` to `NewBuffer`.
