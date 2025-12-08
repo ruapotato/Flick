@@ -1181,25 +1181,25 @@ fn render_surface(
             bg_color,
         )
     } else if home_gesture_active {
-        // During home gesture: render home grid with topmost app window sliding UP
+        // During home gesture: render home grid with ONLY the topmost window sliding UP
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
         use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
 
         let mut home_gesture_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
 
         // First, add Slint home grid elements (rendered as background)
-        // slint_elements contains the home grid since we enabled Slint rendering for home_gesture_active
         for elem in slint_elements.into_iter() {
             match elem {
                 HomeRenderElement::Icon(icon) => home_gesture_elements.push(SwitcherRenderElement::Icon(icon)),
                 HomeRenderElement::Solid(solid) => home_gesture_elements.push(SwitcherRenderElement::Solid(solid)),
-                _ => {} // Handle any other variants
+                _ => {}
             }
         }
 
-        // Get ONLY the topmost window (the one being animated)
+        // Add ONLY the topmost window (the one being animated) on top
         if let Some(ref window) = state.home_gesture_window {
             if let Some(loc) = state.space.element_location(window) {
+                // Get window render elements at origin
                 let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
                     .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
                         renderer,
@@ -1208,25 +1208,32 @@ fn render_surface(
                         1.0,
                     );
 
-                let window_geo = window.geometry();
+                tracing::info!("Home gesture: rendering window at loc=({}, {}), {} elements",
+                    loc.x, loc.y, window_render_elements.len());
 
-                // Create crop rect at window's current position (already updated by update_home_gesture)
+                // Relocate each element to the window's current position in the space
+                let window_geo = window.geometry();
+                // Crop rect covers the whole window at its current location (no actual cropping)
                 let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
                     (loc.x, loc.y).into(),
                     (window_geo.size.w, window_geo.size.h).into(),
                 );
 
                 for elem in window_render_elements {
-                    // No scaling needed - just relocate to current position
                     let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(1.0));
                     let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (loc.x, loc.y).into();
-                    let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Absolute);
+                    let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Relative);
+                    // Wrap in CropRenderElement to match SwitcherRenderElement::Window type
                     if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
                         home_gesture_elements.push(cropped.into());
                     }
                 }
             }
+        } else {
+            tracing::warn!("Home gesture active but no home_gesture_window set!");
         }
+
+        tracing::info!("Home gesture: total {} elements", home_gesture_elements.len());
 
         surface_data.damage_tracker.render_output(
             renderer,
