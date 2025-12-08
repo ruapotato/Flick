@@ -728,7 +728,8 @@ fn render_surface(
     let mut switcher_slint_element: Option<MemoryRenderBufferRenderElement<GlesRenderer>> = None;
 
     // Render shell views using Slint (lock screen, home, quick settings, pick default, switcher)
-    if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings || shell_view == ShellView::PickDefault || shell_view == ShellView::Switcher {
+    // Also render home during home gesture so the grid shows behind the sliding app
+    if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings || shell_view == ShellView::PickDefault || shell_view == ShellView::Switcher || home_gesture_active {
         if let Some(ref slint_ui) = state.shell.slint_ui {
             // Update Slint UI state based on current view
             match shell_view {
@@ -838,7 +839,24 @@ fn render_surface(
                         .collect();
                     slint_ui.set_switcher_windows(windows);
                 }
-                _ => {}
+                ShellView::App => {
+                    // During home gesture, show the home grid behind the sliding app
+                    if home_gesture_active {
+                        slint_ui.set_view("home");
+                        // Update categories (same as Home view)
+                        let categories = state.shell.app_manager.get_category_info();
+                        let slint_categories: Vec<(String, String, [f32; 4])> = categories
+                            .iter()
+                            .map(|cat| {
+                                let icon = cat.icon.as_deref().unwrap_or(&cat.name[..1]).to_string();
+                                (cat.name.clone(), icon, cat.color)
+                            })
+                            .collect();
+                        slint_ui.set_categories(slint_categories);
+                        slint_ui.set_show_popup(false);
+                        slint_ui.set_wiggle_mode(false);
+                    }
+                }
             }
 
             // Process Slint events (timers, animations) before rendering
@@ -1163,22 +1181,59 @@ fn render_surface(
             bg_color,
         )
     } else if home_gesture_active {
-        // During home gesture: render app window sliding UP, with home background showing behind
+        // During home gesture: render home grid with topmost app window sliding UP
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-        use smithay::desktop::space::SpaceRenderElements;
+        use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
 
-        let window_elements: Vec<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>> = state
-            .space
-            .render_elements_for_output(renderer, output, scale as f32)
-            .unwrap_or_default();
+        let mut home_gesture_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
 
-        // Render windows with home background (window position is updated by update_home_gesture)
+        // First, add Slint home grid elements (rendered as background)
+        // slint_elements contains the home grid since we enabled Slint rendering for home_gesture_active
+        for elem in slint_elements.into_iter() {
+            match elem {
+                HomeRenderElement::Icon(icon) => home_gesture_elements.push(SwitcherRenderElement::Icon(icon)),
+                HomeRenderElement::Solid(solid) => home_gesture_elements.push(SwitcherRenderElement::Solid(solid)),
+                _ => {} // Handle any other variants
+            }
+        }
+
+        // Get ONLY the topmost window (the one being animated)
+        if let Some(ref window) = state.home_gesture_window {
+            if let Some(loc) = state.space.element_location(window) {
+                let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
+                    .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                        renderer,
+                        (0, 0).into(),
+                        Scale::from(scale),
+                        1.0,
+                    );
+
+                let window_geo = window.geometry();
+
+                // Create crop rect at window's current position (already updated by update_home_gesture)
+                let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
+                    (loc.x, loc.y).into(),
+                    (window_geo.size.w, window_geo.size.h).into(),
+                );
+
+                for elem in window_render_elements {
+                    // No scaling needed - just relocate to current position
+                    let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(1.0));
+                    let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (loc.x, loc.y).into();
+                    let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Absolute);
+                    if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
+                        home_gesture_elements.push(cropped.into());
+                    }
+                }
+            }
+        }
+
         surface_data.damage_tracker.render_output(
             renderer,
             &mut fb,
             0, // Force full redraw during gesture
-            &window_elements,
-            bg_color, // Home background color shows through as window slides up
+            &home_gesture_elements,
+            bg_color,
         )
     } else if state.switcher_gesture_active {
         // During switcher gesture: render all apps transitioning to card positions
