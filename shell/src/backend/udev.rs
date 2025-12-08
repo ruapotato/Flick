@@ -1306,7 +1306,8 @@ fn render_surface(
 
             for elem in window_render_elements {
                 let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(fit_scale));
-                let relocated = RelocateRenderElement::from_element(scaled, (final_x, final_y).into(), Relocate::Relative);
+                let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (final_x, final_y).into();
+                let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Relative);
                 if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
                     switcher_home_elements.insert(0, cropped.into());
                 }
