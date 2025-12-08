@@ -115,6 +115,10 @@ pub struct Flick {
     pub home_gesture_window: Option<Window>,
     pub home_gesture_original_y: i32,
 
+    /// Switcher transition gesture (swipe from right - app shrinks into card)
+    pub switcher_gesture_active: bool,
+    pub switcher_gesture_progress: f64,
+
     // Integrated shell UI
     pub shell: Shell,
 
@@ -203,6 +207,8 @@ impl Flick {
             close_gesture_original_y: 0,
             home_gesture_window: None,
             home_gesture_original_y: 0,
+            switcher_gesture_active: false,
+            switcher_gesture_progress: 0.0,
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
         }

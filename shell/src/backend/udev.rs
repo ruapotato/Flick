@@ -1180,6 +1180,117 @@ fn render_surface(
             &window_elements,
             bg_color, // Home background color shows through as window slides up
         )
+    } else if state.switcher_gesture_active {
+        // During switcher gesture: render app shrinking into card position
+        use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+
+        let progress = state.switcher_gesture_progress;
+        let screen_w = state.screen_size.w as f64;
+        let screen_h = state.screen_size.h as f64;
+
+        // Target card dimensions (same as switcher render code)
+        let base_card_width = (screen_w * 0.80) as i32;
+        let base_card_height = (screen_h * 0.58) as i32;
+        let center_y = screen_h / 2.0;
+
+        // Get the topmost window
+        let windows: Vec<_> = state.space.elements().cloned().collect();
+        let mut transition_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
+
+        if let Some(window) = windows.last() {
+            let window_geo = window.geometry();
+
+            // Calculate target (card) scale and position
+            let max_content_width = base_card_width - 16;
+            let max_content_height = base_card_height - 16;
+            let scale_x = max_content_width as f64 / window_geo.size.w as f64;
+            let scale_y = max_content_height as f64 / window_geo.size.h as f64;
+            let target_scale = f64::min(scale_x, scale_y);
+
+            // Target position (centered card)
+            let scaled_w = (window_geo.size.w as f64 * target_scale) as i32;
+            let scaled_h = (window_geo.size.h as f64 * target_scale) as i32;
+            let padding = 8;
+            let bg_width = scaled_w + padding * 2;
+            let bg_height = scaled_h + padding * 2;
+            let target_x = ((screen_w - bg_width as f64) / 2.0) as i32;
+            let target_y = ((center_y - bg_height as f64 / 2.0)) as i32;
+
+            // Interpolate between full screen (progress=0) and card (progress=1)
+            let current_scale = 1.0 + (target_scale - 1.0) * progress;
+            let current_x = (0.0 + (target_x as f64 + padding as f64) * progress) as i32;
+            let current_y = (0.0 + (target_y as f64 + padding as f64) * progress) as i32;
+
+            // Render card background (fades in with progress)
+            if progress > 0.1 {
+                use smithay::backend::renderer::element::solid::SolidColorBuffer;
+                let bg_alpha = ((progress - 0.1) / 0.9).min(1.0) as f32;
+                let interp_bg_width = (screen_w as i32 + ((bg_width - screen_w as i32) as f64 * progress) as i32);
+                let interp_bg_height = (screen_h as i32 + ((bg_height - screen_h as i32) as f64 * progress) as i32);
+                let interp_bg_x = (0.0 + target_x as f64 * progress) as i32;
+                let interp_bg_y = (0.0 + target_y as f64 * progress) as i32;
+
+                let card_buffer = SolidColorBuffer::new(
+                    (interp_bg_width, interp_bg_height),
+                    [0.24, 0.24, 0.29, bg_alpha],
+                );
+                let card_bg = SolidColorRenderElement::from_buffer(
+                    &card_buffer,
+                    (interp_bg_x, interp_bg_y),
+                    Scale::from(1.0),
+                    1.0,
+                    Kind::Unspecified,
+                );
+                transition_elements.push(SwitcherRenderElement::Solid(card_bg));
+            }
+
+            // Render window content scaled
+            let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
+                .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                    renderer,
+                    (0, 0).into(),
+                    Scale::from(scale),
+                    1.0,
+                );
+
+            let current_w = (window_geo.size.w as f64 * current_scale) as i32;
+            let current_h = (window_geo.size.h as f64 * current_scale) as i32;
+
+            let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
+                (current_x, current_y).into(),
+                (current_w, current_h).into(),
+            );
+
+            for elem in window_render_elements {
+                let scaled = RescaleRenderElement::from_element(
+                    elem,
+                    (0, 0).into(),
+                    Scale::from(current_scale),
+                );
+                let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (current_x, current_y).into();
+                let relocated = RelocateRenderElement::from_element(
+                    scaled,
+                    final_pos,
+                    Relocate::Absolute,
+                );
+                if let Some(cropped) = CropRenderElement::from_element(
+                    relocated,
+                    Scale::from(scale),
+                    crop_rect,
+                ) {
+                    transition_elements.insert(0, cropped.into()); // Window on top
+                }
+            }
+        }
+
+        // Render with switcher background color
+        surface_data.damage_tracker.render_output(
+            renderer,
+            &mut fb,
+            0, // Force full redraw during gesture
+            &transition_elements,
+            [0.1, 0.1, 0.12, 1.0], // Switcher background
+        )
     } else {
         // App view - render windows
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
@@ -1821,6 +1932,11 @@ fn handle_input_event(
                     if *edge == crate::input::Edge::Bottom {
                         state.update_home_gesture(*progress);
                     }
+                    // Update switcher transition when swiping from right (only in App view)
+                    if *edge == crate::input::Edge::Right && state.shell.view == crate::shell::ShellView::App {
+                        state.switcher_gesture_active = true;
+                        state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
+                    }
                 }
             }
 
@@ -1945,6 +2061,12 @@ fn handle_input_event(
                     // Handle home gesture animation end
                     if *edge == crate::input::Edge::Bottom {
                         state.end_home_gesture(*completed);
+                    }
+                    // Handle switcher transition end
+                    if *edge == crate::input::Edge::Right {
+                        // Reset gesture state - view change is handled by shell
+                        state.switcher_gesture_active = false;
+                        state.switcher_gesture_progress = 0.0;
                     }
                     // Sync Quick Settings with system status when opening it
                     if *edge == crate::input::Edge::Left && *completed {
