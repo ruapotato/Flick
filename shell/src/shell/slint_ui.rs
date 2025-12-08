@@ -52,6 +52,8 @@ pub struct SlintShell {
     pending_app_tap: Rc<RefCell<Option<i32>>>,
     /// Pending Quick Settings actions (set by callbacks, polled by compositor)
     pending_qs_actions: Rc<RefCell<Vec<QuickSettingsAction>>>,
+    /// Pending switcher window tap (window ID, set by callback, polled by compositor)
+    pending_switcher_tap: Rc<RefCell<Option<i32>>>,
     /// Whether popup is showing (needed for hit testing)
     popup_showing: RefCell<bool>,
     /// Whether popup can pick default
@@ -156,6 +158,16 @@ impl SlintShell {
             qs_clone.borrow_mut().push(QuickSettingsAction::BrightnessChanged(value));
         });
 
+        // Create pending switcher tap storage
+        let pending_switcher_tap = Rc::new(RefCell::new(None));
+
+        // Connect the switcher window tapped callback
+        let switcher_tap_clone = pending_switcher_tap.clone();
+        shell.on_switcher_window_tapped(move |window_id| {
+            info!("Slint switcher window tapped callback: window_id={}", window_id);
+            *switcher_tap_clone.borrow_mut() = Some(window_id);
+        });
+
         Self {
             window,
             shell,
@@ -163,6 +175,7 @@ impl SlintShell {
             pixel_buffer,
             pending_app_tap,
             pending_qs_actions,
+            pending_switcher_tap,
             popup_showing: RefCell::new(false),
             popup_can_pick: RefCell::new(true),
             wiggle_mode: RefCell::new(false),
@@ -338,6 +351,32 @@ impl SlintShell {
 
         let model_rc = std::rc::Rc::new(slint::VecModel::from(model));
         self.shell.set_categories(model_rc.into());
+    }
+
+    /// Set switcher window cards (id, title, app_class)
+    pub fn set_switcher_windows(&self, windows: Vec<(i32, String, String)>) {
+        let model: Vec<WindowCard> = windows
+            .into_iter()
+            .map(|(id, title, app_class)| WindowCard {
+                id,
+                title: title.into(),
+                app_class: app_class.into(),
+            })
+            .collect();
+
+        let model_rc = std::rc::Rc::new(slint::VecModel::from(model));
+        self.shell.set_switcher_windows(model_rc.into());
+    }
+
+    /// Set switcher horizontal scroll offset
+    pub fn set_switcher_scroll(&self, offset: f32) {
+        self.shell.set_switcher_scroll(offset);
+    }
+
+    /// Poll for pending switcher window tap (from Slint callback)
+    /// Returns the window ID if there was a tap, and clears the pending state
+    pub fn take_pending_switcher_tap(&self) -> Option<i32> {
+        self.pending_switcher_tap.borrow_mut().take()
     }
 
     /// Connect PIN digit pressed callback

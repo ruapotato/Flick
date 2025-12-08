@@ -61,17 +61,69 @@ use smithay::backend::renderer::{ImportAll, ImportMem};
 
 use crate::state::Flick;
 
+/// Simple 5x7 bitmap font for window titles
+/// Each character is 7 rows of 5-bit patterns
+fn get_char_bitmap(c: char) -> [u8; 7] {
+    match c.to_ascii_uppercase() {
+        'A' => [0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001],
+        'B' => [0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110],
+        'C' => [0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110],
+        'D' => [0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110],
+        'E' => [0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111],
+        'F' => [0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000],
+        'G' => [0b01110, 0b10001, 0b10000, 0b10111, 0b10001, 0b10001, 0b01110],
+        'H' => [0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001],
+        'I' => [0b01110, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110],
+        'J' => [0b00111, 0b00010, 0b00010, 0b00010, 0b00010, 0b10010, 0b01100],
+        'K' => [0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001],
+        'L' => [0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111],
+        'M' => [0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001],
+        'N' => [0b10001, 0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001],
+        'O' => [0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110],
+        'P' => [0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000],
+        'Q' => [0b01110, 0b10001, 0b10001, 0b10001, 0b10101, 0b10010, 0b01101],
+        'R' => [0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001],
+        'S' => [0b01110, 0b10001, 0b10000, 0b01110, 0b00001, 0b10001, 0b01110],
+        'T' => [0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100],
+        'U' => [0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110],
+        'V' => [0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01010, 0b00100],
+        'W' => [0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b11011, 0b10001],
+        'X' => [0b10001, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0b10001],
+        'Y' => [0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100],
+        'Z' => [0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b11111],
+        '0' => [0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110],
+        '1' => [0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110],
+        '2' => [0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111],
+        '3' => [0b01110, 0b10001, 0b00001, 0b00110, 0b00001, 0b10001, 0b01110],
+        '4' => [0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010],
+        '5' => [0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110],
+        '6' => [0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110],
+        '7' => [0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000],
+        '8' => [0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110],
+        '9' => [0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b01100],
+        ' ' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000],
+        '-' => [0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000],
+        '.' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b01100, 0b01100],
+        ':' => [0b00000, 0b01100, 0b01100, 0b00000, 0b01100, 0b01100, 0b00000],
+        '(' => [0b00010, 0b00100, 0b01000, 0b01000, 0b01000, 0b00100, 0b00010],
+        ')' => [0b01000, 0b00100, 0b00010, 0b00010, 0b00010, 0b00100, 0b01000],
+        _ => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000], // Space for unknown
+    }
+}
+
 // Define a combined element type for the app switcher that can hold both
 // solid color elements (for card backgrounds, shadows, text) and
 // constrained window elements (for actual window content previews)
 smithay::backend::renderer::element::render_elements! {
     /// Render elements for the app switcher view
     pub SwitcherRenderElement<R> where
-        R: ImportAll;
+        R: ImportAll + ImportMem;
     /// Solid color rectangles (backgrounds, shadows, text pixels)
     Solid=SolidColorRenderElement,
     /// Constrained window content (scaled and cropped to fit cards)
     Window=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
+    /// Memory buffer element (Slint UI backdrop)
+    Icon=MemoryRenderBufferRenderElement<R>,
 }
 
 // Define a combined element type for the home screen that can hold both
@@ -379,6 +431,15 @@ pub fn run() -> Result<()> {
             state.shell.check_and_show_long_press();
         }
 
+        // Update app switcher physics (momentum/snap animation)
+        if state.shell.view == crate::shell::ShellView::Switcher {
+            let num_windows = state.space.elements().count();
+            let screen_w = state.screen_size.w as f64;
+            let card_width = screen_w * 0.80;
+            let card_spacing = card_width * 0.35;
+            state.shell.update_switcher_physics(num_windows, card_spacing);
+        }
+
         // Skip rendering if session is not active (VT switched away)
         if !*session_active.borrow() {
             continue;
@@ -610,12 +671,9 @@ fn render_surface(
     state: &Flick,
     output: &Output,
 ) -> Result<()> {
-    use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
     use smithay::backend::renderer::element::Kind;
     use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
     use crate::shell::ShellView;
-    use crate::shell::primitives::colors;
-    use crate::shell::text;
 
     // Should already be checked by caller, but double-check
     if !surface_data.ready_to_render || surface_data.frame_pending {
@@ -654,7 +712,7 @@ fn render_surface(
     } else if shell_view == ShellView::QuickSettings {
         [0.1, 0.1, 0.15, 1.0]  // Dark blue-gray for Quick Settings
     } else if shell_view == ShellView::Home || gesture_active || bottom_gesture {
-        colors::BACKGROUND
+        [0.10, 0.10, 0.18, 1.0]  // Dark blue-gray background
     } else if shell_view == ShellView::Switcher {
         [0.0, 0.3, 0.0, 1.0]  // Dark green for Switcher - should be visible
     } else {
@@ -666,9 +724,11 @@ fn render_surface(
 
     // Build Slint UI elements for shell views
     let mut slint_elements: Vec<HomeRenderElement<GlesRenderer>> = Vec::new();
+    // For Switcher, we save the Slint element separately to add to switcher_elements
+    let mut switcher_slint_element: Option<MemoryRenderBufferRenderElement<GlesRenderer>> = None;
 
-    // Render shell views using Slint (lock screen, home, quick settings, pick default)
-    if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings || shell_view == ShellView::PickDefault {
+    // Render shell views using Slint (lock screen, home, quick settings, pick default, switcher)
+    if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings || shell_view == ShellView::PickDefault || shell_view == ShellView::Switcher {
         if let Some(ref slint_ui) = state.shell.slint_ui {
             // Update Slint UI state based on current view
             match shell_view {
@@ -745,6 +805,39 @@ fn render_surface(
                     slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
                     slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
                 }
+                ShellView::Switcher => {
+                    tracing::info!("Rendering Switcher view via Slint");
+                    slint_ui.set_view("switcher");
+                    slint_ui.set_switcher_scroll(state.shell.switcher_scroll as f32);
+
+                    // Collect window data for Slint
+                    let windows: Vec<(i32, String, String)> = state.space.elements()
+                        .enumerate()
+                        .map(|(i, window)| {
+                            let id = i as i32;
+                            let title = window.x11_surface()
+                                .map(|x11| {
+                                    let t = x11.title();
+                                    if !t.is_empty() {
+                                        t
+                                    } else {
+                                        let inst = x11.instance();
+                                        if !inst.is_empty() {
+                                            inst
+                                        } else {
+                                            x11.class()
+                                        }
+                                    }
+                                })
+                                .unwrap_or_else(|| format!("Window {}", i + 1));
+                            let app_class = window.x11_surface()
+                                .map(|x11| x11.class())
+                                .unwrap_or_default();
+                            (id, title, app_class)
+                        })
+                        .collect();
+                    slint_ui.set_switcher_windows(windows);
+                }
                 _ => {}
             }
 
@@ -791,8 +884,15 @@ fn render_surface(
                     Kind::Unspecified,
                 ) {
                     Ok(slint_element) => {
-                        slint_elements.push(HomeRenderElement::Icon(slint_element));
-                        tracing::info!("Slint {:?} element created and pushed", shell_view);
+                        // For Switcher, save the element to add to switcher_elements later
+                        // For other views, add to slint_elements as normal
+                        if shell_view == ShellView::Switcher {
+                            switcher_slint_element = Some(slint_element);
+                            tracing::info!("Slint {:?} element saved for switcher_elements", shell_view);
+                        } else {
+                            slint_elements.push(HomeRenderElement::Icon(slint_element));
+                            tracing::info!("Slint {:?} element created and pushed", shell_view);
+                        }
                     }
                     Err(e) => {
                         tracing::error!("Failed to create Slint render element: {:?}", e);
@@ -810,134 +910,122 @@ fn render_surface(
     let mut switcher_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
 
     if shell_view == ShellView::Switcher {
-        // Full Switcher UI with horizontal card layout (Android-style)
+        // Android-style stacked card switcher with depth and scale effects
         // NOTE: Elements must be in FRONT-TO-BACK order (front first, background last)
         let screen_w = state.screen_size.w as f64;
         let screen_h = state.screen_size.h as f64;
 
         let window_count = state.space.elements().count();
 
-        // Horizontal card layout - cards are phone-shaped (tall and narrow)
-        // Card dimensions: maintain screen aspect ratio but scaled down
-        let card_height = (screen_h * 0.65) as i32;  // 65% of screen height
-        let card_width = (card_height as f64 * (screen_w / screen_h)) as i32;  // Maintain aspect ratio
-        let card_spacing = card_width + 24;  // Gap between cards
-        let card_y = ((screen_h - card_height as f64) / 2.0) as i32;  // Center vertically
+        // Stacked card layout - cards overlap significantly like Android
+        // Base card dimensions (focused card)
+        let base_card_width = (screen_w * 0.80) as i32;  // 80% of screen width
+        let base_card_height = (screen_h * 0.58) as i32; // 58% of screen height (leave room for title)
+        let card_spacing = base_card_width as f64 * 0.35; // 35% spacing = 65% overlap
 
-        // Collect windows and their positions
-        let start_x = 32i32;  // Left margin
-        let scroll_offset = state.shell.switcher_scroll as i32;
+        // Center of screen for card positioning
+        let center_y = screen_h / 2.0;
+
+        let scroll_offset = state.shell.switcher_scroll;
+        let focused_index = state.shell.get_focused_card_index(card_spacing);
 
         // Build card data with window references
         let windows: Vec<_> = state.space.elements().cloned().collect();
 
-        // Render cards (front-to-back: later windows drawn first as they're "on top")
-        for (i, window) in windows.iter().enumerate().rev() {
-            let x_pos = start_x + (i as i32 * card_spacing) - scroll_offset;
+        // First pass: collect card backgrounds (rendered behind window content)
+        // We need to render backgrounds from front to back so overlapping works correctly
+        let mut card_backgrounds: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
 
-            // Skip cards that are off-screen
-            if x_pos + card_width < 0 || x_pos > screen_w as i32 {
+        // Render cards from back to front (reversed iteration puts front cards first in output)
+        for (i, window) in windows.iter().enumerate().rev() {
+            // Calculate card position relative to scroll
+            let card_scroll_pos = i as f64 * card_spacing - scroll_offset;
+            let normalized_pos = card_scroll_pos / card_spacing;
+            let distance = normalized_pos.abs();
+            let scale_factor = (1.0 - distance * 0.12).max(0.7);
+
+            let card_width = (base_card_width as f64 * scale_factor) as i32;
+            let card_height = (base_card_height as f64 * scale_factor) as i32;
+            let x_offset = card_scroll_pos + (screen_w - card_width as f64) / 2.0;
+            let x_pos = x_offset as i32;
+            let y_offset = distance * 20.0;
+            let y_pos = ((center_y - card_height as f64 / 2.0) + y_offset) as i32;
+
+            // Skip off-screen cards
+            if x_pos + card_width < -200 || x_pos > screen_w as i32 + 200 {
                 continue;
             }
 
-            // Get window title - try title first, then instance, then class, then fallback
-            let title = window.x11_surface()
-                .map(|x11| {
-                    let t = x11.title();
-                    if !t.is_empty() {
-                        t
-                    } else {
-                        // Try instance name as fallback (res_name part of WM_CLASS)
-                        let inst = x11.instance();
-                        if !inst.is_empty() {
-                            inst
-                        } else {
-                            // Try class name as fallback (res_class part of WM_CLASS)
-                            let c = x11.class();
-                            if !c.is_empty() {
-                                c
-                            } else {
-                                format!("Window {}", i + 1)
-                            }
-                        }
-                    }
-                })
-                .unwrap_or_else(|| format!("Window {}", i + 1));
-
-            // Window title text (frontmost - rendered first)
-            let text_scale = 2.5;
-            let text_color: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
-            let text_center_x = x_pos as f64 + card_width as f64 / 2.0;
-            let text_y = (card_y + card_height + 12) as f64;
-            let text_rects = text::render_text_centered(&title, text_center_x, text_y, text_scale, text_color);
-            for (rect, color) in text_rects {
-                let buffer = SolidColorBuffer::new(
-                    (rect.width as i32, rect.height as i32),
-                    color,
-                );
-                let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                    (rect.x as i32, rect.y as i32).into();
-                switcher_elements.push(SolidColorRenderElement::from_buffer(
-                    &buffer, loc, scale as f64, 1.0, Kind::Unspecified
-                ).into());
-            }
-
-            // Render actual window content scaled into the card
-            // Get window geometry (the actual content area)
+            // Get window geometry first to calculate actual preview size
             let window_geo = window.geometry();
 
-            // Get window render elements at origin (0,0)
+            // Calculate scale to fit window in card area
+            let max_content_width = card_width - 16; // max width with padding
+            let max_content_height = card_height - 16;
+            let scale_x = max_content_width as f64 / window_geo.size.w as f64;
+            let scale_y = max_content_height as f64 / window_geo.size.h as f64;
+            let fit_scale = f64::min(scale_x, scale_y);
+
+            // Actual scaled window dimensions
+            let scaled_w = (window_geo.size.w as f64 * fit_scale) as i32;
+            let scaled_h = (window_geo.size.h as f64 * fit_scale) as i32;
+
+            // Background size = window size + padding
+            let padding = 8;
+            let bg_width = scaled_w + padding * 2;
+            let bg_height = scaled_h + padding * 2;
+
+            // Center the background horizontally, position based on scroll
+            let bg_x = x_pos + (card_width - bg_width) / 2;
+            let bg_y = y_pos + (card_height - bg_height) / 2;
+
+            // Card background color (darker for cards further away)
+            let bg_brightness = (0.24 - distance * 0.04).max(0.15) as f32;
+            let card_bg_color = [bg_brightness, bg_brightness, bg_brightness + 0.05, 1.0];
+
+            // Create card background element sized to match window preview
+            use smithay::backend::renderer::element::solid::SolidColorBuffer;
+            let card_buffer = SolidColorBuffer::new((bg_width, bg_height), card_bg_color);
+            let card_bg = SolidColorRenderElement::from_buffer(
+                &card_buffer,
+                (bg_x, bg_y),
+                Scale::from(1.0),
+                1.0,
+                Kind::Unspecified,
+            );
+            card_backgrounds.push(SwitcherRenderElement::Solid(card_bg));
+
+            // Get window render elements
             let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
                 .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
                     renderer,
-                    (0, 0).into(),  // Render at origin
+                    (0, 0).into(),
                     Scale::from(scale),
-                    1.0,  // alpha
+                    1.0,
                 );
 
-            // Card content area (with padding)
-            let content_width = card_width - 8;
-            let content_height = card_height - 8;
-            let content_x = x_pos + 4;
-            let content_y = card_y + 4;
+            // Window content position (centered in background)
+            let final_x = bg_x + padding;
+            let final_y = bg_y + padding;
 
-            // Calculate scale to fit window in card (maintain aspect ratio)
-            let scale_x = content_width as f64 / window_geo.size.w as f64;
-            let scale_y = content_height as f64 / window_geo.size.h as f64;
-            let fit_scale = f64::min(scale_x, scale_y);
-
-            // Calculate centering offset
-            let scaled_w = (window_geo.size.w as f64 * fit_scale) as i32;
-            let scaled_h = (window_geo.size.h as f64 * fit_scale) as i32;
-            let center_offset_x = (content_width - scaled_w) / 2;
-            let center_offset_y = (content_height - scaled_h) / 2;
-
-            // Final position for the scaled window
-            let final_x = content_x + center_offset_x;
-            let final_y = content_y + center_offset_y;
-
-            // Crop rectangle at the final screen position
             let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
                 (final_x, final_y).into(),
                 (scaled_w, scaled_h).into(),
             );
 
-            // Apply transformations: scale at origin, then relocate to final position
+            // Add window content (front-to-back order)
             for elem in window_render_elements {
-                // Scale the element (relative to origin since element is at origin)
                 let scaled = RescaleRenderElement::from_element(
                     elem,
-                    (0, 0).into(),  // Scale relative to origin
+                    (0, 0).into(),
                     Scale::from(fit_scale),
                 );
-                // Relocate to the final position
                 let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (final_x, final_y).into();
                 let relocated = RelocateRenderElement::from_element(
                     scaled,
                     final_pos,
                     Relocate::Absolute,
                 );
-                // Crop to the card bounds
                 if let Some(cropped) = CropRenderElement::from_element(
                     relocated,
                     Scale::from(scale),
@@ -946,93 +1034,93 @@ fn render_surface(
                     switcher_elements.push(cropped.into());
                 }
             }
-
-            // Card background/border (behind window content)
-            let card_buffer = SolidColorBuffer::new(
-                (card_width, card_height),
-                [0.15, 0.15, 0.18, 1.0],
-            );
-            let card_loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                (x_pos, card_y).into();
-            switcher_elements.push(SolidColorRenderElement::from_buffer(
-                &card_buffer, card_loc, scale as f64, 1.0, Kind::Unspecified
-            ).into());
-
-            // Card shadow (behind card)
-            let shadow_buffer = SolidColorBuffer::new(
-                (card_width + 6, card_height + 6),
-                [0.0, 0.0, 0.0, 0.4],
-            );
-            let shadow_loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                (x_pos - 3, card_y - 3).into();
-            switcher_elements.push(SolidColorRenderElement::from_buffer(
-                &shadow_buffer, shadow_loc, scale as f64, 1.0, Kind::Unspecified
-            ).into());
         }
 
-        // If no windows, show "No Apps" text
-        if window_count == 0 {
-            let no_apps_text = "NO APPS";
-            let text_scale = 4.0;
-            let text_color: [f32; 4] = [0.6, 0.6, 0.7, 1.0];
-            let text_width = text::text_width(no_apps_text) * text_scale;
-            let text_x = (screen_w - text_width) / 2.0;
-            let text_y = screen_h / 2.0 - 20.0;
-            let text_rects = text::render_text(no_apps_text, text_x, text_y, text_scale, text_color);
-            for (rect, color) in text_rects {
-                let buffer = SolidColorBuffer::new(
-                    (rect.width as i32, rect.height as i32),
-                    color,
-                );
-                let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                    (rect.x as i32, rect.y as i32).into();
-                switcher_elements.push(SolidColorRenderElement::from_buffer(
-                    &buffer, loc, scale as f64, 1.0, Kind::Unspecified
-                ).into());
+        // Add card backgrounds after window content (they render behind)
+        switcher_elements.extend(card_backgrounds);
+
+        // Second pass: render window titles below cards
+        for (i, window) in windows.iter().enumerate().rev() {
+            let card_scroll_pos = i as f64 * card_spacing - scroll_offset;
+            let normalized_pos = card_scroll_pos / card_spacing;
+            let distance = normalized_pos.abs();
+            let scale_factor = (1.0 - distance * 0.12).max(0.7);
+
+            let card_width = (base_card_width as f64 * scale_factor) as i32;
+            let card_height = (base_card_height as f64 * scale_factor) as i32;
+            let x_offset = card_scroll_pos + (screen_w - card_width as f64) / 2.0;
+            let x_pos = x_offset as i32;
+            let y_offset = distance * 20.0;
+            let y_pos = ((center_y - card_height as f64 / 2.0) + y_offset) as i32;
+
+            // Skip off-screen cards
+            if x_pos + card_width < -200 || x_pos > screen_w as i32 + 200 {
+                continue;
+            }
+
+            // Get window title
+            let title = window.x11_surface()
+                .map(|x11| {
+                    let t = x11.title();
+                    if t.is_empty() { x11.class() } else { t }
+                })
+                .unwrap_or_else(|| "Window".to_string());
+
+            // Truncate title if too long
+            let max_chars = 20;
+            let title: String = if title.len() > max_chars {
+                format!("{}...", &title[..max_chars-3])
+            } else {
+                title
+            };
+
+            // Render title as bitmap text (small rectangles)
+            let text_scale = 2.0; // 2x scale for readability
+            let char_width = 5.0 * text_scale;
+            let char_spacing = 1.0 * text_scale;
+            let text_width = title.len() as f64 * (char_width + char_spacing) - char_spacing;
+            let text_x = x_pos as f64 + (card_width as f64 - text_width) / 2.0;
+            let text_y = (y_pos + card_height + 12) as f64; // 12px below card
+
+            // Text color (white with slight transparency for depth)
+            let text_alpha = (1.0 - distance * 0.15).max(0.6) as f32;
+            let text_color = [1.0, 1.0, 1.0, text_alpha];
+
+            // Simple bitmap font - render each character
+            use smithay::backend::renderer::element::solid::SolidColorBuffer;
+            let mut cursor_x = text_x;
+            for c in title.chars() {
+                let bitmap = get_char_bitmap(c);
+                for (row, &row_bits) in bitmap.iter().enumerate() {
+                    for col in 0..5u8 {
+                        if (row_bits >> (4 - col)) & 1 == 1 {
+                            let px = (cursor_x + col as f64 * text_scale) as i32;
+                            let py = (text_y + row as f64 * text_scale) as i32;
+                            let pixel_buffer = SolidColorBuffer::new(
+                                (text_scale as i32, text_scale as i32),
+                                text_color,
+                            );
+                            let pixel_elem = SolidColorRenderElement::from_buffer(
+                                &pixel_buffer,
+                                (px, py),
+                                Scale::from(1.0),
+                                1.0,
+                                Kind::Unspecified,
+                            );
+                            switcher_elements.push(SwitcherRenderElement::Solid(pixel_elem));
+                        }
+                    }
+                }
+                cursor_x += char_width + char_spacing;
             }
         }
 
-        // Header title text (in front of header bar)
-        let header_text = "RECENT APPS";
-        let header_text_scale = 2.5;
-        let header_text_color: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
-        let header_text_width = text::text_width(header_text) * header_text_scale;
-        let header_text_x = (screen_w - header_text_width) / 2.0;
-        let header_text_y = 18.0;
-        let header_text_rects = text::render_text(header_text, header_text_x, header_text_y, header_text_scale, header_text_color);
-        for (rect, color) in header_text_rects {
-            let buffer = SolidColorBuffer::new(
-                (rect.width as i32, rect.height as i32),
-                color,
-            );
-            let loc: smithay::utils::Point<i32, smithay::utils::Physical> =
-                (rect.x as i32, rect.y as i32).into();
-            switcher_elements.push(SolidColorRenderElement::from_buffer(
-                &buffer, loc, scale as f64, 1.0, Kind::Unspecified
-            ).into());
+        // Add Slint backdrop element (background, header, text)
+        if let Some(slint_elem) = switcher_slint_element {
+            switcher_elements.push(SwitcherRenderElement::Icon(slint_elem));
         }
 
-        // Header bar (behind cards but in front of background)
-        let header_buffer = SolidColorBuffer::new(
-            (screen_w as i32, 60),
-            [0.15, 0.15, 0.20, 1.0],
-        );
-        let header_loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, 0).into();
-        switcher_elements.push(SolidColorRenderElement::from_buffer(
-            &header_buffer, header_loc, scale as f64, 1.0, Kind::Unspecified
-        ).into());
-
-        // Background (backmost - rendered last in array)
-        let bg_buffer = SolidColorBuffer::new(
-            (screen_w as i32, screen_h as i32),
-            [0.08, 0.08, 0.12, 1.0],
-        );
-        let bg_loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, 0).into();
-        switcher_elements.push(SolidColorRenderElement::from_buffer(
-            &bg_buffer, bg_loc, scale as f64, 1.0, Kind::Unspecified
-        ).into());
-
-        tracing::info!("Switcher: {} windows, {} elements", window_count, switcher_elements.len());
+        tracing::debug!("Switcher: {} windows, focused={}, scroll={:.1}", window_count, focused_index, scroll_offset);
     }
 
     // Render based on what view we're in
@@ -1582,33 +1670,43 @@ fn handle_input_event(
                 }
             }
 
-            // Check if touch is on app switcher card (horizontal layout)
+            // Check if touch is on app switcher card (stacked layout)
             if state.shell.view == crate::shell::ShellView::Switcher {
-                // Card layout matches render code - horizontal layout
+                // Stacked card layout - matches render code
                 let screen_w = state.screen_size.w as f64;
                 let screen_h = state.screen_size.h as f64;
 
-                // Calculate card dimensions (same as render code)
-                let card_height = (screen_h * 0.65) as i32;
-                let card_width = (card_height as f64 * (screen_w / screen_h)) as i32;
-                let card_spacing = card_width + 24;
-                let card_y = ((screen_h - card_height as f64) / 2.0) as i32;
-                let start_x = 32i32;
-                let scroll_offset = state.shell.switcher_scroll as i32;
+                // Base card dimensions (same as render code)
+                let base_card_width = screen_w * 0.80;
+                let base_card_height = screen_h * 0.58;
+                let card_spacing = base_card_width * 0.35;
+                let center_y = screen_h / 2.0;
+
+                let scroll_offset = state.shell.switcher_scroll;
 
                 // Collect windows and find which card was touched
+                // Check front-to-back (reverse order) since front cards overlay back cards
                 let windows: Vec<_> = state.space.elements().cloned().collect();
                 let mut touched_index = None;
 
                 for (i, _window) in windows.iter().enumerate() {
-                    // Calculate card position for this window
-                    let x_pos = (start_x + (i as i32 * card_spacing) - scroll_offset) as f64;
+                    // Calculate card position (same formula as render)
+                    let card_scroll_pos = i as f64 * card_spacing - scroll_offset;
+                    let normalized_pos = card_scroll_pos / card_spacing;
+                    let distance = normalized_pos.abs();
+                    let scale_factor = (1.0 - distance * 0.12).max(0.7);
+
+                    let card_width = base_card_width * scale_factor;
+                    let card_height = base_card_height * scale_factor;
+                    let x_offset = card_scroll_pos + (screen_w - card_width) / 2.0;
+                    let y_offset = distance * 20.0;
+                    let y_pos = center_y - card_height / 2.0 + y_offset;
 
                     // Check if touch is within this card
-                    if touch_pos.x >= x_pos && touch_pos.x < x_pos + card_width as f64 &&
-                       touch_pos.y >= card_y as f64 && touch_pos.y < (card_y + card_height) as f64 {
+                    if touch_pos.x >= x_offset && touch_pos.x < x_offset + card_width &&
+                       touch_pos.y >= y_pos && touch_pos.y < y_pos + card_height {
                         touched_index = Some(i);
-                        break;
+                        // Don't break - keep checking so we hit the frontmost (last) card
                     }
                 }
 
@@ -1737,11 +1835,10 @@ fn handle_input_event(
 
             // Handle horizontal scrolling in app switcher
             if state.shell.view == crate::shell::ShellView::Switcher && state.shell.switcher_touch_start_x.is_some() {
-                let screen_h = state.screen_size.h as f64;
-                let card_height = (screen_h * 0.65) as i32;
                 let screen_w = state.screen_size.w as f64;
-                let card_width = (card_height as f64 * (screen_w / screen_h)) as i32;
-                let card_spacing = card_width + 24;
+                // Stacked card layout - cards overlap significantly
+                let card_width = screen_w * 0.80; // 85% of screen width
+                let card_spacing = card_width * 0.35; // 35% spacing = 65% overlap
                 let num_windows = state.space.elements().count();
                 state.shell.update_switcher_scroll(touch_pos.x, num_windows, card_spacing);
             }
@@ -2016,7 +2113,12 @@ fn handle_input_event(
 
             // Handle app switcher tap to switch app (only if not scrolling)
             if state.shell.view == crate::shell::ShellView::Switcher {
-                if let Some(window_index) = state.shell.end_switcher_touch() {
+                // Calculate card spacing for momentum physics
+                let screen_w = state.screen_size.w as f64;
+                let card_width = screen_w * 0.80;
+                let card_spacing = card_width * 0.35;
+                let num_windows = state.space.elements().count();
+                if let Some(window_index) = state.shell.end_switcher_touch(num_windows, card_spacing) {
                     let windows: Vec<_> = state.space.elements().cloned().collect();
                     if let Some(window) = windows.get(window_index) {
                         info!("Switcher: switching to window {}", window_index);

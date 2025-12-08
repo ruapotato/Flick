@@ -91,6 +91,13 @@ export struct Notification {
     urgency: int,  // 0=low, 1=normal, 2=critical
 }
 
+// Window card for app switcher
+export struct WindowCard {
+    id: int,
+    title: string,
+    app-class: string,
+}
+
 // Status bar at top of screen
 component StatusBar inherits Rectangle {
     in property <string> time: "12:00";
@@ -1393,6 +1400,65 @@ component QuickSettingsPanel inherits Rectangle {
     }
 }
 
+// App Switcher panel - stacked card layout (cards rendered by compositor)
+component AppSwitcherPanel inherits Rectangle {
+    in property <[WindowCard]> windows: [];
+    in property <float> scroll-offset: 0;  // Horizontal scroll position (for sync)
+
+    callback window-tapped(int);  // Window ID
+    callback close-requested();   // Swipe down to close
+
+    width: 100%;
+    height: 100%;
+    background: Theme.background;
+
+    VerticalLayout {
+        // Header bar
+        Rectangle {
+            height: 60px;
+            background: #26263a;
+
+            Text {
+                width: 100%;
+                height: 100%;
+                text: "RECENT APPS";
+                color: Theme.on-surface;
+                font-size: 18px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        // Card area - compositor renders stacked cards on top
+        Rectangle {
+            vertical-stretch: 1;
+            background: Theme.background;
+
+            // Empty state
+            if windows.length == 0: Rectangle {
+                width: 100%;
+                height: 100%;
+
+                Text {
+                    width: 100%;
+                    height: 100%;
+                    text: "NO APPS";
+                    color: #9999aa;
+                    font-size: 32px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            // Card backgrounds and window previews are rendered by the compositor
+            // with dynamic sizing based on scroll position (stacked Android-style layout)
+        }
+
+        HomeIndicator {}
+    }
+}
+
 // Main shell component
 export component FlickShell inherits Window {
     in property <string> current-view: "lock"; // "lock", "home", "quick-settings", "pick-default"
@@ -1431,6 +1497,10 @@ export component FlickShell inherits Window {
     in property <[AvailableApp]> available-apps: [];
     in property <string> current-app-selection: "";
 
+    // App switcher state
+    in property <[WindowCard]> switcher-windows: [];
+    in property <float> switcher-scroll: 0;
+
     callback pin-digit-pressed(string);
     callback pin-backspace-pressed();
     callback pin-enter-pressed();
@@ -1456,6 +1526,7 @@ export component FlickShell inherits Window {
     callback wiggle-done();
     callback pick-default-selected(string);  // exec command
     callback pick-default-back();
+    callback switcher-window-tapped(int);  // Window ID
 
     title: "Flick Shell";
     // DEBUG: Always bright red to test Window rendering
@@ -1504,6 +1575,16 @@ export component FlickShell inherits Window {
         notification-dismissed(id) => { notification-dismissed(id); }
         notification-tapped(id) => { notification-tapped(id); }
         clear-all-notifications => { clear-all-notifications(); }
+    }
+
+    // App Switcher - slides in from right edge
+    AppSwitcherPanel {
+        x: current-view == "switcher" ? 0px : parent.width;
+        width: 100%;
+        height: 100%;
+        windows: switcher-windows;
+        scroll-offset: switcher-scroll;
+        window-tapped(id) => { switcher-window-tapped(id); }
     }
 
     // Lock screen - overlay on top of everything when locked

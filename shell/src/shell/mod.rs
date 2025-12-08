@@ -146,6 +146,16 @@ pub struct Shell {
     pub selected_app: Option<usize>,
     /// Scroll offset for app switcher
     pub switcher_scroll: f64,
+    /// Switcher momentum velocity (pixels per second)
+    pub switcher_velocity: f64,
+    /// Switcher is animating (momentum or snap)
+    pub switcher_animating: bool,
+    /// Target scroll position for snap animation
+    pub switcher_snap_target: Option<f64>,
+    /// Last time switcher was updated (for delta time)
+    pub switcher_last_update: Option<std::time::Instant>,
+    /// Touch times for velocity calculation
+    pub switcher_touch_times: Vec<(f64, std::time::Instant)>, // (x position, time)
     /// Scroll offset for app grid (home screen)
     pub home_scroll: f64,
     /// Touch tracking for scrolling (home screen - vertical)
@@ -238,6 +248,11 @@ impl Shell {
             apps: default_apps(),
             selected_app: None,
             switcher_scroll: 0.0,
+            switcher_velocity: 0.0,
+            switcher_animating: false,
+            switcher_snap_target: None,
+            switcher_last_update: None,
+            switcher_touch_times: Vec::new(),
             home_scroll: 0.0,
             scroll_touch_start_y: None,
             scroll_touch_last_y: None,
@@ -598,47 +613,186 @@ impl Shell {
         self.switcher_touch_last_x = Some(x);
         self.pending_switcher_index = pending_index;
         self.is_scrolling = false;
+        // Stop any ongoing animation when user touches
+        self.switcher_animating = false;
+        self.switcher_snap_target = None;
+        self.switcher_velocity = 0.0;
+        // Start tracking touch positions for velocity calculation
+        self.switcher_touch_times.clear();
+        self.switcher_touch_times.push((x, std::time::Instant::now()));
     }
 
     /// Update horizontal scroll position based on touch movement
     /// Returns true if scrolling is happening
-    pub fn update_switcher_scroll(&mut self, x: f64, num_windows: usize, card_spacing: i32) -> bool {
+    pub fn update_switcher_scroll(&mut self, x: f64, num_windows: usize, card_spacing: f64) -> bool {
         if let Some(start_x) = self.switcher_touch_start_x {
             let total_delta = (x - start_x).abs();
             // If moved more than 40 pixels, it's a scroll, not a tap
-            // (increased from 20px for better tap reliability on touch screens)
             if total_delta > 40.0 {
                 self.is_scrolling = true;
-                self.pending_switcher_index = None; // Cancel pending window switch
+                self.pending_switcher_index = None;
             }
         }
 
         if let Some(last_x) = self.switcher_touch_last_x {
             let delta = last_x - x; // Scroll right when finger moves left
-            // Calculate max scroll based on number of windows
-            let max_scroll = if num_windows > 0 {
-                ((num_windows - 1) as i32 * card_spacing) as f64
-            } else {
-                0.0
-            };
+            let max_scroll = self.get_switcher_max_scroll(num_windows, card_spacing);
             self.switcher_scroll = (self.switcher_scroll + delta).clamp(0.0, max_scroll);
         }
         self.switcher_touch_last_x = Some(x);
+
+        // Track position for velocity (keep last 100ms of samples)
+        let now = std::time::Instant::now();
+        self.switcher_touch_times.push((x, now));
+        self.switcher_touch_times.retain(|(_, t)| now.duration_since(*t).as_millis() < 100);
+
         self.is_scrolling
     }
 
+    /// Calculate max scroll for switcher
+    pub fn get_switcher_max_scroll(&self, num_windows: usize, card_spacing: f64) -> f64 {
+        if num_windows > 0 {
+            (num_windows - 1) as f64 * card_spacing
+        } else {
+            0.0
+        }
+    }
+
     /// End switcher touch gesture - returns window index if this was a tap (not scroll)
-    pub fn end_switcher_touch(&mut self) -> Option<usize> {
+    /// Starts momentum animation based on flick velocity
+    pub fn end_switcher_touch(&mut self, num_windows: usize, card_spacing: f64) -> Option<usize> {
         let index = if !self.is_scrolling {
             self.pending_switcher_index.take()
         } else {
             None
         };
+
+        // Calculate velocity from recent touch samples
+        if self.is_scrolling && self.switcher_touch_times.len() >= 2 {
+            let first = self.switcher_touch_times.first().unwrap();
+            let last = self.switcher_touch_times.last().unwrap();
+            let dt = last.1.duration_since(first.1).as_secs_f64();
+            if dt > 0.001 {
+                // Velocity is negative of position delta (scroll direction)
+                self.switcher_velocity = -(last.0 - first.0) / dt;
+
+                // Clamp velocity to reasonable range
+                let max_velocity = 8000.0; // pixels per second
+                self.switcher_velocity = self.switcher_velocity.clamp(-max_velocity, max_velocity);
+
+                // Only animate if velocity is significant
+                if self.switcher_velocity.abs() > 100.0 {
+                    self.switcher_animating = true;
+                    self.switcher_last_update = Some(std::time::Instant::now());
+                } else {
+                    // Snap to nearest card
+                    self.start_snap_animation(num_windows, card_spacing);
+                }
+            }
+        } else if self.is_scrolling {
+            // No velocity samples, just snap
+            self.start_snap_animation(num_windows, card_spacing);
+        }
+
         self.switcher_touch_start_x = None;
         self.switcher_touch_last_x = None;
+        self.switcher_touch_times.clear();
         self.pending_switcher_index = None;
         self.is_scrolling = false;
         index
+    }
+
+    /// Start snap animation to nearest card
+    fn start_snap_animation(&mut self, num_windows: usize, card_spacing: f64) {
+        if num_windows == 0 || card_spacing <= 0.0 {
+            return;
+        }
+
+        // Find nearest card
+        let current_card = (self.switcher_scroll / card_spacing).round();
+        let target = (current_card * card_spacing).clamp(0.0, self.get_switcher_max_scroll(num_windows, card_spacing));
+
+        self.switcher_snap_target = Some(target);
+        self.switcher_animating = true;
+        self.switcher_last_update = Some(std::time::Instant::now());
+    }
+
+    /// Update switcher physics (call every frame)
+    /// Returns true if still animating (needs redraw)
+    pub fn update_switcher_physics(&mut self, num_windows: usize, card_spacing: f64) -> bool {
+        if !self.switcher_animating {
+            return false;
+        }
+
+        let now = std::time::Instant::now();
+        let dt = self.switcher_last_update
+            .map(|t| now.duration_since(t).as_secs_f64())
+            .unwrap_or(0.016); // Default to ~60fps
+        self.switcher_last_update = Some(now);
+
+        // Clamp dt to avoid physics explosion on lag
+        let dt = dt.min(0.05);
+
+        let max_scroll = self.get_switcher_max_scroll(num_windows, card_spacing);
+
+        if let Some(target) = self.switcher_snap_target {
+            // Spring animation to target
+            let spring_stiffness = 300.0; // Higher = snappier
+            let damping = 25.0; // Higher = less bouncy
+
+            let diff = target - self.switcher_scroll;
+            let spring_force = diff * spring_stiffness;
+            let damping_force = -self.switcher_velocity * damping;
+
+            self.switcher_velocity += (spring_force + damping_force) * dt;
+            self.switcher_scroll += self.switcher_velocity * dt;
+
+            // Stop when close enough and slow
+            if diff.abs() < 0.5 && self.switcher_velocity.abs() < 10.0 {
+                self.switcher_scroll = target;
+                self.switcher_velocity = 0.0;
+                self.switcher_animating = false;
+                self.switcher_snap_target = None;
+                return false;
+            }
+        } else {
+            // Momentum with deceleration
+            let friction = 3.0; // Deceleration factor
+            let decel = -self.switcher_velocity.signum() * friction * self.switcher_velocity.abs().sqrt() * 100.0;
+
+            self.switcher_velocity += decel * dt;
+            self.switcher_scroll += self.switcher_velocity * dt;
+
+            // Clamp to bounds with bounce
+            if self.switcher_scroll < 0.0 {
+                self.switcher_scroll = 0.0;
+                self.switcher_velocity = -self.switcher_velocity * 0.3; // Bounce
+                if self.switcher_velocity.abs() < 50.0 {
+                    self.start_snap_animation(num_windows, card_spacing);
+                }
+            } else if self.switcher_scroll > max_scroll {
+                self.switcher_scroll = max_scroll;
+                self.switcher_velocity = -self.switcher_velocity * 0.3;
+                if self.switcher_velocity.abs() < 50.0 {
+                    self.start_snap_animation(num_windows, card_spacing);
+                }
+            }
+
+            // When velocity gets low, snap to nearest card
+            if self.switcher_velocity.abs() < 200.0 {
+                self.start_snap_animation(num_windows, card_spacing);
+            }
+        }
+
+        true // Still animating
+    }
+
+    /// Get the currently focused card index (for highlighting)
+    pub fn get_focused_card_index(&self, card_spacing: f64) -> usize {
+        if card_spacing <= 0.0 {
+            return 0;
+        }
+        (self.switcher_scroll / card_spacing).round() as usize
     }
 
     /// Update gesture state from gesture events
@@ -704,6 +858,10 @@ impl Shell {
         self.view = if has_windows { ShellView::App } else { ShellView::Home };
         self.gesture = GestureState::default();
         self.switcher_scroll = 0.0;
+        self.switcher_velocity = 0.0;
+        self.switcher_animating = false;
+        self.switcher_snap_target = None;
+        self.switcher_touch_times.clear();
     }
 
     /// Sync Quick Settings panel with current system status
