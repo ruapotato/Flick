@@ -2834,6 +2834,9 @@ fn handle_input_event(
                         // If gesture completed, open switcher with correct scroll position
                         // so the current (topmost) app is centered
                         if *completed {
+                            // Save keyboard state for current window before switching
+                            state.save_keyboard_state_for_current_window();
+
                             let num_windows = state.space.elements().count();
                             let screen_w = state.screen_size.w as f64;
                             let card_width = screen_w * 0.80;
@@ -3069,6 +3072,9 @@ fn handle_input_event(
                         }
                         state.space.raise_element(window, true);
                         state.shell.switch_to_app();
+
+                        // Restore keyboard state for the newly focused window
+                        state.restore_keyboard_state_for_current_window();
                     }
                 }
             }

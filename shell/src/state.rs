@@ -132,6 +132,9 @@ pub struct Flick {
     pub keyboard_initial_touch_pos: Option<smithay::utils::Point<f64, smithay::utils::Logical>>,
     pub keyboard_last_touch_pos: Option<smithay::utils::Point<f64, smithay::utils::Logical>>,
 
+    /// Per-window keyboard visibility state (surface ID -> keyboard was visible)
+    pub window_keyboard_state: HashMap<smithay::reexports::wayland_server::backend::ObjectId, bool>,
+
     // Integrated shell UI
     pub shell: Shell,
 
@@ -231,6 +234,7 @@ impl Flick {
             keyboard_dismiss_offset: 0.0,
             keyboard_initial_touch_pos: None,
             keyboard_last_touch_pos: None,
+            window_keyboard_state: HashMap::new(),
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
         }
@@ -495,6 +499,53 @@ impl Flick {
                 );
                 let _ = x11_surface.configure(new_geo);
                 tracing::debug!("Resized X11 window to {}x{}", self.screen_size.w, available_height);
+            }
+        }
+    }
+
+    /// Save keyboard state for the current topmost window
+    pub fn save_keyboard_state_for_current_window(&mut self) {
+        let keyboard_visible = self.shell.slint_ui.as_ref()
+            .map(|ui| ui.is_keyboard_visible())
+            .unwrap_or(false);
+
+        // Get the topmost window's surface ID
+        if let Some(window) = self.space.elements().last() {
+            if let Some(toplevel) = window.toplevel() {
+                let surface_id = toplevel.wl_surface().id();
+                tracing::info!("Saving keyboard state for window {:?}: {}", surface_id, keyboard_visible);
+                self.window_keyboard_state.insert(surface_id, keyboard_visible);
+            } else if let Some(x11) = window.x11_surface() {
+                // For X11 windows, use the window ID converted to an ObjectId-like key
+                // We'll store it in a separate way - use a synthetic ID
+                tracing::info!("Saving keyboard state for X11 window {}: {}", x11.window_id(), keyboard_visible);
+                // X11 windows don't have WlSurface IDs in the same way, skip for now
+            }
+        }
+    }
+
+    /// Restore keyboard state for the current topmost window
+    pub fn restore_keyboard_state_for_current_window(&mut self) {
+        // Get the topmost window's surface ID
+        let keyboard_should_show = if let Some(window) = self.space.elements().last() {
+            if let Some(toplevel) = window.toplevel() {
+                let surface_id = toplevel.wl_surface().id();
+                let should_show = self.window_keyboard_state.get(&surface_id).copied().unwrap_or(false);
+                tracing::info!("Restoring keyboard state for window {:?}: {}", surface_id, should_show);
+                should_show
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        // Apply the keyboard state
+        if let Some(ref slint_ui) = self.shell.slint_ui {
+            let current_visible = slint_ui.is_keyboard_visible();
+            if keyboard_should_show != current_visible {
+                slint_ui.set_keyboard_visible(keyboard_should_show);
+                self.resize_windows_for_keyboard(keyboard_should_show);
             }
         }
     }
