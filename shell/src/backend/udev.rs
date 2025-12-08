@@ -705,6 +705,10 @@ fn render_surface(
     let home_gesture_active = shell_view == ShellView::App &&
         state.shell.gesture.edge == Some(crate::input::Edge::Bottom);
 
+    // Check if QS home gesture is active (bottom edge swipe from QuickSettings view)
+    let qs_home_gesture_active = shell_view == ShellView::QuickSettings &&
+        state.shell.gesture.edge == Some(crate::input::Edge::Bottom);
+
     // Choose background color based on state
     // Note: QuickSettings has its own background, so gesture_active shouldn't override it
     let bg_color = if shell_view == ShellView::LockScreen {
@@ -728,8 +732,8 @@ fn render_surface(
     let mut switcher_slint_element: Option<MemoryRenderBufferRenderElement<GlesRenderer>> = None;
 
     // Render shell views using Slint (lock screen, home, quick settings, pick default, switcher)
-    // Also render home during home gesture so the grid shows behind the sliding app
-    if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings || shell_view == ShellView::PickDefault || shell_view == ShellView::Switcher || home_gesture_active {
+    // Also render home during home/qs_home gesture so the grid shows behind the sliding content
+    if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings || shell_view == ShellView::PickDefault || shell_view == ShellView::Switcher || home_gesture_active || qs_home_gesture_active {
         if let Some(ref slint_ui) = state.shell.slint_ui {
             // Update Slint UI state based on current view
             match shell_view {
@@ -793,18 +797,34 @@ fn render_surface(
                     }
                 }
                 ShellView::QuickSettings => {
-                    tracing::info!("Rendering QuickSettings view via Slint");
-                    slint_ui.set_view("quick-settings");
-                    slint_ui.set_brightness(state.shell.quick_settings.brightness);
-                    // Sync all toggle states from system
-                    slint_ui.set_wifi_enabled(state.system.wifi_enabled);
-                    slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
-                    slint_ui.set_dnd_enabled(state.system.dnd.enabled);
-                    slint_ui.set_flashlight_enabled(crate::system::Flashlight::is_on());
-                    slint_ui.set_airplane_enabled(crate::system::AirplaneMode::is_enabled());
-                    slint_ui.set_rotation_locked(state.system.rotation_lock.locked);
-                    slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
-                    slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
+                    // During QS home gesture, render home grid behind sliding QS
+                    if qs_home_gesture_active {
+                        slint_ui.set_view("home");
+                        let categories = state.shell.app_manager.get_category_info();
+                        let slint_categories: Vec<(String, String, [f32; 4])> = categories
+                            .iter()
+                            .map(|cat| {
+                                let icon = cat.icon.as_deref().unwrap_or(&cat.name[..1]).to_string();
+                                (cat.name.clone(), icon, cat.color)
+                            })
+                            .collect();
+                        slint_ui.set_categories(slint_categories);
+                        slint_ui.set_show_popup(false);
+                        slint_ui.set_wiggle_mode(false);
+                    } else {
+                        tracing::info!("Rendering QuickSettings view via Slint");
+                        slint_ui.set_view("quick-settings");
+                        slint_ui.set_brightness(state.shell.quick_settings.brightness);
+                        // Sync all toggle states from system
+                        slint_ui.set_wifi_enabled(state.system.wifi_enabled);
+                        slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
+                        slint_ui.set_dnd_enabled(state.system.dnd.enabled);
+                        slint_ui.set_flashlight_enabled(crate::system::Flashlight::is_on());
+                        slint_ui.set_airplane_enabled(crate::system::AirplaneMode::is_enabled());
+                        slint_ui.set_rotation_locked(state.system.rotation_lock.locked);
+                        slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
+                        slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
+                    }
                 }
                 ShellView::Switcher => {
                     tracing::info!("Rendering Switcher view via Slint");
@@ -1170,8 +1190,8 @@ fn render_surface(
             &switcher_elements,
             bg_color,
         )
-    } else if (shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::PickDefault || shell_view == ShellView::QuickSettings) && !state.qs_gesture_active {
-        // Shell views - render Slint UI (but not during QS gesture transition)
+    } else if (shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::PickDefault || shell_view == ShellView::QuickSettings) && !state.qs_gesture_active && !qs_home_gesture_active {
+        // Shell views - render Slint UI (but not during QS gesture transitions)
         tracing::info!("Rendering {:?} with {} slint_elements, bg={:?}", shell_view, slint_elements.len(), bg_color);
         surface_data.damage_tracker.render_output(
             renderer,
@@ -1525,6 +1545,79 @@ fn render_surface(
             &mut fb,
             0,
             &qs_elements,
+            [0.1, 0.1, 0.18, 1.0],
+        )
+    } else if qs_home_gesture_active {
+        // During QS home gesture: slide QS panel up, reveal home grid behind
+        let progress = state.shell.gesture.progress;
+        let screen_h = state.screen_size.h;
+
+        // QS slides up based on gesture progress (progress 1.0 = threshold reached)
+        let slide_offset = -(progress * screen_h as f64 * 0.8) as i32;
+
+        let mut qs_home_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
+
+        // Render QS panel sliding up (on top)
+        if let Some(ref slint_ui) = state.shell.slint_ui {
+            slint_ui.set_view("quick-settings");
+            slint_ui.set_brightness(state.shell.quick_settings.brightness);
+            slint_ui.set_wifi_enabled(state.system.wifi_enabled);
+            slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
+            slint_ui.set_dnd_enabled(state.system.dnd.enabled);
+            slint_ui.set_flashlight_enabled(crate::system::Flashlight::is_on());
+            slint_ui.set_airplane_enabled(crate::system::AirplaneMode::is_enabled());
+            slint_ui.set_rotation_locked(state.system.rotation_lock.locked);
+            slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
+            slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
+
+            slint_ui.process_events();
+            slint_ui.request_redraw();
+
+            if let Some((width, height, pixels)) = slint_ui.render() {
+                let mut qs_buffer = MemoryRenderBuffer::new(
+                    Fourcc::Abgr8888,
+                    (width as i32, height as i32),
+                    1,
+                    Transform::Normal,
+                    None,
+                );
+
+                let pixels_clone = pixels.clone();
+                let _: Result<(), std::convert::Infallible> = qs_buffer.render().draw(|buffer| {
+                    buffer.copy_from_slice(&pixels_clone);
+                    Ok(vec![Rectangle::from_size((width as i32, height as i32).into())])
+                });
+
+                // QS slides up
+                let qs_loc: smithay::utils::Point<f64, smithay::utils::Physical> = (0.0, slide_offset as f64).into();
+                if let Ok(qs_element) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    qs_loc,
+                    &qs_buffer,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    qs_home_elements.push(SwitcherRenderElement::Icon(qs_element));
+                }
+            }
+        }
+
+        // Add home grid behind QS (slint_elements already has home grid from earlier)
+        for elem in slint_elements.into_iter() {
+            match elem {
+                HomeRenderElement::Icon(icon) => qs_home_elements.push(SwitcherRenderElement::Icon(icon)),
+                HomeRenderElement::Solid(solid) => qs_home_elements.push(SwitcherRenderElement::Solid(solid)),
+                _ => {}
+            }
+        }
+
+        surface_data.damage_tracker.render_output(
+            renderer,
+            &mut fb,
+            0,
+            &qs_home_elements,
             [0.1, 0.1, 0.18, 1.0],
         )
     } else {
