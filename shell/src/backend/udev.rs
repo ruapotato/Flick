@@ -1376,10 +1376,8 @@ fn render_surface(
             [0.1, 0.1, 0.12, 1.0], // Switcher background
         )
     } else if state.qs_gesture_active {
-        // During quick settings gesture: slide current view right, reveal QS panel from left
-        // Use simple solid color panel for smooth animation (full UI renders on completion)
+        // During quick settings gesture: slide current view right, reveal QS from left
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-        use smithay::backend::renderer::element::solid::SolidColorBuffer;
         use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
 
         let progress = state.qs_gesture_progress;
@@ -1391,25 +1389,56 @@ fn render_surface(
 
         let mut qs_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
 
-        // Add QS panel background (solid color sliding in from left - fast!)
-        // Panel reveals from left edge as current view slides right
-        let panel_width = slide_offset.max(0);
-        if panel_width > 0 {
-            let panel_buffer = SolidColorBuffer::new(
-                (panel_width, screen_h),
-                [0.1, 0.1, 0.18, 1.0], // QS background color
-            );
-            let panel_bg = SolidColorRenderElement::from_buffer(
-                &panel_buffer,
-                (0, 0),
-                Scale::from(1.0),
-                1.0,
-                Kind::Unspecified,
-            );
-            qs_elements.push(SwitcherRenderElement::Solid(panel_bg));
+        // QS panel slides in from left
+        let qs_x_offset = -screen_w + slide_offset;
+
+        // Render QS Slint UI at offset position
+        if let Some(ref slint_ui) = state.shell.slint_ui {
+            slint_ui.set_view("quick-settings");
+            slint_ui.set_brightness(state.shell.quick_settings.brightness);
+            slint_ui.set_wifi_enabled(state.system.wifi_enabled);
+            slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
+            slint_ui.set_dnd_enabled(state.system.dnd.enabled);
+            slint_ui.set_flashlight_enabled(crate::system::Flashlight::is_on());
+            slint_ui.set_airplane_enabled(crate::system::AirplaneMode::is_enabled());
+            slint_ui.set_rotation_locked(state.system.rotation_lock.locked);
+            slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
+            slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
+
+            slint_ui.process_events();
+            slint_ui.request_redraw();
+
+            if let Some((width, height, pixels)) = slint_ui.render() {
+                let mut mem_buffer = MemoryRenderBuffer::new(
+                    Fourcc::Abgr8888,
+                    (width as i32, height as i32),
+                    1,
+                    Transform::Normal,
+                    None,
+                );
+
+                let pixels_clone = pixels.clone();
+                let _: Result<(), std::convert::Infallible> = mem_buffer.render().draw(|buffer| {
+                    buffer.copy_from_slice(&pixels_clone);
+                    Ok(vec![Rectangle::from_size((width as i32, height as i32).into())])
+                });
+
+                let qs_loc: smithay::utils::Point<f64, smithay::utils::Physical> = (qs_x_offset as f64, 0.0).into();
+                if let Ok(slint_element) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    qs_loc,
+                    &mem_buffer,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    qs_elements.push(SwitcherRenderElement::Icon(slint_element));
+                }
+            }
         }
 
-        // Add windows sliding to the right (home grid not shown during gesture for performance)
+        // Add windows sliding to the right - on top
         let windows: Vec<_> = state.space.elements().cloned().collect();
         for window in windows.iter() {
             if let Some(loc) = state.space.element_location(window) {
