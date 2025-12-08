@@ -2598,7 +2598,8 @@ fn handle_input_event(
             }
 
             // Only forward touch events to apps when in App view (not Home or Switcher)
-            if state.shell.view == crate::shell::ShellView::App {
+            // Skip if touch is on keyboard to prevent focus changes
+            if state.shell.view == crate::shell::ShellView::App && !touch_on_keyboard {
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
@@ -2758,7 +2759,8 @@ fn handle_input_event(
             }
 
             // Only forward touch motion to apps when in App view (not Home or Switcher)
-            if state.shell.view == crate::shell::ShellView::App {
+            // Skip if keyboard dismiss is active (touch started on keyboard)
+            if state.shell.view == crate::shell::ShellView::App && !state.keyboard_dismiss_active {
                 if let Some(touch) = state.seat.get_touch() {
                     // Find surface under touch point (handles both Wayland and X11 windows)
                     let under = state.space.element_under(touch_pos)
@@ -3203,6 +3205,8 @@ fn handle_input_event(
 
             // Get keyboard touch position (saved separately since gesture was cancelled)
             let keyboard_touch_pos = state.keyboard_last_touch_pos.take();
+            // Track if touch started on keyboard to skip forwarding touch.up to apps
+            let touch_was_on_keyboard = keyboard_touch_pos.is_some();
 
             // Reset keyboard dismiss state
             state.keyboard_dismiss_active = false;
@@ -3412,17 +3416,20 @@ fn handle_input_event(
                 state.shell.end_home_touch();
             }
 
-            if let Some(touch) = state.seat.get_touch() {
-                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+            // Only forward touch.up to apps if touch didn't start on keyboard
+            if !touch_was_on_keyboard {
+                if let Some(touch) = state.seat.get_touch() {
+                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
-                touch.up(
-                    state,
-                    &smithay::input::touch::UpEvent {
-                        slot: event.slot(),
-                        serial,
-                        time: Event::time_msec(&event),
-                    },
-                );
+                    touch.up(
+                        state,
+                        &smithay::input::touch::UpEvent {
+                            slot: event.slot(),
+                            serial,
+                            time: Event::time_msec(&event),
+                        },
+                    );
+                }
             }
         }
         InputEvent::TouchCancel { event: _ } => {
