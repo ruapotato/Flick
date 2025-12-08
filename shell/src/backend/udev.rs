@@ -2373,12 +2373,13 @@ fn handle_input_event(
                         info!("Cancelled edge gesture - touch is on keyboard");
                     }
                     false
-                // In Switcher view, ignore left/right edge gestures to allow horizontal scrolling
+                // In Switcher view, ignore right edge gesture to allow horizontal scrolling
+                // But allow left edge (Quick Settings) and top/bottom (close/home)
                 } else if state.shell.view == crate::shell::ShellView::Switcher {
                     if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
-                        // Only process top/bottom edge gestures in Switcher (for going home/closing)
-                        // Cancel left/right edge gestures to allow horizontal scrolling
-                        if *edge == crate::input::Edge::Left || *edge == crate::input::Edge::Right {
+                        // Cancel only right edge gesture to allow horizontal scrolling
+                        // Allow left edge (Quick Settings), top (close), and bottom (home)
+                        if *edge == crate::input::Edge::Right {
                             state.gesture_recognizer.touch_cancel(); // Cancel the edge gesture
                             false
                         } else {

@@ -828,9 +828,14 @@ impl Shell {
                 if *completed {
                     match edge {
                         Edge::Bottom => {
-                            // Swipe up - handled by end_home_gesture() which has
-                            // keyboard-threshold logic (small swipe = show keyboard,
-                            // large swipe = go home)
+                            // Swipe up from bottom edge
+                            // In Switcher view: always go home (no keyboard logic)
+                            // In App view: handled by end_home_gesture() which has keyboard-threshold logic
+                            if self.view == ShellView::Switcher {
+                                tracing::info!("Gesture completed in Switcher: switching to Home view");
+                                self.set_view(ShellView::Home);
+                            }
+                            // App view is handled by end_home_gesture() in state.rs
                         }
                         Edge::Right => {
                             // Swipe left from right edge - app switcher
