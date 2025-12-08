@@ -2695,12 +2695,49 @@ fn handle_input_event(
                 state.keyboard_dismiss_offset = offset;
                 state.keyboard_last_touch_pos = Some(touch_pos);
 
-                // Update keyboard Y offset in Slint (only show visual feedback for downward swipe)
-                if let Some(ref slint_ui) = state.shell.slint_ui {
-                    // For visual feedback, only show downward motion (keyboard sliding down)
-                    slint_ui.set_keyboard_y_offset(offset.max(0.0) as f32);
+                // Check if swiping UP - transition to home gesture
+                let upward_transition_threshold = -30.0; // Start home gesture after 30px upward swipe
+                if offset < upward_transition_threshold && state.home_gesture_window.is_none() {
+                    info!("Keyboard swipe up detected - transitioning to home gesture");
+
+                    // Hide keyboard immediately
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.set_keyboard_visible(false);
+                        slint_ui.set_keyboard_y_offset(0.0);
+                    }
+
+                    // Resize windows back to full screen
+                    state.resize_windows_for_keyboard(false);
+
+                    // Start home gesture with the topmost window
+                    if let Some(window) = state.space.elements().last().cloned() {
+                        if let Some(loc) = state.space.element_location(&window) {
+                            state.home_gesture_window = Some(window);
+                            state.home_gesture_original_y = loc.y;
+                            // Already past keyboard since we started from keyboard
+                            state.home_gesture_past_keyboard = true;
+                            info!("Started home gesture from keyboard at y={}", loc.y);
+                        }
+                    }
+
+                    // End keyboard dismiss - home gesture takes over
+                    state.keyboard_dismiss_active = false;
+                } else if offset >= 0.0 {
+                    // Swiping down - show visual feedback (keyboard sliding down)
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.set_keyboard_y_offset(offset as f32);
+                    }
                 }
                 debug!("Keyboard dismiss offset: {:.0}", offset);
+            }
+
+            // Continue home gesture if active (handles transition from keyboard swipe)
+            if state.home_gesture_window.is_some() && state.keyboard_dismiss_start_y > 0.0 {
+                // Calculate progress based on upward movement from keyboard start position
+                let total_upward = state.keyboard_dismiss_start_y - touch_pos.y;
+                // Convert to progress (300px = full swipe)
+                let progress = (total_upward / 300.0).max(0.0);
+                state.update_home_gesture(progress);
             }
 
             // Handle pattern gesture on lock screen
@@ -3194,10 +3231,21 @@ fn handle_input_event(
                 }
             }
 
-            // Handle keyboard dismiss gesture completion
+            // Handle home gesture completion if it was triggered from keyboard swipe
+            let home_gesture_from_keyboard = state.home_gesture_window.is_some() && state.keyboard_dismiss_start_y > 0.0;
+            if home_gesture_from_keyboard {
+                // Calculate if gesture should complete (swiped far enough)
+                let total_upward = state.keyboard_dismiss_start_y - last_touch_pos.map(|p| p.y).unwrap_or(state.keyboard_dismiss_start_y);
+                let completed = total_upward > 150.0; // Need to swipe up 150px to go home
+                info!("Home gesture from keyboard ended: upward={:.0}px, completed={}", total_upward, completed);
+                state.end_home_gesture(completed);
+                state.keyboard_dismiss_start_y = 0.0;
+            }
+
+            // Handle keyboard dismiss gesture completion (swipe down only now)
             let keyboard_was_dismissed = if state.keyboard_dismiss_active {
                 let offset = state.keyboard_dismiss_offset;
-                let dismiss_threshold = 100.0; // pixels to swipe to dismiss
+                let dismiss_threshold = 100.0; // pixels to swipe down to dismiss
 
                 if offset >= dismiss_threshold {
                     // Swiped DOWN far enough - hide keyboard, stay in app
@@ -3209,21 +3257,9 @@ fn handle_input_event(
                     // Resize windows back to full screen
                     state.resize_windows_for_keyboard(false);
                     true
-                } else if offset <= -dismiss_threshold {
-                    // Swiped UP far enough - hide keyboard AND go home
-                    info!("Keyboard dismissed by swipe up (offset={:.0}) - going home", offset);
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.set_keyboard_visible(false);
-                        slint_ui.set_keyboard_y_offset(0.0);
-                    }
-                    // Resize windows back to full screen
-                    state.resize_windows_for_keyboard(false);
-                    // Go to home screen
-                    state.shell.set_view(crate::shell::ShellView::Home);
-                    true
                 } else {
                     // Snap back - reset offset
-                    info!("Keyboard snap back (offset={:.0}, threshold=±{:.0})", offset, dismiss_threshold);
+                    info!("Keyboard snap back (offset={:.0}, threshold={:.0})", offset, dismiss_threshold);
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         slint_ui.set_keyboard_y_offset(0.0);
                     }
@@ -3261,6 +3297,7 @@ fn handle_input_event(
             // Reset keyboard dismiss state
             state.keyboard_dismiss_active = false;
             state.keyboard_dismiss_offset = 0.0;
+            state.keyboard_dismiss_start_y = 0.0;
 
             // Handle on-screen keyboard input
             // This works in any view where keyboard is visible and an app has focus
