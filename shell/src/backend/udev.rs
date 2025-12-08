@@ -2700,8 +2700,12 @@ fn handle_input_event(
                 if offset < upward_transition_threshold && state.home_gesture_window.is_none() {
                     info!("Keyboard swipe up detected - transitioning to home gesture");
 
-                    // Hide keyboard immediately
+                    // Cancel any pressed key state and hide keyboard
                     if let Some(ref slint_ui) = state.shell.slint_ui {
+                        if !state.keyboard_pointer_cleared {
+                            slint_ui.dispatch_pointer_exit(); // Clear pressed key highlight
+                            state.keyboard_pointer_cleared = true;
+                        }
                         slint_ui.set_keyboard_visible(false);
                         slint_ui.set_keyboard_y_offset(0.0);
                     }
@@ -2722,10 +2726,25 @@ fn handle_input_event(
 
                     // End keyboard dismiss - home gesture takes over
                     state.keyboard_dismiss_active = false;
+                } else if offset > 15.0 {
+                    // Swiping down significantly - clear key highlight once and show visual feedback
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        if !state.keyboard_pointer_cleared {
+                            slint_ui.dispatch_pointer_exit(); // Clear pressed key highlight
+                            state.keyboard_pointer_cleared = true;
+                        }
+                        slint_ui.set_keyboard_y_offset(offset as f32);
+                    }
                 } else if offset >= 0.0 {
-                    // Swiping down - show visual feedback (keyboard sliding down)
+                    // Small downward movement - just update offset
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         slint_ui.set_keyboard_y_offset(offset as f32);
+                    }
+                } else if offset < -15.0 && !state.keyboard_pointer_cleared {
+                    // Swiping up significantly but not yet at transition threshold - clear highlight
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_exit();
+                        state.keyboard_pointer_cleared = true;
                     }
                 }
                 debug!("Keyboard dismiss offset: {:.0}", offset);
@@ -3298,6 +3317,7 @@ fn handle_input_event(
             state.keyboard_dismiss_active = false;
             state.keyboard_dismiss_offset = 0.0;
             state.keyboard_dismiss_start_y = 0.0;
+            state.keyboard_pointer_cleared = false;
 
             // Handle on-screen keyboard input
             // This works in any view where keyboard is visible and an app has focus

@@ -133,6 +133,7 @@ pub struct Flick {
     pub keyboard_dismiss_offset: f64,
     pub keyboard_initial_touch_pos: Option<smithay::utils::Point<f64, smithay::utils::Logical>>,
     pub keyboard_last_touch_pos: Option<smithay::utils::Point<f64, smithay::utils::Logical>>,
+    pub keyboard_pointer_cleared: bool, // Track if we've sent pointer_exit during swipe
 
     /// Per-window keyboard visibility state (surface ID -> keyboard was visible)
     pub window_keyboard_state: HashMap<smithay::reexports::wayland_server::backend::ObjectId, bool>,
@@ -237,6 +238,7 @@ impl Flick {
             keyboard_dismiss_offset: 0.0,
             keyboard_initial_touch_pos: None,
             keyboard_last_touch_pos: None,
+            keyboard_pointer_cleared: false,
             window_keyboard_state: HashMap::new(),
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
