@@ -709,6 +709,10 @@ fn render_surface(
     let qs_home_gesture_active = shell_view == ShellView::QuickSettings &&
         state.shell.gesture.edge == Some(crate::input::Edge::Bottom);
 
+    // Check if Switcher home gesture is active (bottom edge swipe from Switcher view)
+    let switcher_home_gesture_active = shell_view == ShellView::Switcher &&
+        state.shell.gesture.edge == Some(crate::input::Edge::Bottom);
+
     // Choose background color based on state
     // Note: QuickSettings has its own background, so gesture_active shouldn't override it
     let bg_color = if shell_view == ShellView::LockScreen {
@@ -732,8 +736,8 @@ fn render_surface(
     let mut switcher_slint_element: Option<MemoryRenderBufferRenderElement<GlesRenderer>> = None;
 
     // Render shell views using Slint (lock screen, home, quick settings, pick default, switcher)
-    // Also render home during home/qs_home gesture so the grid shows behind the sliding content
-    if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings || shell_view == ShellView::PickDefault || shell_view == ShellView::Switcher || home_gesture_active || qs_home_gesture_active {
+    // Also render home during home/qs_home/switcher_home gesture so the grid shows behind the sliding content
+    if shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::QuickSettings || shell_view == ShellView::PickDefault || shell_view == ShellView::Switcher || home_gesture_active || qs_home_gesture_active || switcher_home_gesture_active {
         if let Some(ref slint_ui) = state.shell.slint_ui {
             // Update Slint UI state based on current view
             match shell_view {
@@ -827,37 +831,53 @@ fn render_surface(
                     }
                 }
                 ShellView::Switcher => {
-                    tracing::info!("Rendering Switcher view via Slint");
-                    slint_ui.set_view("switcher");
-                    slint_ui.set_switcher_scroll(state.shell.switcher_scroll as f32);
+                    // During switcher home gesture, render home grid behind sliding switcher
+                    if switcher_home_gesture_active {
+                        slint_ui.set_view("home");
+                        let categories = state.shell.app_manager.get_category_info();
+                        let slint_categories: Vec<(String, String, [f32; 4])> = categories
+                            .iter()
+                            .map(|cat| {
+                                let icon = cat.icon.as_deref().unwrap_or(&cat.name[..1]).to_string();
+                                (cat.name.clone(), icon, cat.color)
+                            })
+                            .collect();
+                        slint_ui.set_categories(slint_categories);
+                        slint_ui.set_show_popup(false);
+                        slint_ui.set_wiggle_mode(false);
+                    } else {
+                        tracing::info!("Rendering Switcher view via Slint");
+                        slint_ui.set_view("switcher");
+                        slint_ui.set_switcher_scroll(state.shell.switcher_scroll as f32);
 
-                    // Collect window data for Slint
-                    let windows: Vec<(i32, String, String)> = state.space.elements()
-                        .enumerate()
-                        .map(|(i, window)| {
-                            let id = i as i32;
-                            let title = window.x11_surface()
-                                .map(|x11| {
-                                    let t = x11.title();
-                                    if !t.is_empty() {
-                                        t
-                                    } else {
-                                        let inst = x11.instance();
-                                        if !inst.is_empty() {
-                                            inst
+                        // Collect window data for Slint
+                        let windows: Vec<(i32, String, String)> = state.space.elements()
+                            .enumerate()
+                            .map(|(i, window)| {
+                                let id = i as i32;
+                                let title = window.x11_surface()
+                                    .map(|x11| {
+                                        let t = x11.title();
+                                        if !t.is_empty() {
+                                            t
                                         } else {
-                                            x11.class()
+                                            let inst = x11.instance();
+                                            if !inst.is_empty() {
+                                                inst
+                                            } else {
+                                                x11.class()
+                                            }
                                         }
-                                    }
-                                })
-                                .unwrap_or_else(|| format!("Window {}", i + 1));
-                            let app_class = window.x11_surface()
-                                .map(|x11| x11.class())
-                                .unwrap_or_default();
-                            (id, title, app_class)
-                        })
-                        .collect();
-                    slint_ui.set_switcher_windows(windows);
+                                    })
+                                    .unwrap_or_else(|| format!("Window {}", i + 1));
+                                let app_class = window.x11_surface()
+                                    .map(|x11| x11.class())
+                                    .unwrap_or_default();
+                                (id, title, app_class)
+                            })
+                            .collect();
+                        slint_ui.set_switcher_windows(windows);
+                    }
                 }
                 ShellView::App => {
                     // During home gesture, show the home grid behind the sliding app
@@ -1180,7 +1200,7 @@ fn render_surface(
         None
     };
 
-    let render_res = if shell_view == ShellView::Switcher {
+    let render_res = if shell_view == ShellView::Switcher && !switcher_home_gesture_active {
         // Switcher view - render window cards
         let tracker = fresh_tracker.as_mut().unwrap();
         tracker.render_output(
@@ -1189,6 +1209,94 @@ fn render_surface(
             0,  // age=0 for full redraw
             &switcher_elements,
             bg_color,
+        )
+    } else if switcher_home_gesture_active {
+        // During Switcher home gesture: slide switcher up, reveal home grid behind
+        let progress = state.shell.gesture.progress;
+
+        // Switcher slides up following finger 1:1
+        let swipe_threshold = 300.0;
+        let slide_offset = -(progress * swipe_threshold) as i32;
+
+        let mut switcher_home_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
+
+        // Render switcher sliding up (on top)
+        if let Some(ref slint_ui) = state.shell.slint_ui {
+            slint_ui.set_view("switcher");
+            slint_ui.set_switcher_scroll(state.shell.switcher_scroll as f32);
+
+            // Collect window data for Slint
+            let windows: Vec<(i32, String, String)> = state.space.elements()
+                .enumerate()
+                .map(|(i, window)| {
+                    let id = i as i32;
+                    let title = window.x11_surface()
+                        .map(|x11| {
+                            let t = x11.title();
+                            if !t.is_empty() { t }
+                            else {
+                                let inst = x11.instance();
+                                if !inst.is_empty() { inst } else { x11.class() }
+                            }
+                        })
+                        .unwrap_or_else(|| format!("Window {}", i + 1));
+                    let app_class = window.x11_surface()
+                        .map(|x11| x11.class())
+                        .unwrap_or_default();
+                    (id, title, app_class)
+                })
+                .collect();
+            slint_ui.set_switcher_windows(windows);
+
+            slint_ui.process_events();
+            slint_ui.request_redraw();
+
+            if let Some((width, height, pixels)) = slint_ui.render() {
+                let mut switcher_buffer = MemoryRenderBuffer::new(
+                    Fourcc::Abgr8888,
+                    (width as i32, height as i32),
+                    1,
+                    Transform::Normal,
+                    None,
+                );
+
+                let pixels_clone = pixels.clone();
+                let _: Result<(), std::convert::Infallible> = switcher_buffer.render().draw(|buffer| {
+                    buffer.copy_from_slice(&pixels_clone);
+                    Ok(vec![Rectangle::from_size((width as i32, height as i32).into())])
+                });
+
+                // Switcher slides up
+                let switcher_loc: smithay::utils::Point<f64, smithay::utils::Physical> = (0.0, slide_offset as f64).into();
+                if let Ok(switcher_element) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    switcher_loc,
+                    &switcher_buffer,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    switcher_home_elements.push(SwitcherRenderElement::Icon(switcher_element));
+                }
+            }
+        }
+
+        // Add home grid behind switcher (slint_elements has home grid from earlier)
+        for elem in slint_elements.into_iter() {
+            match elem {
+                HomeRenderElement::Icon(icon) => switcher_home_elements.push(SwitcherRenderElement::Icon(icon)),
+                HomeRenderElement::Solid(solid) => switcher_home_elements.push(SwitcherRenderElement::Solid(solid)),
+                _ => {}
+            }
+        }
+
+        surface_data.damage_tracker.render_output(
+            renderer,
+            &mut fb,
+            0,
+            &switcher_home_elements,
+            [0.1, 0.1, 0.18, 1.0],
         )
     } else if (shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::PickDefault || shell_view == ShellView::QuickSettings) && !state.qs_gesture_active && !qs_home_gesture_active {
         // Shell views - render Slint UI (but not during QS gesture transitions)
