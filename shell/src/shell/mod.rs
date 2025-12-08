@@ -742,7 +742,10 @@ impl Shell {
 
     /// Enter wiggle mode for rearranging icons
     pub fn enter_wiggle_mode(&mut self) {
+        self.long_press_menu = None;
+        self.menu_just_opened = false;
         self.popup_showing = false;
+        self.popup_category = None;
         self.wiggle_mode = true;
         self.wiggle_start_time = Some(std::time::Instant::now());
     }

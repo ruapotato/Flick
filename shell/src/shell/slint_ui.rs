@@ -178,6 +178,22 @@ impl SlintShell {
         self.shell.set_wiggle_mode(wiggle);
     }
 
+    /// Set wiggle animation time (updated each frame from Rust)
+    pub fn set_wiggle_time(&self, time: f32) {
+        self.shell.set_wiggle_time(time);
+    }
+
+    /// Set the index of the tile being dragged (-1 if none)
+    pub fn set_dragging_index(&self, index: i32) {
+        self.shell.set_dragging_index(index);
+    }
+
+    /// Set the drag position (screen coordinates)
+    pub fn set_drag_position(&self, x: f32, y: f32) {
+        self.shell.set_drag_x(x);
+        self.shell.set_drag_y(y);
+    }
+
     /// Check if popup is showing
     pub fn is_popup_showing(&self) -> bool {
         *self.popup_showing.borrow()

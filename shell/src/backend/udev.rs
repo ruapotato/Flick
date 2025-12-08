@@ -701,6 +701,14 @@ fn render_surface(
 
                     // Sync wiggle mode
                     slint_ui.set_wiggle_mode(state.shell.wiggle_mode);
+
+                    // Update wiggle animation time (drive animation from Rust)
+                    if state.shell.wiggle_mode {
+                        if let Some(start) = state.shell.wiggle_start_time {
+                            let elapsed = start.elapsed().as_secs_f32();
+                            slint_ui.set_wiggle_time(elapsed);
+                        }
+                    }
                 }
                 ShellView::PickDefault => {
                     slint_ui.set_view("pick-default");
@@ -1501,6 +1509,11 @@ fn handle_input_event(
                         // Start dragging this category
                         state.shell.start_drag(index, touch_pos);
                         info!("Started dragging category at index {}", index);
+                        // Update Slint to show floating tile
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.set_dragging_index(index as i32);
+                            slint_ui.set_drag_position(touch_pos.x as f32, touch_pos.y as f32);
+                        }
                     }
                 } else {
                     // Forward touch to Slint for visual feedback
@@ -1670,6 +1683,10 @@ fn handle_input_event(
             // Update drag position in wiggle mode
             if state.shell.view == crate::shell::ShellView::Home && state.shell.wiggle_mode && state.shell.dragging_index.is_some() {
                 state.shell.update_drag(touch_pos);
+                // Update Slint floating tile position
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    slint_ui.set_drag_position(touch_pos.x as f32, touch_pos.y as f32);
+                }
             }
 
             // Handle horizontal scrolling in app switcher
@@ -1857,6 +1874,10 @@ fn handle_input_event(
                         if done_tapped {
                             info!("Done button tapped, exiting wiggle mode");
                             state.shell.exit_wiggle_mode();
+                            // Clear Slint drag state
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.set_dragging_index(-1);
+                            }
                         } else if state.shell.dragging_index.is_some() {
                             // End drag - find drop position
                             let drop_index = state.shell.hit_test_category_index(pos);
@@ -1864,11 +1885,19 @@ fn handle_input_event(
                             if reordered {
                                 info!("Icon reordered to index {:?}", drop_index);
                             }
+                            // Clear Slint drag state
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.set_dragging_index(-1);
+                            }
                         }
                     } else {
                         // No position, just cancel any drag
                         state.shell.dragging_index = None;
                         state.shell.drag_position = None;
+                        // Clear Slint drag state
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.set_dragging_index(-1);
+                        }
                     }
                     state.shell.end_home_touch();
                 }
