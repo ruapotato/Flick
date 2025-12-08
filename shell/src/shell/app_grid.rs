@@ -261,17 +261,17 @@ impl AppGrid {
             }
         }
 
-        // In wiggle mode, show a "Done" button
+        // In wiggle mode, show a "Done" button (matching shell.slint WiggleDoneButton)
         if wiggle_offsets.is_some() {
-            let btn_width = 100.0;
-            let btn_height = 40.0;
+            let btn_width = 200.0;
+            let btn_height = 56.0;
             let btn_x = (self.layout.screen_size.w as f64 - btn_width) / 2.0;
-            let btn_y = self.layout.screen_size.h as f64 - 80.0;
+            let btn_y = self.layout.screen_size.h as f64 - 100.0;
             let btn_rect = Rect::new(btn_x, btn_y, btn_width, btn_height);
             rects.push((btn_rect, [0.2, 0.6, 0.2, 1.0])); // Green button
 
             // "Done" text
-            let text_rects = text::render_text_centered("Done", btn_x + btn_width / 2.0, btn_y + 12.0, 2.5, [1.0, 1.0, 1.0, 1.0]);
+            let text_rects = text::render_text_centered("Done", btn_x + btn_width / 2.0, btn_y + 18.0, 2.5, [1.0, 1.0, 1.0, 1.0]);
             rects.extend(text_rects);
         }
 

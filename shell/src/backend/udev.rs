@@ -1496,11 +1496,11 @@ fn handle_input_event(
                     // Menu handling is done on touch up
                 } else if state.shell.wiggle_mode {
                     // In wiggle mode - check for drag start or Done button
-                    // Done button bounds (same as in render)
-                    let btn_width = 100.0;
-                    let btn_height = 40.0;
+                    // Done button bounds (matching shell.slint WiggleDoneButton)
+                    let btn_width = 200.0;
+                    let btn_height = 56.0;
                     let btn_x = (state.screen_size.w as f64 - btn_width) / 2.0;
-                    let btn_y = state.screen_size.h as f64 - 80.0;
+                    let btn_y = state.screen_size.h as f64 - 100.0;
 
                     if touch_pos.x >= btn_x && touch_pos.x <= btn_x + btn_width &&
                        touch_pos.y >= btn_y && touch_pos.y <= btn_y + btn_height {
