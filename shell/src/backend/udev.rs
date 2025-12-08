@@ -2345,6 +2345,15 @@ fn handle_input_event(
             let keyboard_top = state.screen_size.h - keyboard_height;
             let touch_on_keyboard = keyboard_visible && touch_pos.y >= keyboard_top as f64;
 
+            // Start keyboard dismiss gesture tracking if touch is on keyboard
+            if touch_on_keyboard {
+                state.keyboard_dismiss_active = true;
+                state.keyboard_dismiss_start_y = touch_pos.y;
+                state.keyboard_dismiss_offset = 0.0;
+                state.keyboard_last_touch_pos = Some(touch_pos);
+                info!("Started keyboard dismiss tracking at y={}", touch_pos.y);
+            }
+
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
                 info!("Gesture touch_down returned: {:?}", gesture_event);
 
@@ -2668,6 +2677,20 @@ fn handle_input_event(
                         tracing::info!("QS gesture UPDATE: progress={:.2}", state.qs_gesture_progress);
                     }
                 }
+            }
+
+            // Handle keyboard dismiss gesture (swipe down on keyboard)
+            if state.keyboard_dismiss_active {
+                // Calculate vertical offset (only allow downward motion = positive offset)
+                let offset = (touch_pos.y - state.keyboard_dismiss_start_y).max(0.0);
+                state.keyboard_dismiss_offset = offset;
+                state.keyboard_last_touch_pos = Some(touch_pos);
+
+                // Update keyboard Y offset in Slint
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    slint_ui.set_keyboard_y_offset(offset as f32);
+                }
+                debug!("Keyboard dismiss offset: {:.0}", offset);
             }
 
             // Handle pattern gesture on lock screen
@@ -3154,14 +3177,47 @@ fn handle_input_event(
                 }
             }
 
+            // Handle keyboard dismiss gesture completion
+            let keyboard_was_dismissed = if state.keyboard_dismiss_active {
+                let offset = state.keyboard_dismiss_offset;
+                let dismiss_threshold = 100.0; // pixels to swipe down to dismiss
+
+                if offset >= dismiss_threshold {
+                    // Swiped far enough - hide keyboard
+                    info!("Keyboard dismissed by swipe (offset={:.0})", offset);
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.set_keyboard_visible(false);
+                    }
+                    true
+                } else {
+                    // Snap back - reset offset
+                    info!("Keyboard snap back (offset={:.0} < threshold)", offset);
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.set_keyboard_y_offset(0.0);
+                    }
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Get keyboard touch position (saved separately since gesture was cancelled)
+            let keyboard_touch_pos = state.keyboard_last_touch_pos.take();
+
+            // Reset keyboard dismiss state
+            state.keyboard_dismiss_active = false;
+            state.keyboard_dismiss_offset = 0.0;
+
             // Handle on-screen keyboard input
             // This works in any view where keyboard is visible and an app has focus
             // First, collect keyboard state and actions to avoid borrow conflicts
             let keyboard_actions: Vec<crate::shell::slint_ui::KeyboardAction> = {
                 if let Some(ref slint_ui) = state.shell.slint_ui {
-                    if slint_ui.is_keyboard_visible() {
+                    // Only process key presses if keyboard wasn't dismissed by swipe
+                    if slint_ui.is_keyboard_visible() && !keyboard_was_dismissed {
                         // Dispatch pointer release to Slint to trigger keyboard key callbacks
-                        if let Some(pos) = last_touch_pos {
+                        // Use keyboard_touch_pos since gesture recognizer position was cleared
+                        if let Some(pos) = keyboard_touch_pos.or(last_touch_pos) {
                             slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
                         }
                         // Get pending keyboard actions

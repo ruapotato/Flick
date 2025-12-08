@@ -1704,6 +1704,7 @@ export component FlickShell inherits Window {
     in property <bool> keyboard-shifted: false;
     in property <bool> keyboard-caps-lock: false;
     in property <int> keyboard-layout: 0;  // 0 = letters, 1 = numbers/symbols
+    in property <length> keyboard-y-offset: 0px;  // For swipe-to-dismiss animation
 
     callback pin-digit-pressed(string);
     callback pin-backspace-pressed();
@@ -1862,9 +1863,9 @@ export component FlickShell inherits Window {
         }
     }
 
-    // On-screen keyboard - slides up from bottom
+    // On-screen keyboard - slides up from bottom, with swipe-down offset
     OnScreenKeyboard {
-        y: keyboard-visible ? parent.height - self.height : parent.height;
+        y: keyboard-visible ? parent.height - self.height + keyboard-y-offset : parent.height;
         width: 100%;
         container-height: parent.height;
         shifted: keyboard-shifted;

@@ -836,11 +836,20 @@ impl SlintShell {
     pub fn set_keyboard_visible(&self, visible: bool) {
         info!("Setting keyboard visible: {}", visible);
         self.shell.set_keyboard_visible(visible);
+        // Reset y-offset when hiding
+        if !visible {
+            self.shell.set_keyboard_y_offset(0.0);
+        }
     }
 
     /// Check if the keyboard is currently visible
     pub fn is_keyboard_visible(&self) -> bool {
         self.shell.get_keyboard_visible()
+    }
+
+    /// Set keyboard y-offset for swipe-to-dismiss animation
+    pub fn set_keyboard_y_offset(&self, offset: f32) {
+        self.shell.set_keyboard_y_offset(offset);
     }
 
     /// Set keyboard shift state

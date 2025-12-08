@@ -123,6 +123,12 @@ pub struct Flick {
     pub qs_gesture_active: bool,
     pub qs_gesture_progress: f64,
 
+    /// Keyboard dismiss gesture (swipe down on keyboard)
+    pub keyboard_dismiss_active: bool,
+    pub keyboard_dismiss_start_y: f64,
+    pub keyboard_dismiss_offset: f64,
+    pub keyboard_last_touch_pos: Option<smithay::utils::Point<f64, smithay::utils::Logical>>,
+
     // Integrated shell UI
     pub shell: Shell,
 
@@ -215,6 +221,10 @@ impl Flick {
             switcher_gesture_progress: 0.0,
             qs_gesture_active: false,
             qs_gesture_progress: 0.0,
+            keyboard_dismiss_active: false,
+            keyboard_dismiss_start_y: 0.0,
+            keyboard_dismiss_offset: 0.0,
+            keyboard_last_touch_pos: None,
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
         }
