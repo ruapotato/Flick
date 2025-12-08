@@ -2688,16 +2688,17 @@ fn handle_input_event(
                 }
             }
 
-            // Handle keyboard dismiss gesture (swipe down on keyboard)
+            // Handle keyboard dismiss gesture (swipe up or down on keyboard)
             if state.keyboard_dismiss_active {
-                // Calculate vertical offset (only allow downward motion = positive offset)
-                let offset = (touch_pos.y - state.keyboard_dismiss_start_y).max(0.0);
+                // Calculate vertical offset (positive = down, negative = up)
+                let offset = touch_pos.y - state.keyboard_dismiss_start_y;
                 state.keyboard_dismiss_offset = offset;
                 state.keyboard_last_touch_pos = Some(touch_pos);
 
-                // Update keyboard Y offset in Slint
+                // Update keyboard Y offset in Slint (only show visual feedback for downward swipe)
                 if let Some(ref slint_ui) = state.shell.slint_ui {
-                    slint_ui.set_keyboard_y_offset(offset as f32);
+                    // For visual feedback, only show downward motion (keyboard sliding down)
+                    slint_ui.set_keyboard_y_offset(offset.max(0.0) as f32);
                 }
                 debug!("Keyboard dismiss offset: {:.0}", offset);
             }
@@ -3196,20 +3197,33 @@ fn handle_input_event(
             // Handle keyboard dismiss gesture completion
             let keyboard_was_dismissed = if state.keyboard_dismiss_active {
                 let offset = state.keyboard_dismiss_offset;
-                let dismiss_threshold = 100.0; // pixels to swipe down to dismiss
+                let dismiss_threshold = 100.0; // pixels to swipe to dismiss
 
                 if offset >= dismiss_threshold {
-                    // Swiped far enough - hide keyboard
-                    info!("Keyboard dismissed by swipe (offset={:.0})", offset);
+                    // Swiped DOWN far enough - hide keyboard, stay in app
+                    info!("Keyboard dismissed by swipe down (offset={:.0})", offset);
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         slint_ui.set_keyboard_visible(false);
+                        slint_ui.set_keyboard_y_offset(0.0);
                     }
                     // Resize windows back to full screen
                     state.resize_windows_for_keyboard(false);
                     true
+                } else if offset <= -dismiss_threshold {
+                    // Swiped UP far enough - hide keyboard AND go home
+                    info!("Keyboard dismissed by swipe up (offset={:.0}) - going home", offset);
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.set_keyboard_visible(false);
+                        slint_ui.set_keyboard_y_offset(0.0);
+                    }
+                    // Resize windows back to full screen
+                    state.resize_windows_for_keyboard(false);
+                    // Go to home screen
+                    state.shell.set_view(crate::shell::ShellView::Home);
+                    true
                 } else {
                     // Snap back - reset offset
-                    info!("Keyboard snap back (offset={:.0} < threshold)", offset);
+                    info!("Keyboard snap back (offset={:.0}, threshold=±{:.0})", offset, dismiss_threshold);
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         slint_ui.set_keyboard_y_offset(0.0);
                     }
