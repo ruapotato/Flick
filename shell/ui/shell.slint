@@ -1596,18 +1596,6 @@ component OnScreenKeyboard inherits Rectangle {
             }
         }
 
-        // Hide keyboard button row (smaller than other rows)
-        HorizontalLayout {
-            spacing: 0px;
-            vertical-stretch: 0.6;
-
-            KeyboardKey {
-                label: "⌨ HIDE";
-                width-factor: 3.0;
-                is-special: true;
-                pressed => { hide-keyboard(); }
-            }
-        }
     }
 }
 

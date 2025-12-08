@@ -53,6 +53,7 @@ use crate::input::{GestureRecognizer, GestureAction};
 use crate::viewport::Viewport;
 use crate::shell::Shell;
 use crate::system::SystemStatus;
+use crate::text_input::{TextInputState, TextInputHandler};
 
 /// Client-specific state
 #[derive(Default)]
@@ -85,6 +86,7 @@ pub struct Flick {
     pub data_device_state: DataDeviceState,
     pub seat_state: SeatState<Self>,
     pub seat: Seat<Self>,
+    pub text_input_state: TextInputState,
 
     // Desktop
     pub space: Space<Window>,
@@ -156,6 +158,7 @@ impl Flick {
         let shm_state = ShmState::new::<Self>(&display_handle, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display_handle);
         let data_device_state = DataDeviceState::new::<Self>(&display_handle);
+        let text_input_state = TextInputState::new::<Self>(&display_handle);
 
         // Set up seat (input devices)
         let mut seat_state = SeatState::new();
@@ -202,6 +205,7 @@ impl Flick {
             shm_state,
             output_manager_state,
             data_device_state,
+            text_input_state,
             seat_state,
             seat,
             space: Space::default(),
@@ -822,6 +826,26 @@ impl XdgShellHandler for Flick {
 
 impl OutputHandler for Flick {}
 
+impl TextInputHandler for Flick {
+    fn text_input_enabled(&mut self) {
+        tracing::info!("Text input enabled - showing on-screen keyboard");
+        // Show keyboard and resize windows
+        if let Some(ref slint_ui) = self.shell.slint_ui {
+            slint_ui.set_keyboard_visible(true);
+        }
+        self.resize_windows_for_keyboard(true);
+    }
+
+    fn text_input_disabled(&mut self) {
+        tracing::info!("Text input disabled - hiding on-screen keyboard");
+        // Hide keyboard and resize windows
+        if let Some(ref slint_ui) = self.shell.slint_ui {
+            slint_ui.set_keyboard_visible(false);
+        }
+        self.resize_windows_for_keyboard(false);
+    }
+}
+
 // Delegate macros
 delegate_compositor!(Flick);
 delegate_shm!(Flick);
@@ -829,3 +853,4 @@ delegate_seat!(Flick);
 delegate_data_device!(Flick);
 delegate_output!(Flick);
 delegate_xdg_shell!(Flick);
+crate::delegate_text_input!(Flick);

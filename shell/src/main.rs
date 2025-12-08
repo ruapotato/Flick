@@ -14,6 +14,7 @@ mod input;
 mod viewport;
 mod xwayland;
 pub mod system;
+pub mod text_input;
 
 use std::path::PathBuf;
 
