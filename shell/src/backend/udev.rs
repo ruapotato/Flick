@@ -1706,20 +1706,38 @@ fn handle_input_event(
                 // Check cards in z-order (front to back), first hit wins
                 let mut touched_index = None;
                 for &i in sorted_indices.iter() {
+                    let window = &windows[i];
                     let card_scroll_pos = i as f64 * card_spacing - scroll_offset;
                     let normalized_pos = card_scroll_pos / card_spacing;
                     let distance = normalized_pos.abs();
                     let scale_factor = (1.0 - distance * 0.12).max(0.7);
 
-                    let card_width = base_card_width * scale_factor;
-                    let card_height = base_card_height * scale_factor;
-                    let x_offset = card_scroll_pos + (screen_w - card_width) / 2.0;
+                    // Use same integer truncation as render code
+                    let card_width = (base_card_width * scale_factor) as i32;
+                    let card_height = (base_card_height * scale_factor) as i32;
+                    let x_offset = card_scroll_pos + (screen_w - card_width as f64) / 2.0;
+                    let x_pos = x_offset as i32;
                     let y_offset = distance * 20.0;
-                    let y_pos = center_y - card_height / 2.0 + y_offset;
+                    let y_pos = ((center_y - card_height as f64 / 2.0) + y_offset) as i32;
 
-                    // Check if touch is within this card
-                    if touch_pos.x >= x_offset && touch_pos.x < x_offset + card_width &&
-                       touch_pos.y >= y_pos && touch_pos.y < y_pos + card_height {
+                    // Calculate actual background bounds (matches render code)
+                    let window_geo = window.geometry();
+                    let max_content_width = card_width - 16;
+                    let max_content_height = card_height - 16;
+                    let scale_x = max_content_width as f64 / window_geo.size.w as f64;
+                    let scale_y = max_content_height as f64 / window_geo.size.h as f64;
+                    let fit_scale = f64::min(scale_x, scale_y);
+                    let scaled_w = (window_geo.size.w as f64 * fit_scale) as i32;
+                    let scaled_h = (window_geo.size.h as f64 * fit_scale) as i32;
+                    let padding = 8;
+                    let bg_width = scaled_w + padding * 2;
+                    let bg_height = scaled_h + padding * 2;
+                    let bg_x = x_pos + (card_width - bg_width) / 2;
+                    let bg_y = y_pos + (card_height - bg_height) / 2;
+
+                    // Check if touch is within the actual visible background
+                    if touch_pos.x >= bg_x as f64 && touch_pos.x < (bg_x + bg_width) as f64 &&
+                       touch_pos.y >= bg_y as f64 && touch_pos.y < (bg_y + bg_height) as f64 {
                         touched_index = Some(i);
                         break; // First hit in z-order wins
                     }
