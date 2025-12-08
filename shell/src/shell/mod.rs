@@ -828,8 +828,9 @@ impl Shell {
                 if *completed {
                     match edge {
                         Edge::Bottom => {
-                            // Swipe up - go home
-                            self.set_view(ShellView::Home);
+                            // Swipe up - handled by end_home_gesture() which has
+                            // keyboard-threshold logic (small swipe = show keyboard,
+                            // large swipe = go home)
                         }
                         Edge::Right => {
                             // Swipe left from right edge - app switcher
