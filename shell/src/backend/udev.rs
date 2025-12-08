@@ -1181,8 +1181,9 @@ fn render_surface(
             bg_color, // Home background color shows through as window slides up
         )
     } else if state.switcher_gesture_active {
-        // During switcher gesture: render app shrinking into card position
+        // During switcher gesture: render all apps transitioning to card positions
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+        use smithay::backend::renderer::element::solid::SolidColorBuffer;
 
         let progress = state.switcher_gesture_progress;
         let screen_w = state.screen_size.w as f64;
@@ -1191,94 +1192,114 @@ fn render_surface(
         // Target card dimensions (same as switcher render code)
         let base_card_width = (screen_w * 0.80) as i32;
         let base_card_height = (screen_h * 0.58) as i32;
+        let card_spacing = base_card_width as f64 * 0.35;
         let center_y = screen_h / 2.0;
 
-        // Get the topmost window
         let windows: Vec<_> = state.space.elements().cloned().collect();
         let mut transition_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
+        let num_windows = windows.len();
 
-        if let Some(window) = windows.last() {
+        // The topmost window (last in list) will be at scroll position 0 in switcher
+        // So window at index i will be at switcher position (num_windows - 1 - i)
+        // We render back-to-front: other windows first (fading in), then topmost last (shrinking)
+
+        for (i, window) in windows.iter().enumerate() {
             let window_geo = window.geometry();
+            let is_topmost = i == num_windows - 1;
 
-            // Calculate target (card) scale and position
-            let max_content_width = base_card_width - 16;
-            let max_content_height = base_card_height - 16;
+            // Calculate this window's position in the switcher (topmost = index 0)
+            let switcher_index = num_windows - 1 - i;
+            let card_scroll_pos = switcher_index as f64 * card_spacing; // No scroll offset during transition
+
+            // Card scale based on position (same as switcher)
+            let normalized_pos = card_scroll_pos / card_spacing;
+            let distance = normalized_pos.abs();
+            let card_scale_factor = (1.0 - distance * 0.12).max(0.7);
+
+            let card_width = (base_card_width as f64 * card_scale_factor) as i32;
+            let card_height = (base_card_height as f64 * card_scale_factor) as i32;
+
+            // Target card position
+            let card_x_offset = card_scroll_pos + (screen_w - card_width as f64) / 2.0;
+            let card_x = card_x_offset as i32;
+            let card_y_offset = distance * 20.0;
+            let card_y = ((center_y - card_height as f64 / 2.0) + card_y_offset) as i32;
+
+            // Calculate window scale to fit in card
+            let max_content_width = card_width - 16;
+            let max_content_height = card_height - 16;
             let scale_x = max_content_width as f64 / window_geo.size.w as f64;
             let scale_y = max_content_height as f64 / window_geo.size.h as f64;
             let target_scale = f64::min(scale_x, scale_y);
 
-            // Target position (centered card)
             let scaled_w = (window_geo.size.w as f64 * target_scale) as i32;
             let scaled_h = (window_geo.size.h as f64 * target_scale) as i32;
             let padding = 8;
             let bg_width = scaled_w + padding * 2;
             let bg_height = scaled_h + padding * 2;
-            let target_x = ((screen_w - bg_width as f64) / 2.0) as i32;
-            let target_y = ((center_y - bg_height as f64 / 2.0)) as i32;
+            let target_x = card_x + (card_width - bg_width) / 2 + padding;
+            let target_y = card_y + (card_height - bg_height) / 2 + padding;
+            let bg_x = card_x + (card_width - bg_width) / 2;
+            let bg_y = card_y + (card_height - bg_height) / 2;
 
-            // Interpolate between full screen (progress=0) and card (progress=1)
-            let current_scale = 1.0 + (target_scale - 1.0) * progress;
-            let current_x = (0.0 + (target_x as f64 + padding as f64) * progress) as i32;
-            let current_y = (0.0 + (target_y as f64 + padding as f64) * progress) as i32;
+            if is_topmost {
+                // Topmost window: interpolate from fullscreen to card position
+                let current_scale = 1.0 + (target_scale - 1.0) * progress;
+                let current_x = (0.0 + target_x as f64 * progress) as i32;
+                let current_y = (0.0 + target_y as f64 * progress) as i32;
+                let current_w = (window_geo.size.w as f64 * current_scale) as i32;
+                let current_h = (window_geo.size.h as f64 * current_scale) as i32;
 
-            // Render card background (fades in with progress)
-            if progress > 0.1 {
-                use smithay::backend::renderer::element::solid::SolidColorBuffer;
-                let bg_alpha = ((progress - 0.1) / 0.9).min(1.0) as f32;
-                let interp_bg_width = (screen_w as i32 + ((bg_width - screen_w as i32) as f64 * progress) as i32);
-                let interp_bg_height = (screen_h as i32 + ((bg_height - screen_h as i32) as f64 * progress) as i32);
-                let interp_bg_x = (0.0 + target_x as f64 * progress) as i32;
-                let interp_bg_y = (0.0 + target_y as f64 * progress) as i32;
+                // Card background (interpolate size and position)
+                if progress > 0.1 {
+                    let bg_alpha = ((progress - 0.1) / 0.9).min(1.0) as f32;
+                    let interp_bg_w = screen_w as i32 + ((bg_width - screen_w as i32) as f64 * progress) as i32;
+                    let interp_bg_h = screen_h as i32 + ((bg_height - screen_h as i32) as f64 * progress) as i32;
+                    let interp_bg_x = (0.0 + bg_x as f64 * progress) as i32;
+                    let interp_bg_y = (0.0 + bg_y as f64 * progress) as i32;
 
-                let card_buffer = SolidColorBuffer::new(
-                    (interp_bg_width, interp_bg_height),
-                    [0.24, 0.24, 0.29, bg_alpha],
-                );
-                let card_bg = SolidColorRenderElement::from_buffer(
-                    &card_buffer,
-                    (interp_bg_x, interp_bg_y),
-                    Scale::from(1.0),
-                    1.0,
-                    Kind::Unspecified,
-                );
-                transition_elements.push(SwitcherRenderElement::Solid(card_bg));
-            }
+                    let card_buffer = SolidColorBuffer::new((interp_bg_w, interp_bg_h), [0.24, 0.24, 0.29, bg_alpha]);
+                    let card_bg = SolidColorRenderElement::from_buffer(&card_buffer, (interp_bg_x, interp_bg_y), Scale::from(1.0), 1.0, Kind::Unspecified);
+                    transition_elements.push(SwitcherRenderElement::Solid(card_bg));
+                }
 
-            // Render window content scaled
-            let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
-                .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
-                    renderer,
-                    (0, 0).into(),
-                    Scale::from(scale),
-                    1.0,
-                );
+                // Window content
+                let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
+                    .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(renderer, (0, 0).into(), Scale::from(scale), 1.0);
 
-            let current_w = (window_geo.size.w as f64 * current_scale) as i32;
-            let current_h = (window_geo.size.h as f64 * current_scale) as i32;
+                let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new((current_x, current_y).into(), (current_w, current_h).into());
 
-            let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
-                (current_x, current_y).into(),
-                (current_w, current_h).into(),
-            );
+                for elem in window_render_elements {
+                    let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(current_scale));
+                    let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (current_x, current_y).into();
+                    let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Absolute);
+                    if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
+                        transition_elements.insert(0, cropped.into());
+                    }
+                }
+            } else {
+                // Other windows: fade in at their card positions
+                let alpha = (progress * 1.5).min(1.0) as f32; // Fade in faster
+                if alpha > 0.05 {
+                    // Card background
+                    let card_buffer = SolidColorBuffer::new((bg_width, bg_height), [0.24, 0.24, 0.29, alpha]);
+                    let card_bg = SolidColorRenderElement::from_buffer(&card_buffer, (bg_x, bg_y), Scale::from(1.0), 1.0, Kind::Unspecified);
+                    transition_elements.push(SwitcherRenderElement::Solid(card_bg));
 
-            for elem in window_render_elements {
-                let scaled = RescaleRenderElement::from_element(
-                    elem,
-                    (0, 0).into(),
-                    Scale::from(current_scale),
-                );
-                let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (current_x, current_y).into();
-                let relocated = RelocateRenderElement::from_element(
-                    scaled,
-                    final_pos,
-                    Relocate::Absolute,
-                );
-                if let Some(cropped) = CropRenderElement::from_element(
-                    relocated,
-                    Scale::from(scale),
-                    crop_rect,
-                ) {
-                    transition_elements.insert(0, cropped.into()); // Window on top
+                    // Window content
+                    let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
+                        .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(renderer, (0, 0).into(), Scale::from(scale), alpha);
+
+                    let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new((target_x, target_y).into(), (scaled_w, scaled_h).into());
+
+                    for elem in window_render_elements {
+                        let scaled_elem = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(target_scale));
+                        let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (target_x, target_y).into();
+                        let relocated = RelocateRenderElement::from_element(scaled_elem, final_pos, Relocate::Absolute);
+                        if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
+                            transition_elements.push(cropped.into());
+                        }
+                    }
                 }
             }
         }
