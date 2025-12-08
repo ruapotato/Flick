@@ -648,17 +648,21 @@ fn render_surface(
         state.shell.gesture.edge == Some(crate::input::Edge::Bottom);
 
     // Choose background color based on state
+    // Note: QuickSettings has its own background, so gesture_active shouldn't override it
     let bg_color = if shell_view == ShellView::LockScreen {
         [0.05, 0.05, 0.1, 1.0]  // Dark blue for lock screen
+    } else if shell_view == ShellView::QuickSettings {
+        [0.1, 0.1, 0.15, 1.0]  // Dark blue-gray for Quick Settings
     } else if shell_view == ShellView::Home || gesture_active || bottom_gesture {
         colors::BACKGROUND
     } else if shell_view == ShellView::Switcher {
         [0.0, 0.3, 0.0, 1.0]  // Dark green for Switcher - should be visible
-    } else if shell_view == ShellView::QuickSettings {
-        [0.1, 0.1, 0.15, 1.0]  // Dark blue-gray for Quick Settings
     } else {
         [0.05, 0.05, 0.15, 1.0]
     };
+
+    tracing::info!("render_surface: view={:?}, gesture_active={}, bg_color={:?}",
+                   shell_view, gesture_active, bg_color);
 
     // Build Slint UI elements for shell views
     let mut slint_elements: Vec<HomeRenderElement<GlesRenderer>> = Vec::new();
