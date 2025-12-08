@@ -1440,6 +1440,58 @@ fn render_surface(
             }
         }
 
+        // Add current view sliding to the right - on top of QS
+        // If we're on home screen, render the home grid at offset position
+        if shell_view == ShellView::Home {
+            // Render home grid at offset position
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                slint_ui.set_view("home");
+                let categories = state.shell.app_manager.get_category_info();
+                let slint_categories: Vec<(String, String, [f32; 4])> = categories
+                    .iter()
+                    .map(|cat| {
+                        let icon = cat.icon.as_deref().unwrap_or(&cat.name[..1]).to_string();
+                        (cat.name.clone(), icon, cat.color)
+                    })
+                    .collect();
+                slint_ui.set_categories(slint_categories);
+                slint_ui.set_show_popup(false);
+                slint_ui.set_wiggle_mode(false);
+                slint_ui.process_events();
+                slint_ui.request_redraw();
+
+                if let Some((width, height, pixels)) = slint_ui.render() {
+                    let mut home_buffer = MemoryRenderBuffer::new(
+                        Fourcc::Abgr8888,
+                        (width as i32, height as i32),
+                        1,
+                        Transform::Normal,
+                        None,
+                    );
+
+                    let pixels_clone = pixels.clone();
+                    let _: Result<(), std::convert::Infallible> = home_buffer.render().draw(|buffer| {
+                        buffer.copy_from_slice(&pixels_clone);
+                        Ok(vec![Rectangle::from_size((width as i32, height as i32).into())])
+                    });
+
+                    // Home grid slides right with finger
+                    let home_loc: smithay::utils::Point<f64, smithay::utils::Physical> = (slide_offset as f64, 0.0).into();
+                    if let Ok(home_element) = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        home_loc,
+                        &home_buffer,
+                        None,
+                        None,
+                        None,
+                        Kind::Unspecified,
+                    ) {
+                        qs_elements.insert(0, SwitcherRenderElement::Icon(home_element));
+                    }
+                }
+            }
+        }
+
         // Add windows sliding to the right - on top
         let windows: Vec<_> = state.space.elements().cloned().collect();
         for window in windows.iter() {
