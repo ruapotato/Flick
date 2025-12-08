@@ -1187,16 +1187,7 @@ fn render_surface(
 
         let mut home_gesture_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
 
-        // First, add Slint home grid elements (rendered as background)
-        for elem in slint_elements.into_iter() {
-            match elem {
-                HomeRenderElement::Icon(icon) => home_gesture_elements.push(SwitcherRenderElement::Icon(icon)),
-                HomeRenderElement::Solid(solid) => home_gesture_elements.push(SwitcherRenderElement::Solid(solid)),
-                _ => {}
-            }
-        }
-
-        // Add ONLY the topmost window (the one being animated) on top
+        // Add the topmost window FIRST (will be rendered on top - front-to-back order)
         if let Some(ref window) = state.home_gesture_window {
             if let Some(loc) = state.space.element_location(window) {
                 // Get window render elements at origin
@@ -1212,11 +1203,12 @@ fn render_surface(
                     loc.x, loc.y, window_render_elements.len());
 
                 // Relocate each element to the window's current position in the space
-                let window_geo = window.geometry();
-                // Crop rect covers the whole window at its current location (no actual cropping)
+                // Use screen-sized crop rect to ensure window isn't clipped when moving up
+                let screen_w = state.screen_size.w;
+                let screen_h = state.screen_size.h * 2; // Extra height for off-screen
                 let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
-                    (loc.x, loc.y).into(),
-                    (window_geo.size.w, window_geo.size.h).into(),
+                    (-screen_w, -screen_h).into(),
+                    (screen_w * 3, screen_h * 2).into(),
                 );
 
                 for elem in window_render_elements {
@@ -1231,6 +1223,15 @@ fn render_surface(
             }
         } else {
             tracing::warn!("Home gesture active but no home_gesture_window set!");
+        }
+
+        // Add Slint home grid elements AFTER window (will be behind in front-to-back order)
+        for elem in slint_elements.into_iter() {
+            match elem {
+                HomeRenderElement::Icon(icon) => home_gesture_elements.push(SwitcherRenderElement::Icon(icon)),
+                HomeRenderElement::Solid(solid) => home_gesture_elements.push(SwitcherRenderElement::Solid(solid)),
+                _ => {}
+            }
         }
 
         tracing::info!("Home gesture: total {} elements", home_gesture_elements.len());
