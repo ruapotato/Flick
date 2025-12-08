@@ -1212,6 +1212,10 @@ fn render_surface(
         )
     } else if switcher_home_gesture_active {
         // During Switcher home gesture: slide switcher up, reveal home grid behind
+        use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+        use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
+        use smithay::backend::renderer::element::solid::SolidColorBuffer;
+
         let progress = state.shell.gesture.progress;
 
         // Switcher slides up following finger 1:1
@@ -1220,64 +1224,91 @@ fn render_surface(
 
         let mut switcher_home_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
 
-        // Render switcher sliding up (on top)
-        if let Some(ref slint_ui) = state.shell.slint_ui {
-            slint_ui.set_view("switcher");
-            slint_ui.set_switcher_scroll(state.shell.switcher_scroll as f32);
+        // Render window previews sliding up (same as normal switcher but with y offset)
+        let screen_w = state.screen_size.w as f64;
+        let screen_h = state.screen_size.h as f64;
+        let base_card_width = (screen_w * 0.80) as i32;
+        let base_card_height = (screen_h * 0.58) as i32;
+        let card_spacing = base_card_width as f64 * 0.35;
+        let center_y = screen_h / 2.0;
+        let scroll_offset = state.shell.switcher_scroll;
 
-            // Collect window data for Slint
-            let windows: Vec<(i32, String, String)> = state.space.elements()
-                .enumerate()
-                .map(|(i, window)| {
-                    let id = i as i32;
-                    let title = window.x11_surface()
-                        .map(|x11| {
-                            let t = x11.title();
-                            if !t.is_empty() { t }
-                            else {
-                                let inst = x11.instance();
-                                if !inst.is_empty() { inst } else { x11.class() }
-                            }
-                        })
-                        .unwrap_or_else(|| format!("Window {}", i + 1));
-                    let app_class = window.x11_surface()
-                        .map(|x11| x11.class())
-                        .unwrap_or_default();
-                    (id, title, app_class)
-                })
-                .collect();
-            slint_ui.set_switcher_windows(windows);
+        let windows: Vec<_> = state.space.elements().cloned().collect();
+        let mut sorted_indices: Vec<usize> = (0..windows.len()).collect();
+        sorted_indices.sort_by(|&a, &b| {
+            let dist_a = ((a as f64 * card_spacing - scroll_offset) / card_spacing).abs();
+            let dist_b = ((b as f64 * card_spacing - scroll_offset) / card_spacing).abs();
+            dist_a.partial_cmp(&dist_b).unwrap()
+        });
 
-            slint_ui.process_events();
-            slint_ui.request_redraw();
+        // Render cards with window previews
+        for &i in sorted_indices.iter() {
+            let window = &windows[i];
+            let card_scroll_pos = i as f64 * card_spacing - scroll_offset;
+            let normalized_pos = card_scroll_pos / card_spacing;
+            let distance = normalized_pos.abs();
+            let scale_factor = (1.0 - distance * 0.12).max(0.7);
 
-            if let Some((width, height, pixels)) = slint_ui.render() {
-                let mut switcher_buffer = MemoryRenderBuffer::new(
-                    Fourcc::Abgr8888,
-                    (width as i32, height as i32),
-                    1,
-                    Transform::Normal,
-                    None,
+            let card_width = (base_card_width as f64 * scale_factor) as i32;
+            let card_height = (base_card_height as f64 * scale_factor) as i32;
+            let x_offset = card_scroll_pos + (screen_w - card_width as f64) / 2.0;
+            let x_pos = x_offset as i32;
+            let y_offset = distance * 20.0;
+            let y_pos = ((center_y - card_height as f64 / 2.0) + y_offset) as i32 + slide_offset;
+
+            if x_pos + card_width < -200 || x_pos > screen_w as i32 + 200 {
+                continue;
+            }
+
+            let window_geo = window.geometry();
+            let max_content_width = card_width - 16;
+            let max_content_height = card_height - 16;
+            let scale_x = max_content_width as f64 / window_geo.size.w as f64;
+            let scale_y = max_content_height as f64 / window_geo.size.h as f64;
+            let fit_scale = f64::min(scale_x, scale_y);
+            let scaled_w = (window_geo.size.w as f64 * fit_scale) as i32;
+            let scaled_h = (window_geo.size.h as f64 * fit_scale) as i32;
+
+            let padding = 8;
+            let bg_width = scaled_w + padding * 2;
+            let bg_height = scaled_h + padding * 2;
+            let bg_x = x_pos + (card_width - bg_width) / 2;
+            let bg_y = y_pos + (card_height - bg_height) / 2;
+
+            // Card background
+            let bg_brightness = (0.24 - distance * 0.04).max(0.15) as f32;
+            let card_bg_color = [bg_brightness, bg_brightness, bg_brightness + 0.05, 1.0];
+            let card_buffer = SolidColorBuffer::new((bg_width, bg_height), card_bg_color);
+            let card_bg = SolidColorRenderElement::from_buffer(
+                &card_buffer,
+                (bg_x, bg_y),
+                Scale::from(1.0),
+                1.0,
+                Kind::Unspecified,
+            );
+            switcher_home_elements.push(SwitcherRenderElement::Solid(card_bg));
+
+            // Window content
+            let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
+                .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                    renderer,
+                    (0, 0).into(),
+                    Scale::from(scale),
+                    1.0,
                 );
 
-                let pixels_clone = pixels.clone();
-                let _: Result<(), std::convert::Infallible> = switcher_buffer.render().draw(|buffer| {
-                    buffer.copy_from_slice(&pixels_clone);
-                    Ok(vec![Rectangle::from_size((width as i32, height as i32).into())])
-                });
+            let final_x = bg_x + padding;
+            let final_y = bg_y + padding;
+            let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
+                (final_x, final_y).into(),
+                (scaled_w, scaled_h).into(),
+            );
 
-                // Switcher slides up
-                let switcher_loc: smithay::utils::Point<f64, smithay::utils::Physical> = (0.0, slide_offset as f64).into();
-                if let Ok(switcher_element) = MemoryRenderBufferRenderElement::from_buffer(
-                    renderer,
-                    switcher_loc,
-                    &switcher_buffer,
-                    None,
-                    None,
-                    None,
-                    Kind::Unspecified,
-                ) {
-                    switcher_home_elements.push(SwitcherRenderElement::Icon(switcher_element));
+            for elem in window_render_elements {
+                let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(fit_scale));
+                let relocated = RelocateRenderElement::from_element(scaled, (final_x, final_y).into(), Relocate::Relative);
+                if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
+                    switcher_home_elements.insert(0, cropped.into());
                 }
             }
         }
