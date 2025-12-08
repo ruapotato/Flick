@@ -11,9 +11,25 @@ use smithay::reexports::wayland_protocols::wp::text_input::zv3::server::{
     zwp_text_input_v3::{self, ZwpTextInputV3},
 };
 use smithay::reexports::wayland_server::{
-    backend::GlobalId, Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
+    backend::{ClientId, GlobalId, ObjectId},
+    protocol::wl_surface::WlSurface,
+    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
 };
 use tracing::{debug, info};
+
+/// Shared state for tracking text input instances
+#[derive(Debug, Default)]
+struct TextInputTracker {
+    /// All active text input instances (client_id -> instance)
+    instances: Vec<(ClientId, ZwpTextInputV3)>,
+    /// Currently focused surface
+    focused_surface: Option<WlSurface>,
+}
+
+/// Global shared tracker
+lazy_static::lazy_static! {
+    static ref TRACKER: Mutex<TextInputTracker> = Mutex::new(TextInputTracker::default());
+}
 
 /// State for text input manager
 #[derive(Debug)]
@@ -37,6 +53,39 @@ impl TextInputState {
     /// Get the global ID
     pub fn global(&self) -> GlobalId {
         self.global.clone()
+    }
+
+    /// Called when keyboard focus changes - sends enter/leave to text input clients
+    pub fn focus_changed(new_focus: Option<&WlSurface>) {
+        let mut tracker = TRACKER.lock().unwrap();
+
+        // Get old focus
+        let old_focus = tracker.focused_surface.take();
+
+        // Send leave to old focus
+        if let Some(ref old_surface) = old_focus {
+            let old_client_id = old_surface.client().map(|c| c.id());
+            for (client_id, text_input) in &tracker.instances {
+                if old_client_id.as_ref().map(|id| id == client_id).unwrap_or(false) {
+                    debug!("Sending text_input leave to client {:?}", client_id);
+                    text_input.leave(old_surface);
+                }
+            }
+        }
+
+        // Update focused surface
+        tracker.focused_surface = new_focus.cloned();
+
+        // Send enter to new focus
+        if let Some(ref new_surface) = tracker.focused_surface {
+            let new_client_id = new_surface.client().map(|c| c.id());
+            for (client_id, text_input) in &tracker.instances {
+                if new_client_id.as_ref().map(|id| id == client_id).unwrap_or(false) {
+                    debug!("Sending text_input enter to client {:?}", client_id);
+                    text_input.enter(new_surface);
+                }
+            }
+        }
     }
 }
 
@@ -94,7 +143,7 @@ where
 {
     fn request(
         _state: &mut D,
-        _client: &Client,
+        client: &Client,
         _resource: &ZwpTextInputManagerV3,
         request: zwp_text_input_manager_v3::Request,
         _data: &(),
@@ -104,7 +153,20 @@ where
         match request {
             zwp_text_input_manager_v3::Request::GetTextInput { id, seat: _ } => {
                 let instance = data_init.init(id, TextInputData::default());
-                debug!("Text input instance created: {:?}", instance.id());
+                let client_id = client.id();
+                debug!("Text input instance created: {:?} for client {:?}", instance.id(), client_id);
+
+                // Register instance in tracker
+                let mut tracker = TRACKER.lock().unwrap();
+                tracker.instances.push((client_id.clone(), instance.clone()));
+
+                // If there's already a focused surface for this client, send enter
+                if let Some(ref focused) = tracker.focused_surface {
+                    if focused.client().map(|c| c.id() == client_id).unwrap_or(false) {
+                        debug!("Sending immediate enter to new text_input instance");
+                        instance.enter(focused);
+                    }
+                }
             }
             zwp_text_input_manager_v3::Request::Destroy => {
                 debug!("Text input manager destroyed");
@@ -183,12 +245,16 @@ where
                 }
             }
             zwp_text_input_v3::Request::Destroy => {
-                debug!("Text input instance destroyed");
+                debug!("Text input instance destroyed: {:?}", resource.id());
                 // If text input was enabled, disable it
                 let was_enabled = data.inner.lock().unwrap().enabled;
                 if was_enabled {
                     state.text_input_disabled();
                 }
+                // Remove from tracker
+                let resource_id = resource.id();
+                let mut tracker = TRACKER.lock().unwrap();
+                tracker.instances.retain(|(_, ti)| ti.id() != resource_id);
             }
             _ => unreachable!(),
         }

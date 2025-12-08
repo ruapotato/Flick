@@ -702,6 +702,9 @@ impl SeatHandler for Flick {
         let dh = &self.display_handle;
         let client = focused.and_then(|s| dh.get_client(s.id()).ok());
         set_data_device_focus(dh, seat, client);
+
+        // Notify text input protocol of focus change (sends enter/leave events)
+        TextInputState::focus_changed(focused);
     }
 
     fn cursor_image(
