@@ -1550,10 +1550,11 @@ fn render_surface(
     } else if qs_home_gesture_active {
         // During QS home gesture: slide QS panel up, reveal home grid behind
         let progress = state.shell.gesture.progress;
-        let screen_h = state.screen_size.h;
 
-        // QS slides up based on gesture progress (progress 1.0 = threshold reached)
-        let slide_offset = -(progress * screen_h as f64 * 0.8) as i32;
+        // QS slides up following finger 1:1
+        // progress = finger_distance / 300, so finger_distance = progress * 300
+        let swipe_threshold = 300.0;
+        let slide_offset = -(progress * swipe_threshold) as i32;
 
         let mut qs_home_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
 
