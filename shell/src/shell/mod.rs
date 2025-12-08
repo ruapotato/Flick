@@ -864,6 +864,27 @@ impl Shell {
         self.switcher_touch_times.clear();
     }
 
+    /// Open the app switcher with the current (topmost) app centered
+    /// num_windows: total number of windows
+    /// card_spacing: spacing between cards in the switcher
+    pub fn open_switcher(&mut self, num_windows: usize, card_spacing: f64) {
+        self.view = ShellView::Switcher;
+        self.gesture = GestureState::default();
+        // Set scroll so the topmost window (last index) is centered
+        // In switcher: card_scroll_pos = i * card_spacing - scroll_offset
+        // For window at index (num_windows-1) to be at position 0:
+        // scroll_offset = (num_windows - 1) * card_spacing
+        self.switcher_scroll = if num_windows > 0 {
+            (num_windows - 1) as f64 * card_spacing
+        } else {
+            0.0
+        };
+        self.switcher_velocity = 0.0;
+        self.switcher_animating = false;
+        self.switcher_snap_target = None;
+        self.switcher_touch_times.clear();
+    }
+
     /// Sync Quick Settings panel with current system status
     pub fn sync_quick_settings(&mut self, system: &crate::system::SystemStatus) {
         self.quick_settings.update_from_system(system);

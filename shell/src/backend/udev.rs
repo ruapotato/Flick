@@ -1199,17 +1199,17 @@ fn render_surface(
         let mut transition_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
         let num_windows = windows.len();
 
-        // The topmost window (last in list) will be at scroll position 0 in switcher
-        // So window at index i will be at switcher position (num_windows - 1 - i)
-        // We render back-to-front: other windows first (fading in), then topmost last (shrinking)
+        // When the switcher opens, scroll_offset = (num_windows - 1) * card_spacing
+        // so topmost window (last in list) is centered at position 0.
+        // During transition, simulate this same scroll offset.
+        let target_scroll_offset = (num_windows.saturating_sub(1)) as f64 * card_spacing;
 
         for (i, window) in windows.iter().enumerate() {
             let window_geo = window.geometry();
             let is_topmost = i == num_windows - 1;
 
-            // Calculate this window's position in the switcher (topmost = index 0)
-            let switcher_index = num_windows - 1 - i;
-            let card_scroll_pos = switcher_index as f64 * card_spacing; // No scroll offset during transition
+            // Use same formula as switcher: i * card_spacing - scroll_offset
+            let card_scroll_pos = i as f64 * card_spacing - target_scroll_offset;
 
             // Card scale based on position (same as switcher)
             let normalized_pos = card_scroll_pos / card_spacing;
@@ -2085,9 +2085,19 @@ fn handle_input_event(
                     }
                     // Handle switcher transition end
                     if *edge == crate::input::Edge::Right {
-                        // Reset gesture state - view change is handled by shell
+                        // Reset gesture state
                         state.switcher_gesture_active = false;
                         state.switcher_gesture_progress = 0.0;
+
+                        // If gesture completed, open switcher with correct scroll position
+                        // so the current (topmost) app is centered
+                        if *completed {
+                            let num_windows = state.space.elements().count();
+                            let screen_w = state.screen_size.w as f64;
+                            let card_width = screen_w * 0.80;
+                            let card_spacing = card_width * 0.35;
+                            state.shell.open_switcher(num_windows, card_spacing);
+                        }
                     }
                     // Sync Quick Settings with system status when opening it
                     if *edge == crate::input::Edge::Left && *completed {
