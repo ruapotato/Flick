@@ -811,15 +811,6 @@ impl Shell {
                 self.gesture.completed = *completed;
                 self.gesture.velocity = *velocity;
 
-                // When in QuickSettings, don't handle edge swipe transitions here
-                // They are handled by the QS exit gesture in udev.rs
-                if self.view == ShellView::QuickSettings {
-                    // Reset gesture state and return early
-                    self.gesture.edge = None;
-                    self.gesture.progress = 0.0;
-                    return;
-                }
-
                 if *completed {
                     match edge {
                         Edge::Bottom => {

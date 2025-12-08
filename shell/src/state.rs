@@ -123,11 +123,6 @@ pub struct Flick {
     pub qs_gesture_active: bool,
     pub qs_gesture_progress: f64,
 
-    /// Quick settings exit gesture (swipe from any edge while in QS - slides out)
-    pub qs_exit_gesture_active: bool,
-    pub qs_exit_gesture_progress: f64,
-    pub qs_exit_gesture_edge: Option<crate::input::Edge>,
-
     // Integrated shell UI
     pub shell: Shell,
 
@@ -220,9 +215,6 @@ impl Flick {
             switcher_gesture_progress: 0.0,
             qs_gesture_active: false,
             qs_gesture_progress: 0.0,
-            qs_exit_gesture_active: false,
-            qs_exit_gesture_progress: 0.0,
-            qs_exit_gesture_edge: None,
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
         }

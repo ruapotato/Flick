@@ -1170,8 +1170,8 @@ fn render_surface(
             &switcher_elements,
             bg_color,
         )
-    } else if (shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::PickDefault || shell_view == ShellView::QuickSettings) && !state.qs_gesture_active && !state.qs_exit_gesture_active {
-        // Shell views - render Slint UI (but not during QS gesture transitions)
+    } else if (shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::PickDefault || shell_view == ShellView::QuickSettings) && !state.qs_gesture_active {
+        // Shell views - render Slint UI (but not during QS gesture transition)
         tracing::info!("Rendering {:?} with {} slint_elements, bg={:?}", shell_view, slint_elements.len(), bg_color);
         surface_data.damage_tracker.render_output(
             renderer,
@@ -1525,134 +1525,6 @@ fn render_surface(
             &mut fb,
             0,
             &qs_elements,
-            [0.1, 0.1, 0.18, 1.0],
-        )
-    } else if state.qs_exit_gesture_active {
-        // During QS exit gesture: slide QS out, reveal home grid
-        let progress = state.qs_exit_gesture_progress;
-        let edge = state.qs_exit_gesture_edge;
-        let screen_w = state.screen_size.w;
-        let screen_h = state.screen_size.h;
-        let swipe_threshold = 300.0;
-        let slide_amount = (progress * swipe_threshold) as i32;
-
-        let mut exit_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
-
-        // Calculate offsets based on swipe direction
-        let (qs_x_offset, qs_y_offset, home_x_offset, home_y_offset) = match edge {
-            Some(crate::input::Edge::Right) => {
-                // Swiping left from right edge: QS slides left, home comes from right
-                (-slide_amount, 0, screen_w - slide_amount, 0)
-            }
-            Some(crate::input::Edge::Bottom) => {
-                // Swiping up from bottom edge: QS slides up, home comes from bottom
-                (0, -slide_amount, 0, screen_h - slide_amount)
-            }
-            Some(crate::input::Edge::Top) => {
-                // Swiping down from top edge: QS slides down, home comes from top
-                (0, slide_amount, 0, -screen_h + slide_amount)
-            }
-            _ => (0, 0, 0, 0),
-        };
-
-        // Render home grid sliding in
-        if let Some(ref slint_ui) = state.shell.slint_ui {
-            slint_ui.set_view("home");
-            let categories = state.shell.app_manager.get_category_info();
-            let slint_categories: Vec<(String, String, [f32; 4])> = categories
-                .iter()
-                .map(|cat| {
-                    let icon = cat.icon.as_deref().unwrap_or(&cat.name[..1]).to_string();
-                    (cat.name.clone(), icon, cat.color)
-                })
-                .collect();
-            slint_ui.set_categories(slint_categories);
-            slint_ui.set_show_popup(false);
-            slint_ui.set_wiggle_mode(false);
-            slint_ui.process_events();
-            slint_ui.request_redraw();
-
-            if let Some((width, height, pixels)) = slint_ui.render() {
-                let mut home_buffer = MemoryRenderBuffer::new(
-                    Fourcc::Abgr8888,
-                    (width as i32, height as i32),
-                    1,
-                    Transform::Normal,
-                    None,
-                );
-
-                let pixels_clone = pixels.clone();
-                let _: Result<(), std::convert::Infallible> = home_buffer.render().draw(|buffer| {
-                    buffer.copy_from_slice(&pixels_clone);
-                    Ok(vec![Rectangle::from_size((width as i32, height as i32).into())])
-                });
-
-                let home_loc: smithay::utils::Point<f64, smithay::utils::Physical> = (home_x_offset as f64, home_y_offset as f64).into();
-                if let Ok(home_element) = MemoryRenderBufferRenderElement::from_buffer(
-                    renderer,
-                    home_loc,
-                    &home_buffer,
-                    None,
-                    None,
-                    None,
-                    Kind::Unspecified,
-                ) {
-                    exit_elements.push(SwitcherRenderElement::Icon(home_element));
-                }
-            }
-        }
-
-        // Render QS sliding out (on top of home grid)
-        if let Some(ref slint_ui) = state.shell.slint_ui {
-            slint_ui.set_view("quick-settings");
-            slint_ui.set_brightness(state.shell.quick_settings.brightness);
-            slint_ui.set_wifi_enabled(state.system.wifi_enabled);
-            slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
-            slint_ui.set_dnd_enabled(state.system.dnd.enabled);
-            slint_ui.set_flashlight_enabled(crate::system::Flashlight::is_on());
-            slint_ui.set_airplane_enabled(crate::system::AirplaneMode::is_enabled());
-            slint_ui.set_rotation_locked(state.system.rotation_lock.locked);
-            slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
-            slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
-
-            slint_ui.process_events();
-            slint_ui.request_redraw();
-
-            if let Some((width, height, pixels)) = slint_ui.render() {
-                let mut qs_buffer = MemoryRenderBuffer::new(
-                    Fourcc::Abgr8888,
-                    (width as i32, height as i32),
-                    1,
-                    Transform::Normal,
-                    None,
-                );
-
-                let pixels_clone = pixels.clone();
-                let _: Result<(), std::convert::Infallible> = qs_buffer.render().draw(|buffer| {
-                    buffer.copy_from_slice(&pixels_clone);
-                    Ok(vec![Rectangle::from_size((width as i32, height as i32).into())])
-                });
-
-                let qs_loc: smithay::utils::Point<f64, smithay::utils::Physical> = (qs_x_offset as f64, qs_y_offset as f64).into();
-                if let Ok(qs_element) = MemoryRenderBufferRenderElement::from_buffer(
-                    renderer,
-                    qs_loc,
-                    &qs_buffer,
-                    None,
-                    None,
-                    None,
-                    Kind::Unspecified,
-                ) {
-                    exit_elements.insert(0, SwitcherRenderElement::Icon(qs_element));
-                }
-            }
-        }
-
-        surface_data.damage_tracker.render_output(
-            renderer,
-            &mut fb,
-            0,
-            &exit_elements,
             [0.1, 0.1, 0.18, 1.0],
         )
     } else {
@@ -2307,24 +2179,14 @@ fn handle_input_event(
                         state.switcher_gesture_active = true;
                         state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
                     }
-                    // Update quick settings transition when swiping from left (only when NOT in QS)
-                    if *edge == crate::input::Edge::Left && state.shell.view != crate::shell::ShellView::QuickSettings {
+                    // Update quick settings transition when swiping from left
+                    if *edge == crate::input::Edge::Left {
                         state.qs_gesture_active = true;
                         // Don't clamp to 1.0 - allow full screen swipe
                         // Max progress = screen_w / 300 (swipe_threshold)
                         let max_progress = state.screen_size.w as f64 / 300.0;
                         state.qs_gesture_progress = progress.clamp(0.0, max_progress);
                         tracing::info!("QS gesture UPDATE: progress={:.2}", state.qs_gesture_progress);
-                    }
-
-                    // Update quick settings EXIT gesture when swiping from right/bottom/top while in QS
-                    if state.shell.view == crate::shell::ShellView::QuickSettings {
-                        if *edge == crate::input::Edge::Right || *edge == crate::input::Edge::Bottom || *edge == crate::input::Edge::Top {
-                            state.qs_exit_gesture_active = true;
-                            state.qs_exit_gesture_edge = Some(*edge);
-                            let max_progress = state.screen_size.w as f64 / 300.0;
-                            state.qs_exit_gesture_progress = progress.clamp(0.0, max_progress);
-                        }
                     }
                 }
             }
@@ -2468,7 +2330,7 @@ fn handle_input_event(
                         }
                     }
                     // Handle quick settings transition end
-                    if *edge == crate::input::Edge::Left && state.shell.view != crate::shell::ShellView::QuickSettings {
+                    if *edge == crate::input::Edge::Left {
                         // Reset gesture state
                         state.qs_gesture_active = false;
                         state.qs_gesture_progress = 0.0;
@@ -2478,21 +2340,6 @@ fn handle_input_event(
                             state.system.refresh();
                             state.shell.sync_quick_settings(&state.system);
                             info!("Quick Settings opened - synced with system status");
-                        }
-                    }
-
-                    // Handle quick settings EXIT gesture end
-                    if state.qs_exit_gesture_active {
-                        let was_completed = *completed;
-                        // Reset gesture state
-                        state.qs_exit_gesture_active = false;
-                        state.qs_exit_gesture_progress = 0.0;
-                        state.qs_exit_gesture_edge = None;
-
-                        // If gesture completed, switch to home view
-                        if was_completed {
-                            state.shell.view = crate::shell::ShellView::Home;
-                            info!("Quick Settings closed via swipe - switched to Home");
                         }
                     }
                 }
