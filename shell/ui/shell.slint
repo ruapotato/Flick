@@ -1400,7 +1400,7 @@ component QuickSettingsPanel inherits Rectangle {
     }
 }
 
-// On-Screen Keyboard Key - scales to fill available space
+// On-Screen Keyboard Key - touch area fills entire cell, visual key has padding
 component KeyboardKey inherits Rectangle {
     in property <string> label: "";
     in property <string> shift-label: "";  // Label when shift is active
@@ -1414,20 +1414,33 @@ component KeyboardKey inherits Rectangle {
     // Use stretch to fill available space proportionally
     horizontal-stretch: width-factor;
     vertical-stretch: 1;
-    border-radius: 6px;
-    background: touch.pressed ? Theme.primary : (is-special ? (is-active ? Theme.primary-container : #2a2a3a) : Theme.surface-variant);
+    // Outer rectangle is transparent - touch area covers entire cell
+    background: transparent;
 
-    Text {
-        width: 100%;
-        height: 100%;
-        text: root.shifted && root.shift-label != "" ? root.shift-label : root.label;
-        color: Theme.on-surface;
-        font-size: is-special ? 12px : 16px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    // Inner visual key with padding
+    Rectangle {
+        x: 2px;
+        y: 2px;
+        width: parent.width - 4px;
+        height: parent.height - 4px;
+        border-radius: 6px;
+        background: touch.pressed ? Theme.primary : (is-special ? (is-active ? Theme.primary-container : #2a2a3a) : Theme.surface-variant);
+
+        Text {
+            width: 100%;
+            height: 100%;
+            text: root.shifted && root.shift-label != "" ? root.shift-label : root.label;
+            color: Theme.on-surface;
+            font-size: is-special ? 12px : 16px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
     }
 
+    // Touch area covers entire cell (including gaps between visual keys)
     touch := TouchArea {
+        width: 100%;
+        height: 100%;
         clicked => { root.pressed(); }
     }
 }
@@ -1458,12 +1471,12 @@ component OnScreenKeyboard inherits Rectangle {
     VerticalLayout {
         width: 100%;
         height: 100%;
-        padding: 6px;
-        spacing: 6px;
+        padding: 4px;
+        spacing: 0px;  // No spacing - keys handle their own visual padding
 
         // Row 1: q w e r t y u i o p (or 1 2 3 4 5 6 7 8 9 0)
         HorizontalLayout {
-            spacing: 4px;
+            spacing: 0px;  // No spacing - keys handle their own visual padding
             vertical-stretch: 1;
 
             if layout == 0: KeyboardKey { label: "q"; shift-label: "Q"; shifted: show-shift; pressed => { key-pressed(show-shift ? "Q" : "q"); } }
@@ -1491,7 +1504,7 @@ component OnScreenKeyboard inherits Rectangle {
 
         // Row 2: a s d f g h j k l (or symbols)
         HorizontalLayout {
-            spacing: 4px;
+            spacing: 0px;
             vertical-stretch: 1;
 
             if layout == 0: KeyboardKey { label: "a"; shift-label: "A"; shifted: show-shift; pressed => { key-pressed(show-shift ? "A" : "a"); } }
@@ -1517,7 +1530,7 @@ component OnScreenKeyboard inherits Rectangle {
 
         // Row 3: shift z x c v b n m backspace
         HorizontalLayout {
-            spacing: 4px;
+            spacing: 0px;
             vertical-stretch: 1;
 
             KeyboardKey {
@@ -1554,7 +1567,7 @@ component OnScreenKeyboard inherits Rectangle {
 
         // Row 4: 123/ABC space . enter
         HorizontalLayout {
-            spacing: 4px;
+            spacing: 0px;
             vertical-stretch: 1;
 
             KeyboardKey {
@@ -1585,7 +1598,7 @@ component OnScreenKeyboard inherits Rectangle {
 
         // Hide keyboard button row (smaller than other rows)
         HorizontalLayout {
-            spacing: 4px;
+            spacing: 0px;
             vertical-stretch: 0.6;
 
             KeyboardKey {

@@ -2125,9 +2125,12 @@ fn handle_input_event(
                     info!("Super+K pressed - toggling on-screen keyboard");
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         let visible = slint_ui.is_keyboard_visible();
-                        info!("Current keyboard visibility: {}, setting to: {}", visible, !visible);
-                        slint_ui.set_keyboard_visible(!visible);
-                        info!("On-screen keyboard toggled: {}", !visible);
+                        let new_visible = !visible;
+                        info!("Current keyboard visibility: {}, setting to: {}", visible, new_visible);
+                        slint_ui.set_keyboard_visible(new_visible);
+                        // Resize windows to fit above/below keyboard
+                        state.resize_windows_for_keyboard(new_visible);
+                        info!("On-screen keyboard toggled: {}", new_visible);
                     } else {
                         error!("slint_ui is None - cannot toggle keyboard");
                     }
@@ -2141,9 +2144,12 @@ fn handle_input_event(
                 info!("F12 pressed - toggling on-screen keyboard");
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     let visible = slint_ui.is_keyboard_visible();
-                    info!("Current keyboard visibility: {}, setting to: {}", visible, !visible);
-                    slint_ui.set_keyboard_visible(!visible);
-                    info!("On-screen keyboard toggled: {}", !visible);
+                    let new_visible = !visible;
+                    info!("Current keyboard visibility: {}, setting to: {}", visible, new_visible);
+                    slint_ui.set_keyboard_visible(new_visible);
+                    // Resize windows to fit above/below keyboard
+                    state.resize_windows_for_keyboard(new_visible);
+                    info!("On-screen keyboard toggled: {}", new_visible);
                 } else {
                     error!("slint_ui is None - cannot toggle keyboard");
                 }
@@ -3190,6 +3196,8 @@ fn handle_input_event(
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         slint_ui.set_keyboard_visible(false);
                     }
+                    // Resize windows back to full screen
+                    state.resize_windows_for_keyboard(false);
                     true
                 } else {
                     // Snap back - reset offset
@@ -3405,6 +3413,8 @@ fn handle_input_event(
                         if let Some(ref slint_ui) = state.shell.slint_ui {
                             slint_ui.set_keyboard_visible(false);
                         }
+                        // Resize windows back to full screen
+                        state.resize_windows_for_keyboard(false);
                         info!("Keyboard hidden");
                     }
                 }

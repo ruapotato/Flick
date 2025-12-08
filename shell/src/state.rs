@@ -454,6 +454,45 @@ impl Flick {
         self.home_gesture_original_y = 0;
     }
 
+    /// Resize windows for keyboard visibility
+    /// When keyboard shows, reduce window height to fit above keyboard
+    /// When keyboard hides, restore full screen height
+    pub fn resize_windows_for_keyboard(&mut self, keyboard_visible: bool) {
+        let keyboard_height = std::cmp::max(200, (self.screen_size.h as f32 * 0.22) as i32);
+        let available_height = if keyboard_visible {
+            self.screen_size.h - keyboard_height
+        } else {
+            self.screen_size.h
+        };
+
+        tracing::info!("Resizing windows for keyboard: visible={}, available_height={}",
+            keyboard_visible, available_height);
+
+        // Resize all app windows
+        for window in self.space.elements() {
+            // Only resize actual app windows (not override redirects, etc.)
+            if let Some(toplevel) = window.toplevel() {
+                let new_size: smithay::utils::Size<i32, smithay::utils::Logical> =
+                    (self.screen_size.w, available_height).into();
+                toplevel.with_pending_state(|state| {
+                    state.size = Some(new_size);
+                });
+                toplevel.send_configure();
+                tracing::debug!("Resized Wayland window to {}x{}", self.screen_size.w, available_height);
+            }
+
+            // Handle X11 windows
+            if let Some(x11_surface) = window.x11_surface() {
+                let new_geo = smithay::utils::Rectangle::from_loc_and_size(
+                    (0, 0),
+                    (self.screen_size.w, available_height),
+                );
+                let _ = x11_surface.configure(new_geo);
+                tracing::debug!("Resized X11 window to {}x{}", self.screen_size.w, available_height);
+            }
+        }
+    }
+
     /// Write the list of open windows to IPC file for shell to read
     pub fn update_window_list(&self) {
         use std::io::Write;
