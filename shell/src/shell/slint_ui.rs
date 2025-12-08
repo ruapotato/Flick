@@ -298,8 +298,13 @@ impl SlintShell {
         let width = self.size.w as u32;
         let height = self.size.h as u32;
 
-        // Check if we need to redraw
+        // Track if we actually drew
+        let drew = std::cell::Cell::new(false);
+
+        // Use draw_if_needed which renders if the window needs repainting
         self.window.draw_if_needed(|renderer| {
+            drew.set(true);
+
             // Create a SharedPixelBuffer for rendering (RGB888)
             let mut buffer = SharedPixelBuffer::<Rgb8Pixel>::new(width, height);
 
@@ -329,6 +334,13 @@ impl SlintShell {
                 }
             }
         });
+
+        // Log if we drew or not
+        if drew.get() {
+            tracing::debug!("Slint draw_if_needed: rendered");
+        } else {
+            tracing::warn!("Slint draw_if_needed: skipped (no repaint needed)");
+        }
 
         // Return a copy of the pixel buffer
         let buffer = self.pixel_buffer.borrow();
