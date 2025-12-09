@@ -857,9 +857,9 @@ impl SlintShell {
         self.shell.set_keyboard_shifted(shifted);
     }
 
-    /// Get keyboard shift state
+    /// Get keyboard shift state (includes caps lock)
     pub fn is_keyboard_shifted(&self) -> bool {
-        self.shell.get_keyboard_shifted()
+        self.shell.get_keyboard_shifted() || self.shell.get_keyboard_caps_lock()
     }
 
     /// Set keyboard caps lock state
@@ -898,6 +898,129 @@ impl SlintShell {
     /// Returns all pending actions and clears the pending state
     pub fn take_pending_keyboard_actions(&self) -> Vec<KeyboardAction> {
         std::mem::take(&mut *self.pending_keyboard_actions.borrow_mut())
+    }
+
+    /// Directly trigger a keyboard key based on touch position
+    /// This is used as a fallback if Slint's touch detection misses the tap
+    /// Returns true if a key was triggered
+    pub fn trigger_keyboard_key_at(&self, x: f32, y: f32, keyboard_height: f32, screen_width: f32, shifted: bool, layout: i32) -> bool {
+        // Calculate which row was tapped (4 rows total)
+        let row_height = keyboard_height / 4.0;
+        let row = ((keyboard_height - y) / row_height).floor() as i32;  // 0 = bottom row, 3 = top row
+        let row = row.clamp(0, 3);
+
+        // Define key layouts for each row
+        let key = match (row, layout) {
+            // Row 0 (bottom): 123/ABC, comma, SPACE, period, ENTER
+            (0, _) => {
+                let key_widths = [1.5, 1.0, 5.0, 1.0, 1.5]; // relative widths
+                let total_width: f32 = key_widths.iter().sum();
+                let x_normalized = x / screen_width * total_width;
+                let mut cumulative = 0.0;
+                let mut key_idx = 0;
+                for (i, &w) in key_widths.iter().enumerate() {
+                    if x_normalized < cumulative + w {
+                        key_idx = i;
+                        break;
+                    }
+                    cumulative += w;
+                    key_idx = i;
+                }
+                match key_idx {
+                    0 => Some(KeyboardAction::LayoutToggled),
+                    1 => Some(KeyboardAction::Character(",".to_string())),
+                    2 => Some(KeyboardAction::Space),
+                    3 => Some(KeyboardAction::Character(".".to_string())),
+                    4 => Some(KeyboardAction::Enter),
+                    _ => None,
+                }
+            }
+            // Row 1 (shift row): SHIFT, 7 keys, DEL
+            (1, 0) => {
+                let keys = ["SHIFT", "z", "x", "c", "v", "b", "n", "m", "DEL"];
+                let key_widths = [1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.5];
+                let total_width: f32 = key_widths.iter().sum();
+                let x_normalized = x / screen_width * total_width;
+                let mut cumulative = 0.0;
+                let mut key_idx = 0;
+                for (i, &w) in key_widths.iter().enumerate() {
+                    if x_normalized < cumulative + w {
+                        key_idx = i;
+                        break;
+                    }
+                    cumulative += w;
+                    key_idx = i;
+                }
+                match keys.get(key_idx) {
+                    Some(&"SHIFT") => Some(KeyboardAction::ShiftToggled),
+                    Some(&"DEL") => Some(KeyboardAction::Backspace),
+                    Some(k) => {
+                        let ch = if shifted { k.to_uppercase() } else { k.to_string() };
+                        Some(KeyboardAction::Character(ch))
+                    }
+                    None => None,
+                }
+            }
+            (1, 1) => {
+                let keys = ["SHIFT", "/", "`", "@", "#", "&", "*", "(", "DEL"];
+                let key_widths = [1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.5];
+                let total_width: f32 = key_widths.iter().sum();
+                let x_normalized = x / screen_width * total_width;
+                let mut cumulative = 0.0;
+                let mut key_idx = 0;
+                for (i, &w) in key_widths.iter().enumerate() {
+                    if x_normalized < cumulative + w {
+                        key_idx = i;
+                        break;
+                    }
+                    cumulative += w;
+                    key_idx = i;
+                }
+                match keys.get(key_idx) {
+                    Some(&"SHIFT") => Some(KeyboardAction::ShiftToggled),
+                    Some(&"DEL") => Some(KeyboardAction::Backspace),
+                    Some(k) => Some(KeyboardAction::Character(k.to_string())),
+                    None => None,
+                }
+            }
+            // Row 2 (middle): 9 keys
+            (2, 0) => {
+                let keys = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
+                let key_idx = ((x / screen_width) * keys.len() as f32).floor() as usize;
+                let key_idx = key_idx.min(keys.len() - 1);
+                let ch = if shifted { keys[key_idx].to_uppercase() } else { keys[key_idx].to_string() };
+                Some(KeyboardAction::Character(ch))
+            }
+            (2, 1) => {
+                let keys = ["-", "=", "[", "]", "\\", ";", "'", ",", "."];
+                let key_idx = ((x / screen_width) * keys.len() as f32).floor() as usize;
+                let key_idx = key_idx.min(keys.len() - 1);
+                Some(KeyboardAction::Character(keys[key_idx].to_string()))
+            }
+            // Row 3 (top): 10 keys
+            (3, 0) => {
+                let keys = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
+                let key_idx = ((x / screen_width) * keys.len() as f32).floor() as usize;
+                let key_idx = key_idx.min(keys.len() - 1);
+                let ch = if shifted { keys[key_idx].to_uppercase() } else { keys[key_idx].to_string() };
+                Some(KeyboardAction::Character(ch))
+            }
+            (3, 1) => {
+                let keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+                let key_idx = ((x / screen_width) * keys.len() as f32).floor() as usize;
+                let key_idx = key_idx.min(keys.len() - 1);
+                Some(KeyboardAction::Character(keys[key_idx].to_string()))
+            }
+            _ => None,
+        };
+
+        if let Some(action) = key {
+            info!("Keyboard fallback triggered: {:?} at ({}, {})", action, x, y);
+            self.pending_keyboard_actions.borrow_mut().push(action);
+            true
+        } else {
+            false
+        }
     }
 }
 

@@ -3340,13 +3340,38 @@ fn handle_input_event(
             let keyboard_actions: Vec<crate::shell::slint_ui::KeyboardAction> = {
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     // Only process key presses if keyboard wasn't dismissed by swipe
-                    if slint_ui.is_keyboard_visible() && !keyboard_was_dismissed {
+                    if slint_ui.is_keyboard_visible() && !keyboard_was_dismissed && touch_was_on_keyboard {
                         // Dispatch pointer release to Slint to trigger keyboard key callbacks
                         if let Some(pos) = keyboard_touch_pos.or(last_touch_pos) {
                             slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
                         }
-                        // Get pending keyboard actions
-                        slint_ui.take_pending_keyboard_actions()
+                        // Get pending keyboard actions from Slint
+                        let mut actions = slint_ui.take_pending_keyboard_actions();
+
+                        // If no actions from Slint, use Rust-side fallback to ensure tap registers
+                        if actions.is_empty() {
+                            if let Some(pos) = keyboard_touch_pos.or(last_touch_pos) {
+                                let keyboard_height = state.get_keyboard_height() as f32;
+                                let screen_width = state.screen_size.w as f32;
+                                let keyboard_top = state.screen_size.h as f32 - keyboard_height;
+                                let y_in_keyboard = pos.y as f32 - keyboard_top;
+
+                                if y_in_keyboard >= 0.0 {
+                                    let shifted = slint_ui.is_keyboard_shifted();
+                                    let layout = slint_ui.get_keyboard_layout();
+                                    slint_ui.trigger_keyboard_key_at(
+                                        pos.x as f32,
+                                        y_in_keyboard,
+                                        keyboard_height,
+                                        screen_width,
+                                        shifted,
+                                        layout,
+                                    );
+                                    actions = slint_ui.take_pending_keyboard_actions();
+                                }
+                            }
+                        }
+                        actions
                     } else {
                         Vec::new()
                     }
