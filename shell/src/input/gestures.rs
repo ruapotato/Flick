@@ -1,4 +1,9 @@
-//! Gesture recognition system
+//! Gesture recognition system with per-slot multi-touch support
+//!
+//! Each touch slot is tracked independently, allowing:
+//! - Multiple simultaneous edge swipes (though unusual)
+//! - Independent taps on different parts of the screen
+//! - Multi-finger gestures (pinch/pan) when touches are close together
 //!
 //! Supports:
 //! - Edge swipes (left, right, bottom, top)
@@ -9,6 +14,7 @@
 //! - Tap
 
 use smithay::utils::{Logical, Point, Size};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// Edge of the screen
@@ -186,12 +192,35 @@ impl TouchPoint {
     }
 }
 
-/// Gesture recognizer state machine
+/// Per-slot gesture state
+#[derive(Debug, Clone)]
+pub enum SlotGesture {
+    /// Potential tap (just touched, hasn't moved much)
+    PotentialTap,
+    /// Long press detected
+    LongPress,
+    /// Edge swipe in progress
+    EdgeSwipe { edge: Edge },
+    /// Regular swipe (not from edge)
+    Swipe,
+    /// This slot is part of a multi-touch gesture (pinch/pan)
+    MultiTouch,
+}
+
+/// Gesture recognizer with per-slot tracking
 pub struct GestureRecognizer {
     pub config: GestureConfig,
     pub screen_size: Size<i32, Logical>,
-    pub points: Vec<TouchPoint>,
+    /// Per-slot touch tracking
+    pub points: HashMap<i32, TouchPoint>,
+    /// Per-slot gesture state
+    pub slot_gestures: HashMap<i32, SlotGesture>,
+    /// Global active gesture (for backwards compatibility with existing code)
     pub active_gesture: Option<ActiveGesture>,
+    /// Track if we're in a multi-touch gesture mode
+    pub multi_touch_active: bool,
+    /// Initial distance for pinch gesture
+    pub pinch_initial_distance: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -209,8 +238,11 @@ impl GestureRecognizer {
         Self {
             config: GestureConfig::default(),
             screen_size,
-            points: Vec::new(),
+            points: HashMap::new(),
+            slot_gestures: HashMap::new(),
             active_gesture: None,
+            multi_touch_active: false,
+            pinch_initial_distance: None,
         }
     }
 
@@ -239,18 +271,19 @@ impl GestureRecognizer {
             return Point::from((0.0, 0.0));
         }
 
-        let sum: (f64, f64) = self.points.iter().fold((0.0, 0.0), |acc, p| {
+        let sum: (f64, f64) = self.points.values().fold((0.0, 0.0), |acc, p| {
             (acc.0 + p.current_pos.x, acc.1 + p.current_pos.y)
         });
 
         Point::from((sum.0 / self.points.len() as f64, sum.1 / self.points.len() as f64))
     }
 
-    /// Calculate distance between two touch points
+    /// Calculate distance between first two touch points
     pub fn pinch_distance(&self) -> Option<f64> {
-        if self.points.len() >= 2 {
-            let p1 = &self.points[0].current_pos;
-            let p2 = &self.points[1].current_pos;
+        let points: Vec<_> = self.points.values().collect();
+        if points.len() >= 2 {
+            let p1 = &points[0].current_pos;
+            let p2 = &points[1].current_pos;
             let dx = p2.x - p1.x;
             let dy = p2.y - p1.y;
             Some((dx * dx + dy * dy).sqrt())
@@ -259,45 +292,103 @@ impl GestureRecognizer {
         }
     }
 
-    /// Handle touch down event
+    /// Handle touch down event - returns gesture event for this slot
     pub fn touch_down(&mut self, id: i32, pos: Point<f64, Logical>) -> Option<GestureEvent> {
-        self.points.push(TouchPoint::new(id, pos));
+        let point = TouchPoint::new(id, pos);
+        self.points.insert(id, point);
 
-        // First touch - check for edge swipe
-        if self.points.len() == 1 {
-            if let Some(edge) = self.detect_edge(pos) {
-                self.active_gesture = Some(ActiveGesture::EdgeSwipe { edge });
-                return Some(GestureEvent::EdgeSwipeStart {
-                    edge,
-                    fingers: 1,
-                });
-            } else {
+        // Check for edge swipe for this slot
+        if let Some(edge) = self.detect_edge(pos) {
+            self.slot_gestures.insert(id, SlotGesture::EdgeSwipe { edge });
+            // Set global active gesture for backwards compatibility
+            self.active_gesture = Some(ActiveGesture::EdgeSwipe { edge });
+            return Some(GestureEvent::EdgeSwipeStart {
+                edge,
+                fingers: 1,
+            });
+        } else {
+            self.slot_gestures.insert(id, SlotGesture::PotentialTap);
+            // Only set global active gesture if this is the first touch
+            if self.points.len() == 1 {
                 self.active_gesture = Some(ActiveGesture::PotentialTap);
             }
         }
 
-        // Two touches - potential pinch/pan
+        // Check for multi-touch gestures when we have 2+ touches
         if self.points.len() == 2 {
+            // Check if the two touches are close enough for a pinch gesture
             if let Some(dist) = self.pinch_distance() {
+                self.pinch_initial_distance = Some(dist);
+                self.multi_touch_active = true;
                 self.active_gesture = Some(ActiveGesture::Pinch {
                     initial_distance: dist,
                 });
+                // Mark both slots as part of multi-touch
+                for slot_id in self.points.keys().cloned().collect::<Vec<_>>() {
+                    self.slot_gestures.insert(slot_id, SlotGesture::MultiTouch);
+                }
             }
         }
 
         None
     }
 
-    /// Handle touch motion event
+    /// Handle touch motion event - returns gesture event
     pub fn touch_motion(&mut self, id: i32, pos: Point<f64, Logical>) -> Option<GestureEvent> {
         // Update the touch point
-        if let Some(point) = self.points.iter_mut().find(|p| p.id == id) {
+        if let Some(point) = self.points.get_mut(&id) {
             point.update(pos);
+        } else {
+            return None;
         }
 
+        // Check per-slot gesture first
+        let slot_gesture = self.slot_gestures.get(&id).cloned();
+
+        match slot_gesture {
+            Some(SlotGesture::EdgeSwipe { edge }) => {
+                let point = self.points.get(&id)?;
+                let progress = match edge {
+                    Edge::Left => point.delta().x / self.config.swipe_threshold,
+                    Edge::Right => -point.delta().x / self.config.swipe_threshold,
+                    Edge::Top => point.delta().y / self.config.swipe_threshold,
+                    Edge::Bottom => -point.delta().y / self.config.swipe_threshold,
+                };
+
+                return Some(GestureEvent::EdgeSwipeUpdate {
+                    edge,
+                    fingers: 1,
+                    progress: progress.max(0.0),
+                    velocity: match edge {
+                        Edge::Left | Edge::Right => point.velocity.x,
+                        Edge::Top | Edge::Bottom => point.velocity.y,
+                    },
+                });
+            }
+            Some(SlotGesture::MultiTouch) => {
+                // Handle multi-touch gestures (pinch/pan)
+                if let Some(initial_distance) = self.pinch_initial_distance {
+                    if let Some(current_dist) = self.pinch_distance() {
+                        let scale = current_dist / initial_distance;
+                        let center = self.center();
+
+                        return Some(GestureEvent::Pinch {
+                            center,
+                            scale,
+                            delta: scale - 1.0,
+                            rotation: 0.0,
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        // Fall back to global active_gesture for backwards compatibility
         match &self.active_gesture {
             Some(ActiveGesture::EdgeSwipe { edge }) => {
-                let point = self.points.first()?;
+                // Find the first point (for backwards compat)
+                let point = self.points.values().next()?;
                 let progress = match edge {
                     Edge::Left => point.delta().x / self.config.swipe_threshold,
                     Edge::Right => -point.delta().x / self.config.swipe_threshold,
@@ -308,7 +399,7 @@ impl GestureRecognizer {
                 Some(GestureEvent::EdgeSwipeUpdate {
                     edge: *edge,
                     fingers: self.points.len() as u32,
-                    progress: progress.max(0.0), // No upper clamp - allow full screen movement
+                    progress: progress.max(0.0),
                     velocity: match edge {
                         Edge::Left | Edge::Right => point.velocity.x,
                         Edge::Top | Edge::Bottom => point.velocity.y,
@@ -325,15 +416,14 @@ impl GestureRecognizer {
                     center,
                     scale,
                     delta: scale - 1.0,
-                    rotation: 0.0, // TODO: implement rotation
+                    rotation: 0.0,
                 })
             }
 
             Some(ActiveGesture::Pan) => {
                 let center = self.center();
-                // Calculate average delta
-                let delta = if self.points.len() >= 2 {
-                    let avg_delta: (f64, f64) = self.points.iter().fold((0.0, 0.0), |acc, p| {
+                let delta = if !self.points.is_empty() {
+                    let avg_delta: (f64, f64) = self.points.values().fold((0.0, 0.0), |acc, p| {
                         let d = p.delta();
                         (acc.0 + d.x, acc.1 + d.y)
                     });
@@ -346,7 +436,7 @@ impl GestureRecognizer {
                 };
 
                 let velocity = if !self.points.is_empty() {
-                    let avg_vel: (f64, f64) = self.points.iter().fold((0.0, 0.0), |acc, p| {
+                    let avg_vel: (f64, f64) = self.points.values().fold((0.0, 0.0), |acc, p| {
                         (acc.0 + p.velocity.x, acc.1 + p.velocity.y)
                     });
                     Point::from((
@@ -368,13 +458,13 @@ impl GestureRecognizer {
         }
     }
 
-    /// Handle touch up event
+    /// Handle touch up event - returns gesture event for this slot
     pub fn touch_up(&mut self, id: i32) -> Option<GestureEvent> {
-        let point_idx = self.points.iter().position(|p| p.id == id)?;
-        let point = self.points.remove(point_idx);
+        let point = self.points.remove(&id)?;
+        let slot_gesture = self.slot_gestures.remove(&id);
 
-        let event = match &self.active_gesture {
-            Some(ActiveGesture::EdgeSwipe { edge }) => {
+        let event = match slot_gesture {
+            Some(SlotGesture::EdgeSwipe { edge }) => {
                 let completed = point.distance() > self.config.swipe_complete_threshold;
                 let velocity = match edge {
                     Edge::Left | Edge::Right => point.velocity.x,
@@ -382,14 +472,14 @@ impl GestureRecognizer {
                 };
 
                 Some(GestureEvent::EdgeSwipeEnd {
-                    edge: *edge,
+                    edge,
                     fingers: 1,
                     completed,
                     velocity,
                 })
             }
 
-            Some(ActiveGesture::PotentialTap) => {
+            Some(SlotGesture::PotentialTap) => {
                 let duration = point.start_time.elapsed();
                 if duration < self.config.tap_duration && point.distance() < 10.0 {
                     Some(GestureEvent::Tap {
@@ -404,28 +494,46 @@ impl GestureRecognizer {
                 }
             }
 
+            Some(SlotGesture::MultiTouch) => {
+                // Multi-touch gesture ending
+                None
+            }
+
             _ => None,
         };
 
-        // Reset gesture if all fingers lifted
+        // Reset global state if all fingers lifted
         if self.points.is_empty() {
             self.active_gesture = None;
+            self.multi_touch_active = false;
+            self.pinch_initial_distance = None;
         }
 
         event
     }
 
-    /// Handle touch cancel
+    /// Handle touch cancel - clear all state
     pub fn touch_cancel(&mut self) {
         self.points.clear();
+        self.slot_gestures.clear();
         self.active_gesture = None;
+        self.multi_touch_active = false;
+        self.pinch_initial_distance = None;
     }
 
     /// Get the current position of a touch point by ID
     pub fn get_touch_position(&self, id: i32) -> Option<Point<f64, Logical>> {
-        self.points.iter()
-            .find(|p| p.id == id)
-            .map(|p| p.current_pos)
+        self.points.get(&id).map(|p| p.current_pos)
+    }
+
+    /// Check if any touch is currently active
+    pub fn has_active_touches(&self) -> bool {
+        !self.points.is_empty()
+    }
+
+    /// Get the number of active touches
+    pub fn touch_count(&self) -> usize {
+        self.points.len()
     }
 }
 

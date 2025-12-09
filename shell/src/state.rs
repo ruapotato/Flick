@@ -127,12 +127,17 @@ pub struct Flick {
     pub qs_gesture_active: bool,
     pub qs_gesture_progress: f64,
 
-    /// Keyboard dismiss gesture (swipe down on keyboard)
-    pub keyboard_dismiss_active: bool,
+    /// Per-slot keyboard touch tracking for multi-touch support
+    /// Maps touch slot ID -> initial touch position
+    pub keyboard_touch_initial: HashMap<i32, smithay::utils::Point<f64, smithay::utils::Logical>>,
+    /// Maps touch slot ID -> last known touch position
+    pub keyboard_touch_last: HashMap<i32, smithay::utils::Point<f64, smithay::utils::Logical>>,
+    /// Keyboard dismiss gesture - which slot is dragging (if any)
+    pub keyboard_dismiss_slot: Option<i32>,
+    /// Start Y position for dismiss gesture
     pub keyboard_dismiss_start_y: f64,
+    /// Current offset for dismiss gesture
     pub keyboard_dismiss_offset: f64,
-    pub keyboard_initial_touch_pos: Option<smithay::utils::Point<f64, smithay::utils::Logical>>,
-    pub keyboard_last_touch_pos: Option<smithay::utils::Point<f64, smithay::utils::Logical>>,
     pub keyboard_pointer_cleared: bool, // Track if we've sent pointer_exit during swipe
 
     /// Per-window keyboard visibility state (surface ID -> keyboard was visible)
@@ -233,11 +238,11 @@ impl Flick {
             switcher_gesture_progress: 0.0,
             qs_gesture_active: false,
             qs_gesture_progress: 0.0,
-            keyboard_dismiss_active: false,
+            keyboard_touch_initial: HashMap::new(),
+            keyboard_touch_last: HashMap::new(),
+            keyboard_dismiss_slot: None,
             keyboard_dismiss_start_y: 0.0,
             keyboard_dismiss_offset: 0.0,
-            keyboard_initial_touch_pos: None,
-            keyboard_last_touch_pos: None,
             keyboard_pointer_cleared: false,
             window_keyboard_state: HashMap::new(),
             shell: Shell::new(screen_size),

@@ -11,7 +11,7 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferTyp
 use slint::platform::{Platform, WindowAdapter, PointerEventButton, WindowEvent};
 use slint::{LogicalPosition, PhysicalSize, Rgb8Pixel, SharedPixelBuffer};
 use smithay::utils::{Logical, Size};
-use tracing::info;
+use tracing::{info, warn};
 
 // Include the generated Slint code
 slint::include_modules!();
@@ -904,10 +904,16 @@ impl SlintShell {
     /// This is used as a fallback if Slint's touch detection misses the tap
     /// Returns true if a key was triggered
     pub fn trigger_keyboard_key_at(&self, x: f32, y: f32, keyboard_height: f32, screen_width: f32, shifted: bool, layout: i32) -> bool {
+        // ALWAYS log keyboard math for debugging
+        info!("KEYBOARD MATH: x={:.1}, y={:.1}, kb_height={:.1}, screen_w={:.1}, shifted={}, layout={}",
+              x, y, keyboard_height, screen_width, shifted, layout);
+
         // Calculate which row was tapped (4 rows total)
         let row_height = keyboard_height / 4.0;
-        let row = ((keyboard_height - y) / row_height).floor() as i32;  // 0 = bottom row, 3 = top row
+        let raw_row = (keyboard_height - y) / row_height;
+        let row = raw_row.floor() as i32;  // 0 = bottom row, 3 = top row
         let row = row.clamp(0, 3);
+        info!("KEYBOARD MATH: row_height={:.1}, raw_row={:.2}, final_row={}", row_height, raw_row, row);
 
         // Define key layouts for each row
         let key = match (row, layout) {
@@ -1015,10 +1021,11 @@ impl SlintShell {
         };
 
         if let Some(action) = key {
-            info!("Keyboard fallback triggered: {:?} at ({}, {})", action, x, y);
+            info!("KEYBOARD MATH: ACTION={:?} at ({:.1}, {:.1}) row={} layout={}", action, x, y, row, layout);
             self.pending_keyboard_actions.borrow_mut().push(action);
             true
         } else {
+            warn!("KEYBOARD MATH: NO KEY FOUND! x={:.1}, y={:.1}, row={}, layout={}", x, y, row, layout);
             false
         }
     }

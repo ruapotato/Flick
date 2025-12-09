@@ -2030,9 +2030,15 @@ fn handle_input_event(
 
     // Log ALL input events to debug touch handling
     match &event {
-        InputEvent::TouchDown { .. } => info!("INPUT: TouchDown event received"),
+        InputEvent::TouchDown { event } => {
+            use smithay::backend::input::{TouchEvent, AbsolutePositionEvent};
+            let screen = state.screen_size;
+            let x = event.x_transformed(screen.w);
+            let y = event.y_transformed(screen.h);
+            info!(">>>TOUCH>>> DOWN at ({:.0}, {:.0}) slot={:?}", x, y, event.slot());
+        }
         InputEvent::TouchMotion { .. } => {} // too spammy
-        InputEvent::TouchUp { .. } => info!("INPUT: TouchUp event received"),
+        InputEvent::TouchUp { .. } => {} // handled in main touch processing below
         InputEvent::PointerMotionAbsolute { event } => {
             use smithay::backend::input::AbsolutePositionEvent;
             info!("INPUT: PointerMotionAbsolute at ({:.0}, {:.0})",
@@ -2351,73 +2357,78 @@ fn handle_input_event(
             let keyboard_height = std::cmp::max(200, (state.screen_size.h as f32 * 0.22) as i32);
             let keyboard_top = state.screen_size.h - keyboard_height;
             let touch_on_keyboard = keyboard_visible && touch_pos.y >= keyboard_top as f64;
+            info!("Touch down kb check: kb_visible={}, kb_height={}, kb_top={}, touch_y={}, on_kb={}",
+                  keyboard_visible, keyboard_height, keyboard_top, touch_pos.y, touch_on_keyboard);
 
-            // Start keyboard dismiss gesture tracking if touch is on keyboard
+            // Start keyboard touch tracking for this slot if touch is on keyboard
+            // Each finger is tracked independently for multi-touch support
             if touch_on_keyboard {
-                state.keyboard_dismiss_active = true;
-                state.keyboard_dismiss_start_y = touch_pos.y;
-                state.keyboard_dismiss_offset = 0.0;
-                state.keyboard_initial_touch_pos = Some(touch_pos);
-                state.keyboard_last_touch_pos = Some(touch_pos);
-                info!("Started keyboard dismiss tracking at y={}", touch_pos.y);
+                state.keyboard_touch_initial.insert(slot_id, touch_pos);
+                state.keyboard_touch_last.insert(slot_id, touch_pos);
+                // Only start dismiss tracking for the first keyboard touch (per-slot tracking)
+                // This ensures that subsequent fingers don't interfere with the drag gesture
+                if state.keyboard_dismiss_slot.is_none() {
+                    state.keyboard_dismiss_slot = Some(slot_id);
+                    state.keyboard_dismiss_start_y = touch_pos.y;
+                    state.keyboard_dismiss_offset = 0.0;
+                }
+                info!("Started keyboard touch tracking for slot {} at y={}", slot_id, touch_pos.y);
             }
 
-            if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
-                info!("Gesture touch_down returned: {:?}", gesture_event);
+            // DON'T feed keyboard touches to gesture recognizer - handle them independently
+            // This prevents multi-touch interference (e.g., pinch detection breaking keyboard)
+            if !touch_on_keyboard {
+                if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
+                    info!("Gesture touch_down returned: {:?}", gesture_event);
 
-                // Skip gesture processing if touch is on keyboard
-                let should_process = if touch_on_keyboard {
-                    // Cancel edge gestures when touching keyboard to prevent home gesture
-                    if let crate::input::GestureEvent::EdgeSwipeStart { .. } = &gesture_event {
-                        state.gesture_recognizer.touch_cancel();
-                        info!("Cancelled edge gesture - touch is on keyboard");
-                    }
-                    false
-                // In Switcher view, ignore right edge gesture to allow horizontal scrolling
-                // But allow left edge (Quick Settings) and top/bottom (close/home)
-                } else if state.shell.view == crate::shell::ShellView::Switcher {
-                    if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
-                        // Cancel only right edge gesture to allow horizontal scrolling
-                        // Allow left edge (Quick Settings), top (close), and bottom (home)
-                        if *edge == crate::input::Edge::Right {
-                            state.gesture_recognizer.touch_cancel(); // Cancel the edge gesture
-                            false
+                    // In Switcher view, ignore right edge gesture to allow horizontal scrolling
+                    // But allow left edge (Quick Settings) and top/bottom (close/home)
+                    let should_process = if state.shell.view == crate::shell::ShellView::Switcher {
+                        if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
+                            // Cancel only right edge gesture to allow horizontal scrolling
+                            // Allow left edge (Quick Settings), top (close), and bottom (home)
+                            if *edge == crate::input::Edge::Right {
+                                state.gesture_recognizer.touch_cancel(); // Cancel the edge gesture
+                                false
+                            } else {
+                                true
+                            }
                         } else {
                             true
                         }
                     } else {
                         true
+                    };
+
+                    if should_process {
+                        info!("Gesture started: {:?}", gesture_event);
+                        // Update integrated shell state
+                        state.shell.handle_gesture(&gesture_event);
+
+                        // Start close gesture animation when swiping from top
+                        if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
+                            if *edge == crate::input::Edge::Top {
+                                state.start_close_gesture();
+                            }
+                            // Start home gesture animation when swiping from bottom
+                            if *edge == crate::input::Edge::Bottom {
+                                state.start_home_gesture();
+                            }
+                            // Start quick settings transition when swiping from left
+                            if *edge == crate::input::Edge::Left {
+                                state.qs_gesture_active = true;
+                                state.qs_gesture_progress = 0.0;
+                                tracing::info!("QS gesture STARTED: qs_gesture_active=true");
+                            }
+                        }
                     }
                 } else {
-                    true
-                };
-
-                if should_process {
-                    info!("Gesture started: {:?}", gesture_event);
-                    // Update integrated shell state
-                    state.shell.handle_gesture(&gesture_event);
-
-                    // Start close gesture animation when swiping from top
-                    if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
-                        if *edge == crate::input::Edge::Top {
-                            state.start_close_gesture();
-                        }
-                        // Start home gesture animation when swiping from bottom
-                        if *edge == crate::input::Edge::Bottom {
-                            state.start_home_gesture();
-                        }
-                        // Start quick settings transition when swiping from left
-                        if *edge == crate::input::Edge::Left {
-                            state.qs_gesture_active = true;
-                            state.qs_gesture_progress = 0.0;
-                            tracing::info!("QS gesture STARTED: qs_gesture_active=true");
-                        }
-                    }
+                    // No edge gesture detected - log for debugging
+                    info!("Touch down at ({:.0}, {:.0}) - no edge detected (edge_threshold={})",
+                          touch_pos.x, touch_pos.y, state.gesture_recognizer.config.edge_threshold);
                 }
             } else {
-                // No edge gesture detected - log for debugging
-                info!("Touch down at ({:.0}, {:.0}) - no edge detected (edge_threshold={})",
-                      touch_pos.x, touch_pos.y, state.gesture_recognizer.config.edge_threshold);
+                info!("Touch down on keyboard - skipping gesture recognizer for slot {}", slot_id);
             }
 
             // Handle lock screen touch - block all other interactions
@@ -2689,12 +2700,17 @@ fn handle_input_event(
                 }
             }
 
+            // Update per-slot keyboard touch tracking
+            if state.keyboard_touch_initial.contains_key(&slot_id) {
+                state.keyboard_touch_last.insert(slot_id, touch_pos);
+            }
+
             // Handle keyboard dismiss gesture (swipe up or down on keyboard)
-            if state.keyboard_dismiss_active {
+            // Only track dismiss gesture for the slot that started it (first finger)
+            if state.keyboard_dismiss_slot == Some(slot_id) {
                 // Calculate vertical offset (positive = down, negative = up)
                 let offset = touch_pos.y - state.keyboard_dismiss_start_y;
                 state.keyboard_dismiss_offset = offset;
-                state.keyboard_last_touch_pos = Some(touch_pos);
 
                 // Check if swiping UP - transition to home gesture
                 let upward_transition_threshold = -30.0; // Start home gesture after 30px upward swipe
@@ -2726,7 +2742,7 @@ fn handle_input_event(
                     }
 
                     // End keyboard dismiss - home gesture takes over
-                    state.keyboard_dismiss_active = false;
+                    state.keyboard_dismiss_slot = None;
                 } else if offset > 15.0 {
                     // Swiping down significantly - clear key highlight once and show visual feedback
                     if let Some(ref slint_ui) = state.shell.slint_ui {
@@ -2825,8 +2841,8 @@ fn handle_input_event(
             }
 
             // Only forward touch motion to apps when in App view (not Home or Switcher)
-            // Skip if keyboard dismiss is active (touch started on keyboard)
-            if state.shell.view == crate::shell::ShellView::App && !state.keyboard_dismiss_active {
+            // Skip if this touch started on the keyboard (per-slot tracking)
+            if state.shell.view == crate::shell::ShellView::App && !state.keyboard_touch_initial.contains_key(&slot_id) {
                 if let Some(touch) = state.seat.get_touch() {
                     // Find surface under touch point (handles both Wayland and X11 windows)
                     let under = state.space.element_under(touch_pos)
@@ -2857,11 +2873,176 @@ fn handle_input_event(
             use smithay::backend::input::TouchEvent;
             use crate::input::gesture_to_action;
 
-            info!("Touch up at slot {:?}", event.slot());
+            info!(">>>TOUCH>>> UP slot={:?}", event.slot());
 
             // Save touch position BEFORE touch_up removes it from gesture recognizer
             let slot_id: i32 = event.slot().into();
             let last_touch_pos = state.gesture_recognizer.get_touch_position(slot_id);
+
+            // Check keyboard area for debugging
+            let keyboard_visible = state.shell.slint_ui.as_ref()
+                .map(|ui| ui.is_keyboard_visible())
+                .unwrap_or(false);
+            let keyboard_height = state.get_keyboard_height();
+            let keyboard_top = state.screen_size.h - keyboard_height;
+            let touch_in_kb_area = last_touch_pos.map(|p| p.y >= keyboard_top as f64).unwrap_or(false);
+
+            // IMMEDIATELY process keyboard taps - before gesture recognizer can interfere
+            // This ensures small movements on keyboard still register as key presses
+            // Now uses per-slot tracking for multi-touch support
+            if let Some(kb_pos) = state.keyboard_touch_initial.remove(&slot_id) {
+                let kb_last = state.keyboard_touch_last.remove(&slot_id).unwrap_or(kb_pos);
+                let keyboard_visible = state.shell.slint_ui.as_ref()
+                    .map(|ui| ui.is_keyboard_visible())
+                    .unwrap_or(false);
+
+                // Check if this was a keyboard dismiss swipe (not a tap)
+                // Only check dismiss offset if this is the ONLY keyboard touch remaining
+                let is_last_keyboard_touch = state.keyboard_touch_initial.is_empty();
+                let dismiss_offset = if is_last_keyboard_touch { state.keyboard_dismiss_offset } else { 0.0 };
+                let was_dismiss_swipe = dismiss_offset.abs() > 50.0;
+
+                info!("EARLY KB CHECK slot={}: kb_visible={}, dismiss_offset={:.1}, was_dismiss={}, is_last={}",
+                      slot_id, keyboard_visible, dismiss_offset, was_dismiss_swipe, is_last_keyboard_touch);
+
+                if keyboard_visible && !was_dismiss_swipe {
+                    // Use initial position for taps, or last position if dragged more than 15px
+                    let dx = (kb_last.x - kb_pos.x).abs();
+                    let dy = (kb_last.y - kb_pos.y).abs();
+                    let drag_distance = (dx * dx + dy * dy).sqrt();
+                    let use_pos = if drag_distance < 15.0 { kb_pos } else { kb_last };
+
+                    // Calculate key using math
+                    let keyboard_height = state.get_keyboard_height() as f32;
+                    let screen_width = state.screen_size.w as f32;
+                    let keyboard_top = state.screen_size.h as f32 - keyboard_height;
+                    let y_in_keyboard = use_pos.y as f32 - keyboard_top;
+
+                    info!("EARLY KB TAP: pos=({:.1}, {:.1}), y_in_kb={:.1}", use_pos.x, use_pos.y, y_in_keyboard);
+
+                    if y_in_keyboard >= 0.0 {
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            // Visual feedback
+                            slint_ui.dispatch_pointer_released(use_pos.x as f32, use_pos.y as f32);
+                            let _ = slint_ui.take_pending_keyboard_actions(); // Clear Slint actions
+
+                            // Use math-based key detection
+                            let shifted = slint_ui.is_keyboard_shifted();
+                            let layout = slint_ui.get_keyboard_layout();
+                            let key_found = slint_ui.trigger_keyboard_key_at(
+                                use_pos.x as f32,
+                                y_in_keyboard,
+                                keyboard_height,
+                                screen_width,
+                                shifted,
+                                layout,
+                            );
+
+                            if !key_found {
+                                warn!(">>>KB ERROR>>> trigger_keyboard_key_at returned false! pos=({:.1}, {:.1}) y_in_kb={:.1}",
+                                      use_pos.x, use_pos.y, y_in_keyboard);
+                            }
+
+                            // Process keyboard actions immediately
+                            let actions = slint_ui.take_pending_keyboard_actions();
+                            if actions.is_empty() && key_found {
+                                warn!(">>>KB ERROR>>> key_found=true but no pending actions!");
+                            }
+                            for action in actions {
+                                use crate::shell::slint_ui::KeyboardAction;
+                                info!("EARLY KB ACTION: {:?}", action);
+                                match action {
+                                    KeyboardAction::Character(ch) => {
+                                        if let Some(c) = ch.chars().next() {
+                                            if let Some((keycode, needs_shift)) = char_to_evdev(c) {
+                                                if let Some(keyboard) = state.seat.get_keyboard() {
+                                                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                                    let time = std::time::SystemTime::now()
+                                                        .duration_since(std::time::UNIX_EPOCH)
+                                                        .unwrap_or_default()
+                                                        .as_millis() as u32;
+
+                                                    let xkb_keycode = keycode + 8;
+                                                    let focus_info = keyboard.current_focus().map(|f| format!("{:?}", f)).unwrap_or_else(|| "NONE".to_string());
+                                                    info!(">>>KEY>>> Injecting '{}' keycode={} xkb={} focus={}", c, keycode, xkb_keycode, focus_info);
+                                                    if needs_shift {
+                                                        keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(42 + 8), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                    }
+                                                    keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(xkb_keycode), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                    keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(xkb_keycode), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                    if needs_shift {
+                                                        keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(42 + 8), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                    }
+                                                    info!(">>>KEY>>> Injection complete for '{}'", c);
+                                                } else {
+                                                    warn!(">>>KB ERROR>>> No keyboard available for injection!");
+                                                }
+                                            } else {
+                                                warn!(">>>KB ERROR>>> char_to_evdev returned None for '{}'", c);
+                                            }
+                                        } else {
+                                            warn!(">>>KB ERROR>>> Character action has empty string!");
+                                        }
+                                    }
+                                    KeyboardAction::Backspace => {
+                                        if let Some(keyboard) = state.seat.get_keyboard() {
+                                            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                            let time = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default()
+                                                .as_millis() as u32;
+                                            keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(14 + 8), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                            keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(14 + 8), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                        }
+                                    }
+                                    KeyboardAction::Enter => {
+                                        if let Some(keyboard) = state.seat.get_keyboard() {
+                                            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                            let time = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default()
+                                                .as_millis() as u32;
+                                            keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(28 + 8), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                            keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(28 + 8), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                        }
+                                    }
+                                    KeyboardAction::Space => {
+                                        if let Some(keyboard) = state.seat.get_keyboard() {
+                                            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                            let time = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default()
+                                                .as_millis() as u32;
+                                            keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(57 + 8), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                            keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(57 + 8), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                        }
+                                    }
+                                    KeyboardAction::ShiftToggled => {
+                                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                                            let current = slint_ui.is_keyboard_shifted();
+                                            slint_ui.set_keyboard_shifted(!current);
+                                        }
+                                    }
+                                    KeyboardAction::LayoutToggled => {
+                                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                                            let current = slint_ui.get_keyboard_layout();
+                                            slint_ui.set_keyboard_layout(if current == 0 { 1 } else { 0 });
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // NOTE: Don't reset keyboard_dismiss_slot here - let the dismiss completion
+                // logic below handle it so the swipe gesture can complete properly
+            } else if touch_in_kb_area && keyboard_visible {
+                // Touch was in keyboard area but no initial position was recorded for THIS slot
+                // This is OK - it might have been processed already or be a different slot
+                debug!("Touch UP slot={} in keyboard area but no tracking for this slot", slot_id);
+            }
 
             // Feed to gesture recognizer and handle completed gestures
             // Track if an EDGE SWIPE gesture was handled so we don't also process as app tap
@@ -3277,7 +3458,8 @@ fn handle_input_event(
             }
 
             // Handle keyboard dismiss gesture completion (swipe down only now)
-            let keyboard_was_dismissed = if state.keyboard_dismiss_active {
+            // Only process dismiss for the slot that was tracking it
+            let keyboard_was_dismissed = if state.keyboard_dismiss_slot == Some(slot_id) {
                 let offset = state.keyboard_dismiss_offset;
                 let dismiss_threshold = 100.0; // pixels to swipe down to dismiss
 
@@ -3303,75 +3485,72 @@ fn handle_input_event(
                 false
             };
 
-            // Get keyboard touch positions (saved separately since gesture was cancelled)
-            let keyboard_initial_pos = state.keyboard_initial_touch_pos.take();
-            let keyboard_last_pos = state.keyboard_last_touch_pos.take();
-            // Track if touch started on keyboard to skip forwarding touch.up to apps
-            let touch_was_on_keyboard = keyboard_initial_pos.is_some();
+            // NOTE: Keyboard touch positions are now handled by the EARLY KB path above
+            // This legacy code block remains for fallback but will typically get empty data
+            // since per-slot tracking is already processed by the EARLY KB path
+            let touch_was_on_keyboard = !state.keyboard_touch_initial.is_empty() || touch_in_kb_area;
+            let keyboard_touch_pos: Option<smithay::utils::Point<f64, smithay::utils::Logical>> = None;
 
-            // For small drags (< 15px), use initial touch position to ensure key registers
-            let keyboard_touch_pos = match (keyboard_initial_pos, keyboard_last_pos) {
-                (Some(initial), Some(last)) => {
-                    let dx = (last.x - initial.x).abs();
-                    let dy = (last.y - initial.y).abs();
-                    let drag_distance = (dx * dx + dy * dy).sqrt();
-                    if drag_distance < 15.0 {
-                        // Small drag - use initial position for reliable key press
-                        Some(initial)
-                    } else {
-                        // Larger drag - use last position (might be dismiss gesture)
-                        Some(last)
-                    }
-                }
-                (Some(initial), None) => Some(initial),
-                (None, Some(last)) => Some(last),
-                (None, None) => None,
-            };
-
-            // Reset keyboard dismiss state
-            state.keyboard_dismiss_active = false;
-            state.keyboard_dismiss_offset = 0.0;
-            state.keyboard_dismiss_start_y = 0.0;
-            state.keyboard_pointer_cleared = false;
+            // Reset keyboard dismiss state only when no more keyboard touches
+            if state.keyboard_touch_initial.is_empty() {
+                state.keyboard_dismiss_slot = None;
+                state.keyboard_dismiss_offset = 0.0;
+                state.keyboard_dismiss_start_y = 0.0;
+                state.keyboard_pointer_cleared = false;
+            }
+            // If this slot was tracking dismiss, clear it
+            if state.keyboard_dismiss_slot == Some(slot_id) {
+                state.keyboard_dismiss_slot = None;
+            }
 
             // Handle on-screen keyboard input
-            // This works in any view where keyboard is visible and an app has focus
-            // First, collect keyboard state and actions to avoid borrow conflicts
+            // Use pure math to calculate nearest key - no gaps between keys possible
+            info!("KEYBOARD CHECK: kb_dismissed={}, touch_on_kb={}, kb_touch_pos={:?}, last_pos={:?}",
+                  keyboard_was_dismissed, touch_was_on_keyboard, keyboard_touch_pos, last_touch_pos);
             let keyboard_actions: Vec<crate::shell::slint_ui::KeyboardAction> = {
                 if let Some(ref slint_ui) = state.shell.slint_ui {
+                    let kb_visible = slint_ui.is_keyboard_visible();
+                    info!("KEYBOARD CHECK: kb_visible={}", kb_visible);
+
                     // Only process key presses if keyboard wasn't dismissed by swipe
-                    if slint_ui.is_keyboard_visible() && !keyboard_was_dismissed && touch_was_on_keyboard {
-                        // Dispatch pointer release to Slint to trigger keyboard key callbacks
+                    if kb_visible && !keyboard_was_dismissed && touch_was_on_keyboard {
                         if let Some(pos) = keyboard_touch_pos.or(last_touch_pos) {
+                            // Dispatch to Slint for visual feedback only
                             slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
-                        }
-                        // Get pending keyboard actions from Slint
-                        let mut actions = slint_ui.take_pending_keyboard_actions();
+                            // Clear any Slint actions - we'll use math instead
+                            let _ = slint_ui.take_pending_keyboard_actions();
 
-                        // If no actions from Slint, use Rust-side fallback to ensure tap registers
-                        if actions.is_empty() {
-                            if let Some(pos) = keyboard_touch_pos.or(last_touch_pos) {
-                                let keyboard_height = state.get_keyboard_height() as f32;
-                                let screen_width = state.screen_size.w as f32;
-                                let keyboard_top = state.screen_size.h as f32 - keyboard_height;
-                                let y_in_keyboard = pos.y as f32 - keyboard_top;
+                            // Always use math-based key detection - no gaps possible
+                            let keyboard_height = state.get_keyboard_height() as f32;
+                            let screen_width = state.screen_size.w as f32;
+                            let keyboard_top = state.screen_size.h as f32 - keyboard_height;
+                            let y_in_keyboard = pos.y as f32 - keyboard_top;
 
-                                if y_in_keyboard >= 0.0 {
-                                    let shifted = slint_ui.is_keyboard_shifted();
-                                    let layout = slint_ui.get_keyboard_layout();
-                                    slint_ui.trigger_keyboard_key_at(
-                                        pos.x as f32,
-                                        y_in_keyboard,
-                                        keyboard_height,
-                                        screen_width,
-                                        shifted,
-                                        layout,
-                                    );
-                                    actions = slint_ui.take_pending_keyboard_actions();
-                                }
+                            info!("KEYBOARD TAP: pos=({:.1}, {:.1}), kb_top={:.1}, y_in_kb={:.1}",
+                                  pos.x, pos.y, keyboard_top, y_in_keyboard);
+
+                            if y_in_keyboard >= 0.0 {
+                                let shifted = slint_ui.is_keyboard_shifted();
+                                let layout = slint_ui.get_keyboard_layout();
+                                info!("KEYBOARD TAP: calling trigger_keyboard_key_at");
+                                slint_ui.trigger_keyboard_key_at(
+                                    pos.x as f32,
+                                    y_in_keyboard,
+                                    keyboard_height,
+                                    screen_width,
+                                    shifted,
+                                    layout,
+                                );
+                                let actions = slint_ui.take_pending_keyboard_actions();
+                                info!("KEYBOARD TAP: got {} actions", actions.len());
+                                actions
+                            } else {
+                                info!("KEYBOARD TAP: y_in_keyboard < 0, no action");
+                                Vec::new()
                             }
+                        } else {
+                            Vec::new()
                         }
-                        actions
                     } else {
                         Vec::new()
                     }
