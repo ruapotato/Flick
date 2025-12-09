@@ -218,13 +218,11 @@ impl Shell {
         let lock_state = lock_screen::LockScreenState::new(&lock_config);
 
         // Start at lock screen if lock is configured, otherwise home
-        // TODO: Re-enable lock screen once base shell is working
-        let initial_view = ShellView::Home; // Temporarily force Home for debugging
-        // let initial_view = if lock_config.method == lock_screen::LockMethod::None {
-        //     ShellView::Home
-        // } else {
-        //     ShellView::LockScreen
-        // };
+        let initial_view = if lock_config.method == lock_screen::LockMethod::None {
+            ShellView::Home
+        } else {
+            ShellView::LockScreen
+        };
 
         // Try to initialize Slint UI (may fail on some platforms)
         let slint_ui = match std::panic::catch_unwind(|| {
@@ -232,6 +230,15 @@ impl Shell {
         }) {
             Ok(ui) => {
                 tracing::info!("Slint UI initialized successfully");
+                // Initialize lock screen mode based on config
+                let lock_mode = match lock_config.method {
+                    lock_screen::LockMethod::None => "none",
+                    lock_screen::LockMethod::Pin => "pin",
+                    lock_screen::LockMethod::Pattern => "pattern",
+                    lock_screen::LockMethod::Password => "password",
+                };
+                ui.set_lock_mode(lock_mode);
+                tracing::info!("Lock screen mode set to: {}", lock_mode);
                 Some(ui)
             }
             Err(e) => {
@@ -333,6 +340,20 @@ impl Shell {
             }
         }
         self.view = new_view;
+
+        // Update Slint UI view
+        if let Some(ref slint_ui) = self.slint_ui {
+            let view_str = match new_view {
+                ShellView::LockScreen => "lock",
+                ShellView::Home => "home",
+                ShellView::QuickSettings => "quick-settings",
+                ShellView::Switcher => "home",    // App switcher overlays home
+                ShellView::App => "home",         // App view still shows home underneath
+                ShellView::PickDefault => "pick-default",
+            };
+            slint_ui.set_view(view_str);
+            tracing::info!("Set Slint view to: {}", view_str);
+        }
     }
 
     /// Unlock and transition to home screen

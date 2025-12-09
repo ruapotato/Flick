@@ -57,6 +57,23 @@ pub enum KeyboardAction {
     Hide,
 }
 
+/// Actions that can be triggered from the lock screen
+#[derive(Debug, Clone, PartialEq)]
+pub enum LockScreenAction {
+    /// PIN digit pressed
+    PinDigit(String),
+    /// PIN backspace pressed
+    PinBackspace,
+    /// Pattern node touched (index 0-8)
+    PatternNode(i32),
+    /// Pattern drawing completed (finger lifted)
+    PatternComplete,
+    /// Pattern drawing started (finger down)
+    PatternStarted,
+    /// Switch to password mode requested
+    UsePassword,
+}
+
 /// Slint UI state for the shell
 pub struct SlintShell {
     /// The Slint window adapter
@@ -81,6 +98,8 @@ pub struct SlintShell {
     wiggle_mode: RefCell<bool>,
     /// Pending keyboard actions (set by callbacks, polled by compositor)
     pending_keyboard_actions: Rc<RefCell<Vec<KeyboardAction>>>,
+    /// Pending lock screen actions (set by callbacks, polled by compositor)
+    pending_lock_actions: Rc<RefCell<Vec<LockScreenAction>>>,
 }
 
 impl SlintShell {
@@ -235,6 +254,46 @@ impl SlintShell {
             kb_clone.borrow_mut().push(KeyboardAction::Hide);
         });
 
+        // Create pending lock screen actions storage
+        let pending_lock_actions = Rc::new(RefCell::new(Vec::new()));
+
+        // Connect lock screen callbacks
+        let lock_clone = pending_lock_actions.clone();
+        shell.on_pin_digit_pressed(move |digit| {
+            info!("Slint PIN digit pressed: {}", digit);
+            lock_clone.borrow_mut().push(LockScreenAction::PinDigit(digit.to_string()));
+        });
+
+        let lock_clone = pending_lock_actions.clone();
+        shell.on_pin_backspace_pressed(move || {
+            info!("Slint PIN backspace pressed");
+            lock_clone.borrow_mut().push(LockScreenAction::PinBackspace);
+        });
+
+        let lock_clone = pending_lock_actions.clone();
+        shell.on_pattern_node_touched(move |idx| {
+            info!("Slint pattern node touched: {}", idx);
+            lock_clone.borrow_mut().push(LockScreenAction::PatternNode(idx));
+        });
+
+        let lock_clone = pending_lock_actions.clone();
+        shell.on_pattern_complete(move || {
+            info!("Slint pattern complete");
+            lock_clone.borrow_mut().push(LockScreenAction::PatternComplete);
+        });
+
+        let lock_clone = pending_lock_actions.clone();
+        shell.on_pattern_started(move || {
+            info!("Slint pattern started");
+            lock_clone.borrow_mut().push(LockScreenAction::PatternStarted);
+        });
+
+        let lock_clone = pending_lock_actions.clone();
+        shell.on_use_password_pressed(move || {
+            info!("Slint use password pressed");
+            lock_clone.borrow_mut().push(LockScreenAction::UsePassword);
+        });
+
         Self {
             window,
             shell,
@@ -247,6 +306,7 @@ impl SlintShell {
             popup_can_pick: RefCell::new(true),
             wiggle_mode: RefCell::new(false),
             pending_keyboard_actions,
+            pending_lock_actions,
         }
     }
 
@@ -286,6 +346,29 @@ impl SlintShell {
     /// Set lock screen error message
     pub fn set_lock_error(&self, error: &str) {
         self.shell.set_lock_error(error.into());
+    }
+
+    /// Set lock screen mode (pin, pattern, password, none)
+    pub fn set_lock_mode(&self, mode: &str) {
+        self.shell.set_lock_mode(mode.into());
+    }
+
+    /// Set pattern nodes state (9 bools for 3x3 grid)
+    pub fn set_pattern_nodes(&self, nodes: &[bool; 9]) {
+        use slint::ModelRc;
+        use slint::VecModel;
+        let model: Rc<VecModel<bool>> = Rc::new(VecModel::from(nodes.to_vec()));
+        self.shell.set_pattern_nodes(ModelRc::from(model));
+    }
+
+    /// Set lockout message (shown when too many failed attempts)
+    pub fn set_lockout_message(&self, msg: &str) {
+        self.shell.set_lockout_message(msg.into());
+    }
+
+    /// Poll for pending lock screen actions
+    pub fn poll_lock_actions(&self) -> Vec<LockScreenAction> {
+        self.pending_lock_actions.borrow_mut().drain(..).collect()
     }
 
     /// Set brightness value (0.0 to 1.0)

@@ -706,15 +706,148 @@ component PinPad inherits Rectangle {
     }
 }
 
+// Pattern dot for lock screen (3x3 grid)
+component PatternDot inherits Rectangle {
+    in property <bool> selected: false;
+    in property <int> index: 0;
+
+    width: 30px;
+    height: 30px;
+    border-radius: 15px;
+    background: selected ? Theme.primary : Theme.surface-variant;
+    border-width: selected ? 0px : 2px;
+    border-color: Theme.on-surface-variant;
+}
+
+// Pattern grid for lock screen (Android-style 3x3 pattern)
+component PatternGrid inherits Rectangle {
+    in property <[bool]> selected-nodes: [false, false, false, false, false, false, false, false, false];
+    in property <float> touch-x: -1;
+    in property <float> touch-y: -1;
+    in property <bool> drawing: false;
+
+    callback node-touched(int);
+    callback pattern-complete();
+    callback pattern-started();
+
+    width: 280px;
+    height: 280px;
+    background: transparent;
+
+    // Grid of 3x3 dots
+    // Row 0
+    PatternDot {
+        x: 30px;
+        y: 30px;
+        index: 0;
+        selected: selected-nodes[0];
+    }
+    PatternDot {
+        x: 125px;
+        y: 30px;
+        index: 1;
+        selected: selected-nodes[1];
+    }
+    PatternDot {
+        x: 220px;
+        y: 30px;
+        index: 2;
+        selected: selected-nodes[2];
+    }
+    // Row 1
+    PatternDot {
+        x: 30px;
+        y: 125px;
+        index: 3;
+        selected: selected-nodes[3];
+    }
+    PatternDot {
+        x: 125px;
+        y: 125px;
+        index: 4;
+        selected: selected-nodes[4];
+    }
+    PatternDot {
+        x: 220px;
+        y: 125px;
+        index: 5;
+        selected: selected-nodes[5];
+    }
+    // Row 2
+    PatternDot {
+        x: 30px;
+        y: 220px;
+        index: 6;
+        selected: selected-nodes[6];
+    }
+    PatternDot {
+        x: 125px;
+        y: 220px;
+        index: 7;
+        selected: selected-nodes[7];
+    }
+    PatternDot {
+        x: 220px;
+        y: 220px;
+        index: 8;
+        selected: selected-nodes[8];
+    }
+
+    // Touch area for pattern drawing
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                root.pattern-started();
+                // Check which dot was touched
+                root.check-touch(self.mouse-x / 1px, self.mouse-y / 1px);
+            } else if event.kind == PointerEventKind.up {
+                root.pattern-complete();
+            }
+        }
+
+        moved => {
+            if self.pressed {
+                root.check-touch(self.mouse-x / 1px, self.mouse-y / 1px);
+            }
+        }
+    }
+
+    // Helper function to check which dot is near a touch point
+    function check-touch(x: float, y: float) {
+        // Dot positions (center): (45, 45), (140, 45), (235, 45), etc.
+        // Hit radius: 40px
+        if (x - 45) * (x - 45) + (y - 45) * (y - 45) < 1600 { node-touched(0); }
+        else if (x - 140) * (x - 140) + (y - 45) * (y - 45) < 1600 { node-touched(1); }
+        else if (x - 235) * (x - 235) + (y - 45) * (y - 45) < 1600 { node-touched(2); }
+        else if (x - 45) * (x - 45) + (y - 140) * (y - 140) < 1600 { node-touched(3); }
+        else if (x - 140) * (x - 140) + (y - 140) * (y - 140) < 1600 { node-touched(4); }
+        else if (x - 235) * (x - 235) + (y - 140) * (y - 140) < 1600 { node-touched(5); }
+        else if (x - 45) * (x - 45) + (y - 235) * (y - 235) < 1600 { node-touched(6); }
+        else if (x - 140) * (x - 140) + (y - 235) * (y - 235) < 1600 { node-touched(7); }
+        else if (x - 235) * (x - 235) + (y - 235) * (y - 235) < 1600 { node-touched(8); }
+    }
+}
+
 // Lock screen view - fills entire screen
+// Supports PIN, Pattern, and Password modes
 component LockScreen inherits Rectangle {
     in property <string> time: "12:00";
     in property <string> date: "Saturday, December 7";
     in property <int> pin-length: 0;
     in property <string> error-message: "";
+    in property <string> lock-mode: "pin";  // "pin", "pattern", "password", "none"
+    in property <[bool]> pattern-nodes: [false, false, false, false, false, false, false, false, false];
+    in property <string> lockout-message: "";  // Shows when locked out
 
     callback digit-pressed(string);
     callback backspace-pressed();
+    callback pattern-node-touched(int);
+    callback pattern-complete();
+    callback pattern-started();
+    callback use-password-pressed();
 
     width: 100%;
     height: 100%;
@@ -742,10 +875,31 @@ component LockScreen inherits Rectangle {
             horizontal-alignment: center;
         }
 
-        Rectangle { height: 32px; }
+        Rectangle { height: 16px; }
 
-        // PIN dots
-        HorizontalLayout {
+        // Mode label
+        Text {
+            text: lock-mode == "pin" ? "Enter PIN" :
+                  lock-mode == "pattern" ? "Draw Pattern" :
+                  lock-mode == "password" ? "Enter Password" : "";
+            color: Theme.on-surface-variant;
+            font-size: 16px;
+            horizontal-alignment: center;
+        }
+
+        Rectangle { height: 8px; }
+
+        // Lockout message (shown when too many failed attempts)
+        if lockout-message != "": Text {
+            text: lockout-message;
+            color: Theme.error;
+            font-size: 16px;
+            font-weight: 600;
+            horizontal-alignment: center;
+        }
+
+        // PIN dots (only for PIN mode)
+        if lock-mode == "pin": HorizontalLayout {
             alignment: center;
             spacing: 16px;
 
@@ -765,14 +919,56 @@ component LockScreen inherits Rectangle {
             horizontal-alignment: center;
         }
 
-        Rectangle { height: 16px; }
+        Rectangle { height: 8px; }
 
-        // PIN pad - centered
-        HorizontalLayout {
+        // PIN pad - centered (only for PIN mode)
+        if lock-mode == "pin" && lockout-message == "": HorizontalLayout {
             alignment: center;
             PinPad {
                 digit-pressed(d) => { root.digit-pressed(d); }
                 backspace-pressed => { root.backspace-pressed(); }
+            }
+        }
+
+        // Pattern grid - centered (only for Pattern mode)
+        if lock-mode == "pattern" && lockout-message == "": HorizontalLayout {
+            alignment: center;
+            PatternGrid {
+                selected-nodes: root.pattern-nodes;
+                node-touched(idx) => { root.pattern-node-touched(idx); }
+                pattern-complete => { root.pattern-complete(); }
+                pattern-started => { root.pattern-started(); }
+            }
+        }
+
+        // Password mode hint
+        if lock-mode == "password" && lockout-message == "": Text {
+            text: "Use system keyboard to enter password";
+            color: Theme.on-surface-variant;
+            font-size: 14px;
+            horizontal-alignment: center;
+        }
+
+        Rectangle { height: 16px; }
+
+        // "Use Password" fallback link (only for PIN/Pattern modes)
+        if lock-mode != "password" && lock-mode != "none" && lockout-message == "": Rectangle {
+            height: 40px;
+            background: touch-pw.pressed ? Theme.surface-variant : transparent;
+            border-radius: 20px;
+
+            Text {
+                width: 100%;
+                height: 100%;
+                text: "Use Password";
+                color: Theme.primary;
+                font-size: 14px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            touch-pw := TouchArea {
+                clicked => { use-password-pressed(); }
             }
         }
     }
@@ -1707,9 +1903,18 @@ export component FlickShell inherits Window {
     in property <int> keyboard-layout: 0;  // 0 = letters, 1 = numbers/symbols
     in property <length> keyboard-y-offset: 0px;  // For swipe-to-dismiss animation
 
+    // Lock screen extended state
+    in property <string> lock-mode: "pin";  // "pin", "pattern", "password", "none"
+    in property <[bool]> pattern-nodes: [false, false, false, false, false, false, false, false, false];
+    in property <string> lockout-message: "";  // Shows when locked out
+
     callback pin-digit-pressed(string);
     callback pin-backspace-pressed();
     callback pin-enter-pressed();
+    callback pattern-node-touched(int);
+    callback pattern-complete();
+    callback pattern-started();
+    callback use-password-pressed();
     callback app-tapped(int);
     callback app-long-pressed(int);
     callback brightness-changed(float);
@@ -1812,8 +2017,15 @@ export component FlickShell inherits Window {
         date: lock-date;
         pin-length: pin-length;
         error-message: lock-error;
+        lock-mode: root.lock-mode;
+        pattern-nodes: root.pattern-nodes;
+        lockout-message: root.lockout-message;
         digit-pressed(d) => { pin-digit-pressed(d); }
         backspace-pressed => { pin-backspace-pressed(); }
+        pattern-node-touched(idx) => { root.pattern-node-touched(idx); }
+        pattern-complete => { root.pattern-complete(); }
+        pattern-started => { root.pattern-started(); }
+        use-password-pressed => { root.use-password-pressed(); }
     }
 
     // Pick default app view

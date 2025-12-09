@@ -2431,42 +2431,12 @@ fn handle_input_event(
                 info!("Touch down on keyboard - skipping gesture recognizer for slot {}", slot_id);
             }
 
-            // Handle lock screen touch - block all other interactions
+            // Lock screen touch is handled by Slint - just forward touch events
+            // The Slint callbacks (pin-digit-pressed, pattern-node-touched, etc.) will be triggered
             if state.shell.view == crate::shell::ShellView::LockScreen {
-                use crate::shell::lock_screen::{LockInputMode, get_pin_button_rects, get_pattern_dot_positions, hit_test_pattern_dot};
-
-                match state.shell.lock_state.input_mode {
-                    LockInputMode::Pin => {
-                        // Check which PIN button was pressed
-                        let buttons = get_pin_button_rects(state.screen_size);
-                        for (i, (rect, _label)) in buttons.iter().enumerate() {
-                            if touch_pos.x >= rect.x && touch_pos.x <= rect.x + rect.width &&
-                               touch_pos.y >= rect.y && touch_pos.y <= rect.y + rect.height {
-                                state.shell.lock_state.pressed_button = Some(i);
-                                break;
-                            }
-                        }
-                    }
-                    LockInputMode::Pattern => {
-                        // Start pattern gesture
-                        let dots = get_pattern_dot_positions(state.screen_size);
-                        if let Some(dot_idx) = hit_test_pattern_dot(touch_pos, &dots) {
-                            state.shell.lock_state.pattern_active = true;
-                            state.shell.lock_state.pattern_nodes.clear();
-                            state.shell.lock_state.pattern_nodes.push(dot_idx);
-                            state.shell.lock_state.pattern_touch_pos = Some(touch_pos);
-                        }
-                    }
-                    LockInputMode::Password => {
-                        // Check "Use Password" link hit - handled on touch_up
-                    }
-                }
-
-                // Check for "Use Password" fallback link
-                let screen_h = state.screen_size.h as f64;
-                let link_y = screen_h * 0.9;
-                if touch_pos.y >= link_y - 20.0 && touch_pos.y <= link_y + 30.0 {
-                    // Touched near the fallback link - will switch on touch_up
+                // Forward touch to Slint for lock screen interaction
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
                 }
             }
 
@@ -2776,20 +2746,10 @@ fn handle_input_event(
                 state.update_home_gesture(progress);
             }
 
-            // Handle pattern gesture on lock screen
+            // Lock screen touch motion is handled by Slint
             if state.shell.view == crate::shell::ShellView::LockScreen {
-                if state.shell.lock_state.pattern_active {
-                    use crate::shell::lock_screen::{get_pattern_dot_positions, hit_test_pattern_dot};
-                    let dots = get_pattern_dot_positions(state.screen_size);
-                    state.shell.lock_state.pattern_touch_pos = Some(touch_pos);
-
-                    // Check if we've touched a new dot
-                    if let Some(dot_idx) = hit_test_pattern_dot(touch_pos, &dots) {
-                        // Only add if not already in pattern
-                        if !state.shell.lock_state.pattern_nodes.contains(&dot_idx) {
-                            state.shell.lock_state.pattern_nodes.push(dot_idx);
-                        }
-                    }
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
                 }
             }
 
@@ -3103,75 +3063,87 @@ fn handle_input_event(
                 state.handle_gesture_complete(&action);
             }
 
-            // Handle lock screen touch up
+            // Handle lock screen touch up - forward to Slint and process lock actions
             if state.shell.view == crate::shell::ShellView::LockScreen {
-                use crate::shell::lock_screen::{LockInputMode, PIN_BUTTONS};
+                use crate::shell::slint_ui::LockScreenAction;
 
-                match state.shell.lock_state.input_mode {
-                    LockInputMode::Pin => {
-                        // Process PIN button tap
-                        if let Some(button_idx) = state.shell.lock_state.pressed_button {
-                            if button_idx < PIN_BUTTONS.len() {
-                                let label = PIN_BUTTONS[button_idx];
-                                match label {
-                                    "<" => {
-                                        // Backspace
-                                        state.shell.lock_state.entered_pin.pop();
-                                    }
-                                    "OK" => {
-                                        // Attempt unlock
-                                        if !state.shell.lock_state.entered_pin.is_empty() {
-                                            state.shell.try_unlock();
-                                        }
-                                    }
-                                    digit => {
-                                        // Add digit (max 6 digits)
-                                        if state.shell.lock_state.entered_pin.len() < 6 {
-                                            state.shell.lock_state.entered_pin.push_str(digit);
-                                        }
-                                    }
+                // Phase 1: Dispatch touch and collect actions (immutable borrow of slint_ui)
+                let actions: Vec<LockScreenAction> = if let Some(ref slint_ui) = state.shell.slint_ui {
+                    slint_ui.dispatch_pointer_released(
+                        last_touch_pos.map(|p| p.x as f32).unwrap_or(0.0),
+                        last_touch_pos.map(|p| p.y as f32).unwrap_or(0.0)
+                    );
+                    slint_ui.poll_lock_actions()
+                } else {
+                    Vec::new()
+                };
+
+                // Phase 2: Process actions (mutable access to state.shell)
+                for action in &actions {
+                    match action {
+                        LockScreenAction::PinDigit(digit) => {
+                            if state.shell.lock_state.entered_pin.len() < 6 {
+                                state.shell.lock_state.entered_pin.push_str(digit);
+                                // Try to unlock after each digit (supports 4-6 digit PINs)
+                                // If PIN is correct, it unlocks; if wrong, continue entering
+                                if state.shell.lock_state.entered_pin.len() >= 4 {
+                                    state.shell.try_unlock();
                                 }
                             }
-                            state.shell.lock_state.pressed_button = None;
                         }
-
-                        // Check for "Use Password" link tap
-                        if let Some(pos) = last_touch_pos {
-                            let screen_h = state.screen_size.h as f64;
-                            let link_y = screen_h * 0.9;
-                            if pos.y >= link_y - 20.0 && pos.y <= link_y + 30.0 {
-                                state.shell.lock_state.switch_to_password();
-                                info!("Switched to password mode");
+                        LockScreenAction::PinBackspace => {
+                            state.shell.lock_state.entered_pin.pop();
+                        }
+                        LockScreenAction::PatternNode(idx) => {
+                            let idx_u8 = *idx as u8;
+                            if !state.shell.lock_state.pattern_nodes.contains(&idx_u8) {
+                                state.shell.lock_state.pattern_nodes.push(idx_u8);
                             }
                         }
-                    }
-                    LockInputMode::Pattern => {
-                        // Pattern gesture ended - attempt unlock if enough nodes
-                        if state.shell.lock_state.pattern_active {
+                        LockScreenAction::PatternStarted => {
+                            state.shell.lock_state.pattern_active = true;
+                            state.shell.lock_state.pattern_nodes.clear();
+                        }
+                        LockScreenAction::PatternComplete => {
                             state.shell.lock_state.pattern_active = false;
-                            state.shell.lock_state.pattern_touch_pos = None;
-
                             if state.shell.lock_state.pattern_nodes.len() >= 4 {
                                 state.shell.try_unlock();
                             } else if !state.shell.lock_state.pattern_nodes.is_empty() {
-                                // Too short - show error
                                 state.shell.lock_state.error_message = Some("Pattern too short (min 4 dots)".to_string());
-                                state.shell.lock_state.pattern_nodes.clear();
                             }
+                            state.shell.lock_state.pattern_nodes.clear();
                         }
-
-                        // Check for "Use Password" link tap
-                        if let Some(pos) = last_touch_pos {
-                            let screen_h = state.screen_size.h as f64;
-                            let link_y = screen_h * 0.9;
-                            if pos.y >= link_y - 20.0 && pos.y <= link_y + 30.0 {
-                                state.shell.lock_state.switch_to_password();
-                                info!("Switched to password mode");
-                            }
+                        LockScreenAction::UsePassword => {
+                            state.shell.lock_state.switch_to_password();
+                            info!("Switched to password mode");
                         }
                     }
-                    LockInputMode::Password => {
-                        // Password mode - Enter key submits (handled via keyboard)
+                }
+
+                // Phase 3: Update Slint UI with results (new immutable borrow)
+                if !actions.is_empty() {
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        // Update PIN length
+                        slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
+
+                        // Update pattern nodes
+                        let mut nodes = [false; 9];
+                        for &n in &state.shell.lock_state.pattern_nodes {
+                            if (n as usize) < 9 {
+                                nodes[n as usize] = true;
+                            }
+                        }
+                        slint_ui.set_pattern_nodes(&nodes);
+
+                        // Update error message if any
+                        if let Some(ref err) = state.shell.lock_state.error_message {
+                            slint_ui.set_lock_error(err);
+                        }
+
+                        // Update lock mode if changed to password
+                        if actions.iter().any(|a| matches!(a, LockScreenAction::UsePassword)) {
+                            slint_ui.set_lock_mode("password");
+                        }
                     }
                 }
             }
