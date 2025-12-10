@@ -25,24 +25,34 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 
 ## Architecture
 
+Flick uses a **layered architecture** that separates the core compositor from UI components. This enables security (shell controls what apps can do), flexibility (swap UI implementations), and rapid development (iterate on apps without touching the compositor).
+
 ```
 ┌─────────────────────────────────────────────────────┐
-│                  System Apps (Flutter)              │
-│   Settings, Phone, Messages, Contacts, etc.         │
-│   Regular Wayland clients - easy to build & iterate │
+│           App Layer (Python/Kivy, Flutter, etc.)    │
+│  ┌───────────────┐  ┌───────────────────────────┐  │
+│  │  Lock Screen  │  │   Settings, Phone, SMS,   │  │
+│  │  (Python/Kivy)│  │   Contacts (Flutter)      │  │
+│  │  Fullscreen   │  │   Regular windowed apps   │  │
+│  │  Wayland app  │  │                           │  │
+│  └───────────────┘  └───────────────────────────┘  │
+│   Beautiful animated visuals, PAM authentication    │
+│   File-based IPC with shell for unlock signals      │
 └─────────────────────────────────────────────────────┘
                         │ Wayland protocol
 ┌─────────────────────────────────────────────────────┐
-│              Flick Shell (Rust + Slint)             │
+│              Shell Layer (Rust + Slint)             │
 │  ┌─────────────────────────────────────────────────┐│
 │  │              Slint UI Layer                     ││
-│  │   Home screen, lock screen, quick settings,    ││
-│  │   app switcher, on-screen keyboard             ││
+│  │   Home screen, quick settings, app switcher,   ││
+│  │   on-screen keyboard, status bar               ││
 │  │      (GPU accelerated via OpenGL ES 2.0)       ││
 │  └─────────────────────────────────────────────────┘│
 │  ┌─────────────────────────────────────────────────┐│
 │  │           Smithay Compositor Core               ││
 │  │   DRM/KMS, libinput, XWayland, Wayland protocols││
+│  │   Security: blocks gestures on lock screen,     ││
+│  │   manages view transitions, enforces policy     ││
 │  └─────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────┘
                         │
@@ -54,23 +64,28 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 
 ### Design Philosophy
 
-**Shell (Rust + Slint)** - The compositor handles:
+**Shell Layer (Rust + Slint)** - The compositor handles:
 - Window management & compositing
-- Touch gesture recognition
-- Core UI: home screen, lock screen, quick settings toggles, app switcher
-- On-screen keyboard
+- Touch gesture recognition with security enforcement
+- Core UI: home screen, quick settings toggles, app switcher, on-screen keyboard
 - Zero-latency gesture response via direct rendering
+- **Security policy**: blocks all navigation gestures while lock screen is active
 
-**System Apps (Flutter)** - Regular Wayland clients for:
-- Settings (WiFi, Bluetooth, display, lock screen config, etc.)
-- Phone/Dialer
-- Messages/SMS
-- Contacts
-- Any app with complex UI that benefits from rapid iteration
+**App Layer (Python/Kivy, Flutter)** - Regular Wayland clients:
+- **Lock Screen** (Python/Kivy) - Full-screen app with beautiful animations, PIN/pattern entry, PAM authentication. Runs as a special Wayland client that the shell recognizes.
+- **Settings** (Flutter) - WiFi, Bluetooth, display, lock screen config, etc.
+- **Phone/Messages/Contacts** (Flutter) - Planned system apps
 
-This separation keeps the shell lean and stable while allowing apps to be developed quickly using Flutter's rich widget library and hot reload. Apps communicate with the shell via:
-- Config files (e.g., `~/.local/state/flick/lock_config.json`)
-- D-Bus for real-time events (notifications, calls, etc.)
+This separation enables:
+- **Security**: Shell enforces lock screen - even if the Python app crashed, gestures still blocked
+- **Flexibility**: Swap lock screen implementation (Python → Flutter → native) without touching compositor
+- **Rapid iteration**: Use Python/Kivy for quick prototyping, Flutter for production apps
+- **Beautiful UIs**: Python/Kivy enables stunning visual effects that would be complex in Slint
+
+Apps communicate with the shell via:
+- **File-based IPC**: `~/.local/state/flick/unlock_signal` (lock screen writes, shell reads)
+- **Config files**: `~/.local/state/flick/lock_config.json` (credentials, settings)
+- **D-Bus**: For real-time events (notifications, calls, etc.)
 
 ## Gestures
 
@@ -154,22 +169,24 @@ flick/
 ├── shell/                      # Rust Wayland compositor + Slint shell
 │   ├── src/
 │   │   ├── main.rs            # Entry point
-│   │   ├── state.rs           # Compositor state
+│   │   ├── state.rs           # Compositor state + security policy
 │   │   ├── input/
 │   │   │   └── gestures.rs    # Touch gesture recognition
 │   │   ├── shell/             # Shell UI components
-│   │   │   ├── mod.rs         # Shell state
+│   │   │   ├── mod.rs         # Shell state + view transitions
 │   │   │   ├── slint_ui.rs    # Slint integration
-│   │   │   ├── lock_screen.rs # Lock screen auth logic
+│   │   │   ├── lock_screen.rs # Lock screen detection + IPC
 │   │   │   ├── quick_settings.rs
 │   │   │   └── apps.rs        # .desktop file parsing
 │   │   ├── backend/
-│   │   │   └── udev.rs        # DRM/KMS backend
+│   │   │   └── udev.rs        # DRM/KMS backend + gesture security
 │   │   └── system.rs          # Hardware integration
 │   └── ui/
 │       └── shell.slint        # Slint UI definitions
-├── apps/                       # Flutter system apps
-│   ├── flick_settings/        # Settings app (WiFi, lock screen, etc.)
+├── apps/                       # App layer - Python/Kivy + Flutter apps
+│   ├── flick_lockscreen/      # Lock screen (Python/Kivy)
+│   │   └── main.py            # Beautiful animated PIN/pattern entry
+│   ├── flick_settings/        # Settings app (Flutter)
 │   ├── flick_phone/           # Phone/Dialer app (planned)
 │   └── flick_messages/        # SMS/MMS app (planned)
 └── start.sh                   # Launch script
