@@ -418,7 +418,29 @@ impl Flick {
 
     /// Start home gesture - find the top-most app window and track it for upward slide
     /// Also starts showing the keyboard progressively (if not already visible)
+    /// On lock screen: just shows keyboard (no window tracking, no going home)
     pub fn start_home_gesture(&mut self) {
+        tracing::info!("start_home_gesture called, view={:?}", self.shell.view);
+
+        // Handle lock screen keyboard reveal gesture
+        if self.shell.view == crate::shell::ShellView::LockScreen {
+            tracing::info!("Lock screen: starting keyboard reveal gesture");
+            // Just show the keyboard - no window tracking needed
+            if let Some(ref slint_ui) = self.shell.slint_ui {
+                let was_visible = slint_ui.is_keyboard_visible();
+                tracing::info!("Lock screen keyboard: was_visible={}", was_visible);
+                if !was_visible {
+                    slint_ui.set_keyboard_visible(true);
+                    tracing::info!("Lock screen keyboard: NOW SET TO VISIBLE");
+                }
+            } else {
+                tracing::warn!("Lock screen: slint_ui is None!");
+            }
+            // Set flag to track lock keyboard gesture is active
+            self.home_gesture_past_keyboard = false;
+            return;
+        }
+
         // Only start if we're viewing an app
         if self.shell.view != crate::shell::ShellView::App {
             return;
@@ -465,7 +487,15 @@ impl Flick {
     /// - In buffer zone (just past keyboard): keyboard still visible, can snap back
     /// - Past buffer zone: keyboard hidden, committed to going home
     /// - If finger moves back into range, keyboard reappears
+    /// On lock screen: keyboard stays visible regardless of swipe distance (no "go home")
     pub fn update_home_gesture(&mut self, progress: f64) {
+        // Lock screen: just keep keyboard visible, no window movement
+        if self.shell.view == crate::shell::ShellView::LockScreen {
+            // Keep keyboard visible - don't allow past_keyboard state on lock screen
+            // This prevents the "go home" behavior
+            return;
+        }
+
         if let Some(ref window) = self.home_gesture_window.clone() {
             // Calculate new Y position - move UP (negative offset)
             // progress = finger_distance / swipe_threshold (300px)
@@ -513,7 +543,15 @@ impl Flick {
     /// End home gesture - behavior depends on finger position at release:
     /// - If keyboard still visible (within buffer zone): snap keyboard into place, stay in app
     /// - If keyboard hidden (past buffer zone): go home
+    /// On lock screen: just keep keyboard visible (never go home)
     pub fn end_home_gesture(&mut self, completed: bool) {
+        // Lock screen: just keep keyboard visible, don't change view
+        if self.shell.view == crate::shell::ShellView::LockScreen {
+            tracing::info!("Lock screen: keyboard gesture ended, keeping keyboard visible");
+            self.home_gesture_past_keyboard = false;
+            return;
+        }
+
         let past_keyboard = self.home_gesture_past_keyboard;
 
         if let Some(window) = self.home_gesture_window.take() {

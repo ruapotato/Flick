@@ -1497,11 +1497,81 @@ fn render_surface(
         }
 
         tracing::info!("Lock screen Python app: {} window elements", lock_elements.len());
+
+        // Check if keyboard should be rendered on top of Python lock screen
+        let keyboard_visible = state.shell.slint_ui.as_ref()
+            .map(|ui| ui.is_keyboard_visible())
+            .unwrap_or(false);
+
         // Dark background color for lock screen (matches Python app background)
         let lock_bg: [f32; 4] = [0.05, 0.05, 0.08, 1.0];
+
+        if keyboard_visible {
+            tracing::info!("Lock screen: rendering keyboard overlay on top of Python app");
+            // Render keyboard overlay from Slint on top of Python lock screen
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                // Set view to app for keyboard-only render (keyboard appears in app view)
+                slint_ui.set_view("app");
+                slint_ui.process_events();
+                slint_ui.request_redraw();
+
+                if let Some((width, height, pixels)) = slint_ui.render() {
+                    // Keyboard height is 22% of screen, minimum 200px (matches Slint)
+                    let keyboard_height: u32 = std::cmp::max(200, (height as f32 * 0.22) as u32);
+                    let keyboard_y = height.saturating_sub(keyboard_height);
+                    tracing::info!("Lock screen keyboard render: slint buffer {}x{}, keyboard_height={}, keyboard_y={}",
+                        width, height, keyboard_height, keyboard_y);
+
+                    // Create a smaller buffer just for the keyboard
+                    let mut keyboard_pixels = Vec::with_capacity((width * keyboard_height * 4) as usize);
+
+                    // Copy only the keyboard rows from the full render
+                    for y in keyboard_y..height {
+                        let row_start = (y * width * 4) as usize;
+                        let row_end = row_start + (width * 4) as usize;
+                        if row_end <= pixels.len() {
+                            keyboard_pixels.extend_from_slice(&pixels[row_start..row_end]);
+                        }
+                    }
+
+                    let mut mem_buffer = MemoryRenderBuffer::new(
+                        Fourcc::Abgr8888,
+                        (width as i32, keyboard_height as i32),
+                        1,
+                        Transform::Normal,
+                        None,
+                    );
+
+                    let _: Result<(), std::convert::Infallible> = mem_buffer.render().draw(|buffer| {
+                        if keyboard_pixels.len() == buffer.len() {
+                            buffer.copy_from_slice(&keyboard_pixels);
+                        }
+                        Ok(vec![Rectangle::from_size((width as i32, keyboard_height as i32).into())])
+                    });
+
+                    // Position keyboard at bottom of screen
+                    let keyboard_y_pos = state.screen_size.h as i32 - keyboard_height as i32;
+                    let loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, keyboard_y_pos).into();
+                    if let Ok(slint_element) = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        loc.to_f64(),
+                        &mem_buffer,
+                        None,
+                        None,
+                        None,
+                        Kind::Unspecified,
+                    ) {
+                        // Insert keyboard at position 0 (front) so it renders ON TOP of Python lock screen
+                        lock_elements.insert(0, SwitcherRenderElement::Icon(slint_element));
+                        tracing::info!("Lock screen: keyboard overlay added at y={}", keyboard_y_pos);
+                    }
+                }
+            }
+        }
+
         // Use fresh damage tracker for lock screen to ensure clean state
         if let Some(ref mut tracker) = fresh_tracker {
-            tracing::info!("Using fresh damage tracker for LockScreen with Python app");
+            tracing::info!("Using fresh damage tracker for LockScreen with Python app (keyboard_visible={})", keyboard_visible);
             tracker.render_output(
                 renderer,
                 &mut fb,
@@ -2519,20 +2589,33 @@ fn handle_input_event(
             // DON'T feed keyboard touches to gesture recognizer - handle them independently
             // This prevents multi-touch interference (e.g., pinch detection breaking keyboard)
             if !touch_on_keyboard {
+                // Log screen size and edge threshold for debugging
+                info!("Gesture check: screen_size={:?}, edge_threshold={}, touch_y={:.0}, bottom_edge_zone_starts_at={:.0}",
+                      state.gesture_recognizer.screen_size,
+                      state.gesture_recognizer.config.edge_threshold,
+                      touch_pos.y,
+                      state.gesture_recognizer.screen_size.h as f64 - state.gesture_recognizer.config.edge_threshold);
+
                 if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
                     info!("Gesture touch_down returned: {:?}", gesture_event);
 
-                    // SECURITY: Block ALL edge gestures on lock screen to prevent bypass
+                    // SECURITY: Block most edge gestures on lock screen to prevent bypass
+                    // Exception: Allow bottom edge swipe for keyboard reveal only
                     // In Switcher view, ignore right edge gesture to allow horizontal scrolling
                     // But allow left edge (Quick Settings) and top/bottom (close/home)
                     let should_process = if state.shell.view == crate::shell::ShellView::LockScreen {
-                        // SECURITY: Cancel all edge gestures on lock screen
-                        if let crate::input::GestureEvent::EdgeSwipeStart { .. } = &gesture_event {
-                            info!("SECURITY: Blocking edge gesture on lock screen");
-                            state.gesture_recognizer.touch_cancel();
-                            false
+                        // SECURITY: Only allow bottom edge gesture (for keyboard) on lock screen
+                        if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
+                            if *edge == crate::input::Edge::Bottom {
+                                info!("Lock screen: allowing bottom edge gesture for keyboard");
+                                true
+                            } else {
+                                info!("SECURITY: Blocking {:?} edge gesture on lock screen", edge);
+                                state.gesture_recognizer.touch_cancel();
+                                false
+                            }
                         } else {
-                            false // Also block tap/long press gestures on lock screen
+                            false // Block tap/long press gestures on lock screen
                         }
                     } else if state.shell.view == crate::shell::ShellView::Switcher {
                         if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
@@ -2583,7 +2666,12 @@ fn handle_input_event(
             }
 
             // Lock screen touch handling
-            if state.shell.view == crate::shell::ShellView::LockScreen {
+            // Skip if an edge gesture was detected (edge gestures take priority)
+            let edge_gesture_active_for_lock = matches!(
+                state.gesture_recognizer.active_gesture,
+                Some(crate::input::ActiveGesture::EdgeSwipe { .. })
+            );
+            if state.shell.view == crate::shell::ShellView::LockScreen && !edge_gesture_active_for_lock {
                 // If external Python lock screen app is active, forward touch to it
                 if state.shell.lock_screen_active && state.space.elements().count() > 0 {
                     if let Some(touch) = state.seat.get_touch() {
@@ -2835,8 +2923,8 @@ fn handle_input_event(
                         state.update_close_gesture(*progress);
                     }
                     // Update home gesture animation when swiping from bottom
-                    // SECURITY: Block on lock screen
-                    if *edge == crate::input::Edge::Bottom && state.shell.view != crate::shell::ShellView::LockScreen {
+                    // On lock screen: update_home_gesture handles keyboard-only reveal
+                    if *edge == crate::input::Edge::Bottom {
                         state.update_home_gesture(*progress);
                     }
                     // Update switcher transition when swiping from right (only in App view)
