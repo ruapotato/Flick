@@ -221,6 +221,8 @@ pub struct Shell {
     pub slint_ui: Option<slint_ui::SlintShell>,
     /// Whether external lock screen app is active
     pub lock_screen_active: bool,
+    /// Time of last unlock (to prevent spurious App view switches)
+    pub last_unlock_time: Option<std::time::Instant>,
 }
 
 impl Shell {
@@ -303,10 +305,19 @@ impl Shell {
             slint_ui,
             // Set lock_screen_active based on whether we start with a lock screen
             lock_screen_active: lock_config.method != lock_screen::LockMethod::None,
+            last_unlock_time: None,
         };
 
         // Preload icons for all categories
         shell.preload_icons();
+
+        // Clear any stale unlock signal from previous session
+        let signal_path = unlock_signal_path();
+        if signal_path.exists() {
+            tracing::info!("Clearing stale unlock signal from previous session");
+            let _ = std::fs::remove_file(&signal_path);
+        }
+
         shell
     }
 
@@ -374,6 +385,7 @@ impl Shell {
     pub fn unlock(&mut self) {
         tracing::info!("Lock screen unlocked");
         self.lock_screen_active = false;
+        self.last_unlock_time = Some(std::time::Instant::now());
         self.set_view(ShellView::Home);
         self.lock_state.reset_input();
         self.lock_state.failed_attempts = 0;
@@ -382,6 +394,11 @@ impl Shell {
         let signal_path = unlock_signal_path();
         if signal_path.exists() {
             let _ = std::fs::remove_file(&signal_path);
+        }
+        // Force Slint UI redraw to show home screen
+        if let Some(ref slint_ui) = self.slint_ui {
+            slint_ui.request_redraw();
+            tracing::info!("Requested Slint UI redraw after unlock");
         }
     }
 
@@ -409,6 +426,16 @@ impl Shell {
         }
         let signal_path = unlock_signal_path();
         signal_path.exists()
+    }
+
+    /// Check if we recently unlocked (within 2 seconds)
+    /// Used to prevent spurious App view switches from dying lock screen app
+    pub fn is_recently_unlocked(&self) -> bool {
+        if let Some(unlock_time) = self.last_unlock_time {
+            unlock_time.elapsed() < std::time::Duration::from_secs(2)
+        } else {
+            false
+        }
     }
 
     /// Launch the external lock screen app (called by compositor)

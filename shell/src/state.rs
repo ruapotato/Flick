@@ -995,13 +995,15 @@ impl XdgShellHandler for Flick {
         self.space.map_element(window, (0, 0), false);
 
         // Switch to App view now that we have a real window
-        // UNLESS we're on the lock screen - lock screen app should stay on LockScreen view
+        // UNLESS we're on the lock screen OR we recently unlocked (dying lock screen app)
         let current_view = self.shell.view;
-        if current_view != crate::shell::ShellView::LockScreen {
+        if current_view == crate::shell::ShellView::LockScreen {
+            tracing::info!("New window on lock screen - staying in LockScreen view");
+        } else if self.shell.is_recently_unlocked() {
+            tracing::info!("New window right after unlock - ignoring (likely dying lock app)");
+        } else {
             self.shell.set_view(crate::shell::ShellView::App);
             tracing::info!("Switched to App view for new window");
-        } else {
-            tracing::info!("New window on lock screen - staying in LockScreen view");
         }
 
         // Set keyboard focus to this window

@@ -79,6 +79,7 @@ class LockConfig:
         self.timeout_seconds = 0
         self.failed_attempts = 0
         self.lockout_until = 0
+        self.background_image = ""  # Path to background image
 
     def to_dict(self):
         return {
@@ -88,6 +89,7 @@ class LockConfig:
             "timeout_seconds": self.timeout_seconds,
             "failed_attempts": self.failed_attempts,
             "lockout_until": self.lockout_until,
+            "background_image": self.background_image,
         }
 
     @classmethod
@@ -99,6 +101,7 @@ class LockConfig:
         config.timeout_seconds = data.get("timeout_seconds", 0)
         config.failed_attempts = data.get("failed_attempts", 0)
         config.lockout_until = data.get("lockout_until", 0)
+        config.background_image = data.get("background_image", "")
         return config
 
     def needs_setup(self) -> bool:
@@ -914,6 +917,18 @@ class FlickSettingsApp(App):
         )
         content.add_widget(self.timeout_row)
 
+        # Appearance section
+        content.add_widget(SectionHeader("APPEARANCE"))
+
+        self.bg_image_row = SettingsRow(
+            "Background Image",
+            self._bg_image_label(self.config_data.background_image),
+            subtitle="Image path for lock screen",
+            on_tap=self._show_bg_image_picker,
+            icon_color=(0.6, 0.4, 0.9, 1)  # Purple tint
+        )
+        content.add_widget(self.bg_image_row)
+
         # Info section
         content.add_widget(SectionHeader("INFO"))
 
@@ -979,6 +994,107 @@ class FlickSettingsApp(App):
         elif seconds < 0:
             return "Never"
         return f"{seconds}s"
+
+    def _bg_image_label(self, path):
+        if not path:
+            return "None"
+        # Show just the filename
+        return Path(path).name if path else "None"
+
+    def _show_bg_image_picker(self):
+        """Show popup to enter background image path"""
+        popup_content = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(16))
+
+        # Dark popup background
+        with popup_content.canvas.before:
+            Color(*THEME['bg_dark'])
+            RoundedRectangle(pos=popup_content.pos, size=popup_content.size, radius=[dp(20)])
+
+        title = Label(
+            text="Background Image",
+            font_size=dp(20),
+            bold=True,
+            color=THEME['text_primary'],
+            size_hint_y=None,
+            height=dp(36)
+        )
+        popup_content.add_widget(title)
+
+        subtitle = Label(
+            text="Enter full path to an image file\n(PNG, JPG, etc.) or leave empty for default",
+            font_size=dp(13),
+            color=THEME['text_secondary'],
+            size_hint_y=None,
+            height=dp(44),
+            halign='center'
+        )
+        subtitle.bind(size=subtitle.setter('text_size'))
+        popup_content.add_widget(subtitle)
+
+        # Text input for path
+        self.bg_path_input = TextInput(
+            text=self.config_data.background_image,
+            hint_text="/path/to/image.png",
+            multiline=False,
+            font_size=dp(15),
+            size_hint_y=None,
+            height=dp(48),
+            padding=[dp(12), dp(12)],
+            background_color=THEME['surface'],
+            foreground_color=THEME['text_primary'],
+            cursor_color=THEME['accent'],
+            hint_text_color=THEME['text_dim']
+        )
+        popup_content.add_widget(self.bg_path_input)
+
+        # Buttons
+        buttons = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(12))
+
+        clear_btn = Button(
+            text="Clear",
+            font_size=dp(15),
+            background_color=THEME['surface_light'],
+            color=THEME['text_primary']
+        )
+
+        save_btn = Button(
+            text="Save",
+            font_size=dp(15),
+            bold=True,
+            background_color=THEME['accent'],
+            color=THEME['text_primary']
+        )
+
+        buttons.add_widget(clear_btn)
+        buttons.add_widget(save_btn)
+        popup_content.add_widget(buttons)
+
+        popup = Popup(
+            title="",
+            content=popup_content,
+            size_hint=(0.9, None),
+            height=dp(280),
+            separator_height=0,
+            background_color=(0, 0, 0, 0.85)
+        )
+
+        def clear_bg(*args):
+            self.bg_path_input.text = ""
+
+        def save_bg(*args):
+            path = self.bg_path_input.text.strip()
+            if path and not os.path.exists(path):
+                # Show warning but still save (user might add file later)
+                logger.warning(f"Background image path doesn't exist: {path}")
+            self.config_data.background_image = path
+            save_config(self.config_data)
+            self.bg_image_row.value_label.text = self._bg_image_label(path)
+            popup.dismiss()
+
+        clear_btn.bind(on_release=clear_bg)
+        save_btn.bind(on_release=save_bg)
+
+        popup.open()
 
     def _update_change_row(self):
         if self.config_data.method == "pin":

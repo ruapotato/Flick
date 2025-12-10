@@ -87,6 +87,7 @@ class LockConfig:
         self.timeout_seconds = 300
         self.failed_attempts = 0
         self.lockout_until = 0
+        self.background_image = ""  # Path to background image
 
     @classmethod
     def load(cls):
@@ -101,7 +102,8 @@ class LockConfig:
                     config.timeout_seconds = data.get("timeout_seconds", 300)
                     config.failed_attempts = data.get("failed_attempts", 0)
                     config.lockout_until = data.get("lockout_until", 0)
-                    logger.info(f"Loaded config: method={config.method}")
+                    config.background_image = data.get("background_image", "")
+                    logger.info(f"Loaded config: method={config.method}, bg_image={config.background_image}")
         except Exception as e:
             logger.error(f"Error loading config: {e}")
         return config
@@ -566,12 +568,42 @@ class LockScreenApp(App):
 
         root = FloatLayout()
 
-        # Gradient background (using a simple dark overlay for now)
+        # Background - either image or solid dark color
+        bg_image_path = self.lock_config.background_image
+        self._bg_texture = None
+
+        if bg_image_path and os.path.exists(bg_image_path):
+            try:
+                from kivy.core.image import Image as CoreImage
+                self._bg_texture = CoreImage(bg_image_path).texture
+                logger.info(f"Loaded background image: {bg_image_path}")
+            except Exception as e:
+                logger.error(f"Failed to load background image: {e}")
+                self._bg_texture = None
+
         with root.canvas.before:
-            Color(*THEME['bg_gradient_top'])
-            Rectangle(pos=(0, Window.height * 0.5), size=(Window.width, Window.height * 0.5))
-            Color(*THEME['bg_gradient_bottom'])
-            Rectangle(pos=(0, 0), size=(Window.width, Window.height * 0.5))
+            if self._bg_texture:
+                # Use image as background
+                Color(1, 1, 1, 1)
+                self._bg_rect = Rectangle(pos=root.pos, size=Window.size, texture=self._bg_texture)
+            else:
+                # Solid dark background - avoids gradient split issue
+                Color(*THEME['bg_dark'])
+                self._bg_rect = Rectangle(pos=root.pos, size=Window.size)
+
+            # Semi-transparent overlay for better text readability on images
+            if self._bg_texture:
+                Color(0, 0, 0, 0.4)
+                self._overlay_rect = Rectangle(pos=root.pos, size=Window.size)
+
+        # Update background on window resize
+        def update_bg(instance, value):
+            self._bg_rect.pos = instance.pos
+            self._bg_rect.size = Window.size
+            if self._bg_texture and hasattr(self, '_overlay_rect'):
+                self._overlay_rect.pos = instance.pos
+                self._overlay_rect.size = Window.size
+        root.bind(pos=update_bg, size=update_bg)
 
         # Main content
         content = BoxLayout(orientation='vertical', spacing=dp(8), padding=[dp(32), dp(48)])

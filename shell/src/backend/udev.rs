@@ -508,8 +508,30 @@ pub fn run() -> Result<()> {
 
         // Check for unlock signal from external lock screen app
         if state.shell.check_unlock_signal() {
-            info!("Received unlock signal from lock screen app");
+            info!("=== UNLOCK SIGNAL DETECTED ===");
+            info!("Before unlock: view={:?}, lock_screen_active={}", state.shell.view, state.shell.lock_screen_active);
+
+            // Close all windows (the Python lock screen) from the space
+            // This ensures the lock screen window doesn't interfere with home screen rendering
+            let windows_to_close: Vec<_> = state.space.elements().cloned().collect();
+            info!("Closing {} windows from space after unlock", windows_to_close.len());
+            for window in windows_to_close {
+                // Remove window from space
+                state.space.unmap_elem(&window);
+                // Send close request to the window (if it has a toplevel surface)
+                if let Some(toplevel) = window.toplevel() {
+                    toplevel.send_close();
+                }
+            }
+
+            // Also reset any gesture state that might be active
+            state.qs_gesture_active = false;
+            state.home_gesture_window = None;
+            state.shell.gesture.edge = None;
+            state.shell.gesture.progress = 0.0;
+
             state.shell.unlock();
+            info!("After unlock: view={:?}, lock_screen_active={}", state.shell.view, state.shell.lock_screen_active);
         }
 
         // Update app switcher physics (momentum/snap animation)
@@ -834,9 +856,11 @@ fn render_surface(
                     }
                 }
                 ShellView::Home => {
+                    info!("RENDER: ShellView::Home - setting up home view in Slint");
                     slint_ui.set_view("home");
                     // Update categories
                     let categories = state.shell.app_manager.get_category_info();
+                    info!("RENDER: Home view has {} categories", categories.len());
                     let slint_categories: Vec<(String, String, [f32; 4])> = categories
                         .iter()
                         .map(|cat| {
@@ -844,7 +868,8 @@ fn render_surface(
                             (cat.name.clone(), icon, cat.color)
                         })
                         .collect();
-                    slint_ui.set_categories(slint_categories);
+                    slint_ui.set_categories(slint_categories.clone());
+                    info!("RENDER: Set {} slint_categories for home view", slint_categories.len());
 
                     // Sync popup state
                     slint_ui.set_show_popup(state.shell.popup_showing);
@@ -996,8 +1021,10 @@ fn render_surface(
                 }
 
                 // Create MemoryRenderBuffer from Slint's pixel output
+                // Use Xbgr8888 instead of Abgr8888 - treats alpha byte as "don't care"
+                // This ensures the texture is fully opaque, avoiding any alpha blending issues
                 let mut mem_buffer = MemoryRenderBuffer::new(
-                    Fourcc::Abgr8888, // RGBA in little-endian byte order
+                    Fourcc::Xbgr8888, // RGBX in little-endian - ignores 4th byte (alpha)
                     (width as i32, height as i32),
                     1, // scale
                     Transform::Normal,
@@ -1273,15 +1300,30 @@ fn render_surface(
     }
 
     // Render based on what view we're in
-    // For Switcher: use a fresh damage tracker to guarantee full redraw
-    let mut fresh_tracker = if shell_view == ShellView::Switcher {
+    // For Switcher and Home views: use a fresh damage tracker to guarantee full redraw
+    // This is important after view transitions (like unlock) to ensure clean state
+    let mut fresh_tracker = if shell_view == ShellView::Switcher || shell_view == ShellView::Home
+        || shell_view == ShellView::LockScreen || shell_view == ShellView::QuickSettings {
         tracing::info!("{:?}: creating fresh damage tracker for full redraw", shell_view);
         Some(OutputDamageTracker::from_output(output))
     } else {
         None
     };
 
+    // Debug: log all render branch conditions
+    tracing::info!("RENDER BRANCH DEBUG: view={:?}, lock_active={}, space_count={}, qs_gesture={}, qs_home_gesture={}, home_gesture={}, switcher_gesture={}, slint_elements={}",
+        shell_view,
+        state.shell.lock_screen_active,
+        state.space.elements().count(),
+        state.qs_gesture_active,
+        qs_home_gesture_active,
+        home_gesture_active,
+        state.switcher_gesture_active,
+        slint_elements.len()
+    );
+
     let render_res = if shell_view == ShellView::Switcher && !switcher_home_gesture_active {
+        tracing::info!("RENDER BRANCH: Switcher (not home gesture)");
         // Switcher view - render window cards
         let tracker = fresh_tracker.as_mut().unwrap();
         tracker.render_output(
@@ -1292,6 +1334,7 @@ fn render_surface(
             bg_color,
         )
     } else if switcher_home_gesture_active {
+        tracing::info!("RENDER BRANCH: Switcher home gesture");
         // During Switcher home gesture: slide switcher up, reveal home grid behind
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
         use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
@@ -1412,6 +1455,7 @@ fn render_surface(
             [0.1, 0.1, 0.18, 1.0],
         )
     } else if shell_view == ShellView::LockScreen && state.shell.lock_screen_active && state.space.elements().count() > 0 {
+        tracing::info!("RENDER BRANCH: LockScreen with Python app");
         // Lock screen with external Python app - render ONLY the Python app window
         // No Slint elements needed - the Python app is fullscreen
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
@@ -1455,23 +1499,48 @@ fn render_surface(
         tracing::info!("Lock screen Python app: {} window elements", lock_elements.len());
         // Dark background color for lock screen (matches Python app background)
         let lock_bg: [f32; 4] = [0.05, 0.05, 0.08, 1.0];
-        surface_data.damage_tracker.render_output(
-            renderer,
-            &mut fb,
-            0, // Force full redraw
-            &lock_elements,
-            lock_bg,
-        )
+        // Use fresh damage tracker for lock screen to ensure clean state
+        if let Some(ref mut tracker) = fresh_tracker {
+            tracing::info!("Using fresh damage tracker for LockScreen with Python app");
+            tracker.render_output(
+                renderer,
+                &mut fb,
+                0, // Force full redraw
+                &lock_elements,
+                lock_bg,
+            )
+        } else {
+            surface_data.damage_tracker.render_output(
+                renderer,
+                &mut fb,
+                0, // Force full redraw
+                &lock_elements,
+                lock_bg,
+            )
+        }
     } else if (shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::PickDefault || shell_view == ShellView::QuickSettings) && !state.qs_gesture_active && !qs_home_gesture_active {
+        tracing::info!("RENDER BRANCH: Shell view ({:?}) with Slint", shell_view);
         // Shell views - render Slint UI (but not during QS gesture transitions)
         tracing::info!("Rendering {:?} with {} slint_elements, bg={:?}", shell_view, slint_elements.len(), bg_color);
-        surface_data.damage_tracker.render_output(
-            renderer,
-            &mut fb,
-            0, // Force full redraw for Slint views
-            &slint_elements,
-            bg_color,
-        )
+        // Use fresh damage tracker for shell views to ensure clean state after view transitions
+        if let Some(ref mut tracker) = fresh_tracker {
+            tracing::info!("Using fresh damage tracker for {:?}", shell_view);
+            tracker.render_output(
+                renderer,
+                &mut fb,
+                0, // Force full redraw for Slint views
+                &slint_elements,
+                bg_color,
+            )
+        } else {
+            surface_data.damage_tracker.render_output(
+                renderer,
+                &mut fb,
+                0, // Force full redraw for Slint views
+                &slint_elements,
+                bg_color,
+            )
+        }
     } else if home_gesture_active {
         // During home gesture: render home grid with ONLY the topmost window sliding UP
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
@@ -1894,6 +1963,7 @@ fn render_surface(
             [0.1, 0.1, 0.18, 1.0],
         )
     } else {
+        tracing::info!("RENDER BRANCH: App view (fallback else)");
         // App view - render windows (with optional keyboard overlay)
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
         use smithay::desktop::space::SpaceRenderElements;
