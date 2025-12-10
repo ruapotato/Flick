@@ -4,6 +4,9 @@
 //! - Development without switching TTYs
 //! - Recording demos
 //! - Testing different screen sizes
+//!
+//! This backend uses the shared input handling from `crate::input::handler`
+//! to avoid code duplication with the udev (TTY) backend.
 
 use std::time::Duration;
 
@@ -45,65 +48,11 @@ use smithay::{
 };
 
 use crate::{
-    input::GestureEvent,
+    input::{GestureEvent, xkb_to_char, process_lock_actions, process_keyboard_actions, handle_home_tap},
     shell::{ShellView, lock_screen::LockInputMode, slint_ui::{KeyboardAction, LockScreenAction, SlintShell}},
     state::Flick,
     Args,
 };
-
-/// Convert XKB keycode to character (XKB = evdev + 8)
-fn xkb_to_char(keycode: u32, shift: bool) -> Option<char> {
-    // XKB keycodes are evdev + 8
-    let evdev = keycode.saturating_sub(8);
-    // Row 1: numbers
-    let c = match evdev {
-        2 => if shift { '!' } else { '1' },
-        3 => if shift { '@' } else { '2' },
-        4 => if shift { '#' } else { '3' },
-        5 => if shift { '$' } else { '4' },
-        6 => if shift { '%' } else { '5' },
-        7 => if shift { '^' } else { '6' },
-        8 => if shift { '&' } else { '7' },
-        9 => if shift { '*' } else { '8' },
-        10 => if shift { '(' } else { '9' },
-        11 => if shift { ')' } else { '0' },
-        12 => if shift { '_' } else { '-' },
-        13 => if shift { '+' } else { '=' },
-        // Row 2: qwertyuiop
-        16 => if shift { 'Q' } else { 'q' },
-        17 => if shift { 'W' } else { 'w' },
-        18 => if shift { 'E' } else { 'e' },
-        19 => if shift { 'R' } else { 'r' },
-        20 => if shift { 'T' } else { 't' },
-        21 => if shift { 'Y' } else { 'y' },
-        22 => if shift { 'U' } else { 'u' },
-        23 => if shift { 'I' } else { 'i' },
-        24 => if shift { 'O' } else { 'o' },
-        25 => if shift { 'P' } else { 'p' },
-        // Row 3: asdfghjkl
-        30 => if shift { 'A' } else { 'a' },
-        31 => if shift { 'S' } else { 's' },
-        32 => if shift { 'D' } else { 'd' },
-        33 => if shift { 'F' } else { 'f' },
-        34 => if shift { 'G' } else { 'g' },
-        35 => if shift { 'H' } else { 'h' },
-        36 => if shift { 'J' } else { 'j' },
-        37 => if shift { 'K' } else { 'k' },
-        38 => if shift { 'L' } else { 'l' },
-        // Row 4: zxcvbnm
-        44 => if shift { 'Z' } else { 'z' },
-        45 => if shift { 'X' } else { 'x' },
-        46 => if shift { 'C' } else { 'c' },
-        47 => if shift { 'V' } else { 'v' },
-        48 => if shift { 'B' } else { 'b' },
-        49 => if shift { 'N' } else { 'n' },
-        50 => if shift { 'M' } else { 'm' },
-        // Space
-        57 => ' ',
-        _ => return None,
-    };
-    Some(c)
-}
 
 /// Parse size string like "720x1440" into (width, height)
 fn parse_size(s: &str) -> Option<(i32, i32)> {
@@ -370,6 +319,12 @@ fn handle_winit_input(
 
             // If mouse is pressed, this is a drag - feed to gesture recognizer
             if *mouse_pressed {
+                // Track keyboard swipe-to-dismiss movement (using shared state)
+                if state.keyboard_dismiss_slot.is_some() {
+                    // Positive offset = dragging down (dismissing)
+                    state.keyboard_dismiss_offset = mouse_pos.y - state.keyboard_dismiss_start_y;
+                }
+
                 // Simulate touch move
                 if let Some(gesture_event) = state.gesture_recognizer.touch_motion(0, *mouse_pos) {
                     state.shell.handle_gesture(&gesture_event);
@@ -414,6 +369,25 @@ fn handle_winit_input(
                         *mouse_pressed = true;
                         info!("Mouse click pressed at {:?}", mouse_pos);
 
+                        // Check if click is on keyboard area for swipe-to-dismiss (using shared state)
+                        let keyboard_visible = state.shell.slint_ui.as_ref()
+                            .map(|ui| ui.is_keyboard_visible())
+                            .unwrap_or(false);
+
+                        if keyboard_visible && state.keyboard_dismiss_slot.is_none() {
+                            // Keyboard takes up bottom ~22% of screen
+                            let keyboard_height = state.get_keyboard_height();
+                            let keyboard_top = height - keyboard_height;
+
+                            if mouse_pos.y >= keyboard_top as f64 {
+                                // Click started on keyboard - track for potential swipe-to-dismiss
+                                state.keyboard_dismiss_slot = Some(0); // Use slot 0 for mouse
+                                state.keyboard_dismiss_start_y = mouse_pos.y;
+                                state.keyboard_dismiss_offset = 0.0;
+                                debug!("Keyboard click started at y={:.0}", mouse_pos.y);
+                            }
+                        }
+
                         // Start gesture recognition
                         state.gesture_recognizer.touch_down(0, *mouse_pos);
 
@@ -442,14 +416,39 @@ fn handle_winit_input(
                         *mouse_pressed = false;
                         debug!("Touch up at {:?}", mouse_pos);
 
+                        // Check for keyboard swipe-to-dismiss completion (using shared state)
+                        let keyboard_was_dismissed = if state.keyboard_dismiss_slot == Some(0) {
+                            let offset = state.keyboard_dismiss_offset;
+                            let dismiss_threshold = 80.0; // Pixels to drag down to dismiss
+
+                            if offset > dismiss_threshold {
+                                // Dragged down far enough - dismiss keyboard
+                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    info!("Keyboard dismissed by drag down (offset={:.0})", offset);
+                                    slint_ui.set_keyboard_visible(false);
+                                }
+                                true
+                            } else {
+                                debug!("Keyboard drag too short (offset={:.0}, threshold={})", offset, dismiss_threshold);
+                                false
+                            }
+                        } else {
+                            false
+                        };
+                        // Reset shared state
+                        state.keyboard_dismiss_slot = None;
+                        state.keyboard_dismiss_offset = 0.0;
+
                         // Complete gesture
                         if let Some(gesture_event) = state.gesture_recognizer.touch_up(0) {
                             info!("Gesture completed: {:?}", gesture_event);
                             state.shell.handle_gesture(&gesture_event);
 
-                            // Handle tap on home screen
-                            if let GestureEvent::Tap { position } = &gesture_event {
-                                handle_tap(state, *position);
+                            // Handle tap on home screen (but skip if keyboard was dismissed)
+                            if !keyboard_was_dismissed {
+                                if let GestureEvent::Tap { position } = &gesture_event {
+                                    handle_tap(state, *position);
+                                }
                             }
                         }
 
@@ -590,6 +589,25 @@ fn handle_winit_input(
 
             debug!("Touch down at {:?}", touch_pos);
 
+            // Check if touch started on keyboard area for swipe-to-dismiss (using shared state)
+            let keyboard_visible = state.shell.slint_ui.as_ref()
+                .map(|ui| ui.is_keyboard_visible())
+                .unwrap_or(false);
+
+            if keyboard_visible && state.keyboard_dismiss_slot.is_none() {
+                // Keyboard takes up bottom ~22% of screen
+                let keyboard_height = state.get_keyboard_height();
+                let keyboard_top = height - keyboard_height;
+
+                if touch_pos.y >= keyboard_top as f64 {
+                    // Touch started on keyboard - track for potential swipe-to-dismiss
+                    state.keyboard_dismiss_slot = Some(0); // Use slot 0 for touch
+                    state.keyboard_dismiss_start_y = touch_pos.y;
+                    state.keyboard_dismiss_offset = 0.0;
+                    debug!("Keyboard touch started at y={:.0}", touch_pos.y);
+                }
+            }
+
             // Start gesture recognition
             state.gesture_recognizer.touch_down(0, touch_pos);
 
@@ -610,6 +628,12 @@ fn handle_winit_input(
 
             *mouse_pos = touch_pos;
 
+            // Track keyboard swipe-to-dismiss movement (using shared state)
+            if state.keyboard_dismiss_slot.is_some() {
+                // Positive offset = swiping down (dismissing)
+                state.keyboard_dismiss_offset = touch_pos.y - state.keyboard_dismiss_start_y;
+            }
+
             // Feed to gesture recognizer
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(0, touch_pos) {
                 state.shell.handle_gesture(&gesture_event);
@@ -625,14 +649,39 @@ fn handle_winit_input(
             *mouse_pressed = false;
             debug!("Touch up at {:?}", mouse_pos);
 
+            // Check for keyboard swipe-to-dismiss completion (using shared state)
+            let keyboard_was_dismissed = if state.keyboard_dismiss_slot == Some(0) {
+                let offset = state.keyboard_dismiss_offset;
+                let dismiss_threshold = 80.0; // Pixels to swipe down to dismiss
+
+                if offset > dismiss_threshold {
+                    // Swiped down far enough - dismiss keyboard
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        info!("Keyboard dismissed by swipe down (offset={:.0})", offset);
+                        slint_ui.set_keyboard_visible(false);
+                    }
+                    true
+                } else {
+                    debug!("Keyboard swipe too short (offset={:.0}, threshold={})", offset, dismiss_threshold);
+                    false
+                }
+            } else {
+                false
+            };
+            // Reset shared state
+            state.keyboard_dismiss_slot = None;
+            state.keyboard_dismiss_offset = 0.0;
+
             // Complete gesture
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(0) {
                 info!("Gesture completed: {:?}", gesture_event);
                 state.shell.handle_gesture(&gesture_event);
 
-                // Handle tap on home screen
-                if let GestureEvent::Tap { position } = &gesture_event {
-                    handle_tap(state, *position);
+                // Handle tap on home screen (but skip if keyboard was dismissed)
+                if !keyboard_was_dismissed {
+                    if let GestureEvent::Tap { position } = &gesture_event {
+                        handle_tap(state, *position);
+                    }
                 }
             }
 
@@ -649,74 +698,13 @@ fn handle_winit_input(
                 process_lock_actions(state, &actions);
             }
 
-            // Process on-screen keyboard actions
+            // Process on-screen keyboard actions using shared handler
             let keyboard_actions: Vec<KeyboardAction> = if let Some(ref slint_ui) = state.shell.slint_ui {
                 slint_ui.take_pending_keyboard_actions()
             } else {
                 Vec::new()
             };
-
-            // Check if we're on lock screen password mode
-            let is_lock_screen_password = state.shell.view == ShellView::LockScreen
-                && state.shell.lock_state.input_mode == LockInputMode::Password;
-
-            for action in keyboard_actions {
-                info!("Processing keyboard action: {:?}", action);
-                match action {
-                    KeyboardAction::Character(ch) => {
-                        if is_lock_screen_password {
-                            state.shell.lock_state.entered_password.push_str(&ch);
-                            info!("Added character to lock screen password (len={})", state.shell.lock_state.entered_password.len());
-                            // Update Slint UI with password length
-                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
-                            }
-                        }
-                    }
-                    KeyboardAction::Backspace => {
-                        if is_lock_screen_password {
-                            state.shell.lock_state.entered_password.pop();
-                            info!("Removed character from lock screen password (len={})", state.shell.lock_state.entered_password.len());
-                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
-                            }
-                        }
-                    }
-                    KeyboardAction::Enter => {
-                        if is_lock_screen_password {
-                            info!("Enter pressed on lock screen password - attempting auth");
-                            state.shell.try_unlock();
-                        }
-                    }
-                    KeyboardAction::Space => {
-                        if is_lock_screen_password {
-                            state.shell.lock_state.entered_password.push(' ');
-                            info!("Added space to lock screen password (len={})", state.shell.lock_state.entered_password.len());
-                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
-                            }
-                        }
-                    }
-                    KeyboardAction::ShiftToggled => {
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.toggle_keyboard_shift();
-                        }
-                        info!("Keyboard shift toggled");
-                    }
-                    KeyboardAction::LayoutToggled => {
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.toggle_keyboard_layout();
-                        }
-                        info!("Keyboard layout toggled");
-                    }
-                    KeyboardAction::Hide => {
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.set_keyboard_visible(false);
-                        }
-                        info!("Keyboard hidden");
-                    }
-                }
-            }
+            process_keyboard_actions(state, keyboard_actions);
         }
 
         _ => {}
@@ -724,28 +712,14 @@ fn handle_winit_input(
 }
 
 /// Handle tap events on the UI
+/// Uses shared input handler for home screen taps, handles other views locally
 fn handle_tap(state: &mut Flick, position: Point<f64, Logical>) {
     let shell_view = state.shell.view.clone();
 
     match shell_view {
         ShellView::Home => {
-            // Use hit_test_category which accounts for scroll offset
-            if let Some(category) = state.shell.hit_test_category(position) {
-                info!("App tap detected: category={:?} at {:?}", category, position);
-                // Use get_exec() which properly handles Settings (uses built-in Flick Settings)
-                if let Some(exec) = state.shell.app_manager.get_exec(category) {
-                    info!("Launching app: {}", exec);
-                    // Launch the app - remove DISPLAY so apps use Wayland instead of X11
-                    std::process::Command::new("sh")
-                        .arg("-c")
-                        .arg(&exec)
-                        .env("WAYLAND_DISPLAY", state.socket_name.to_str().unwrap_or("wayland-1"))
-                        .env_remove("DISPLAY")
-                        .spawn()
-                        .ok();
-                    state.shell.app_launched();
-                }
-            }
+            // Use shared handler for home screen taps
+            handle_home_tap(state, position);
         }
         ShellView::Switcher => {
             // Switcher taps handled via Slint callbacks
@@ -759,97 +733,7 @@ fn handle_tap(state: &mut Flick, position: Point<f64, Logical>) {
     }
 }
 
-/// Process lock screen actions from Slint UI
-fn process_lock_actions(state: &mut Flick, actions: &[LockScreenAction]) {
-    for action in actions {
-        match action {
-            LockScreenAction::PinDigit(digit) => {
-                if state.shell.lock_state.entered_pin.len() < 6 {
-                    state.shell.lock_state.entered_pin.push_str(digit);
-                    let pin_len = state.shell.lock_state.entered_pin.len();
-                    info!("PIN digit entered, length: {}", pin_len);
-                    // Try to unlock: silent for 4-5 digits, with reset at 6
-                    if pin_len >= 4 && pin_len < 6 {
-                        // Silent try - don't reset on failure (user may have longer PIN)
-                        state.shell.try_pin_silent();
-                    } else if pin_len == 6 {
-                        // Max length reached - full try with reset on failure
-                        state.shell.try_unlock();
-                    }
-                }
-            }
-            LockScreenAction::PinBackspace => {
-                state.shell.lock_state.entered_pin.pop();
-                info!("PIN backspace, length: {}", state.shell.lock_state.entered_pin.len());
-            }
-            LockScreenAction::PatternNode(idx) => {
-                let idx_u8 = *idx as u8;
-                if !state.shell.lock_state.pattern_nodes.contains(&idx_u8) {
-                    state.shell.lock_state.pattern_nodes.push(idx_u8);
-                }
-            }
-            LockScreenAction::PatternStarted => {
-                state.shell.lock_state.pattern_active = true;
-                state.shell.lock_state.pattern_nodes.clear();
-            }
-            LockScreenAction::PatternComplete => {
-                if state.shell.lock_state.pattern_nodes.len() >= 4 {
-                    state.shell.try_unlock();
-                } else if !state.shell.lock_state.pattern_nodes.is_empty() {
-                    state.shell.lock_state.error_message = Some("Pattern too short (min 4 dots)".to_string());
-                }
-                state.shell.lock_state.pattern_nodes.clear();
-            }
-            LockScreenAction::UsePassword => {
-                state.shell.lock_state.switch_to_password();
-                info!("Switched to password mode");
-            }
-            LockScreenAction::PasswordFieldTapped => {
-                info!("Password field tapped - showing keyboard");
-            }
-            LockScreenAction::PasswordSubmit => {
-                info!("Password submit - attempting PAM auth");
-                state.shell.try_unlock();
-            }
-        }
-    }
-
-    // Update Slint UI with results
-    if !actions.is_empty() {
-        if let Some(ref slint_ui) = state.shell.slint_ui {
-            slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
-            slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
-
-            // Update pattern nodes
-            let mut nodes = [false; 9];
-            for &n in &state.shell.lock_state.pattern_nodes {
-                if (n as usize) < 9 {
-                    nodes[n as usize] = true;
-                }
-            }
-            slint_ui.set_pattern_nodes(&nodes);
-
-            // Update error message if any
-            if let Some(ref err) = state.shell.lock_state.error_message {
-                slint_ui.set_lock_error(err);
-            }
-
-            // Update lock mode if changed to password, and show keyboard automatically
-            if actions.iter().any(|a| matches!(a, LockScreenAction::UsePassword)) {
-                slint_ui.set_lock_mode("password");
-                // Auto-show keyboard when switching to password mode (phone UX)
-                slint_ui.set_keyboard_visible(true);
-                info!("Switched to password mode - showing keyboard");
-            }
-
-            // Show keyboard if password field was tapped
-            if actions.iter().any(|a| matches!(a, LockScreenAction::PasswordFieldTapped)) {
-                slint_ui.set_keyboard_visible(true);
-                info!("Password field tapped - keyboard visible");
-            }
-        }
-    }
-}
+// Note: process_lock_actions is now imported from crate::input::handler
 
 /// Render a frame
 fn render_frame(
@@ -875,9 +759,12 @@ fn render_frame(
             && state.shell.lock_screen_active
             && window_count > 0;
 
-        if render_python_lock {
-            // Render Python lock screen app as Wayland surface
-            debug!("Rendering Python lock screen app");
+        // Render app windows when in App view
+        let render_app_windows = shell_view == ShellView::App && window_count > 0;
+
+        if render_python_lock || render_app_windows {
+            // Render Wayland surfaces (apps or Python lock screen)
+            debug!("Rendering {} Wayland window(s)", window_count);
             let windows: Vec<_> = state.space.elements().cloned().collect();
 
             for window in windows.iter() {

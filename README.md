@@ -172,7 +172,9 @@ flick/
 │   │   ├── main.rs            # Entry point
 │   │   ├── state.rs           # Compositor state + security policy
 │   │   ├── input/
-│   │   │   └── gestures.rs    # Touch gesture recognition
+│   │   │   ├── gestures.rs    # Touch gesture recognition
+│   │   │   └── handler.rs     # Shared input handling (keycode conversion,
+│   │   │                      # lock screen actions, keyboard injection)
 │   │   ├── shell/             # Shell UI components
 │   │   │   ├── mod.rs         # Shell state + view transitions
 │   │   │   ├── slint_ui.rs    # Slint integration + keyboard
@@ -180,7 +182,8 @@ flick/
 │   │   │   ├── quick_settings.rs
 │   │   │   └── apps.rs        # .desktop file parsing
 │   │   ├── backend/
-│   │   │   └── udev.rs        # DRM/KMS backend + gesture security
+│   │   │   ├── udev.rs        # TTY backend: DRM/KMS + libinput
+│   │   │   └── winit.rs       # Embedded backend: runs in a window
 │   │   └── system.rs          # Hardware integration
 │   └── ui/
 │       └── shell.slint        # Slint UI definitions (keyboard, home, etc.)
@@ -189,6 +192,29 @@ flick/
 │       └── flick_lockscreen.py # Animated PIN entry + PAM auth
 └── start.sh                   # Launch script
 ```
+
+### Backend Architecture
+
+Flick supports two backends that share common input handling logic:
+
+```
+┌─────────────────────────────────────────────┐
+│        Shared Input Processing              │
+│  (handler.rs: keycode conversion, lock      │
+│   screen actions, keyboard injection)       │
+└─────────────────────────────────────────────┘
+           ↑                        ↑
+    ┌──────┴──────┐          ┌──────┴──────┐
+    │  TTY Mode   │          │  Embedded   │
+    │  (udev.rs)  │          │ (winit.rs)  │
+    │  libinput   │          │ winit events│
+    │  DRM/KMS    │          │ window      │
+    └─────────────┘          └─────────────┘
+```
+
+**TTY Mode** (`--windowed` not set): Runs directly on hardware using DRM/KMS for display and libinput for touch/keyboard. This is the production mode for Linux phones.
+
+**Embedded Mode** (`--windowed`): Runs in a window on X11 or Wayland for development and testing. Touch is simulated from mouse events.
 
 ## Contributing
 
