@@ -33,6 +33,10 @@ logger.info("Flick Lock Screen starting...")
 
 # Kivy config - must be before kivy imports
 os.environ.setdefault('KIVY_LOG_LEVEL', 'debug')
+# Disable SDL2 touch-to-mouse emulation to prevent double inputs
+# When this is enabled (default), SDL2 generates both touch AND synthetic mouse events
+# for the same physical touch, causing buttons to register twice
+os.environ['SDL_TOUCH_MOUSE_EVENTS'] = '0'
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -683,8 +687,54 @@ class LockScreenApp(App):
 
         content.add_widget(Widget(size_hint_y=None, height=dp(16)))
 
-        # Input area based on mode
-        if self.lock_config.method == "pin":
+        # Input area container - allows dynamic switching between modes
+        self.input_container = BoxLayout(
+            orientation='vertical',
+            spacing=dp(16),
+            size_hint_y=None,
+            height=dp(420)
+        )
+        self._build_input_area()
+        content.add_widget(self.input_container)
+
+        # Spacer
+        content.add_widget(Widget(size_hint_y=0.08))
+
+        # Fallback container - holds the "Use System Password" button
+        self.fallback_container = BoxLayout(size_hint_y=None, height=dp(40))
+        if self.lock_config.method in ['pin', 'pattern']:
+            self.fallback_btn = Button(
+                text="Use System Password",
+                font_size=dp(14),
+                size_hint=(None, None),
+                size=(dp(200), dp(40)),
+                pos_hint={'center_x': 0.5},
+                background_color=(0, 0, 0, 0),
+                color=THEME['accent']
+            )
+            self.fallback_btn.bind(on_release=lambda b: self._switch_to_password())
+            self.fallback_container.add_widget(self.fallback_btn)
+        content.add_widget(self.fallback_container)
+
+        content.add_widget(Widget(size_hint_y=0.04))
+
+        root.add_widget(content)
+        return root
+
+    def _update_time(self, dt):
+        now = datetime.now()
+        self.time_text = now.strftime("%H:%M")
+        self.date_text = now.strftime("%A, %B %d")
+
+    def _build_input_area(self, mode=None):
+        """Build the input area for the specified mode (or current lock method)"""
+        if mode is None:
+            mode = self.lock_config.method
+
+        # Clear existing input area
+        self.input_container.clear_widgets()
+
+        if mode == "pin":
             pin_container = BoxLayout(size_hint=(None, None), pos_hint={'center_x': 0.5})
             pin_container.size = (dp(300), dp(380))
             self.pin_pad = GlowingPinPad(
@@ -692,16 +742,16 @@ class LockScreenApp(App):
                 on_backspace=self._on_pin_backspace
             )
             pin_container.add_widget(self.pin_pad)
-            content.add_widget(pin_container)
+            self.input_container.add_widget(pin_container)
 
-        elif self.lock_config.method == "pattern":
+        elif mode == "pattern":
             pattern_container = BoxLayout(size_hint=(None, None), pos_hint={'center_x': 0.5})
             pattern_container.size = (dp(320), dp(320))
             self.pattern_grid = GlowingPatternGrid(on_complete=self._on_pattern_complete)
             pattern_container.add_widget(self.pattern_grid)
-            content.add_widget(pattern_container)
+            self.input_container.add_widget(pattern_container)
 
-        elif self.lock_config.method == "password":
+        elif mode == "password":
             # Password input with modern styling
             self.password_input = TextInput(
                 password=True,
@@ -713,12 +763,14 @@ class LockScreenApp(App):
                 background_color=THEME['surface'],
                 foreground_color=THEME['text_primary'],
                 cursor_color=THEME['accent'],
-                hint_text="Enter password",
+                hint_text="Enter system password",
                 hint_text_color=THEME['text_dim'],
                 padding=[dp(16), dp(14)]
             )
-            content.add_widget(self.password_input)
-            content.add_widget(Widget(size_hint_y=None, height=dp(16)))
+            # Bind Enter key to submit
+            self.password_input.bind(on_text_validate=lambda x: self._on_password_submit())
+            self.input_container.add_widget(self.password_input)
+            self.input_container.add_widget(Widget(size_hint_y=None, height=dp(16)))
 
             # Submit button
             submit_btn = Button(
@@ -732,34 +784,16 @@ class LockScreenApp(App):
                 color=THEME['text_primary']
             )
             submit_btn.bind(on_release=lambda b: self._on_password_submit())
-            content.add_widget(submit_btn)
+            self.input_container.add_widget(submit_btn)
 
-        # Spacer
-        content.add_widget(Widget(size_hint_y=0.08))
+            # Focus the password input after a short delay (to allow UI to settle)
+            Clock.schedule_once(lambda dt: self._focus_password_input(), 0.3)
 
-        # "Use Password" fallback (for PIN/Pattern modes)
-        if self.lock_config.method in ['pin', 'pattern']:
-            fallback_btn = Button(
-                text="Use System Password",
-                font_size=dp(14),
-                size_hint=(None, None),
-                size=(dp(200), dp(40)),
-                pos_hint={'center_x': 0.5},
-                background_color=(0, 0, 0, 0),
-                color=THEME['accent']
-            )
-            fallback_btn.bind(on_release=lambda b: self._switch_to_password())
-            content.add_widget(fallback_btn)
-
-        content.add_widget(Widget(size_hint_y=0.04))
-
-        root.add_widget(content)
-        return root
-
-    def _update_time(self, dt):
-        now = datetime.now()
-        self.time_text = now.strftime("%H:%M")
-        self.date_text = now.strftime("%A, %B %d")
+    def _focus_password_input(self):
+        """Focus the password input to trigger on-screen keyboard"""
+        if hasattr(self, 'password_input') and self.password_input:
+            self.password_input.focus = True
+            logger.info("Password input focused - on-screen keyboard should appear")
 
     def _on_pin_digit(self, digit):
         if self._is_locked_out():
@@ -819,8 +853,19 @@ class LockScreenApp(App):
             self.password_input.text = ""
 
     def _switch_to_password(self):
+        """Switch from PIN/Pattern mode to system password mode"""
         logger.info("Switching to password mode")
-        self.error_message = "Enter your system password"
+        self.error_message = ""
+
+        # Hide the fallback button since we're now in password mode
+        self.fallback_container.clear_widgets()
+
+        # Hide PIN dots if they exist
+        if hasattr(self, 'pin_dots') and self.pin_dots:
+            self.pin_dots.opacity = 0
+
+        # Rebuild input area with password input
+        self._build_input_area("password")
 
     def _record_failed_attempt(self, auth_type):
         self.failed_attempts += 1

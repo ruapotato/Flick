@@ -29,6 +29,10 @@ logger.info("Flick Settings starting...")
 
 # Kivy configuration - must be before kivy imports
 os.environ.setdefault('KIVY_LOG_LEVEL', 'debug')
+# Disable SDL2 touch-to-mouse emulation to prevent double inputs
+# When this is enabled (default), SDL2 generates both touch AND synthetic mouse events
+# for the same physical touch, causing buttons to register twice
+os.environ['SDL_TOUCH_MOUSE_EVENTS'] = '0'
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
