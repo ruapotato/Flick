@@ -535,6 +535,18 @@ pub fn run() -> Result<()> {
             info!("After unlock: view={:?}, lock_screen_active={}", state.shell.view, state.shell.lock_screen_active);
         }
 
+        // Check for keyboard visibility requests from apps via IPC
+        if let Some(show_keyboard) = state.shell.check_keyboard_request() {
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                let current = slint_ui.is_keyboard_visible();
+                if current != show_keyboard {
+                    info!("Keyboard request IPC: setting visibility to {}", show_keyboard);
+                    slint_ui.set_keyboard_visible(show_keyboard);
+                    state.resize_windows_for_keyboard(show_keyboard);
+                }
+            }
+        }
+
         // Update app switcher physics (momentum/snap animation)
         if state.shell.view == crate::shell::ShellView::Switcher {
             let num_windows = state.space.elements().count();
@@ -3150,6 +3162,9 @@ fn handle_input_event(
             let keyboard_top = state.screen_size.h - keyboard_height;
             let touch_in_kb_area = last_touch_pos.map(|p| p.y >= keyboard_top as f64).unwrap_or(false);
 
+            // Track if EARLY keyboard processing happened (to avoid double-processing)
+            let mut early_kb_processed = false;
+
             // IMMEDIATELY process keyboard taps - before gesture recognizer can interfere
             // This ensures small movements on keyboard still register as key presses
             // Now uses per-slot tracking for multi-touch support
@@ -3312,6 +3327,9 @@ fn handle_input_event(
                                     _ => {}
                                 }
                             }
+                            // Mark that EARLY path processed this keyboard tap
+                            early_kb_processed = true;
+                            info!("EARLY KB: marked as processed to prevent duplicate handling");
                         }
                     }
                 }
@@ -3828,7 +3846,8 @@ fn handle_input_event(
                     info!("KEYBOARD CHECK: kb_visible={}", kb_visible);
 
                     // Only process key presses if keyboard wasn't dismissed by swipe
-                    if kb_visible && !keyboard_was_dismissed && touch_was_on_keyboard {
+                    // Skip if EARLY path already processed this keyboard tap (to avoid duplicate input)
+                    if kb_visible && !keyboard_was_dismissed && touch_was_on_keyboard && !early_kb_processed {
                         if let Some(pos) = keyboard_touch_pos.or(last_touch_pos) {
                             // Dispatch to Slint for visual feedback only
                             slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);

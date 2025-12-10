@@ -59,6 +59,7 @@ from kivy.properties import StringProperty, NumericProperty, ListProperty, Boole
 # Config and signal paths
 CONFIG_PATH = Path.home() / ".local" / "state" / "flick" / "lock_config.json"
 UNLOCK_SIGNAL_PATH = Path.home() / ".local" / "state" / "flick" / "unlock_signal"
+KEYBOARD_REQUEST_PATH = Path.home() / ".local" / "state" / "flick" / "keyboard_request"
 
 # Stunning dark theme with accent colors
 THEME = {
@@ -146,6 +147,18 @@ def signal_unlock():
         logger.info(f"Wrote unlock signal to {UNLOCK_SIGNAL_PATH}")
     except Exception as e:
         logger.error(f"Failed to write unlock signal: {e}")
+
+
+def request_keyboard(show: bool):
+    """Request compositor to show or hide the on-screen keyboard"""
+    logger.info(f"Requesting keyboard: {'show' if show else 'hide'}")
+    try:
+        KEYBOARD_REQUEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(KEYBOARD_REQUEST_PATH, 'w') as f:
+            f.write("show" if show else "hide")
+        logger.info(f"Wrote keyboard request to {KEYBOARD_REQUEST_PATH}")
+    except Exception as e:
+        logger.error(f"Failed to write keyboard request: {e}")
 
 
 def authenticate_pam(password: str) -> bool:
@@ -548,6 +561,7 @@ class LockScreenApp(App):
         self.entered_password = ""
         self.failed_attempts = 0
         self.lockout_until = 0
+        self.in_password_mode = False  # Track when using fallback password mode
         logger.info(f"Lock screen initialized with method: {self.lock_config.method}")
 
     def build(self):
@@ -773,6 +787,8 @@ class LockScreenApp(App):
             )
             # Bind Enter key to submit
             self.password_input.bind(on_text_validate=lambda x: self._on_password_submit())
+            # Request keyboard when focus changes (to keep it visible when tapped)
+            self.password_input.bind(focus=self._on_password_focus)
             self.input_container.add_widget(self.password_input)
             self.input_container.add_widget(Widget(size_hint_y=None, height=dp(16)))
 
@@ -797,9 +813,21 @@ class LockScreenApp(App):
         """Focus the password input to trigger on-screen keyboard"""
         if hasattr(self, 'password_input') and self.password_input:
             self.password_input.focus = True
+            # Also request keyboard since we're focusing programmatically
+            request_keyboard(True)
             logger.info("Password input focused - on-screen keyboard should appear")
 
+    def _on_password_focus(self, instance, focused):
+        """Handle password input focus changes - request keyboard when focused"""
+        logger.info(f"Password input focus changed: {focused}")
+        if focused:
+            # Request keyboard to stay visible when password input is tapped
+            request_keyboard(True)
+
     def _on_pin_digit(self, digit):
+        # Ignore PIN input when in password mode
+        if self.in_password_mode:
+            return
         if self._is_locked_out():
             return
         if len(self.entered_pin) < 6:
@@ -812,12 +840,18 @@ class LockScreenApp(App):
                 Clock.schedule_once(lambda dt: self._try_verify_pin(), 0.3)
 
     def _on_pin_backspace(self):
+        # Ignore PIN backspace when in password mode
+        if self.in_password_mode:
+            return
         if self.entered_pin:
             self.entered_pin = self.entered_pin[:-1]
             self.pin_dots.filled_count = len(self.entered_pin)
             self.error_message = ""
 
     def _try_verify_pin(self):
+        # Ignore PIN verification when in password mode
+        if self.in_password_mode:
+            return
         if self.lock_config.verify_pin(self.entered_pin):
             logger.info("PIN verified successfully")
             self._unlock()
@@ -860,6 +894,8 @@ class LockScreenApp(App):
         """Switch from PIN/Pattern mode to system password mode"""
         logger.info("Switching to password mode")
         self.error_message = ""
+        self.in_password_mode = True  # Set flag to indicate we're in password mode
+        self.entered_pin = ""  # Clear any entered PIN to prevent verification
 
         # Hide the fallback button since we're now in password mode
         self.fallback_container.clear_widgets()
@@ -868,8 +904,14 @@ class LockScreenApp(App):
         if hasattr(self, 'pin_dots') and self.pin_dots:
             self.pin_dots.opacity = 0
 
+        # Clear PIN pad reference so _on_key_down doesn't use it
+        self.pin_pad = None
+
         # Rebuild input area with password input
         self._build_input_area("password")
+
+        # Request on-screen keyboard to show
+        request_keyboard(True)
 
     def _record_failed_attempt(self, auth_type):
         self.failed_attempts += 1
@@ -915,20 +957,36 @@ class LockScreenApp(App):
 
     def _on_key_down(self, window, key, scancode, codepoint, modifiers):
         """Handle keyboard input from physical or virtual keyboard"""
-        logger.info(f"KEY DOWN: key={key}, scancode={scancode}, codepoint={codepoint!r}, modifiers={modifiers}")
+        logger.info(f"KEY DOWN: key={key}, scancode={scancode}, codepoint={codepoint!r}, modifiers={modifiers}, in_password_mode={self.in_password_mode}")
 
-        # Get current active mode
-        # Check if we're in password mode (TextInput exists and should handle its own input)
-        if hasattr(self, 'password_input') and self.password_input and self.password_input.focus:
-            # Let TextInput handle the input, but handle Enter ourselves
-            if key == 13:  # Enter
-                self._on_password_submit()
-                return True
-            # TextInput will handle other keys
+        # Check if we're in password mode (either by flag or config)
+        if self.in_password_mode or self.lock_config.method == "password":
+            # Handle password mode keyboard input
+            if hasattr(self, 'password_input') and self.password_input:
+                # Enter key to submit (key==13 is ASCII CR, scancode 28 is evdev KEY_ENTER)
+                # NOTE: Do NOT use scancode == 36 - that conflicts with '7' key in Wayland/Kivy
+                if key == 13 or scancode == 28:
+                    logger.info("Enter from keyboard - attempting password auth")
+                    self._on_password_submit()
+                    return True
+
+                # Backspace
+                if key == 8 or key == 22 or scancode == 22 or scancode == 14:
+                    logger.info("Backspace from keyboard in password mode")
+                    if self.password_input.text:
+                        self.password_input.text = self.password_input.text[:-1]
+                    return True
+
+                # Regular character - append to password input
+                if codepoint and len(codepoint) == 1:
+                    logger.info(f"Password char from keyboard: {codepoint}")
+                    self.password_input.text += codepoint
+                    return True
+
             return False
 
-        # Handle PIN mode keyboard input
-        if self.lock_config.method == "pin" or (hasattr(self, 'pin_pad') and self.pin_pad):
+        # Handle PIN mode keyboard input (only when NOT in password mode)
+        if self.lock_config.method == "pin" and not self.in_password_mode:
             # Number keys (both main keyboard and numpad)
             if codepoint and codepoint.isdigit():
                 logger.info(f"PIN digit from keyboard: {codepoint}")
@@ -941,14 +999,15 @@ class LockScreenApp(App):
                 self._on_pin_backspace()
                 return True
 
-            # Enter key to submit (key 13)
-            if key == 13 or scancode == 36 or scancode == 28:
+            # Enter key to submit (key==13 is ASCII CR, scancode 28 is evdev KEY_ENTER)
+            # NOTE: Do NOT use scancode == 36 - that conflicts with '7' key in Wayland/Kivy
+            if key == 13 or scancode == 28:
                 logger.info("Enter from keyboard - attempting verify")
                 self._try_verify_pin()
                 return True
 
         # Pattern mode - only handle numbers for fallback
-        if self.lock_config.method == "pattern":
+        if self.lock_config.method == "pattern" and not self.in_password_mode:
             # Could add pattern input via keyboard in future
             pass
 
