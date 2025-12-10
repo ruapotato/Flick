@@ -58,6 +58,7 @@ use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement};
 use smithay::backend::renderer::{ImportAll, ImportMem};
+use smithay::wayland::seat::WaylandFocus;
 
 use crate::state::Flick;
 
@@ -3182,6 +3183,23 @@ fn handle_input_event(
 
                     info!("EARLY KB TAP: pos=({:.1}, {:.1}), y_in_kb={:.1}", use_pos.x, use_pos.y, y_in_keyboard);
 
+                    // If on Python lock screen, ensure focus is set before processing keyboard
+                    if state.shell.view == crate::shell::ShellView::LockScreen && state.shell.lock_screen_active {
+                        // Extract surface first to avoid borrow issues
+                        let lock_surface = state.space.elements().next()
+                            .and_then(|w| w.wl_surface().map(|s| s.into_owned()));
+                        if let Some(surface) = lock_surface {
+                            if let Some(keyboard) = state.seat.get_keyboard() {
+                                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                let has_focus = keyboard.current_focus().map(|f| f == surface).unwrap_or(false);
+                                if !has_focus {
+                                    keyboard.set_focus(state, Some(surface), serial);
+                                    info!("EARLY KB: Set focus to Python lock screen for keyboard tap");
+                                }
+                            }
+                        }
+                    }
+
                     if y_in_keyboard >= 0.0 {
                         if let Some(ref slint_ui) = state.shell.slint_ui {
                             // Visual feedback
@@ -3856,9 +3874,32 @@ fn handle_input_event(
                 }
             };
 
-            // Check if we're on lock screen in password mode
+            // Check if we're on lock screen in password mode (Slint-based lock screen)
             let is_lock_screen_password = state.shell.view == crate::shell::ShellView::LockScreen
-                && state.shell.lock_state.input_mode == crate::shell::lock_screen::LockInputMode::Password;
+                && state.shell.lock_state.input_mode == crate::shell::lock_screen::LockInputMode::Password
+                && !state.shell.lock_screen_active; // Only true for Slint lock screen, not Python
+
+            // Check if we're on lock screen with Python app (needs Wayland keyboard focus)
+            let is_python_lock_screen = state.shell.view == crate::shell::ShellView::LockScreen
+                && state.shell.lock_screen_active;
+
+            // If on Python lock screen, ensure keyboard focus is set to the lock screen window
+            if is_python_lock_screen && !keyboard_actions.is_empty() {
+                // Extract surface first to avoid borrow issues
+                let lock_surface = state.space.elements().next()
+                    .and_then(|w| w.wl_surface().map(|s| s.into_owned()));
+                if let Some(surface) = lock_surface {
+                    if let Some(keyboard) = state.seat.get_keyboard() {
+                        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                        // Check if focus is already set
+                        let has_focus = keyboard.current_focus().map(|f| f == surface).unwrap_or(false);
+                        if !has_focus {
+                            keyboard.set_focus(state, Some(surface), serial);
+                            info!("Set keyboard focus to Python lock screen window for keyboard input");
+                        }
+                    }
+                }
+            }
 
             // Track if password was updated for UI sync
             let mut password_updated = false;
