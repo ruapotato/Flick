@@ -31,6 +31,13 @@ pub fn unlock_signal_path() -> PathBuf {
     PathBuf::from(home).join(".local/state/flick/unlock_signal")
 }
 
+/// Path to keyboard request file (written by apps to request keyboard visibility)
+/// Contains "show" to show keyboard, file deletion or empty to hide
+pub fn keyboard_request_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home).join(".local/state/flick/keyboard_request")
+}
+
 /// App definition for the launcher
 #[derive(Debug, Clone)]
 pub struct AppInfo {
@@ -435,6 +442,38 @@ impl Shell {
         signal_path.exists()
     }
 
+    /// Check if an app has requested keyboard visibility via IPC
+    /// Returns Some(true) for "show", Some(false) for "hide", None if no request
+    pub fn check_keyboard_request(&self) -> Option<bool> {
+        let request_path = keyboard_request_path();
+        if !request_path.exists() {
+            return None;
+        }
+
+        match std::fs::read_to_string(&request_path) {
+            Ok(content) => {
+                let trimmed = content.trim();
+                // Delete the file after reading to prevent repeated processing
+                let _ = std::fs::remove_file(&request_path);
+
+                if trimmed == "show" {
+                    tracing::info!("Keyboard request: show");
+                    Some(true)
+                } else if trimmed == "hide" {
+                    tracing::info!("Keyboard request: hide");
+                    Some(false)
+                } else {
+                    tracing::debug!("Unknown keyboard request content: {}", trimmed);
+                    None
+                }
+            }
+            Err(e) => {
+                tracing::debug!("Failed to read keyboard request: {}", e);
+                None
+            }
+        }
+    }
+
     /// Check if we recently unlocked (within 2 seconds)
     /// Used to prevent spurious App view switches from dying lock screen app
     pub fn is_recently_unlocked(&self) -> bool {
@@ -457,6 +496,7 @@ impl Shell {
             .arg("-c")
             .arg(FLICK_LOCKSCREEN_EXEC)
             .env("WAYLAND_DISPLAY", socket_name)
+            .env("SDL_VIDEODRIVER", "wayland")  // Force SDL2/Kivy to use Wayland
             .spawn()
         {
             Ok(_) => {

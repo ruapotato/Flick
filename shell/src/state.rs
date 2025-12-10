@@ -1119,6 +1119,13 @@ impl TextInputHandler for Flick {
     }
 
     fn text_input_disabled(&mut self) {
+        // On lock screen, ignore text_input_disabled from Wayland protocol
+        // This prevents keyboard from closing when user taps the on-screen keyboard
+        // (tapping keyboard causes Kivy TextInput to lose focus and send disable)
+        if self.shell.view == crate::shell::ShellView::LockScreen && self.shell.lock_screen_active {
+            tracing::info!("Text input disabled on lock screen - ignoring to keep keyboard visible");
+            return;
+        }
         tracing::info!("Text input disabled - hiding on-screen keyboard");
         // Hide keyboard and resize windows
         if let Some(ref slint_ui) = self.shell.slint_ui {

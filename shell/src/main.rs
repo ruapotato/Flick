@@ -24,13 +24,21 @@ use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use tracing_appender::rolling;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(name = "flick")]
 #[command(about = "Flick mobile compositor with integrated shell", long_about = None)]
-struct Args {
-    /// Run in windowed mode (for development)
+pub struct Args {
+    /// Run in windowed mode (for development/demos)
     #[arg(short, long)]
-    windowed: bool,
+    pub windowed: bool,
+
+    /// Window size in windowed mode (WIDTHxHEIGHT, e.g., 720x1440)
+    #[arg(short, long, default_value = "720x1440")]
+    pub size: String,
+
+    /// Scale factor for windowed mode (e.g., 0.5 to halve the window size)
+    #[arg(long, default_value = "1.0")]
+    pub scale: f32,
 }
 
 fn main() -> Result<()> {
@@ -79,8 +87,8 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     if args.windowed {
-        info!("Running in windowed mode (winit backend)");
-        backend::winit::run()
+        info!("Running in windowed mode (winit backend) with size={} scale={}", args.size, args.scale);
+        backend::winit::run(args)
     } else {
         info!("Running on hardware (udev backend)");
         backend::udev::run()
