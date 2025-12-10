@@ -8,8 +8,8 @@ use std::fs;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
-/// Path to Flick's built-in Settings app
-pub const FLICK_SETTINGS_EXEC: &str = "/home/david/Flick/apps/flick_settings/build/linux/x64/release/bundle/flick_settings";
+/// Path to Flick's built-in Settings app (Python/Kivy)
+pub const FLICK_SETTINGS_EXEC: &str = "/home/david/Flick/apps/flick_settings/flick_settings.py";
 
 /// Predefined app categories that appear on the home screen
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -325,6 +325,14 @@ pub fn run() -> Result<()> {
     // Set environment variables
     std::env::set_var("WAYLAND_DISPLAY", &state.socket_name);
 
+    // Launch lock screen app if lock is configured on startup
+    if state.shell.lock_screen_active {
+        info!("Lock screen configured - launching external lock screen app on startup");
+        if let Some(socket) = state.socket_name.to_str() {
+            state.shell.launch_lock_screen_app(socket);
+        }
+    }
+
     // Track session active state
     let session_active = Rc::new(RefCell::new(true));
     let session_active_for_notifier = session_active.clone();
@@ -496,6 +504,12 @@ pub fn run() -> Result<()> {
         // Check for long press (periodic check since touch_motion may not fire if finger is still)
         if state.shell.view == crate::shell::ShellView::Home {
             state.shell.check_and_show_long_press();
+        }
+
+        // Check for unlock signal from external lock screen app
+        if state.shell.check_unlock_signal() {
+            info!("Received unlock signal from lock screen app");
+            state.shell.unlock();
         }
 
         // Update app switcher physics (momentum/snap animation)
@@ -1397,6 +1411,57 @@ fn render_surface(
             &switcher_home_elements,
             [0.1, 0.1, 0.18, 1.0],
         )
+    } else if shell_view == ShellView::LockScreen && state.shell.lock_screen_active && state.space.elements().count() > 0 {
+        // Lock screen with external Python app - render ONLY the Python app window
+        // No Slint elements needed - the Python app is fullscreen
+        use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+        use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
+
+        let mut lock_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
+
+        // Render only windows (the Python lock screen app) - use same approach as switcher
+        let windows: Vec<_> = state.space.elements().cloned().collect();
+        let screen_w = state.screen_size.w as i32;
+        let screen_h = state.screen_size.h as i32;
+
+        for window in windows.iter() {
+            // Render window at fullscreen position (0, 0)
+            let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
+                .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                    renderer,
+                    (0, 0).into(),
+                    Scale::from(scale),
+                    1.0,
+                );
+
+            let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
+                (0, 0).into(),
+                (screen_w, screen_h).into(),
+            );
+
+            for elem in window_render_elements {
+                // Scale 1:1 - Python app should be fullscreen
+                let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(1.0));
+                let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (0, 0).into();
+                // Use Absolute positioning like switcher does
+                let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Absolute);
+                if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
+                    // Insert at front of list so windows render on top (front-to-back order)
+                    lock_elements.insert(0, cropped.into());
+                }
+            }
+        }
+
+        tracing::info!("Lock screen Python app: {} window elements", lock_elements.len());
+        // Dark background color for lock screen (matches Python app background)
+        let lock_bg: [f32; 4] = [0.05, 0.05, 0.08, 1.0];
+        surface_data.damage_tracker.render_output(
+            renderer,
+            &mut fb,
+            0, // Force full redraw
+            &lock_elements,
+            lock_bg,
+        )
     } else if (shell_view == ShellView::LockScreen || shell_view == ShellView::Home || shell_view == ShellView::PickDefault || shell_view == ShellView::QuickSettings) && !state.qs_gesture_active && !qs_home_gesture_active {
         // Shell views - render Slint UI (but not during QS gesture transitions)
         tracing::info!("Rendering {:?} with {} slint_elements, bg={:?}", shell_view, slint_elements.len(), bg_color);
@@ -2102,6 +2167,9 @@ fn handle_input_event(
                 if state.shell.view != crate::shell::ShellView::LockScreen {
                     info!("Power button pressed, locking screen");
                     state.shell.lock();
+                    if let Some(socket) = state.socket_name.to_str() {
+                        state.shell.launch_lock_screen_app(socket);
+                    }
                 }
                 return;
             }
@@ -2114,6 +2182,9 @@ fn handle_input_event(
                     if state.shell.view != crate::shell::ShellView::LockScreen {
                         info!("Super+L pressed, locking screen");
                         state.shell.lock();
+                        if let Some(socket) = state.socket_name.to_str() {
+                            state.shell.launch_lock_screen_app(socket);
+                        }
                     }
                     return;
                 }
@@ -2381,9 +2452,19 @@ fn handle_input_event(
                 if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
                     info!("Gesture touch_down returned: {:?}", gesture_event);
 
+                    // SECURITY: Block ALL edge gestures on lock screen to prevent bypass
                     // In Switcher view, ignore right edge gesture to allow horizontal scrolling
                     // But allow left edge (Quick Settings) and top/bottom (close/home)
-                    let should_process = if state.shell.view == crate::shell::ShellView::Switcher {
+                    let should_process = if state.shell.view == crate::shell::ShellView::LockScreen {
+                        // SECURITY: Cancel all edge gestures on lock screen
+                        if let crate::input::GestureEvent::EdgeSwipeStart { .. } = &gesture_event {
+                            info!("SECURITY: Blocking edge gesture on lock screen");
+                            state.gesture_recognizer.touch_cancel();
+                            false
+                        } else {
+                            false // Also block tap/long press gestures on lock screen
+                        }
+                    } else if state.shell.view == crate::shell::ShellView::Switcher {
                         if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
                             // Cancel only right edge gesture to allow horizontal scrolling
                             // Allow left edge (Quick Settings), top (close), and bottom (home)
@@ -2431,12 +2512,44 @@ fn handle_input_event(
                 info!("Touch down on keyboard - skipping gesture recognizer for slot {}", slot_id);
             }
 
-            // Lock screen touch is handled by Slint - just forward touch events
-            // The Slint callbacks (pin-digit-pressed, pattern-node-touched, etc.) will be triggered
+            // Lock screen touch handling
             if state.shell.view == crate::shell::ShellView::LockScreen {
-                // Forward touch to Slint for lock screen interaction
-                if let Some(ref slint_ui) = state.shell.slint_ui {
-                    slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                // If external Python lock screen app is active, forward touch to it
+                if state.shell.lock_screen_active && state.space.elements().count() > 0 {
+                    if let Some(touch) = state.seat.get_touch() {
+                        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+
+                        // Find surface under touch point (the Python lock screen window)
+                        let under = state.space.element_under(touch_pos)
+                            .map(|(window, loc)| {
+                                let surface = window.toplevel()
+                                    .map(|t| t.wl_surface().clone())
+                                    .or_else(|| window.x11_surface().and_then(|x| x.wl_surface()));
+                                (surface, loc)
+                            });
+
+                        let focus = under.as_ref().and_then(|(surface, loc)| {
+                            surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
+                        });
+
+                        info!("Lock screen touch down at ({}, {}), focus={}", touch_pos.x, touch_pos.y, focus.is_some());
+
+                        touch.down(
+                            state,
+                            focus,
+                            &smithay::input::touch::DownEvent {
+                                slot: event.slot(),
+                                location: touch_pos,
+                                serial,
+                                time: Event::time_msec(&event),
+                            },
+                        );
+                    }
+                } else {
+                    // Forward touch to Slint for built-in lock screen interaction
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                    }
                 }
             }
 
@@ -2569,6 +2682,7 @@ fn handle_input_event(
 
             // Check if touch is on Quick Settings panel
             if state.shell.view == crate::shell::ShellView::QuickSettings {
+                info!("QS DEBUG: Touch DOWN in QuickSettings at ({:.0}, {:.0})", touch_pos.x, touch_pos.y);
                 state.shell.start_qs_touch(touch_pos.x, touch_pos.y);
                 // Dispatch to Slint for toggle visual feedback and callbacks
                 if let Some(ref slint_ui) = state.shell.slint_ui {
@@ -2797,6 +2911,33 @@ fn handle_input_event(
                 // Dispatch to Slint for brightness slider interaction
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                }
+            }
+
+            // Forward touch motion to lock screen app when active
+            if state.shell.view == crate::shell::ShellView::LockScreen && state.shell.lock_screen_active && state.space.elements().count() > 0 {
+                if let Some(touch) = state.seat.get_touch() {
+                    let under = state.space.element_under(touch_pos)
+                        .map(|(window, loc)| {
+                            let surface = window.toplevel()
+                                .map(|t| t.wl_surface().clone())
+                                .or_else(|| window.x11_surface().and_then(|x| x.wl_surface()));
+                            (surface, loc)
+                        });
+
+                    let focus = under.as_ref().and_then(|(surface, loc)| {
+                        surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
+                    });
+
+                    touch.motion(
+                        state,
+                        focus,
+                        &smithay::input::touch::MotionEvent {
+                            slot: event.slot(),
+                            location: touch_pos,
+                            time: Event::time_msec(&event),
+                        },
+                    );
                 }
             }
 
@@ -3117,6 +3258,15 @@ fn handle_input_event(
                             state.shell.lock_state.switch_to_password();
                             info!("Switched to password mode");
                         }
+                        LockScreenAction::PasswordFieldTapped => {
+                            // Show the on-screen keyboard
+                            info!("Password field tapped - showing keyboard");
+                        }
+                        LockScreenAction::PasswordSubmit => {
+                            // Try PAM authentication with entered password
+                            info!("Password submit - attempting PAM auth");
+                            state.shell.try_unlock();
+                        }
                     }
                 }
 
@@ -3125,6 +3275,9 @@ fn handle_input_event(
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         // Update PIN length
                         slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
+
+                        // Update password length
+                        slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
 
                         // Update pattern nodes
                         let mut nodes = [false; 9];
@@ -3143,6 +3296,11 @@ fn handle_input_event(
                         // Update lock mode if changed to password
                         if actions.iter().any(|a| matches!(a, LockScreenAction::UsePassword)) {
                             slint_ui.set_lock_mode("password");
+                        }
+
+                        // Show keyboard if password field was tapped
+                        if actions.iter().any(|a| matches!(a, LockScreenAction::PasswordFieldTapped)) {
+                            slint_ui.set_keyboard_visible(true);
                         }
                     }
                 }
@@ -3297,10 +3455,12 @@ fn handle_input_event(
                 }
             }
 
-            // Handle Quick Settings touch up (toggle tap) and sync brightness
+            // Handle Quick Settings view touch up (toggle tap) and sync brightness
             if state.shell.view == crate::shell::ShellView::QuickSettings {
                 use crate::system::{WifiManager, BluetoothManager, AirplaneMode, Flashlight};
                 use crate::shell::slint_ui::QuickSettingsAction;
+
+                info!("QS DEBUG: Touch UP in QuickSettings, last_touch_pos={:?}", last_touch_pos);
 
                 // Clear old coordinate-based touch tracking
                 state.shell.end_qs_touch();
@@ -3346,6 +3506,9 @@ fn handle_input_event(
                                 QuickSettingsAction::Lock => {
                                     info!("Lock button pressed - locking screen");
                                     state.shell.lock();
+                                    if let Some(socket) = state.socket_name.to_str() {
+                                        state.shell.launch_lock_screen_app(socket);
+                                    }
                                 }
                                 QuickSettingsAction::Settings => {
                                     info!("Settings button pressed - launching settings app");
@@ -3368,6 +3531,7 @@ fn handle_input_event(
                                             if let Err(e) = std::process::Command::new("sh")
                                                 .arg("-c")
                                                 .arg(&exec_clone)
+                                                .env("WAYLAND_DISPLAY", &state.socket_name)
                                                 .spawn()
                                             {
                                                 tracing::error!("Failed to launch settings app '{}': {}", exec_clone, e);
@@ -3531,76 +3695,95 @@ fn handle_input_event(
                 }
             };
 
+            // Check if we're on lock screen in password mode
+            let is_lock_screen_password = state.shell.view == crate::shell::ShellView::LockScreen
+                && state.shell.lock_state.input_mode == crate::shell::lock_screen::LockInputMode::Password;
+
+            // Track if password was updated for UI sync
+            let mut password_updated = false;
+
             // Now process keyboard actions with full mutable access to state
             for action in keyboard_actions {
                 use crate::shell::slint_ui::KeyboardAction;
                 info!("Processing keyboard action: {:?}", action);
                 match action {
                     KeyboardAction::Character(ch) => {
-                        // Inject character as key press + release
-                        if let Some(c) = ch.chars().next() {
-                            if let Some((keycode, needs_shift)) = char_to_evdev(c) {
-                                if let Some(keyboard) = state.seat.get_keyboard() {
-                                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                                    let time = std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap_or_default()
-                                        .as_millis() as u32;
+                        // If on lock screen password mode, route to password entry
+                        if is_lock_screen_password {
+                            state.shell.lock_state.entered_password.push_str(&ch);
+                            password_updated = true;
+                            info!("Added character to lock screen password (len={})", state.shell.lock_state.entered_password.len());
+                        } else {
+                            // Inject character as key press + release
+                            if let Some(c) = ch.chars().next() {
+                                if let Some((keycode, needs_shift)) = char_to_evdev(c) {
+                                    if let Some(keyboard) = state.seat.get_keyboard() {
+                                        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                        let time = std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .unwrap_or_default()
+                                            .as_millis() as u32;
 
-                                    // XKB keycodes = evdev + 8
-                                    let xkb_keycode = keycode + 8;
+                                        // XKB keycodes = evdev + 8
+                                        let xkb_keycode = keycode + 8;
 
-                                    // If shift is needed, press shift first
-                                    if needs_shift {
+                                        // If shift is needed, press shift first
+                                        if needs_shift {
+                                            keyboard.input::<(), _>(
+                                                state,
+                                                smithay::input::keyboard::Keycode::new(42 + 8), // Left Shift (evdev 42 -> xkb 50)
+                                                smithay::backend::input::KeyState::Pressed,
+                                                serial,
+                                                time,
+                                                |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                                            );
+                                        }
+
+                                        // Press the key
                                         keyboard.input::<(), _>(
                                             state,
-                                            smithay::input::keyboard::Keycode::new(42 + 8), // Left Shift (evdev 42 -> xkb 50)
+                                            smithay::input::keyboard::Keycode::new(xkb_keycode),
                                             smithay::backend::input::KeyState::Pressed,
                                             serial,
                                             time,
                                             |_, _, _| smithay::input::keyboard::FilterResult::Forward,
                                         );
-                                    }
 
-                                    // Press the key
-                                    keyboard.input::<(), _>(
-                                        state,
-                                        smithay::input::keyboard::Keycode::new(xkb_keycode),
-                                        smithay::backend::input::KeyState::Pressed,
-                                        serial,
-                                        time,
-                                        |_, _, _| smithay::input::keyboard::FilterResult::Forward,
-                                    );
-
-                                    // Release the key
-                                    keyboard.input::<(), _>(
-                                        state,
-                                        smithay::input::keyboard::Keycode::new(xkb_keycode),
-                                        smithay::backend::input::KeyState::Released,
-                                        serial,
-                                        time + 1,
-                                        |_, _, _| smithay::input::keyboard::FilterResult::Forward,
-                                    );
-
-                                    // Release shift if we pressed it
-                                    if needs_shift {
+                                        // Release the key
                                         keyboard.input::<(), _>(
                                             state,
-                                            smithay::input::keyboard::Keycode::new(42 + 8), // Left Shift (evdev 42 -> xkb 50)
+                                            smithay::input::keyboard::Keycode::new(xkb_keycode),
                                             smithay::backend::input::KeyState::Released,
                                             serial,
-                                            time + 2,
+                                            time + 1,
                                             |_, _, _| smithay::input::keyboard::FilterResult::Forward,
                                         );
-                                    }
 
-                                    info!("Injected character '{}' (keycode={}, shift={})", c, keycode, needs_shift);
+                                        // Release shift if we pressed it
+                                        if needs_shift {
+                                            keyboard.input::<(), _>(
+                                                state,
+                                                smithay::input::keyboard::Keycode::new(42 + 8), // Left Shift (evdev 42 -> xkb 50)
+                                                smithay::backend::input::KeyState::Released,
+                                                serial,
+                                                time + 2,
+                                                |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                                            );
+                                        }
+
+                                        info!("Injected character '{}' (keycode={}, shift={})", c, keycode, needs_shift);
+                                    }
                                 }
                             }
                         }
                     }
                     KeyboardAction::Backspace => {
-                        if let Some(keyboard) = state.seat.get_keyboard() {
+                        if is_lock_screen_password {
+                            // Remove last character from password
+                            state.shell.lock_state.entered_password.pop();
+                            password_updated = true;
+                            info!("Removed character from lock screen password (len={})", state.shell.lock_state.entered_password.len());
+                        } else if let Some(keyboard) = state.seat.get_keyboard() {
                             let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                             let time = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
@@ -3628,7 +3811,11 @@ fn handle_input_event(
                         }
                     }
                     KeyboardAction::Enter => {
-                        if let Some(keyboard) = state.seat.get_keyboard() {
+                        if is_lock_screen_password {
+                            // Submit password for PAM auth
+                            info!("Enter pressed on lock screen password - attempting auth");
+                            state.shell.try_unlock();
+                        } else if let Some(keyboard) = state.seat.get_keyboard() {
                             let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                             let time = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
@@ -3656,7 +3843,12 @@ fn handle_input_event(
                         }
                     }
                     KeyboardAction::Space => {
-                        if let Some(keyboard) = state.seat.get_keyboard() {
+                        if is_lock_screen_password {
+                            // Add space to password (passwords can have spaces)
+                            state.shell.lock_state.entered_password.push(' ');
+                            password_updated = true;
+                            info!("Added space to lock screen password (len={})", state.shell.lock_state.entered_password.len());
+                        } else if let Some(keyboard) = state.seat.get_keyboard() {
                             let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                             let time = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
@@ -3706,6 +3898,13 @@ fn handle_input_event(
                         state.resize_windows_for_keyboard(false);
                         info!("Keyboard hidden");
                     }
+                }
+            }
+
+            // Update Slint UI password length if it changed
+            if password_updated {
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
                 }
             }
 

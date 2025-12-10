@@ -27,10 +27,17 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 
 ```
 ┌─────────────────────────────────────────────────────┐
+│                  System Apps (Flutter)              │
+│   Settings, Phone, Messages, Contacts, etc.         │
+│   Regular Wayland clients - easy to build & iterate │
+└─────────────────────────────────────────────────────┘
+                        │ Wayland protocol
+┌─────────────────────────────────────────────────────┐
 │              Flick Shell (Rust + Slint)             │
 │  ┌─────────────────────────────────────────────────┐│
 │  │              Slint UI Layer                     ││
-│  │   Home screen, lock screen, quick settings     ││
+│  │   Home screen, lock screen, quick settings,    ││
+│  │   app switcher, on-screen keyboard             ││
 │  │      (GPU accelerated via OpenGL ES 2.0)       ││
 │  └─────────────────────────────────────────────────┘│
 │  ┌─────────────────────────────────────────────────┐│
@@ -45,12 +52,25 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 └─────────────────────────────────────────────────────┘
 ```
 
-The shell UI is rendered directly by the compositor using Slint - no separate shell process, no IPC. This provides:
-- Zero-latency gesture response
-- Direct access to window management
-- Single process simplicity
-- Smooth 60fps animations
-- OpenGL ES 2.0 for broad device support
+### Design Philosophy
+
+**Shell (Rust + Slint)** - The compositor handles:
+- Window management & compositing
+- Touch gesture recognition
+- Core UI: home screen, lock screen, quick settings toggles, app switcher
+- On-screen keyboard
+- Zero-latency gesture response via direct rendering
+
+**System Apps (Flutter)** - Regular Wayland clients for:
+- Settings (WiFi, Bluetooth, display, lock screen config, etc.)
+- Phone/Dialer
+- Messages/SMS
+- Contacts
+- Any app with complex UI that benefits from rapid iteration
+
+This separation keeps the shell lean and stable while allowing apps to be developed quickly using Flutter's rich widget library and hot reload. Apps communicate with the shell via:
+- Config files (e.g., `~/.local/state/flick/lock_config.json`)
+- D-Bus for real-time events (notifications, calls, etc.)
 
 ## Gestures
 
@@ -140,7 +160,7 @@ flick/
 │   │   ├── shell/             # Shell UI components
 │   │   │   ├── mod.rs         # Shell state
 │   │   │   ├── slint_ui.rs    # Slint integration
-│   │   │   ├── lock_screen.rs # Lock screen
+│   │   │   ├── lock_screen.rs # Lock screen auth logic
 │   │   │   ├── quick_settings.rs
 │   │   │   └── apps.rs        # .desktop file parsing
 │   │   ├── backend/
@@ -148,8 +168,10 @@ flick/
 │   │   └── system.rs          # Hardware integration
 │   └── ui/
 │       └── shell.slint        # Slint UI definitions
-├── apps/
-│   └── flick_settings/        # Settings app
+├── apps/                       # Flutter system apps
+│   ├── flick_settings/        # Settings app (WiFi, lock screen, etc.)
+│   ├── flick_phone/           # Phone/Dialer app (planned)
+│   └── flick_messages/        # SMS/MMS app (planned)
 └── start.sh                   # Launch script
 ```
 

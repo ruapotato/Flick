@@ -831,34 +831,39 @@ component PatternGrid inherits Rectangle {
     }
 }
 
-// Lock screen view - fills entire screen
-// Supports PIN, Pattern, and Password modes
+// Lock screen view - simple background placeholder
+// The actual lock screen UI is handled by an external Python/Kivy app
+// This component just provides a background while the Python app launches
 component LockScreen inherits Rectangle {
+    // Keep properties for compatibility with Rust code (not actively used)
     in property <string> time: "12:00";
     in property <string> date: "Saturday, December 7";
     in property <int> pin-length: 0;
     in property <string> error-message: "";
-    in property <string> lock-mode: "pin";  // "pin", "pattern", "password", "none"
+    in property <string> lock-mode: "pin";
     in property <[bool]> pattern-nodes: [false, false, false, false, false, false, false, false, false];
-    in property <string> lockout-message: "";  // Shows when locked out
+    in property <string> lockout-message: "";
+    in property <int> password-length: 0;
 
+    // Keep callbacks for compatibility (not actively used)
     callback digit-pressed(string);
     callback backspace-pressed();
     callback pattern-node-touched(int);
     callback pattern-complete();
     callback pattern-started();
     callback use-password-pressed();
+    callback password-field-tapped();
+    callback password-submit();
 
     width: 100%;
     height: 100%;
     background: Theme.background;
 
+    // Simple "loading" indicator while Python app launches
     VerticalLayout {
         alignment: center;
-        spacing: 24px;
-        padding: 32px;
+        spacing: 16px;
 
-        // Time display
         Text {
             text: time;
             color: Theme.on-surface;
@@ -867,109 +872,11 @@ component LockScreen inherits Rectangle {
             horizontal-alignment: center;
         }
 
-        // Date
         Text {
             text: date;
             color: Theme.on-surface-variant;
             font-size: 18px;
             horizontal-alignment: center;
-        }
-
-        Rectangle { height: 16px; }
-
-        // Mode label
-        Text {
-            text: lock-mode == "pin" ? "Enter PIN" :
-                  lock-mode == "pattern" ? "Draw Pattern" :
-                  lock-mode == "password" ? "Enter Password" : "";
-            color: Theme.on-surface-variant;
-            font-size: 16px;
-            horizontal-alignment: center;
-        }
-
-        Rectangle { height: 8px; }
-
-        // Lockout message (shown when too many failed attempts)
-        if lockout-message != "": Text {
-            text: lockout-message;
-            color: Theme.error;
-            font-size: 16px;
-            font-weight: 600;
-            horizontal-alignment: center;
-        }
-
-        // PIN dots (only for PIN mode)
-        if lock-mode == "pin": HorizontalLayout {
-            alignment: center;
-            spacing: 16px;
-
-            for i in 6: Rectangle {
-                width: 16px;
-                height: 16px;
-                border-radius: 8px;
-                background: i < pin-length ? Theme.primary : Theme.surface-variant;
-            }
-        }
-
-        // Error message
-        if error-message != "": Text {
-            text: error-message;
-            color: Theme.error;
-            font-size: 14px;
-            horizontal-alignment: center;
-        }
-
-        Rectangle { height: 8px; }
-
-        // PIN pad - centered (only for PIN mode)
-        if lock-mode == "pin" && lockout-message == "": HorizontalLayout {
-            alignment: center;
-            PinPad {
-                digit-pressed(d) => { root.digit-pressed(d); }
-                backspace-pressed => { root.backspace-pressed(); }
-            }
-        }
-
-        // Pattern grid - centered (only for Pattern mode)
-        if lock-mode == "pattern" && lockout-message == "": HorizontalLayout {
-            alignment: center;
-            PatternGrid {
-                selected-nodes: root.pattern-nodes;
-                node-touched(idx) => { root.pattern-node-touched(idx); }
-                pattern-complete => { root.pattern-complete(); }
-                pattern-started => { root.pattern-started(); }
-            }
-        }
-
-        // Password mode hint
-        if lock-mode == "password" && lockout-message == "": Text {
-            text: "Use system keyboard to enter password";
-            color: Theme.on-surface-variant;
-            font-size: 14px;
-            horizontal-alignment: center;
-        }
-
-        Rectangle { height: 16px; }
-
-        // "Use Password" fallback link (only for PIN/Pattern modes)
-        if lock-mode != "password" && lock-mode != "none" && lockout-message == "": Rectangle {
-            height: 40px;
-            background: touch-pw.pressed ? Theme.surface-variant : transparent;
-            border-radius: 20px;
-
-            Text {
-                width: 100%;
-                height: 100%;
-                text: "Use Password";
-                color: Theme.primary;
-                font-size: 14px;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
-
-            touch-pw := TouchArea {
-                clicked => { use-password-pressed(); }
-            }
         }
     }
 }
@@ -1856,7 +1763,7 @@ component AppSwitcherPanel inherits Rectangle {
 
 // Main shell component
 export component FlickShell inherits Window {
-    in property <string> current-view: "lock"; // "lock", "home", "quick-settings", "pick-default"
+    in property <string> current-view: "lock"; // "lock", "home", "quick-settings", "pick-default", "switcher", "app"
     in property <[AppCategory]> categories: [];
     in property <string> lock-time: "12:00";
     in property <string> lock-date: "Saturday, December 7";
@@ -1907,6 +1814,7 @@ export component FlickShell inherits Window {
     in property <string> lock-mode: "pin";  // "pin", "pattern", "password", "none"
     in property <[bool]> pattern-nodes: [false, false, false, false, false, false, false, false, false];
     in property <string> lockout-message: "";  // Shows when locked out
+    in property <int> password-length: 0;  // Length of entered password
 
     callback pin-digit-pressed(string);
     callback pin-backspace-pressed();
@@ -1915,6 +1823,8 @@ export component FlickShell inherits Window {
     callback pattern-complete();
     callback pattern-started();
     callback use-password-pressed();
+    callback password-field-tapped();  // Show keyboard for password entry
+    callback password-submit();  // Submit password
     callback app-tapped(int);
     callback app-long-pressed(int);
     callback brightness-changed(float);
@@ -2020,12 +1930,15 @@ export component FlickShell inherits Window {
         lock-mode: root.lock-mode;
         pattern-nodes: root.pattern-nodes;
         lockout-message: root.lockout-message;
+        password-length: root.password-length;
         digit-pressed(d) => { pin-digit-pressed(d); }
         backspace-pressed => { pin-backspace-pressed(); }
         pattern-node-touched(idx) => { root.pattern-node-touched(idx); }
         pattern-complete => { root.pattern-complete(); }
         pattern-started => { root.pattern-started(); }
         use-password-pressed => { root.use-password-pressed(); }
+        password-field-tapped => { root.password-field-tapped(); }
+        password-submit => { root.password-submit(); }
     }
 
     // Pick default app view
@@ -2038,6 +1951,7 @@ export component FlickShell inherits Window {
         app-selected(exec) => { pick-default-selected(exec); }
         back-pressed => { pick-default-back(); }
     }
+
 
     // Popup menu overlay (shown on top of home when long press)
     if show-popup && current-view == "home": Rectangle {

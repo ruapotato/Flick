@@ -1,7 +1,7 @@
 //! Integrated shell UI - rendered directly by the compositor
 //!
 //! Components:
-//! - Lock screen (PIN, pattern, password authentication)
+//! - Lock screen (PIN, pattern, password authentication - now external Python app)
 //! - App grid (home screen)
 //! - App switcher (Android-style card stack)
 //! - Quick settings panel (notifications/toggles)
@@ -20,6 +20,16 @@ pub mod slint_ui;
 
 use smithay::utils::{Logical, Point, Size};
 use crate::input::{Edge, GestureEvent};
+use std::path::PathBuf;
+
+/// Path to Flick's lock screen app (Python/Kivy)
+pub const FLICK_LOCKSCREEN_EXEC: &str = "/home/david/Flick/apps/flick_lockscreen/flick_lockscreen.py";
+
+/// Path to unlock signal file (written by lock screen app on successful auth)
+pub fn unlock_signal_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home).join(".local/state/flick/unlock_signal")
+}
 
 /// App definition for the launcher
 #[derive(Debug, Clone)]
@@ -205,10 +215,12 @@ pub struct Shell {
     pub icon_cache: icons::IconCache,
     /// Lock screen configuration
     pub lock_config: lock_screen::LockConfig,
-    /// Lock screen runtime state
+    /// Lock screen runtime state (kept for legacy compatibility, not actively used)
     pub lock_state: lock_screen::LockScreenState,
     /// Slint UI shell (optional - may fail to initialize)
     pub slint_ui: Option<slint_ui::SlintShell>,
+    /// Whether external lock screen app is active
+    pub lock_screen_active: bool,
 }
 
 impl Shell {
@@ -286,9 +298,11 @@ impl Shell {
             popup_category: None,
             pick_default_just_opened: false,
             icon_cache: icons::IconCache::new(128), // 128px icons for larger tiles
-            lock_config,
+            lock_config: lock_config.clone(),
             lock_state,
             slint_ui,
+            // Set lock_screen_active based on whether we start with a lock screen
+            lock_screen_active: lock_config.method != lock_screen::LockMethod::None,
         };
 
         // Preload icons for all categories
@@ -359,18 +373,66 @@ impl Shell {
     /// Unlock and transition to home screen
     pub fn unlock(&mut self) {
         tracing::info!("Lock screen unlocked");
+        self.lock_screen_active = false;
         self.set_view(ShellView::Home);
         self.lock_state.reset_input();
         self.lock_state.failed_attempts = 0;
         self.lock_state.error_message = None;
+        // Clear the unlock signal file if it exists
+        let signal_path = unlock_signal_path();
+        if signal_path.exists() {
+            let _ = std::fs::remove_file(&signal_path);
+        }
     }
 
-    /// Lock the screen
+    /// Lock the screen - sets up state, compositor will launch Python app
     pub fn lock(&mut self) {
         tracing::info!("Locking screen");
+        self.lock_config = lock_screen::LockConfig::load(); // Reload latest config
         if self.lock_config.method != lock_screen::LockMethod::None {
+            self.lock_screen_active = true;
             self.set_view(ShellView::LockScreen);
             self.lock_state = lock_screen::LockScreenState::new(&self.lock_config);
+            // Clear any stale unlock signal
+            let signal_path = unlock_signal_path();
+            if signal_path.exists() {
+                let _ = std::fs::remove_file(&signal_path);
+            }
+        }
+    }
+
+    /// Check if lock screen app has signaled successful unlock
+    /// Returns true if unlock signal was found (caller should call unlock())
+    pub fn check_unlock_signal(&self) -> bool {
+        if !self.lock_screen_active {
+            return false;
+        }
+        let signal_path = unlock_signal_path();
+        signal_path.exists()
+    }
+
+    /// Launch the external lock screen app (called by compositor)
+    pub fn launch_lock_screen_app(&self, socket_name: &str) -> bool {
+        if !self.lock_screen_active {
+            return false;
+        }
+
+        tracing::info!("Launching external lock screen app: {}", FLICK_LOCKSCREEN_EXEC);
+
+        match std::process::Command::new("sh")
+            .arg("-c")
+            .arg(FLICK_LOCKSCREEN_EXEC)
+            .env("WAYLAND_DISPLAY", socket_name)
+            .spawn()
+        {
+            Ok(_) => {
+                tracing::info!("Lock screen app launched successfully");
+                true
+            }
+            Err(e) => {
+                tracing::error!("Failed to launch lock screen app: {}", e);
+                false
+            }
         }
     }
 

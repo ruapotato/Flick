@@ -25,7 +25,7 @@ pub enum PopupAction {
 }
 
 /// Actions that can be triggered from Quick Settings
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum QuickSettingsAction {
     WifiToggle,
     BluetoothToggle,
@@ -34,7 +34,7 @@ pub enum QuickSettingsAction {
     AirplaneToggle,
     RotationToggle,
     Lock,
-    Settings,
+    Settings,  // Now launches Flutter Settings app
     BrightnessChanged(f32),
 }
 
@@ -72,6 +72,10 @@ pub enum LockScreenAction {
     PatternStarted,
     /// Switch to password mode requested
     UsePassword,
+    /// Password field tapped (show keyboard)
+    PasswordFieldTapped,
+    /// Password submit button pressed
+    PasswordSubmit,
 }
 
 /// Slint UI state for the shell
@@ -294,6 +298,18 @@ impl SlintShell {
             lock_clone.borrow_mut().push(LockScreenAction::UsePassword);
         });
 
+        let lock_clone = pending_lock_actions.clone();
+        shell.on_password_field_tapped(move || {
+            info!("Slint password field tapped");
+            lock_clone.borrow_mut().push(LockScreenAction::PasswordFieldTapped);
+        });
+
+        let lock_clone = pending_lock_actions.clone();
+        shell.on_password_submit(move || {
+            info!("Slint password submit pressed");
+            lock_clone.borrow_mut().push(LockScreenAction::PasswordSubmit);
+        });
+
         Self {
             window,
             shell,
@@ -364,6 +380,11 @@ impl SlintShell {
     /// Set lockout message (shown when too many failed attempts)
     pub fn set_lockout_message(&self, msg: &str) {
         self.shell.set_lockout_message(msg.into());
+    }
+
+    /// Set password length (for dots display)
+    pub fn set_password_length(&self, len: i32) {
+        self.shell.set_password_length(len);
     }
 
     /// Poll for pending lock screen actions
