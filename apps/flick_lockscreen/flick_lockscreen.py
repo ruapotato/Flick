@@ -553,6 +553,10 @@ class LockScreenApp(App):
     def build(self):
         Window.clearcolor = THEME['bg_dark']
 
+        # Bind keyboard events for physical/virtual keyboard input
+        Window.bind(on_key_down=self._on_key_down)
+        logger.info("Keyboard event handler bound")
+
         # Update time every second
         Clock.schedule_interval(self._update_time, 1)
         self._update_time(0)
@@ -908,6 +912,47 @@ class LockScreenApp(App):
         logger.info("Exiting lock screen app")
         App.get_running_app().stop()
         sys.exit(0)
+
+    def _on_key_down(self, window, key, scancode, codepoint, modifiers):
+        """Handle keyboard input from physical or virtual keyboard"""
+        logger.info(f"KEY DOWN: key={key}, scancode={scancode}, codepoint={codepoint!r}, modifiers={modifiers}")
+
+        # Get current active mode
+        # Check if we're in password mode (TextInput exists and should handle its own input)
+        if hasattr(self, 'password_input') and self.password_input and self.password_input.focus:
+            # Let TextInput handle the input, but handle Enter ourselves
+            if key == 13:  # Enter
+                self._on_password_submit()
+                return True
+            # TextInput will handle other keys
+            return False
+
+        # Handle PIN mode keyboard input
+        if self.lock_config.method == "pin" or (hasattr(self, 'pin_pad') and self.pin_pad):
+            # Number keys (both main keyboard and numpad)
+            if codepoint and codepoint.isdigit():
+                logger.info(f"PIN digit from keyboard: {codepoint}")
+                self._on_pin_digit(codepoint)
+                return True
+
+            # Backspace (key 8 or 22 on some systems)
+            if key == 8 or key == 22 or scancode == 22 or scancode == 14:
+                logger.info("Backspace from keyboard")
+                self._on_pin_backspace()
+                return True
+
+            # Enter key to submit (key 13)
+            if key == 13 or scancode == 36 or scancode == 28:
+                logger.info("Enter from keyboard - attempting verify")
+                self._try_verify_pin()
+                return True
+
+        # Pattern mode - only handle numbers for fallback
+        if self.lock_config.method == "pattern":
+            # Could add pattern input via keyboard in future
+            pass
+
+        return False
 
 
 if __name__ == "__main__":
