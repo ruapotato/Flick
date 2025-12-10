@@ -592,9 +592,14 @@ fn process_lock_actions(state: &mut Flick, actions: &[LockScreenAction]) {
             LockScreenAction::PinDigit(digit) => {
                 if state.shell.lock_state.entered_pin.len() < 6 {
                     state.shell.lock_state.entered_pin.push_str(digit);
-                    info!("PIN digit entered, length: {}", state.shell.lock_state.entered_pin.len());
-                    // Try to unlock after each digit (supports 4-6 digit PINs)
-                    if state.shell.lock_state.entered_pin.len() >= 4 {
+                    let pin_len = state.shell.lock_state.entered_pin.len();
+                    info!("PIN digit entered, length: {}", pin_len);
+                    // Try to unlock: silent for 4-5 digits, with reset at 6
+                    if pin_len >= 4 && pin_len < 6 {
+                        // Silent try - don't reset on failure (user may have longer PIN)
+                        state.shell.try_pin_silent();
+                    } else if pin_len == 6 {
+                        // Max length reached - full try with reset on failure
                         state.shell.try_unlock();
                     }
                 }
@@ -733,7 +738,7 @@ fn render_frame(
 
                         let buffer = MemoryRenderBuffer::from_slice(
                             &pixels,
-                            smithay::backend::allocator::Fourcc::Argb8888,
+                            smithay::backend::allocator::Fourcc::Abgr8888,
                             (width as i32, height as i32),
                             1,
                             Transform::Normal,

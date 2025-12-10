@@ -3422,9 +3422,13 @@ fn handle_input_event(
                         LockScreenAction::PinDigit(digit) => {
                             if state.shell.lock_state.entered_pin.len() < 6 {
                                 state.shell.lock_state.entered_pin.push_str(digit);
-                                // Try to unlock after each digit (supports 4-6 digit PINs)
-                                // If PIN is correct, it unlocks; if wrong, continue entering
-                                if state.shell.lock_state.entered_pin.len() >= 4 {
+                                let pin_len = state.shell.lock_state.entered_pin.len();
+                                // Try to unlock: silent for 4-5 digits, with reset at 6
+                                if pin_len >= 4 && pin_len < 6 {
+                                    // Silent try - don't reset on failure (user may have longer PIN)
+                                    state.shell.try_pin_silent();
+                                } else if pin_len == 6 {
+                                    // Max length reached - full try with reset on failure
                                     state.shell.try_unlock();
                                 }
                             }

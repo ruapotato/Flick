@@ -360,6 +360,17 @@ impl Shell {
         false
     }
 
+    /// Try to unlock with PIN silently (no reset on failure)
+    /// Used for auto-try as user types 4-5 digit PINs
+    /// Returns true if unlock succeeded
+    pub fn try_pin_silent(&mut self) -> bool {
+        if self.lock_config.verify_pin(&self.lock_state.entered_pin) {
+            self.unlock();
+            return true;
+        }
+        false
+    }
+
     /// Set the shell view, hiding keyboard when leaving App view
     pub fn set_view(&mut self, new_view: ShellView) {
         // SECURITY: Block view changes while lock screen is active
