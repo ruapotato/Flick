@@ -14,14 +14,15 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 - Home screen with categorized app grid
 - App switcher with Android-style stacked cards
 - Quick Settings panel (WiFi, Bluetooth, brightness, flashlight, airplane mode, rotation lock)
-- Lock screen with PIN/pattern authentication
+- Lock screen with PIN authentication (Python/Kivy app)
+- On-screen keyboard (Slint-based, integrated into shell)
 - XWayland support for X11 apps
 - Smooth animated transitions throughout
 
 **In Progress:**
-- On-screen keyboard (next priority)
-- PAM integration for lock screen
-- Settings app enhancements
+- Keyboard input routing to lock screen
+- PAM integration for lock screen (system password auth)
+- Settings app
 
 ## Architecture
 
@@ -29,15 +30,14 @@ Flick uses a **layered architecture** that separates the core compositor from UI
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│           App Layer (Python/Kivy, Flutter, etc.)    │
+│              App Layer (Python/Kivy)                │
 │  ┌───────────────┐  ┌───────────────────────────┐  │
 │  │  Lock Screen  │  │   Settings, Phone, SMS,   │  │
-│  │  (Python/Kivy)│  │   Contacts (Flutter)      │  │
+│  │  (Python/Kivy)│  │   Contacts (planned)      │  │
 │  │  Fullscreen   │  │   Regular windowed apps   │  │
 │  │  Wayland app  │  │                           │  │
 │  └───────────────┘  └───────────────────────────┘  │
 │   Beautiful animated visuals, PAM authentication    │
-│   File-based IPC with shell for unlock signals      │
 └─────────────────────────────────────────────────────┘
                         │ Wayland protocol
 ┌─────────────────────────────────────────────────────┐
@@ -71,27 +71,27 @@ Flick uses a **layered architecture** that separates the core compositor from UI
 - Zero-latency gesture response via direct rendering
 - **Security policy**: blocks all navigation gestures while lock screen is active
 
-**App Layer (Python/Kivy, Flutter)** - Regular Wayland clients:
-- **Lock Screen** (Python/Kivy) - Full-screen app with beautiful animations, PIN/pattern entry, PAM authentication. Runs as a special Wayland client that the shell recognizes.
-- **Settings** (Flutter) - WiFi, Bluetooth, display, lock screen config, etc.
-- **Phone/Messages/Contacts** (Flutter) - Planned system apps
+**App Layer (Python/Kivy)** - Regular Wayland clients:
+- **Lock Screen** (Python/Kivy) - Full-screen app with beautiful animations, PIN entry, PAM authentication. Runs as a special Wayland client that the shell recognizes.
+- **Settings** (planned) - WiFi, Bluetooth, display, lock screen config, etc.
+- **Phone/Messages/Contacts** (planned) - System apps
 
 This separation enables:
 - **Security**: Shell enforces lock screen - even if the Python app crashed, gestures still blocked
-- **Flexibility**: Swap lock screen implementation (Python → Flutter → native) without touching compositor
-- **Rapid iteration**: Use Python/Kivy for quick prototyping, Flutter for production apps
+- **Flexibility**: Swap lock screen implementation without touching compositor
+- **Rapid iteration**: Use Python/Kivy for quick prototyping with rich visuals
 - **Beautiful UIs**: Python/Kivy enables stunning visual effects that would be complex in Slint
 
 Apps communicate with the shell via:
 - **File-based IPC**: `~/.local/state/flick/unlock_signal` (lock screen writes, shell reads)
 - **Config files**: `~/.local/state/flick/lock_config.json` (credentials, settings)
-- **D-Bus**: For real-time events (notifications, calls, etc.)
+- **Wayland protocols**: Standard keyboard/input via Wayland
 
 ## Gestures
 
 | Gesture | Action |
 |---------|--------|
-| Swipe up from bottom | Go home / minimize app |
+| Swipe up from bottom | Go home / show keyboard (in apps) |
 | Swipe down from top | Close current app |
 | Swipe right from left edge | Quick Settings panel |
 | Swipe left from right edge | App switcher |
@@ -107,7 +107,7 @@ All gestures track 1:1 with your finger for responsive, natural feel.
 ```bash
 sudo apt install libseat-dev libinput-dev libudev-dev libgbm-dev \
                  libegl-dev libdrm-dev libxkbcommon-dev pkg-config \
-                 libpam0g-dev
+                 libpam0g-dev python3-kivy
 ```
 
 ### Build & Run
@@ -136,17 +136,18 @@ Press `Ctrl+Alt+F1` through `Ctrl+Alt+F12` to switch between virtual terminals.
 - [x] Home screen with app grid
 - [x] App switcher with card stack
 - [x] Quick Settings panel
-- [x] Lock screen (PIN/pattern)
+- [x] Lock screen (PIN)
+- [x] On-screen keyboard (Slint-based)
 - [x] XWayland support
 - [x] Animated transitions
 
 ### Phase 2: Daily Driver Basics (Current)
-- [ ] **On-screen keyboard** (Wayland virtual keyboard protocol + XWayland)
-- [ ] PAM authentication for lock screen (Linux password as fallback)
+- [ ] Keyboard input routing to all apps
+- [ ] PAM authentication for lock screen (Linux password)
 - [ ] Notifications (freedesktop notification daemon)
-- [ ] Settings: WiFi network picker
-- [ ] Settings: Bluetooth pairing
-- [ ] Settings: Sound controls
+- [ ] Settings app: WiFi network picker
+- [ ] Settings app: Bluetooth pairing
+- [ ] Settings app: Sound controls
 
 ### Phase 3: Phone Features
 - [ ] Telephony (ModemManager integration)
@@ -174,7 +175,7 @@ flick/
 │   │   │   └── gestures.rs    # Touch gesture recognition
 │   │   ├── shell/             # Shell UI components
 │   │   │   ├── mod.rs         # Shell state + view transitions
-│   │   │   ├── slint_ui.rs    # Slint integration
+│   │   │   ├── slint_ui.rs    # Slint integration + keyboard
 │   │   │   ├── lock_screen.rs # Lock screen detection + IPC
 │   │   │   ├── quick_settings.rs
 │   │   │   └── apps.rs        # .desktop file parsing
@@ -182,20 +183,17 @@ flick/
 │   │   │   └── udev.rs        # DRM/KMS backend + gesture security
 │   │   └── system.rs          # Hardware integration
 │   └── ui/
-│       └── shell.slint        # Slint UI definitions
-├── apps/                       # App layer - Python/Kivy + Flutter apps
-│   ├── flick_lockscreen/      # Lock screen (Python/Kivy)
-│   │   └── main.py            # Beautiful animated PIN/pattern entry
-│   ├── flick_settings/        # Settings app (Flutter)
-│   ├── flick_phone/           # Phone/Dialer app (planned)
-│   └── flick_messages/        # SMS/MMS app (planned)
+│       └── shell.slint        # Slint UI definitions (keyboard, home, etc.)
+├── apps/                       # App layer - Python/Kivy apps
+│   └── flick_lockscreen/      # Lock screen (Python/Kivy)
+│       └── flick_lockscreen.py # Animated PIN entry + PAM auth
 └── start.sh                   # Launch script
 ```
 
 ## Contributing
 
 Flick aims to be the best Linux phone DE. Contributions welcome - especially for:
-- On-screen keyboard improvements
+- Keyboard improvements (swipe typing, predictions)
 - Phone hardware support (ModemManager, ofono)
 - Accessibility features
 - Testing on different devices
