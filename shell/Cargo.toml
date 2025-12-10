@@ -65,6 +65,8 @@ lazy_static = "1.4"
 # Authentication
 pam = "0.7"
 bcrypt = "0.15"
+sha2 = "0.10"
+hex = "0.4"
 
 [features]
 default = ["udev"]

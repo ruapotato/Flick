@@ -333,10 +333,13 @@ impl Shell {
     pub fn try_unlock(&mut self) -> bool {
         match self.lock_state.input_mode {
             lock_screen::LockInputMode::Pin => {
+                tracing::info!("try_unlock: attempting PIN verification for length {}", self.lock_state.entered_pin.len());
                 if self.lock_config.verify_pin(&self.lock_state.entered_pin) {
+                    tracing::info!("try_unlock: PIN verified successfully!");
                     self.unlock();
                     return true;
                 }
+                tracing::info!("try_unlock: PIN verification FAILED, will reset");
             }
             lock_screen::LockInputMode::Pattern => {
                 if self.lock_config.verify_pattern(&self.lock_state.pattern_nodes) {
@@ -364,10 +367,14 @@ impl Shell {
     /// Used for auto-try as user types 4-5 digit PINs
     /// Returns true if unlock succeeded
     pub fn try_pin_silent(&mut self) -> bool {
-        if self.lock_config.verify_pin(&self.lock_state.entered_pin) {
+        let pin = &self.lock_state.entered_pin;
+        tracing::info!("try_pin_silent: attempting verification for PIN length {} (content hidden)", pin.len());
+        if self.lock_config.verify_pin(pin) {
+            tracing::info!("try_pin_silent: PIN verified successfully!");
             self.unlock();
             return true;
         }
+        tracing::debug!("try_pin_silent: PIN verification failed");
         false
     }
 

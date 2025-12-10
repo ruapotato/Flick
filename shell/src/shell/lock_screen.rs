@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use smithay::utils::{Logical, Point};
+use sha2::{Sha256, Digest};
 
 /// Lock screen authentication method
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -106,23 +107,55 @@ impl LockConfig {
     }
 
     /// Verify a PIN against the stored hash
+    /// Supports both bcrypt hashes ($2a$...) and SHA-256 hex hashes (64 chars)
     pub fn verify_pin(&self, pin: &str) -> bool {
         if let Some(ref hash) = self.pin_hash {
-            bcrypt::verify(pin, hash).unwrap_or(false)
+            // Detect hash format: bcrypt starts with $2, SHA-256 is 64 hex chars
+            let result = if hash.starts_with("$2") {
+                // Bcrypt hash
+                tracing::debug!("verify_pin: using bcrypt verification");
+                bcrypt::verify(pin, hash).unwrap_or(false)
+            } else if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+                // SHA-256 hex hash
+                tracing::debug!("verify_pin: using SHA-256 verification");
+                let mut hasher = Sha256::new();
+                hasher.update(pin.as_bytes());
+                let pin_hash = hex::encode(hasher.finalize());
+                pin_hash == *hash
+            } else {
+                tracing::warn!("verify_pin: unknown hash format (len={})", hash.len());
+                false
+            };
+            tracing::info!("verify_pin: verification result: {}", result);
+            result
         } else {
+            tracing::warn!("verify_pin: NO PIN HASH configured!");
             false
         }
     }
 
     /// Verify a pattern against the stored hash
     /// Pattern is a sequence of node indices (0-8)
+    /// Supports both bcrypt hashes ($2a$...) and SHA-256 hex hashes (64 chars)
     pub fn verify_pattern(&self, pattern: &[u8]) -> bool {
         if let Some(ref hash) = self.pattern_hash {
             let pattern_str = pattern.iter()
                 .map(|n| n.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            bcrypt::verify(&pattern_str, hash).unwrap_or(false)
+
+            // Detect hash format: bcrypt starts with $2, SHA-256 is 64 hex chars
+            if hash.starts_with("$2") {
+                bcrypt::verify(&pattern_str, hash).unwrap_or(false)
+            } else if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+                let mut hasher = Sha256::new();
+                hasher.update(pattern_str.as_bytes());
+                let computed_hash = hex::encode(hasher.finalize());
+                computed_hash == *hash
+            } else {
+                tracing::warn!("verify_pattern: unknown hash format");
+                false
+            }
         } else {
             false
         }
