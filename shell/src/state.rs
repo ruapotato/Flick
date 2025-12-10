@@ -397,7 +397,7 @@ impl Flick {
                 let has_windows = self.space.elements().any(|w| w.x11_surface().is_some() || w.toplevel().is_some());
                 if !has_windows {
                     tracing::info!("No more windows, switching to Home view");
-                    self.shell.view = crate::shell::ShellView::Home;
+                    self.shell.set_view(crate::shell::ShellView::Home);
                     self.shell.switcher_scroll = 0.0; // Reset switcher state
                 }
             } else {

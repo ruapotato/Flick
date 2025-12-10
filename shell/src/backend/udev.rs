@@ -2829,12 +2829,14 @@ fn handle_input_event(
                 state.shell.handle_gesture(&gesture_event);
 
                 // Update close gesture animation when swiping from top
+                // SECURITY: Block ALL edge gesture updates on lock screen
                 if let crate::input::GestureEvent::EdgeSwipeUpdate { edge, progress, .. } = &gesture_event {
-                    if *edge == crate::input::Edge::Top {
+                    if *edge == crate::input::Edge::Top && state.shell.view != crate::shell::ShellView::LockScreen {
                         state.update_close_gesture(*progress);
                     }
                     // Update home gesture animation when swiping from bottom
-                    if *edge == crate::input::Edge::Bottom {
+                    // SECURITY: Block on lock screen
+                    if *edge == crate::input::Edge::Bottom && state.shell.view != crate::shell::ShellView::LockScreen {
                         state.update_home_gesture(*progress);
                     }
                     // Update switcher transition when swiping from right (only in App view)
@@ -2843,7 +2845,8 @@ fn handle_input_event(
                         state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
                     }
                     // Update quick settings transition when swiping from left
-                    if *edge == crate::input::Edge::Left {
+                    // SECURITY: Block on lock screen to prevent bypass
+                    if *edge == crate::input::Edge::Left && state.shell.view != crate::shell::ShellView::LockScreen {
                         state.qs_gesture_active = true;
                         // Don't clamp to 1.0 - allow full screen swipe
                         // Max progress = screen_w / 300 (swipe_threshold)

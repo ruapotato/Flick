@@ -355,6 +355,13 @@ impl Shell {
 
     /// Set the shell view, hiding keyboard when leaving App view
     pub fn set_view(&mut self, new_view: ShellView) {
+        // SECURITY: Block view changes while lock screen is active
+        // Only the unlock() function should change the view from LockScreen
+        if self.lock_screen_active && self.view == ShellView::LockScreen && new_view != ShellView::LockScreen {
+            tracing::warn!("SECURITY: Blocked view change from LockScreen to {:?} while lock_screen_active=true", new_view);
+            return;
+        }
+
         // Hide keyboard when leaving App view
         if self.view == ShellView::App && new_view != ShellView::App {
             if let Some(ref slint_ui) = self.slint_ui {

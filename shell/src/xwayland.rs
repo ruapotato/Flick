@@ -64,7 +64,7 @@ impl XwmHandler for Flick {
 
         // Switch to App view now that we have a real window
         // This avoids flashing to a random old app when launching from Home
-        self.shell.view = crate::shell::ShellView::App;
+        self.shell.set_view(crate::shell::ShellView::App);
 
         // Log space state after mapping
         let window_count = self.space.elements().count();
@@ -111,7 +111,7 @@ impl XwmHandler for Flick {
             let has_windows = self.space.elements().any(|w| w.x11_surface().is_some());
             if !has_windows {
                 tracing::info!("No more windows after unmap, switching to Home view");
-                self.shell.view = crate::shell::ShellView::Home;
+                self.shell.set_view(crate::shell::ShellView::Home);
             }
         }
     }
