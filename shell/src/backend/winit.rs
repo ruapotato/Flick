@@ -46,10 +46,64 @@ use smithay::{
 
 use crate::{
     input::GestureEvent,
-    shell::{ShellView, slint_ui::{LockScreenAction, SlintShell}},
+    shell::{ShellView, lock_screen::LockInputMode, slint_ui::{KeyboardAction, LockScreenAction, SlintShell}},
     state::Flick,
     Args,
 };
+
+/// Convert XKB keycode to character (XKB = evdev + 8)
+fn xkb_to_char(keycode: u32, shift: bool) -> Option<char> {
+    // XKB keycodes are evdev + 8
+    let evdev = keycode.saturating_sub(8);
+    // Row 1: numbers
+    let c = match evdev {
+        2 => if shift { '!' } else { '1' },
+        3 => if shift { '@' } else { '2' },
+        4 => if shift { '#' } else { '3' },
+        5 => if shift { '$' } else { '4' },
+        6 => if shift { '%' } else { '5' },
+        7 => if shift { '^' } else { '6' },
+        8 => if shift { '&' } else { '7' },
+        9 => if shift { '*' } else { '8' },
+        10 => if shift { '(' } else { '9' },
+        11 => if shift { ')' } else { '0' },
+        12 => if shift { '_' } else { '-' },
+        13 => if shift { '+' } else { '=' },
+        // Row 2: qwertyuiop
+        16 => if shift { 'Q' } else { 'q' },
+        17 => if shift { 'W' } else { 'w' },
+        18 => if shift { 'E' } else { 'e' },
+        19 => if shift { 'R' } else { 'r' },
+        20 => if shift { 'T' } else { 't' },
+        21 => if shift { 'Y' } else { 'y' },
+        22 => if shift { 'U' } else { 'u' },
+        23 => if shift { 'I' } else { 'i' },
+        24 => if shift { 'O' } else { 'o' },
+        25 => if shift { 'P' } else { 'p' },
+        // Row 3: asdfghjkl
+        30 => if shift { 'A' } else { 'a' },
+        31 => if shift { 'S' } else { 's' },
+        32 => if shift { 'D' } else { 'd' },
+        33 => if shift { 'F' } else { 'f' },
+        34 => if shift { 'G' } else { 'g' },
+        35 => if shift { 'H' } else { 'h' },
+        36 => if shift { 'J' } else { 'j' },
+        37 => if shift { 'K' } else { 'k' },
+        38 => if shift { 'L' } else { 'l' },
+        // Row 4: zxcvbnm
+        44 => if shift { 'Z' } else { 'z' },
+        45 => if shift { 'X' } else { 'x' },
+        46 => if shift { 'C' } else { 'c' },
+        47 => if shift { 'V' } else { 'v' },
+        48 => if shift { 'B' } else { 'b' },
+        49 => if shift { 'N' } else { 'n' },
+        50 => if shift { 'M' } else { 'm' },
+        // Space
+        57 => ' ',
+        _ => return None,
+    };
+    Some(c)
+}
 
 /// Parse size string like "720x1440" into (width, height)
 fn parse_size(s: &str) -> Option<(i32, i32)> {
@@ -152,6 +206,7 @@ pub fn run(args: Args) -> Result<()> {
     // Track mouse state for gesture simulation
     let mut mouse_pos: Point<f64, Logical> = Point::from((0.0, 0.0));
     let mut mouse_pressed = false;
+    let mut shift_pressed = false;
 
     // Track for touchscreen tap detection on X11
     // When cursor moves and stops briefly, treat as a tap
@@ -187,6 +242,7 @@ pub fn run(args: Args) -> Result<()> {
                         input_event,
                         &mut mouse_pos,
                         &mut mouse_pressed,
+                        &mut shift_pressed,
                         &mut last_motion_time,
                         &mut pending_tap_pos,
                         &mut recent_synthetic_tap_time,
@@ -238,6 +294,7 @@ fn handle_winit_input(
     event: InputEvent<WinitInput>,
     mouse_pos: &mut Point<f64, Logical>,
     mouse_pressed: &mut bool,
+    shift_pressed: &mut bool,
     last_motion_time: &mut u32,
     pending_tap_pos: &mut Option<Point<f64, Logical>>,
     recent_synthetic_tap_time: &mut u32,
@@ -432,9 +489,56 @@ fn handle_winit_input(
         InputEvent::Keyboard { event, .. } => {
             let keycode = event.key_code();
             let key_state = event.state();
+            let pressed = key_state == smithay::backend::input::KeyState::Pressed;
+            let raw_keycode: u32 = keycode.raw();
 
+            // Track shift state (XKB keycodes: Shift_L=50, Shift_R=62)
+            if raw_keycode == 50 || raw_keycode == 62 {
+                *shift_pressed = pressed;
+            }
+
+            // Handle keyboard input for lock screen password mode
+            if state.shell.view == ShellView::LockScreen {
+                if state.shell.lock_state.input_mode == LockInputMode::Password {
+                    if pressed {
+                        // XKB keycodes: Enter=36, Backspace=22 (XKB = evdev + 8)
+                        match raw_keycode {
+                            36 => {
+                                // Enter - attempt unlock
+                                if !state.shell.lock_state.entered_password.is_empty() {
+                                    info!("Password entered, attempting unlock");
+                                    state.shell.try_unlock();
+                                }
+                            }
+                            22 => {
+                                // Backspace
+                                state.shell.lock_state.entered_password.pop();
+                                // Update Slint UI with password length
+                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
+                                }
+                            }
+                            _ => {
+                                // Try to convert keycode to character
+                                if let Some(c) = xkb_to_char(raw_keycode, *shift_pressed) {
+                                    if state.shell.lock_state.entered_password.len() < 64 {
+                                        state.shell.lock_state.entered_password.push(c);
+                                        // Update Slint UI with password length
+                                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                                            slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Don't forward keyboard events to clients when on lock screen
+                    return;
+                }
+            }
+
+            // Forward keyboard event to clients
             if let Some(keyboard) = state.seat.get_keyboard() {
-                // Winit keycodes are already in XKB format - use directly
                 keyboard.input::<(), _>(
                     state,
                     keycode,
@@ -544,6 +648,75 @@ fn handle_winit_input(
             if state.shell.view == ShellView::LockScreen {
                 process_lock_actions(state, &actions);
             }
+
+            // Process on-screen keyboard actions
+            let keyboard_actions: Vec<KeyboardAction> = if let Some(ref slint_ui) = state.shell.slint_ui {
+                slint_ui.take_pending_keyboard_actions()
+            } else {
+                Vec::new()
+            };
+
+            // Check if we're on lock screen password mode
+            let is_lock_screen_password = state.shell.view == ShellView::LockScreen
+                && state.shell.lock_state.input_mode == LockInputMode::Password;
+
+            for action in keyboard_actions {
+                info!("Processing keyboard action: {:?}", action);
+                match action {
+                    KeyboardAction::Character(ch) => {
+                        if is_lock_screen_password {
+                            state.shell.lock_state.entered_password.push_str(&ch);
+                            info!("Added character to lock screen password (len={})", state.shell.lock_state.entered_password.len());
+                            // Update Slint UI with password length
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
+                            }
+                        }
+                    }
+                    KeyboardAction::Backspace => {
+                        if is_lock_screen_password {
+                            state.shell.lock_state.entered_password.pop();
+                            info!("Removed character from lock screen password (len={})", state.shell.lock_state.entered_password.len());
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
+                            }
+                        }
+                    }
+                    KeyboardAction::Enter => {
+                        if is_lock_screen_password {
+                            info!("Enter pressed on lock screen password - attempting auth");
+                            state.shell.try_unlock();
+                        }
+                    }
+                    KeyboardAction::Space => {
+                        if is_lock_screen_password {
+                            state.shell.lock_state.entered_password.push(' ');
+                            info!("Added space to lock screen password (len={})", state.shell.lock_state.entered_password.len());
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
+                            }
+                        }
+                    }
+                    KeyboardAction::ShiftToggled => {
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.toggle_keyboard_shift();
+                        }
+                        info!("Keyboard shift toggled");
+                    }
+                    KeyboardAction::LayoutToggled => {
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.toggle_keyboard_layout();
+                        }
+                        info!("Keyboard layout toggled");
+                    }
+                    KeyboardAction::Hide => {
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.set_keyboard_visible(false);
+                        }
+                        info!("Keyboard hidden");
+                    }
+                }
+            }
         }
 
         _ => {}
@@ -562,11 +735,12 @@ fn handle_tap(state: &mut Flick, position: Point<f64, Logical>) {
                 // Use get_exec() which properly handles Settings (uses built-in Flick Settings)
                 if let Some(exec) = state.shell.app_manager.get_exec(category) {
                     info!("Launching app: {}", exec);
-                    // Launch the app
+                    // Launch the app - remove DISPLAY so apps use Wayland instead of X11
                     std::process::Command::new("sh")
                         .arg("-c")
                         .arg(&exec)
                         .env("WAYLAND_DISPLAY", state.socket_name.to_str().unwrap_or("wayland-1"))
+                        .env_remove("DISPLAY")
                         .spawn()
                         .ok();
                     state.shell.app_launched();
@@ -660,14 +834,18 @@ fn process_lock_actions(state: &mut Flick, actions: &[LockScreenAction]) {
                 slint_ui.set_lock_error(err);
             }
 
-            // Update lock mode if changed to password
+            // Update lock mode if changed to password, and show keyboard automatically
             if actions.iter().any(|a| matches!(a, LockScreenAction::UsePassword)) {
                 slint_ui.set_lock_mode("password");
+                // Auto-show keyboard when switching to password mode (phone UX)
+                slint_ui.set_keyboard_visible(true);
+                info!("Switched to password mode - showing keyboard");
             }
 
             // Show keyboard if password field was tapped
             if actions.iter().any(|a| matches!(a, LockScreenAction::PasswordFieldTapped)) {
                 slint_ui.set_keyboard_visible(true);
+                info!("Password field tapped - keyboard visible");
             }
         }
     }
