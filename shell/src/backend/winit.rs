@@ -397,6 +397,29 @@ fn handle_winit_input(
                 let offset = new_pos.y - state.keyboard_dismiss_start_y;
                 state.keyboard_dismiss_offset = offset;
                 debug!("X11 touchscreen keyboard swipe motion: offset={:.0}", offset);
+
+                // Complete swipe immediately when threshold reached (don't wait for jump)
+                if offset < -100.0 {
+                    // Swiped up far enough - go home
+                    info!("X11 touchscreen keyboard swipe up complete (offset={:.0}), going home", offset);
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.set_keyboard_visible(false);
+                    }
+                    state.start_home_gesture();
+                    state.end_home_gesture(true);
+                    state.keyboard_dismiss_slot = None;
+                    state.keyboard_dismiss_offset = 0.0;
+                    state.keyboard_dismiss_start_y = 0.0;
+                } else if offset > 100.0 {
+                    // Swiped down far enough - dismiss keyboard
+                    info!("X11 touchscreen keyboard swipe down complete (offset={:.0}), dismissing", offset);
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.set_keyboard_visible(false);
+                    }
+                    state.keyboard_dismiss_slot = None;
+                    state.keyboard_dismiss_offset = 0.0;
+                    state.keyboard_dismiss_start_y = 0.0;
+                }
             }
 
             // Clear pending tap since we handle immediately now
