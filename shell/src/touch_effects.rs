@@ -51,16 +51,33 @@ impl TouchEffect {
         }
     }
 
-    /// Update position - add new circle if moved enough
+    /// Update position - add circles along the path for consistent density
     pub fn update_position(&mut self, x: f64, y: f64) {
         let dx = x - self.last_pos.0;
         let dy = y - self.last_pos.1;
         let dist = (dx * dx + dy * dy).sqrt();
 
-        // Add new circle every 15 pixels of movement
-        if dist > 15.0 {
-            self.circles.push(TouchCircle::new(x, y));
-            self.last_pos = (x, y);
+        // Spacing between circles (pixels)
+        let circle_spacing = 12.0;
+
+        if dist >= circle_spacing {
+            // Calculate how many circles to add along the path
+            let num_circles = (dist / circle_spacing) as i32;
+
+            // Interpolate circles along the path
+            for i in 1..=num_circles {
+                let t = (i as f64 * circle_spacing) / dist;
+                let cx = self.last_pos.0 + dx * t;
+                let cy = self.last_pos.1 + dy * t;
+                self.circles.push(TouchCircle::new(cx, cy));
+            }
+
+            // Update last_pos to the last circle position
+            let t = (num_circles as f64 * circle_spacing) / dist;
+            self.last_pos = (
+                self.last_pos.0 + dx * t,
+                self.last_pos.1 + dy * t,
+            );
         }
     }
 
