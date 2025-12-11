@@ -1965,7 +1965,13 @@ fn render_surface(
 
                 for elem in window_render_elements {
                     let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(1.0));
-                    let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (loc.x, loc.y).into();
+                    // Add viewport offset in letterbox mode
+                    let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = if state.phone_shape_enabled {
+                        let viewport = state.effective_viewport();
+                        (viewport.loc.x + loc.x, viewport.loc.y + loc.y).into()
+                    } else {
+                        (loc.x, loc.y).into()
+                    };
                     let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Relative);
                     // Wrap in CropRenderElement to match SwitcherRenderElement::Window type
                     if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
