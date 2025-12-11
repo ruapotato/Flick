@@ -476,6 +476,11 @@ impl Shell {
         tracing::info!("Reloaded lock config: method = {:?}", self.lock_config.method);
     }
 
+    /// Check for keyboard visibility requests from apps (stub - not yet implemented)
+    pub fn check_keyboard_request(&mut self) -> Option<bool> {
+        None
+    }
+
     /// Preload icons for all categories into the cache
     pub fn preload_icons(&mut self) {
         let icon_names: Vec<String> = self.app_manager
