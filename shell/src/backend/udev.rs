@@ -1744,8 +1744,14 @@ fn render_surface(
 
         // Render only windows (the Python lock screen app) - use same approach as switcher
         let windows: Vec<_> = state.space.elements().cloned().collect();
-        let screen_w = state.screen_size.w as i32;
-        let screen_h = state.screen_size.h as i32;
+
+        // Use viewport in letterbox mode, full screen otherwise
+        let (render_x, render_y, render_w, render_h) = if state.phone_shape_enabled {
+            let viewport = state.effective_viewport();
+            (viewport.loc.x, viewport.loc.y, viewport.size.w, viewport.size.h)
+        } else {
+            (0, 0, state.screen_size.w, state.screen_size.h)
+        };
 
         for window in windows.iter() {
             // Render window at fullscreen position (0, 0)
@@ -1758,20 +1764,51 @@ fn render_surface(
                 );
 
             let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
-                (0, 0).into(),
-                (screen_w, screen_h).into(),
+                (render_x, render_y).into(),
+                (render_w, render_h).into(),
             );
 
             for elem in window_render_elements {
-                // Scale 1:1 - Python app should be fullscreen
+                // Scale 1:1 - Python app should be fullscreen (or viewport size in letterbox)
                 let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(1.0));
-                let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (0, 0).into();
+                // Position at viewport origin in letterbox mode
+                let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (render_x, render_y).into();
                 // Use Absolute positioning like switcher does
                 let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Absolute);
                 if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
                     // Insert at front of list so windows render on top (front-to-back order)
                     lock_elements.insert(0, cropped.into());
                 }
+            }
+        }
+
+        // Add letterbox bars for lock screen
+        if state.phone_shape_enabled {
+            use smithay::backend::renderer::element::solid::SolidColorBuffer;
+            let (left_bar, right_bar) = get_phone_letterbox_bars(state.screen_size.w, state.screen_size.h);
+            let bar_color = [0.0f32, 0.0, 0.0, 1.0];
+
+            if left_bar.size.w > 0 {
+                let buffer = SolidColorBuffer::new((left_bar.size.w, left_bar.size.h), bar_color);
+                let left_element = SolidColorRenderElement::from_buffer(
+                    &buffer,
+                    (left_bar.loc.x, left_bar.loc.y),
+                    Scale::from(1.0),
+                    1.0,
+                    Kind::Unspecified,
+                );
+                lock_elements.insert(0, SwitcherRenderElement::Solid(left_element));
+            }
+            if right_bar.size.w > 0 {
+                let buffer = SolidColorBuffer::new((right_bar.size.w, right_bar.size.h), bar_color);
+                let right_element = SolidColorRenderElement::from_buffer(
+                    &buffer,
+                    (right_bar.loc.x, right_bar.loc.y),
+                    Scale::from(1.0),
+                    1.0,
+                    Kind::Unspecified,
+                );
+                lock_elements.insert(0, SwitcherRenderElement::Solid(right_element));
             }
         }
 
@@ -2500,8 +2537,102 @@ fn render_surface(
                 &app_keyboard_elements,
                 bg_color,
             )
+        } else if state.phone_shape_enabled {
+            // Normal app view without keyboard in LETTERBOX MODE
+            // Need to manually render windows at viewport offset
+            use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
+
+            let mut letterbox_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
+
+            // Render topmost window at viewport offset
+            if let Some(window) = state.space.elements().last() {
+                if let Some(loc) = state.space.element_location(window) {
+                    let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
+                        .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                            renderer,
+                            (0, 0).into(),
+                            Scale::from(scale),
+                            1.0,
+                        );
+
+                    let viewport = state.effective_viewport();
+                    let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
+                        (viewport.loc.x, viewport.loc.y).into(),
+                        (viewport.size.w, viewport.size.h).into(),
+                    );
+
+                    for elem in window_render_elements {
+                        let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(1.0));
+                        // Offset window position by viewport origin
+                        let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> =
+                            (viewport.loc.x + loc.x, viewport.loc.y + loc.y).into();
+                        let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Relative);
+                        if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
+                            letterbox_elements.push(cropped.into());
+                        }
+                    }
+                }
+            }
+
+            // Add letterbox bars (on top of content)
+            {
+                use smithay::backend::renderer::element::solid::SolidColorBuffer;
+                let (left_bar, right_bar) = get_phone_letterbox_bars(state.screen_size.w, state.screen_size.h);
+                let bar_color = [0.0f32, 0.0, 0.0, 1.0];
+
+                if left_bar.size.w > 0 {
+                    let buffer = SolidColorBuffer::new((left_bar.size.w, left_bar.size.h), bar_color);
+                    let left_element = SolidColorRenderElement::from_buffer(
+                        &buffer,
+                        (left_bar.loc.x, left_bar.loc.y),
+                        Scale::from(1.0),
+                        1.0,
+                        Kind::Unspecified,
+                    );
+                    letterbox_elements.insert(0, SwitcherRenderElement::Solid(left_element));
+                }
+                if right_bar.size.w > 0 {
+                    let buffer = SolidColorBuffer::new((right_bar.size.w, right_bar.size.h), bar_color);
+                    let right_element = SolidColorRenderElement::from_buffer(
+                        &buffer,
+                        (right_bar.loc.x, right_bar.loc.y),
+                        Scale::from(1.0),
+                        1.0,
+                        Kind::Unspecified,
+                    );
+                    letterbox_elements.insert(0, SwitcherRenderElement::Solid(right_element));
+                }
+            }
+
+            // Touch effects
+            if !state.touch_effects.is_empty() {
+                let now = std::time::Instant::now();
+                for effect in &state.touch_effects {
+                    if let Some((buffer, pos)) = create_touch_effect_buffer(effect, now) {
+                        if let Ok(effect_element) = MemoryRenderBufferRenderElement::from_buffer(
+                            renderer,
+                            pos.to_f64(),
+                            &buffer,
+                            None,
+                            None,
+                            None,
+                            smithay::backend::renderer::element::Kind::Unspecified,
+                        ) {
+                            letterbox_elements.insert(0, SwitcherRenderElement::Icon(effect_element));
+                        }
+                    }
+                }
+            }
+
+            surface_data.damage_tracker.render_output(
+                renderer,
+                &mut fb,
+                0, // Force full redraw in letterbox mode
+                &letterbox_elements,
+                bg_color,
+            )
         } else {
-            // Normal app view without keyboard
+            // Normal app view without keyboard (non-letterbox)
             let window_elements: Vec<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>> = state
                 .space
                 .render_elements_for_output(renderer, output, scale as f32)
