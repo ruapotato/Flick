@@ -523,12 +523,12 @@ impl SlintShell {
     }
 
     /// Set app categories for home screen
-    pub fn set_categories(&self, categories: Vec<(String, String, [f32; 4])>) {
+    pub fn set_categories(&self, categories: Vec<(String, slint::Image, [f32; 4])>) {
         let model: Vec<AppCategory> = categories
             .into_iter()
             .map(|(name, icon, color)| AppCategory {
                 name: name.into(),
-                icon: icon.into(),
+                icon,
                 color: slint::Color::from_argb_f32(color[3], color[0], color[1], color[2]),
             })
             .collect();

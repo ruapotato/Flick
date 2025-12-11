@@ -70,7 +70,7 @@ component BrightnessSlider inherits Rectangle {
 // App category for home screen
 export struct AppCategory {
     name: string,
-    icon: string,
+    icon: image,
     color: color,
 }
 
@@ -415,7 +415,7 @@ component WiggleDoneButton inherits Rectangle {
 // App tile for home screen grid
 component AppTile inherits Rectangle {
     in property <string> name: "App";
-    in property <string> icon: "A";
+    in property <image> icon;
     in property <color> tile-color: Theme.primary;
     in property <bool> wiggling: false;
     in property <int> wiggle-phase: 0;  // Phase offset for varied animation
@@ -446,16 +446,14 @@ component AppTile inherits Rectangle {
         height: 80px;
         border-radius: 20px;
         background: tile-color;
+        clip: true;
 
-        Text {
+        // Actual icon image
+        Image {
             width: 100%;
             height: 100%;
-            text: icon;
-            color: Theme.on-surface;
-            font-size: 36px;
-            font-weight: 700;
-            horizontal-alignment: center;
-            vertical-alignment: center;
+            source: icon;
+            image-fit: contain;
         }
     }
 
@@ -1179,16 +1177,13 @@ component HomeScreen inherits Rectangle {
             border-radius: 20px;
             background: categories[dragging-index].color;
             opacity: 0.9;
+            clip: true;
 
-            Text {
+            Image {
                 width: 100%;
                 height: 100%;
-                text: categories[dragging-index].icon;
-                color: Theme.on-surface;
-                font-size: 36px;
-                font-weight: 700;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+                source: categories[dragging-index].icon;
+                image-fit: contain;
             }
         }
 

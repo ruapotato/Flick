@@ -920,18 +920,10 @@ fn render_surface(
                 ShellView::Home => {
                     info!("RENDER: ShellView::Home - setting up home view in Slint");
                     slint_ui.set_view("home");
-                    // Update categories
-                    let categories = state.shell.app_manager.get_category_info();
-                    info!("RENDER: Home view has {} categories", categories.len());
-                    let slint_categories: Vec<(String, String, [f32; 4])> = categories
-                        .iter()
-                        .map(|cat| {
-                            let icon = cat.icon.as_deref().unwrap_or(&cat.name[..1]).to_string();
-                            (cat.name.clone(), icon, cat.color)
-                        })
-                        .collect();
-                    slint_ui.set_categories(slint_categories.clone());
-                    info!("RENDER: Set {} slint_categories for home view", slint_categories.len());
+                    // Update categories with real icons
+                    let slint_categories = state.shell.get_categories_with_icons();
+                    info!("RENDER: Home view has {} categories", slint_categories.len());
+                    slint_ui.set_categories(slint_categories);
 
                     // Sync popup state
                     slint_ui.set_show_popup(state.shell.popup_showing);
@@ -972,14 +964,7 @@ fn render_surface(
                     // During QS home gesture, render home grid behind sliding QS
                     if qs_home_gesture_active {
                         slint_ui.set_view("home");
-                        let categories = state.shell.app_manager.get_category_info();
-                        let slint_categories: Vec<(String, String, [f32; 4])> = categories
-                            .iter()
-                            .map(|cat| {
-                                let icon = cat.icon.as_deref().unwrap_or(&cat.name[..1]).to_string();
-                                (cat.name.clone(), icon, cat.color)
-                            })
-                            .collect();
+                        let slint_categories = state.shell.get_categories_with_icons();
                         slint_ui.set_categories(slint_categories);
                         slint_ui.set_show_popup(false);
                         slint_ui.set_wiggle_mode(false);
@@ -1003,14 +988,7 @@ fn render_surface(
                     // During switcher home gesture, render home grid behind sliding switcher
                     if switcher_home_gesture_active {
                         slint_ui.set_view("home");
-                        let categories = state.shell.app_manager.get_category_info();
-                        let slint_categories: Vec<(String, String, [f32; 4])> = categories
-                            .iter()
-                            .map(|cat| {
-                                let icon = cat.icon.as_deref().unwrap_or(&cat.name[..1]).to_string();
-                                (cat.name.clone(), icon, cat.color)
-                            })
-                            .collect();
+                        let slint_categories = state.shell.get_categories_with_icons();
                         slint_ui.set_categories(slint_categories);
                         slint_ui.set_show_popup(false);
                         slint_ui.set_wiggle_mode(false);
@@ -1052,15 +1030,8 @@ fn render_surface(
                     // During home gesture, show the home grid behind the sliding app
                     if home_gesture_active {
                         slint_ui.set_view("home");
-                        // Update categories (same as Home view)
-                        let categories = state.shell.app_manager.get_category_info();
-                        let slint_categories: Vec<(String, String, [f32; 4])> = categories
-                            .iter()
-                            .map(|cat| {
-                                let icon = cat.icon.as_deref().unwrap_or(&cat.name[..1]).to_string();
-                                (cat.name.clone(), icon, cat.color)
-                            })
-                            .collect();
+                        // Update categories with real icons
+                        let slint_categories = state.shell.get_categories_with_icons();
                         slint_ui.set_categories(slint_categories);
                         slint_ui.set_show_popup(false);
                         slint_ui.set_wiggle_mode(false);
@@ -1974,16 +1945,9 @@ fn render_surface(
         // If we're on home screen, render the home grid at offset position
         if shell_view == ShellView::Home {
             // Render home grid at offset position
+            let slint_categories = state.shell.get_categories_with_icons();
             if let Some(ref slint_ui) = state.shell.slint_ui {
                 slint_ui.set_view("home");
-                let categories = state.shell.app_manager.get_category_info();
-                let slint_categories: Vec<(String, String, [f32; 4])> = categories
-                    .iter()
-                    .map(|cat| {
-                        let icon = cat.icon.as_deref().unwrap_or(&cat.name[..1]).to_string();
-                        (cat.name.clone(), icon, cat.color)
-                    })
-                    .collect();
                 slint_ui.set_categories(slint_categories);
                 slint_ui.set_show_popup(false);
                 slint_ui.set_wiggle_mode(false);

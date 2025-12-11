@@ -495,6 +495,35 @@ impl Shell {
         }
     }
 
+    /// Get categories with their icons as Slint images (uses already-cached icons)
+    /// Returns Vec of (name, slint::Image, color)
+    /// Note: Call preload_icons() first to ensure icons are cached
+    pub fn get_categories_with_icons(&self) -> Vec<(String, slint::Image, [f32; 4])> {
+        self.app_manager
+            .get_category_info()
+            .iter()
+            .map(|cat| {
+                let icon = if let Some(ref icon_name) = cat.icon {
+                    // Try to get the icon from cache (must be preloaded)
+                    if let Some(icon_data) = self.icon_cache.get_cached(icon_name) {
+                        // Convert RGBA bytes to Slint image
+                        let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                            &icon_data.data,
+                            icon_data.width,
+                            icon_data.height,
+                        );
+                        slint::Image::from_rgba8(pixel_buffer)
+                    } else {
+                        slint::Image::default()
+                    }
+                } else {
+                    slint::Image::default()
+                };
+                (cat.name.clone(), icon, cat.color)
+            })
+            .collect()
+    }
+
     /// Start tracking a touch on home screen (potential scroll or tap)
     pub fn start_home_touch(&mut self, y: f64, pending_app: Option<String>) {
         self.scroll_touch_start_y = Some(y);
