@@ -38,6 +38,22 @@ os.environ.setdefault('KIVY_LOG_LEVEL', 'debug')
 # for the same physical touch, causing buttons to register twice
 os.environ['SDL_TOUCH_MOUSE_EVENTS'] = '0'
 
+# Read viewport dimensions from compositor (for letterbox mode)
+# This MUST be done before importing kivy.core.window to set the correct initial size
+VIEWPORT_WIDTH = int(os.environ.get('FLICK_VIEWPORT_WIDTH', 0))
+VIEWPORT_HEIGHT = int(os.environ.get('FLICK_VIEWPORT_HEIGHT', 0))
+
+if VIEWPORT_WIDTH > 0 and VIEWPORT_HEIGHT > 0:
+    logger.info(f"Setting Kivy window size from compositor viewport: {VIEWPORT_WIDTH}x{VIEWPORT_HEIGHT}")
+    # Set Kivy config BEFORE Window is imported - this ensures SDL2 creates
+    # the window at the correct size from the start (no post-creation resize needed)
+    from kivy.config import Config
+    Config.set('graphics', 'width', str(VIEWPORT_WIDTH))
+    Config.set('graphics', 'height', str(VIEWPORT_HEIGHT))
+    Config.set('graphics', 'resizable', '0')  # Prevent resize
+else:
+    logger.info("No viewport dimensions from compositor, using default window size")
+
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout

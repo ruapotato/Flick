@@ -446,19 +446,27 @@ impl Shell {
     }
 
     /// Launch the external lock screen app (called by compositor)
-    pub fn launch_lock_screen_app(&self, socket_name: &str) -> bool {
+    /// viewport_size: Optional (width, height) for letterbox mode - sets window size for Kivy/SDL2
+    pub fn launch_lock_screen_app(&self, socket_name: &str, viewport_size: Option<(i32, i32)>) -> bool {
         if !self.lock_screen_active {
             return false;
         }
 
         tracing::info!("Launching external lock screen app: {}", FLICK_LOCKSCREEN_EXEC);
 
-        match std::process::Command::new("sh")
-            .arg("-c")
+        let mut cmd = std::process::Command::new("sh");
+        cmd.arg("-c")
             .arg(FLICK_LOCKSCREEN_EXEC)
-            .env("WAYLAND_DISPLAY", socket_name)
-            .spawn()
-        {
+            .env("WAYLAND_DISPLAY", socket_name);
+
+        // Pass viewport dimensions to Kivy/SDL2 for proper window sizing in letterbox mode
+        if let Some((w, h)) = viewport_size {
+            tracing::info!("Passing viewport dimensions to lock screen: {}x{}", w, h);
+            cmd.env("FLICK_VIEWPORT_WIDTH", w.to_string())
+               .env("FLICK_VIEWPORT_HEIGHT", h.to_string());
+        }
+
+        match cmd.spawn() {
             Ok(_) => {
                 tracing::info!("Lock screen app launched successfully");
                 true

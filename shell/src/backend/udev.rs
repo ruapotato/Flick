@@ -337,7 +337,13 @@ pub fn run() -> Result<()> {
     if state.shell.lock_screen_active {
         info!("Lock screen configured - launching external lock screen app on startup");
         if let Some(socket) = state.socket_name.to_str() {
-            state.shell.launch_lock_screen_app(socket);
+            let viewport_size = if state.phone_shape_enabled {
+                let vp = state.effective_viewport();
+                Some((vp.size.w, vp.size.h))
+            } else {
+                None
+            };
+            state.shell.launch_lock_screen_app(socket, viewport_size);
         }
     }
 
@@ -2796,7 +2802,13 @@ fn handle_input_event(
                     info!("Power button pressed, locking screen");
                     state.shell.lock();
                     if let Some(socket) = state.socket_name.to_str() {
-                        state.shell.launch_lock_screen_app(socket);
+                        let viewport_size = if state.phone_shape_enabled {
+                            let vp = state.effective_viewport();
+                            Some((vp.size.w, vp.size.h))
+                        } else {
+                            None
+                        };
+                        state.shell.launch_lock_screen_app(socket, viewport_size);
                     }
                 }
                 return;
@@ -2811,7 +2823,13 @@ fn handle_input_event(
                         info!("Super+L pressed, locking screen");
                         state.shell.lock();
                         if let Some(socket) = state.socket_name.to_str() {
-                            state.shell.launch_lock_screen_app(socket);
+                            let viewport_size = if state.phone_shape_enabled {
+                                let vp = state.effective_viewport();
+                                Some((vp.size.w, vp.size.h))
+                            } else {
+                                None
+                            };
+                            state.shell.launch_lock_screen_app(socket, viewport_size);
                         }
                     }
                     return;
@@ -4231,7 +4249,13 @@ fn handle_input_event(
                                     info!("Lock button pressed - locking screen");
                                     state.shell.lock();
                                     if let Some(socket) = state.socket_name.to_str() {
-                                        state.shell.launch_lock_screen_app(socket);
+                                        let viewport_size = if state.phone_shape_enabled {
+                                            let vp = state.effective_viewport();
+                                            Some((vp.size.w, vp.size.h))
+                                        } else {
+                                            None
+                                        };
+                                        state.shell.launch_lock_screen_app(socket, viewport_size);
                                     }
                                 }
                                 QuickSettingsAction::Settings => {
