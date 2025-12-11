@@ -125,9 +125,14 @@ pub fn run(args: Args) -> Result<()> {
         refresh: 60_000,
     };
 
-    // Use Flipped180 transform to display right-side up
+    // Use Flipped180 transform to handle display orientation
+    // This ensures both Slint content and client windows are displayed correctly
+    // Input coordinates need to be transformed to match visual coordinates
     output.change_current_state(Some(mode), Some(Transform::Flipped180), None, Some((0, 0).into()));
     output.set_preferred(mode);
+
+    // IMPORTANT: Create the wl_output global so clients can see this output!
+    output.create_global::<Flick>(&state.display_handle);
 
     state.space.map_output(&output, (0, 0));
     state.outputs.push(output.clone());
@@ -162,6 +167,8 @@ pub fn run(args: Args) -> Result<()> {
     let mut last_motion_time: u32 = 0;
     let mut pending_tap_pos: Option<Point<f64, Logical>> = None;
     let mut recent_synthetic_tap_time: u32 = 0;  // Suppress duplicate TouchDown after synthetic tap
+    let mut x11_touch_active = false;  // Track when X11 touchscreen gesture is in progress
+    let mut x11_touch_start_pos: Point<f64, Logical> = Point::from((0.0, 0.0));  // Starting position of X11 touch
 
     // Add a timer for periodic updates (60fps)
     loop_handle
@@ -195,6 +202,8 @@ pub fn run(args: Args) -> Result<()> {
                         &mut last_motion_time,
                         &mut pending_tap_pos,
                         &mut recent_synthetic_tap_time,
+                        &mut x11_touch_active,
+                        &mut x11_touch_start_pos,
                         scale,
                         width,
                         height,
@@ -229,12 +238,25 @@ pub fn run(args: Args) -> Result<()> {
             .dispatch(Some(Duration::from_millis(1)), &mut state)
             .expect("Failed to dispatch event loop");
 
+        // Process Wayland client requests and flush responses
+        // This is CRITICAL for nested apps to work - without this,
+        // clients never receive responses to their protocol requests
+        state.dispatch_clients();
+
         // Render frame on every iteration (not just on Redraw events)
         // This ensures the UI updates after input events
         render_frame(&mut state, &mut backend, &output, &mut damage_tracker, scale);
     }
 
     Ok(())
+}
+
+/// Transform input coordinates to match output transform
+/// Note: In embedded/windowed mode, Smithay may handle the output transform
+/// at the display level, so input coords may not need transformation
+fn transform_coords(x: f64, y: f64, _width: i32, _height: i32) -> (f64, f64) {
+    // Don't transform - let Smithay handle coordinate mapping
+    (x, y)
 }
 
 /// Handle winit input events, converting to touch-like gestures
@@ -247,6 +269,8 @@ fn handle_winit_input(
     last_motion_time: &mut u32,
     pending_tap_pos: &mut Option<Point<f64, Logical>>,
     recent_synthetic_tap_time: &mut u32,
+    x11_touch_active: &mut bool,
+    x11_touch_start_pos: &mut Point<f64, Logical>,
     _scale: f32,
     width: i32,
     height: i32,
@@ -263,8 +287,10 @@ fn handle_winit_input(
 
             // Convert from normalized 0-1 coordinates to pixel coordinates
             // Note: Pointer events work correctly - only Touch events have the Smithay bug
-            let logical_x = event.x_transformed(width) as f64;
-            let logical_y = event.y_transformed(height) as f64;
+            let raw_x = event.x_transformed(width) as f64;
+            let raw_y = event.y_transformed(height) as f64;
+            // Transform for Flipped180 output
+            let (logical_x, logical_y) = transform_coords(raw_x, raw_y, width, height);
             let new_pos = Point::from((logical_x, logical_y));
 
             // Detect touchscreen taps on X11: when cursor "jumps" to a new position
@@ -288,137 +314,122 @@ fn handle_winit_input(
             let keyboard_top = height - keyboard_height;
             let on_keyboard = keyboard_visible && new_pos.y >= keyboard_top as f64;
 
-            // If cursor jumped significantly, is within bounds, not already tracking a touch,
-            // and enough time has passed since last synthetic tap
-            if distance > 30.0 && in_bounds && !*mouse_pressed && since_last_synthetic >= 300 {
-                // Check if there was an ongoing X11 touchscreen keyboard swipe
-                // (position jumped away = finger lifted)
-                if state.keyboard_dismiss_slot == Some(99) {
-                    // Complete the keyboard swipe gesture
-                    let offset = state.keyboard_dismiss_offset;
-                    if offset < -150.0 {
-                        // Swiped up far enough - go home
-                        info!("X11 touchscreen keyboard swipe up complete (offset={:.0}), going home", offset);
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.set_keyboard_visible(false);
+            // X11 touchscreen gesture handling:
+            // - Cursor jump > 30px = finger touched down at new position
+            // - Small motion < 30px = finger dragging
+            // - Another big jump = finger lifted and touched elsewhere
+
+            if distance > 30.0 && in_bounds && !*mouse_pressed {
+                // Cursor jumped significantly - this is a new touch position
+
+                // If there was an active X11 touch, complete it first
+                if *x11_touch_active {
+                    info!("X11 touch ended (cursor jumped to new position)");
+
+                    // Complete keyboard swipe if active
+                    if state.keyboard_dismiss_slot == Some(99) {
+                        let offset = state.keyboard_dismiss_offset;
+                        if offset < -150.0 {
+                            info!("X11 touchscreen keyboard swipe up complete (offset={:.0}), going home", offset);
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.set_keyboard_visible(false);
+                            }
+                            state.start_home_gesture();
+                            state.end_home_gesture(true);
+                        } else if offset > 80.0 {
+                            info!("X11 touchscreen keyboard swipe down complete (offset={:.0}), dismissing", offset);
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.set_keyboard_visible(false);
+                            }
                         }
-                        state.start_home_gesture();
-                        state.end_home_gesture(true);
-                    } else if offset > 80.0 {
-                        // Swiped down - dismiss keyboard
-                        info!("X11 touchscreen keyboard swipe down complete (offset={:.0}), dismissing", offset);
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.set_keyboard_visible(false);
-                        }
-                    }
-                    state.keyboard_dismiss_slot = None;
-                    state.keyboard_dismiss_offset = 0.0;
-                    state.keyboard_dismiss_start_y = 0.0;
-                }
-
-                // If touch landed on keyboard area, start tracking for swipe AND process tap
-                if on_keyboard {
-                    info!("X11 touchscreen touch on keyboard at {:?}, tracking for swipe", new_pos);
-                    state.keyboard_dismiss_slot = Some(99); // Use 99 for X11 touchscreen
-                    state.keyboard_dismiss_start_y = new_pos.y;
-                    state.keyboard_dismiss_offset = 0.0;
-                    *recent_synthetic_tap_time = time;
-
-                    // Still dispatch tap to Slint so keyboard keys work
-                    // If user swipes, the keyboard will be dismissed anyway
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.dispatch_pointer_pressed(new_pos.x as f32, new_pos.y as f32);
-                        slint_ui.dispatch_pointer_released(new_pos.x as f32, new_pos.y as f32);
+                        state.keyboard_dismiss_slot = None;
+                        state.keyboard_dismiss_offset = 0.0;
+                        state.keyboard_dismiss_start_y = 0.0;
                     }
 
-                    // Process keyboard actions
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        let actions = slint_ui.take_pending_keyboard_actions();
-                        if !actions.is_empty() {
-                            process_keyboard_actions(state, actions);
-                        }
-                    }
-                } else {
-                    info!("Touchscreen tap detected at {:?} (jump={:.1}px, dt={}ms)", new_pos, distance, time_delta);
-
-                    // Record time to suppress duplicate TouchDown
-                    *recent_synthetic_tap_time = time;
-
-                    // Simulate immediate tap (press + release)
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.dispatch_pointer_pressed(new_pos.x as f32, new_pos.y as f32);
-                    }
-                    state.gesture_recognizer.touch_down(0, new_pos);
-
-                    // Immediate release for tap
+                    // Complete the gesture
                     if let Some(gesture_event) = state.gesture_recognizer.touch_up(0) {
+                        info!("X11 gesture completed: {:?}", gesture_event);
                         state.shell.handle_gesture(&gesture_event);
                         if let GestureEvent::Tap { position } = &gesture_event {
                             handle_tap(state, *position);
                         }
                     }
 
-                    // Dispatch release to Slint and process actions
-                    let (actions, pending_app_tap) = if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.dispatch_pointer_released(new_pos.x as f32, new_pos.y as f32);
-                        (slint_ui.poll_lock_actions(), slint_ui.take_pending_app_tap())
-                    } else {
-                        (Vec::new(), None)
-                    };
-
-                    if state.shell.view == ShellView::LockScreen {
-                        process_lock_actions(state, &actions);
+                    // Dispatch release to Slint
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_released(mouse_pos.x as f32, mouse_pos.y as f32);
                     }
 
-                    // Handle app tap from Slint callback (works even for edge areas)
-                    if state.shell.view == ShellView::Home {
-                        if let Some(app_index) = pending_app_tap {
-                            let categories = &state.shell.app_manager.config.grid_order;
-                            if (app_index as usize) < categories.len() {
-                                let category = categories[app_index as usize];
-                                info!("App tap from Slint callback: index={} category={:?}", app_index, category);
-                                if let Some(exec) = state.shell.app_manager.get_exec(category) {
-                                    info!("Launching app via Slint callback: {}", exec);
-                                    std::process::Command::new("sh")
-                                        .arg("-c")
-                                        .arg(&exec)
-                                        .env("WAYLAND_DISPLAY", state.socket_name.to_str().unwrap_or("wayland-1"))
-                                        .env_remove("DISPLAY")
-                                        .spawn()
-                                        .ok();
-                                    state.shell.app_launched();
-                                }
-                            }
-                        }
+                    *x11_touch_active = false;
+                }
+
+                // Wait for cooldown before starting new touch (to avoid rapid-fire)
+                if since_last_synthetic >= 100 {
+                    // Start new X11 touch gesture
+                    info!("X11 touch started at {:?} (jump={:.1}px)", new_pos, distance);
+                    *x11_touch_active = true;
+                    *x11_touch_start_pos = new_pos;
+                    *recent_synthetic_tap_time = time;
+
+                    // Check if touch is on keyboard area
+                    if on_keyboard {
+                        state.keyboard_dismiss_slot = Some(99);
+                        state.keyboard_dismiss_start_y = new_pos.y;
+                        state.keyboard_dismiss_offset = 0.0;
+                    }
+
+                    // Start gesture recognition
+                    state.gesture_recognizer.touch_down(0, new_pos);
+
+                    // Dispatch to Slint
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_pressed(new_pos.x as f32, new_pos.y as f32);
                     }
                 }
-            } else if state.keyboard_dismiss_slot == Some(99) && distance < 30.0 {
-                // X11 touchscreen: small motion while tracking keyboard swipe
-                let offset = new_pos.y - state.keyboard_dismiss_start_y;
-                state.keyboard_dismiss_offset = offset;
-                debug!("X11 touchscreen keyboard swipe motion: offset={:.0}", offset);
+            } else if *x11_touch_active && distance < 30.0 {
+                // Small motion while X11 touch is active - this is a drag
 
-                // Complete swipe immediately when threshold reached (don't wait for jump)
-                if offset < -100.0 {
-                    // Swiped up far enough - go home
-                    info!("X11 touchscreen keyboard swipe up complete (offset={:.0}), going home", offset);
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.set_keyboard_visible(false);
+                // Track keyboard swipe
+                if state.keyboard_dismiss_slot == Some(99) {
+                    let offset = new_pos.y - state.keyboard_dismiss_start_y;
+                    state.keyboard_dismiss_offset = offset;
+
+                    // Check for upward swipe - transition to home gesture
+                    if offset < -30.0 && state.home_gesture_window.is_none() {
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.set_keyboard_visible(false);
+                        }
+                        info!("X11 keyboard swipe up detected (offset={:.0}), starting home gesture", offset);
+                        state.start_home_gesture();
+                        state.keyboard_dismiss_slot = None;
+                    } else if offset > 100.0 {
+                        // Swiped down far enough - dismiss keyboard
+                        info!("X11 keyboard swipe down complete (offset={:.0}), dismissing", offset);
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.set_keyboard_visible(false);
+                        }
+                        state.keyboard_dismiss_slot = None;
+                        state.keyboard_dismiss_offset = 0.0;
+                        state.keyboard_dismiss_start_y = 0.0;
                     }
-                    state.start_home_gesture();
-                    state.end_home_gesture(true);
-                    state.keyboard_dismiss_slot = None;
-                    state.keyboard_dismiss_offset = 0.0;
-                    state.keyboard_dismiss_start_y = 0.0;
-                } else if offset > 100.0 {
-                    // Swiped down far enough - dismiss keyboard
-                    info!("X11 touchscreen keyboard swipe down complete (offset={:.0}), dismissing", offset);
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.set_keyboard_visible(false);
-                    }
-                    state.keyboard_dismiss_slot = None;
-                    state.keyboard_dismiss_offset = 0.0;
-                    state.keyboard_dismiss_start_y = 0.0;
+                }
+
+                // Continue home gesture if active
+                if state.home_gesture_window.is_some() && state.keyboard_dismiss_start_y > 0.0 {
+                    let total_upward = state.keyboard_dismiss_start_y - new_pos.y;
+                    let progress = (total_upward / 300.0).max(0.0);
+                    state.update_home_gesture(progress);
+                }
+
+                // Feed motion to gesture recognizer
+                if let Some(gesture_event) = state.gesture_recognizer.touch_motion(0, new_pos) {
+                    state.shell.handle_gesture(&gesture_event);
+                }
+
+                // Update Slint with pointer position
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    slint_ui.dispatch_pointer_moved(new_pos.x as f32, new_pos.y as f32);
                 }
             }
 
@@ -545,6 +556,78 @@ fn handle_winit_input(
                     ButtonState::Released => {
                         *mouse_pressed = false;
                         debug!("Touch up at {:?}", mouse_pos);
+
+                        // Also complete X11 touch gesture if active (some X11 setups send button release)
+                        if *x11_touch_active {
+                            info!("X11 touch ended (PointerButton released)");
+
+                            // Complete keyboard swipe if active
+                            if state.keyboard_dismiss_slot == Some(99) {
+                                let offset = state.keyboard_dismiss_offset;
+                                if offset < -150.0 {
+                                    info!("X11 keyboard swipe up complete (offset={:.0}), going home", offset);
+                                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                                        slint_ui.set_keyboard_visible(false);
+                                    }
+                                    state.start_home_gesture();
+                                    state.end_home_gesture(true);
+                                } else if offset > 80.0 {
+                                    info!("X11 keyboard swipe down complete (offset={:.0}), dismissing", offset);
+                                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                                        slint_ui.set_keyboard_visible(false);
+                                    }
+                                }
+                                state.keyboard_dismiss_slot = None;
+                                state.keyboard_dismiss_offset = 0.0;
+                                state.keyboard_dismiss_start_y = 0.0;
+                            }
+
+                            // Complete the gesture
+                            if let Some(gesture_event) = state.gesture_recognizer.touch_up(0) {
+                                info!("X11 gesture completed (via button release): {:?}", gesture_event);
+                                state.shell.handle_gesture(&gesture_event);
+                                if let GestureEvent::Tap { position } = &gesture_event {
+                                    handle_tap(state, *position);
+                                }
+                            }
+
+                            // Dispatch release to Slint and process actions
+                            let (actions, pending_app_tap) = if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.dispatch_pointer_released(mouse_pos.x as f32, mouse_pos.y as f32);
+                                (slint_ui.poll_lock_actions(), slint_ui.take_pending_app_tap())
+                            } else {
+                                (Vec::new(), None)
+                            };
+
+                            if state.shell.view == ShellView::LockScreen {
+                                process_lock_actions(state, &actions);
+                            }
+
+                            // Handle app tap
+                            if state.shell.view == ShellView::Home {
+                                if let Some(app_index) = pending_app_tap {
+                                    let categories = &state.shell.app_manager.config.grid_order;
+                                    if (app_index as usize) < categories.len() {
+                                        let category = categories[app_index as usize];
+                                        info!("App tap from Slint callback: index={} category={:?}", app_index, category);
+                                        if let Some(exec) = state.shell.app_manager.get_exec(category) {
+                                            info!("Launching app via Slint callback: {}", exec);
+                                            std::process::Command::new("sh")
+                                                .arg("-c")
+                                                .arg(&exec)
+                                                .env("WAYLAND_DISPLAY", state.socket_name.to_str().unwrap_or("wayland-1"))
+                                                .env_remove("DISPLAY")
+                                                .spawn()
+                                                .ok();
+                                            state.shell.app_launched();
+                                        }
+                                    }
+                                }
+                            }
+
+                            *x11_touch_active = false;
+                            return;  // Already handled the gesture
+                        }
 
                         // Handle home gesture completion if it was started from keyboard swipe
                         let home_gesture_from_keyboard = state.home_gesture_window.is_some() && state.keyboard_dismiss_start_y > 0.0;
@@ -787,8 +870,10 @@ fn handle_winit_input(
             // Get touch position in pixel coordinates
             // Note: Smithay's winit backend has a bug where touch Y is normalized against width
             // instead of height, so we use y_transformed(width) to get correct pixel Y
-            let logical_x = event.x_transformed(width) as f64;
-            let logical_y = event.y_transformed(width) as f64;  // Use width due to Smithay bug
+            let raw_x = event.x_transformed(width) as f64;
+            let raw_y = event.y_transformed(width) as f64;  // Use width due to Smithay bug
+            // Transform for Flipped180 output
+            let (logical_x, logical_y) = transform_coords(raw_x, raw_y, width, height);
             let touch_pos = Point::from((logical_x, logical_y));
 
             *mouse_pos = touch_pos;
@@ -829,8 +914,10 @@ fn handle_winit_input(
 
             // Note: Smithay's winit backend has a bug where touch Y is normalized against width
             // instead of height, so we use y_transformed(width) to get correct pixel Y
-            let logical_x = event.x_transformed(width) as f64;
-            let logical_y = event.y_transformed(width) as f64;  // Use width due to Smithay bug
+            let raw_x = event.x_transformed(width) as f64;
+            let raw_y = event.y_transformed(width) as f64;  // Use width due to Smithay bug
+            // Transform for Flipped180 output
+            let (logical_x, logical_y) = transform_coords(raw_x, raw_y, width, height);
             let touch_pos = Point::from((logical_x, logical_y));
 
             *mouse_pos = touch_pos;
@@ -1040,6 +1127,71 @@ fn render_frame(
                     elements.push(WinitRenderElement::Surface(elem));
                 }
             }
+
+            // Check if keyboard should be rendered on top of app windows
+            let keyboard_visible = state.shell.slint_ui.as_ref()
+                .map(|ui| ui.is_keyboard_visible())
+                .unwrap_or(false);
+
+            if keyboard_visible && render_app_windows {
+                // Render keyboard overlay from Slint on top of app
+                if let Some(ref mut slint_ui) = state.shell.slint_ui {
+                    // Set view to app for keyboard-only render
+                    slint_ui.set_view("app");
+                    slint_ui.process_events();
+                    slint_ui.request_redraw();
+
+                    if let Some((width, height, pixels)) = slint_ui.render() {
+                        // Keyboard height is 22% of screen, minimum 200px (matches Slint)
+                        let keyboard_height: u32 = std::cmp::max(200, (height as f32 * 0.22) as u32);
+                        let keyboard_y = height.saturating_sub(keyboard_height);
+                        info!("Winit keyboard overlay: {}x{}, keyboard_height={}, keyboard_y={}",
+                            width, height, keyboard_height, keyboard_y);
+
+                        // Create a smaller buffer just for the keyboard
+                        let mut keyboard_pixels = Vec::with_capacity((width * keyboard_height * 4) as usize);
+
+                        // Copy only the keyboard rows from the full render
+                        for y in keyboard_y..height {
+                            let row_start = (y * width * 4) as usize;
+                            let row_end = row_start + (width * 4) as usize;
+                            if row_end <= pixels.len() {
+                                keyboard_pixels.extend_from_slice(&pixels[row_start..row_end]);
+                            }
+                        }
+
+                        // Create memory buffer for keyboard overlay
+                        use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
+
+                        let keyboard_buffer = MemoryRenderBuffer::from_slice(
+                            &keyboard_pixels,
+                            smithay::backend::allocator::Fourcc::Abgr8888,
+                            (width as i32, keyboard_height as i32),
+                            1,
+                            Transform::Normal,
+                            None,
+                        );
+
+                        // Position keyboard at bottom of screen
+                        let keyboard_y_pos = keyboard_y as f64;
+
+                        let keyboard_element = MemoryRenderBufferRenderElement::from_buffer(
+                            renderer,
+                            (0.0, keyboard_y_pos),
+                            &keyboard_buffer,
+                            None,
+                            None,
+                            None,
+                            smithay::backend::renderer::element::Kind::Unspecified,
+                        );
+
+                        if let Ok(elem) = keyboard_element {
+                            // Insert at front so keyboard renders ON TOP of app
+                            elements.insert(0, WinitRenderElement::Slint(elem));
+                        }
+                    }
+                }
+            }
         } else {
             // Render Slint UI for home screen, quick settings, lock screen (loading), etc.
             let should_render_slint = matches!(
@@ -1059,6 +1211,7 @@ fn render_frame(
                     // Render Slint to pixel buffer
                     if let Some((width, height, pixels)) = slint_ui.render() {
                         // Create memory buffer from pixels
+                        // Output transform (Flipped180) handles display orientation
                         use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
 
                         let buffer = MemoryRenderBuffer::from_slice(
