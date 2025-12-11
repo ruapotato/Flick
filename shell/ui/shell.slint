@@ -1216,6 +1216,7 @@ component QuickSettingsPanel inherits Rectangle {
     in property <bool> flashlight-enabled: false;
     in property <bool> airplane-enabled: false;
     in property <bool> rotation-locked: false;
+    in property <bool> touch-effects-enabled: true;
     in property <string> wifi-ssid: "Home WiFi";
     in property <int> battery-percent: 85;
     in property <string> time: "12:00";
@@ -1228,6 +1229,7 @@ component QuickSettingsPanel inherits Rectangle {
     callback flashlight-toggled();
     callback airplane-toggled();
     callback rotation-toggled();
+    callback touch-effects-toggled();
     callback lock-pressed();
     callback settings-pressed();
     callback notification-dismissed(int);
@@ -1372,10 +1374,10 @@ component QuickSettingsPanel inherits Rectangle {
                     }
 
                     QuickToggle {
-                        label: "Settings";
-                        icon: "⚙";
-                        enabled: false;
-                        toggled => { settings-pressed(); }
+                        label: "Ripples";
+                        icon: "💧";
+                        enabled: touch-effects-enabled;
+                        toggled => { touch-effects-toggled(); }
                     }
                 }
             }
@@ -1776,6 +1778,7 @@ export component FlickShell inherits Window {
     in property <bool> flashlight-enabled: false;
     in property <bool> airplane-enabled: false;
     in property <bool> rotation-locked: false;
+    in property <bool> touch-effects-enabled: true;
     in property <string> wifi-ssid: "WiFi";
     in property <int> battery-percent: 85;
     in property <[Notification]> notifications: [];
@@ -1834,6 +1837,7 @@ export component FlickShell inherits Window {
     callback flashlight-toggled();
     callback airplane-toggled();
     callback rotation-toggled();
+    callback touch-effects-toggled();
     callback lock-pressed();
     callback settings-pressed();
     callback notification-dismissed(int);
@@ -1890,6 +1894,7 @@ export component FlickShell inherits Window {
         flashlight-enabled: flashlight-enabled;
         airplane-enabled: airplane-enabled;
         rotation-locked: rotation-locked;
+        touch-effects-enabled: touch-effects-enabled;
         wifi-ssid: wifi-ssid;
         battery-percent: battery-percent;
         notifications: notifications;
@@ -1901,6 +1906,7 @@ export component FlickShell inherits Window {
         flashlight-toggled => { flashlight-toggled(); }
         airplane-toggled => { airplane-toggled(); }
         rotation-toggled => { rotation-toggled(); }
+        touch-effects-toggled => { touch-effects-toggled(); }
         lock-pressed => { lock-pressed(); }
         settings-pressed => { settings-pressed(); }
         notification-dismissed(id) => { notification-dismissed(id); }

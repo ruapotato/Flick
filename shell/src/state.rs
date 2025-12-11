@@ -143,6 +143,10 @@ pub struct Flick {
     /// Per-window keyboard visibility state (surface ID -> keyboard was visible)
     pub window_keyboard_state: HashMap<smithay::reexports::wayland_server::backend::ObjectId, bool>,
 
+    // Touch visual effects (liquid ripples and wakes)
+    pub touch_effects: Vec<crate::touch_effects::TouchEffect>,
+    pub touch_effects_enabled: bool,
+
     // Integrated shell UI
     pub shell: Shell,
 
@@ -245,6 +249,8 @@ impl Flick {
             keyboard_dismiss_offset: 0.0,
             keyboard_pointer_cleared: false,
             window_keyboard_state: HashMap::new(),
+            touch_effects: Vec::new(),
+            touch_effects_enabled: true,  // Enabled by default - they're that cool!
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
         }
@@ -889,6 +895,57 @@ impl Flick {
             tracing::info!("Created desktop viewport (1920x1080)");
         }
         0
+    }
+
+    // ========================================================================
+    // Touch Effects (simple fading circles)
+    // ========================================================================
+
+    /// Start a touch effect at the given position
+    pub fn add_touch_effect(&mut self, x: f64, y: f64, touch_id: u64) {
+        if !self.touch_effects_enabled {
+            return;
+        }
+        self.touch_effects.push(crate::touch_effects::TouchEffect::new(x, y, touch_id));
+    }
+
+    /// Update touch effect position (adds circles on swipe)
+    pub fn update_touch_effect(&mut self, x: f64, y: f64, touch_id: u64) {
+        if !self.touch_effects_enabled {
+            return;
+        }
+        for effect in &mut self.touch_effects {
+            if effect.touch_id == touch_id {
+                effect.update_position(x, y);
+                return;
+            }
+        }
+        // If no effect found, create one
+        self.touch_effects.push(crate::touch_effects::TouchEffect::new(x, y, touch_id));
+    }
+
+    /// End touch effect when finger lifts (just let it fade)
+    pub fn end_touch_effect(&mut self, _touch_id: u64) {
+        // Nothing to do - circles will fade out on their own
+    }
+
+    /// Clean up expired touch effects
+    pub fn cleanup_touch_effects(&mut self) {
+        // Clean up circles within each effect
+        for effect in &mut self.touch_effects {
+            effect.cleanup();
+        }
+        // Remove effects with no circles left
+        self.touch_effects.retain(|e| !e.is_expired());
+    }
+
+    /// Toggle touch effects on/off
+    pub fn set_touch_effects_enabled(&mut self, enabled: bool) {
+        self.touch_effects_enabled = enabled;
+        if !enabled {
+            self.touch_effects.clear();
+        }
+        tracing::info!("Touch effects {}", if enabled { "enabled" } else { "disabled" });
     }
 }
 

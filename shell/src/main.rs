@@ -13,6 +13,7 @@ mod shell;
 mod input;
 mod viewport;
 mod xwayland;
+mod touch_effects;
 pub mod system;
 pub mod text_input;
 

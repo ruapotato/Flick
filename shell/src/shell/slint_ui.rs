@@ -33,6 +33,7 @@ pub enum QuickSettingsAction {
     FlashlightToggle,
     AirplaneToggle,
     RotationToggle,
+    TouchEffectsToggle,
     Lock,
     Settings,  // Now launches Flutter Settings app
     BrightnessChanged(f32),
@@ -182,6 +183,12 @@ impl SlintShell {
         shell.on_rotation_toggled(move || {
             info!("Slint Rotation toggle callback");
             qs_clone.borrow_mut().push(QuickSettingsAction::RotationToggle);
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_touch_effects_toggled(move || {
+            info!("Slint Touch Effects toggle callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::TouchEffectsToggle);
         });
 
         let qs_clone = pending_qs_actions.clone();
@@ -425,6 +432,11 @@ impl SlintShell {
     /// Set Rotation locked state
     pub fn set_rotation_locked(&self, locked: bool) {
         self.shell.set_rotation_locked(locked);
+    }
+
+    /// Set Touch Effects enabled state
+    pub fn set_touch_effects_enabled(&self, enabled: bool) {
+        self.shell.set_touch_effects_enabled(enabled);
     }
 
     /// Set WiFi SSID

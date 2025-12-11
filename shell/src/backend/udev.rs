@@ -573,6 +573,9 @@ pub fn run() -> Result<()> {
             *needs_buffer_reset.borrow_mut() = false;
         }
 
+        // Clean up expired touch effects before rendering
+        state.cleanup_touch_effects();
+
         // Render to each surface that is ready
         for (crtc, surface_data_rc) in gpu.surfaces.iter() {
             let mut surface_data = surface_data_rc.borrow_mut();
@@ -846,6 +849,49 @@ fn render_surface(
     tracing::info!("render_surface: view={:?}, gesture_active={}, qs_gesture_active={}, qs_progress={:.2}, bg_color={:?}",
                    shell_view, gesture_active, state.qs_gesture_active, state.qs_gesture_progress, bg_color);
 
+    // Render touch effects to buffers (if enabled and any active effects)
+    // We need two separate elements since MemoryRenderBufferRenderElement doesn't implement Clone
+    let touch_effect_pixels: Option<Vec<u8>> = if state.touch_effects_enabled && !state.touch_effects.is_empty() {
+        let touch_renderer = crate::touch_effects::TouchEffectRenderer::new(
+            state.screen_size.w as u32,
+            state.screen_size.h as u32,
+        );
+        touch_renderer.render(&state.touch_effects)
+    } else {
+        None
+    };
+
+    // Helper function to create a touch effect element from pixels
+    fn create_touch_effect_element(
+        renderer: &mut GlesRenderer,
+        pixels: &[u8],
+        width: i32,
+        height: i32,
+    ) -> Option<MemoryRenderBufferRenderElement<GlesRenderer>> {
+        let mut effect_buffer = MemoryRenderBuffer::new(
+            Fourcc::Abgr8888,
+            (width, height),
+            1,
+            Transform::Normal,
+            None,
+        );
+        let pixels_clone = pixels.to_vec();
+        let _: Result<(), std::convert::Infallible> = effect_buffer.render().draw(|buffer| {
+            buffer.copy_from_slice(&pixels_clone);
+            Ok(vec![Rectangle::from_size((width, height).into())])
+        });
+        let location: smithay::utils::Point<f64, smithay::utils::Physical> = (0.0, 0.0).into();
+        MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            location,
+            &effect_buffer,
+            None,
+            None,
+            None,
+            smithay::backend::renderer::element::Kind::Unspecified,
+        ).ok()
+    }
+
     // Build Slint UI elements for shell views
     let mut slint_elements: Vec<HomeRenderElement<GlesRenderer>> = Vec::new();
     // For Switcher, we save the Slint element separately to add to switcher_elements
@@ -945,6 +991,7 @@ fn render_surface(
                         slint_ui.set_flashlight_enabled(crate::system::Flashlight::is_on());
                         slint_ui.set_airplane_enabled(crate::system::AirplaneMode::is_enabled());
                         slint_ui.set_rotation_locked(state.system.rotation_lock.locked);
+                        slint_ui.set_touch_effects_enabled(state.touch_effects_enabled);
                         slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
                         slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
                     }
@@ -1335,6 +1382,20 @@ fn render_surface(
         slint_elements.len()
     );
 
+    // Add touch effects overlay to slint_elements (renders on top)
+    if let Some(ref pixels) = touch_effect_pixels {
+        if let Some(effect_elem) = create_touch_effect_element(renderer, pixels, state.screen_size.w, state.screen_size.h) {
+            slint_elements.insert(0, HomeRenderElement::Icon(effect_elem));
+        }
+    }
+
+    // Also add to switcher_elements if we're in Switcher view
+    if let Some(ref pixels) = touch_effect_pixels {
+        if let Some(effect_elem) = create_touch_effect_element(renderer, pixels, state.screen_size.w, state.screen_size.h) {
+            switcher_elements.insert(0, SwitcherRenderElement::Icon(effect_elem));
+        }
+    }
+
     let render_res = if shell_view == ShellView::Switcher && !switcher_home_gesture_active {
         tracing::info!("RENDER BRANCH: Switcher (not home gesture)");
         // Switcher view - render window cards
@@ -1457,6 +1518,13 @@ fn render_surface(
                 HomeRenderElement::Icon(icon) => switcher_home_elements.push(SwitcherRenderElement::Icon(icon)),
                 HomeRenderElement::Solid(solid) => switcher_home_elements.push(SwitcherRenderElement::Solid(solid)),
                 _ => {}
+            }
+        }
+
+        // Add touch effects overlay on top
+        if let Some(ref pixels) = touch_effect_pixels {
+            if let Some(effect_elem) = create_touch_effect_element(renderer, pixels, state.screen_size.w, state.screen_size.h) {
+                switcher_home_elements.insert(0, SwitcherRenderElement::Icon(effect_elem));
             }
         }
 
@@ -1678,6 +1746,13 @@ fn render_surface(
             }
         }
 
+        // Add touch effects overlay on top
+        if let Some(ref pixels) = touch_effect_pixels {
+            if let Some(effect_elem) = create_touch_effect_element(renderer, pixels, state.screen_size.w, state.screen_size.h) {
+                home_gesture_elements.insert(0, SwitcherRenderElement::Icon(effect_elem));
+            }
+        }
+
         tracing::info!("Home gesture: total {} elements", home_gesture_elements.len());
 
         surface_data.damage_tracker.render_output(
@@ -1811,6 +1886,13 @@ fn render_surface(
             }
         }
 
+        // Add touch effects overlay on top
+        if let Some(ref pixels) = touch_effect_pixels {
+            if let Some(effect_elem) = create_touch_effect_element(renderer, pixels, state.screen_size.w, state.screen_size.h) {
+                transition_elements.insert(0, SwitcherRenderElement::Icon(effect_elem));
+            }
+        }
+
         // Render with switcher background color
         surface_data.damage_tracker.render_output(
             renderer,
@@ -1848,6 +1930,7 @@ fn render_surface(
             slint_ui.set_flashlight_enabled(crate::system::Flashlight::is_on());
             slint_ui.set_airplane_enabled(crate::system::AirplaneMode::is_enabled());
             slint_ui.set_rotation_locked(state.system.rotation_lock.locked);
+            slint_ui.set_touch_effects_enabled(state.touch_effects_enabled);
             slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
             slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
 
@@ -1964,6 +2047,13 @@ fn render_surface(
             }
         }
 
+        // Add touch effects overlay on top
+        if let Some(ref pixels) = touch_effect_pixels {
+            if let Some(effect_elem) = create_touch_effect_element(renderer, pixels, state.screen_size.w, state.screen_size.h) {
+                qs_elements.insert(0, SwitcherRenderElement::Icon(effect_elem));
+            }
+        }
+
         surface_data.damage_tracker.render_output(
             renderer,
             &mut fb,
@@ -1992,6 +2082,7 @@ fn render_surface(
             slint_ui.set_flashlight_enabled(crate::system::Flashlight::is_on());
             slint_ui.set_airplane_enabled(crate::system::AirplaneMode::is_enabled());
             slint_ui.set_rotation_locked(state.system.rotation_lock.locked);
+            slint_ui.set_touch_effects_enabled(state.touch_effects_enabled);
             slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
             slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
 
@@ -2035,6 +2126,13 @@ fn render_surface(
                 HomeRenderElement::Icon(icon) => qs_home_elements.push(SwitcherRenderElement::Icon(icon)),
                 HomeRenderElement::Solid(solid) => qs_home_elements.push(SwitcherRenderElement::Solid(solid)),
                 _ => {}
+            }
+        }
+
+        // Add touch effects overlay on top
+        if let Some(ref pixels) = touch_effect_pixels {
+            if let Some(effect_elem) = create_touch_effect_element(renderer, pixels, state.screen_size.w, state.screen_size.h) {
+                qs_home_elements.insert(0, SwitcherRenderElement::Icon(effect_elem));
             }
         }
 
@@ -2155,6 +2253,13 @@ fn render_surface(
                 }
             }
 
+            // Add touch effects overlay on top of app (with keyboard)
+            if let Some(ref pixels) = touch_effect_pixels {
+                if let Some(effect_elem) = create_touch_effect_element(renderer, pixels, state.screen_size.w, state.screen_size.h) {
+                    app_keyboard_elements.insert(0, SwitcherRenderElement::Icon(effect_elem));
+                }
+            }
+
             surface_data.damage_tracker.render_output(
                 renderer,
                 &mut fb,
@@ -2164,16 +2269,51 @@ fn render_surface(
             )
         } else {
             // Normal app view without keyboard
-            let window_elements: Vec<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>> = state
-                .space
-                .render_elements_for_output(renderer, output, scale as f32)
-                .unwrap_or_default();
+            let mut app_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
+
+            // Add touch effects overlay on top (FIRST = on top in front-to-back)
+            if let Some(ref pixels) = touch_effect_pixels {
+                if let Some(effect_elem) = create_touch_effect_element(renderer, pixels, state.screen_size.w, state.screen_size.h) {
+                    app_elements.push(SwitcherRenderElement::Icon(effect_elem));
+                }
+            }
+
+            // Add the topmost window
+            if let Some(window) = state.space.elements().last() {
+                if let Some(loc) = state.space.element_location(window) {
+                    use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
+
+                    let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
+                        .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                            renderer,
+                            (0, 0).into(),
+                            Scale::from(scale),
+                            1.0,
+                        );
+
+                    let screen_w = state.screen_size.w;
+                    let screen_h = state.screen_size.h;
+                    let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
+                        (0, 0).into(),
+                        (screen_w, screen_h).into(),
+                    );
+
+                    for elem in window_render_elements {
+                        let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(1.0));
+                        let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (loc.x, loc.y).into();
+                        let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Relative);
+                        if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
+                            app_elements.push(cropped.into());
+                        }
+                    }
+                }
+            }
 
             surface_data.damage_tracker.render_output(
                 renderer,
                 &mut fb,
-                _age as usize,
-                &window_elements,
+                0, // Force full redraw to show touch effects
+                &app_elements,
                 bg_color,
             )
         }
@@ -2571,6 +2711,9 @@ fn handle_input_event(
             // Feed to gesture recognizer (use slot id or 0 for single-touch)
             let slot_id: i32 = event.slot().into();
 
+            // Create touch effect at touch position
+            state.add_touch_effect(touch_pos.x, touch_pos.y, slot_id as u64);
+
             // Debug: Log touch position and screen size
             info!("Touch down at ({:.0}, {:.0}), screen size: {:?}", touch_pos.x, touch_pos.y, screen);
 
@@ -2924,6 +3067,10 @@ fn handle_input_event(
 
             // Feed to gesture recognizer
             let slot_id: i32 = event.slot().into();
+
+            // Update touch effect (adds circles on swipe)
+            state.update_touch_effect(touch_pos.x, touch_pos.y, slot_id as u64);
+
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
                 debug!("Gesture update: {:?}", gesture_event);
                 // Update integrated shell state
@@ -3152,6 +3299,10 @@ fn handle_input_event(
 
             // Save touch position BEFORE touch_up removes it from gesture recognizer
             let slot_id: i32 = event.slot().into();
+
+            // End touch effect (lets ripples/wakes fade out)
+            state.end_touch_effect(slot_id as u64);
+
             let last_touch_pos = state.gesture_recognizer.get_touch_position(slot_id);
 
             // Check keyboard area for debugging
@@ -3699,6 +3850,11 @@ fn handle_input_event(
                                 QuickSettingsAction::RotationToggle => {
                                     state.system.rotation_lock.toggle();
                                     info!("Rotation lock: {}", if state.system.rotation_lock.locked { "ON" } else { "OFF" });
+                                }
+                                QuickSettingsAction::TouchEffectsToggle => {
+                                    let enabled = !state.touch_effects_enabled;
+                                    state.set_touch_effects_enabled(enabled);
+                                    info!("Touch effects: {}", if enabled { "ON" } else { "OFF" });
                                 }
                                 QuickSettingsAction::Lock => {
                                     info!("Lock button pressed - locking screen");
