@@ -146,6 +146,7 @@ pub struct Flick {
     // Touch visual effects (liquid ripples and wakes)
     pub touch_effects: Vec<crate::touch_effects::TouchEffect>,
     pub touch_effects_enabled: bool,
+    pub settings_last_check: std::time::Instant,
 
     // Integrated shell UI
     pub shell: Shell,
@@ -251,6 +252,7 @@ impl Flick {
             window_keyboard_state: HashMap::new(),
             touch_effects: Vec::new(),
             touch_effects_enabled: Self::load_compositor_settings(),  // Load from config
+            settings_last_check: Instant::now(),
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
         }
@@ -983,6 +985,27 @@ impl Flick {
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"))
             .join(".local/state/flick/compositor_settings.json")
+    }
+
+    /// Reload settings from config file if enough time has passed
+    /// This allows the Settings app to change settings without restart
+    pub fn reload_settings_if_needed(&mut self) {
+        // Check every 500ms
+        if self.settings_last_check.elapsed().as_millis() < 500 {
+            return;
+        }
+        self.settings_last_check = Instant::now();
+
+        // Reload touch effects setting
+        let new_enabled = Self::load_compositor_settings();
+        if new_enabled != self.touch_effects_enabled {
+            tracing::info!("Settings changed: touch_effects_enabled {} -> {}",
+                self.touch_effects_enabled, new_enabled);
+            self.touch_effects_enabled = new_enabled;
+            if !new_enabled {
+                self.touch_effects.clear();
+            }
+        }
     }
 }
 

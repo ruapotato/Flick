@@ -573,6 +573,9 @@ pub fn run() -> Result<()> {
             *needs_buffer_reset.borrow_mut() = false;
         }
 
+        // Reload settings periodically (allows Settings app to change settings without restart)
+        state.reload_settings_if_needed();
+
         // Clean up expired touch effects before rendering
         state.cleanup_touch_effects();
 
