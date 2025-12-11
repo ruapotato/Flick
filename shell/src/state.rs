@@ -287,6 +287,7 @@ impl Flick {
 
     /// Get the effective viewport rectangle when phone shape mode is enabled
     /// Returns the area inside the letterbox bars (or full screen if disabled)
+    /// NOTE: Viewport is LEFT-JUSTIFIED (starts at x=0) so window coordinates match screen coordinates
     pub fn effective_viewport(&self) -> smithay::utils::Rectangle<i32, Logical> {
         use smithay::utils::Rectangle;
 
@@ -298,11 +299,11 @@ impl Flick {
         let screen_aspect = self.screen_size.w as f64 / self.screen_size.h as f64;
 
         if screen_aspect > phone_aspect {
-            // Screen is wider than phone - viewport is centered with bars on sides
+            // Screen is wider than phone - viewport is LEFT-JUSTIFIED with bar on right only
+            // This keeps (0,0) aligned so window coordinates match screen coordinates
             let phone_width = (self.screen_size.h as f64 * phone_aspect) as i32;
-            let bar_width = (self.screen_size.w - phone_width) / 2;
             Rectangle::new(
-                (bar_width, 0).into(),
+                (0, 0).into(),
                 (phone_width, self.screen_size.h).into(),
             )
         } else {

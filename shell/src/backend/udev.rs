@@ -905,23 +905,26 @@ fn create_touch_effect_buffer(
     Some((buffer, (pos_x, pos_y).into()))
 }
 
-/// Get phone letterbox bar dimensions (for 9:16 phone aspect ratio in center)
+/// Get phone letterbox bar dimensions (for 9:16 phone aspect ratio, LEFT-JUSTIFIED)
+/// Returns (left_bar, right_bar) - left_bar will be empty since viewport starts at x=0
 fn get_phone_letterbox_bars(screen_w: i32, screen_h: i32) -> (smithay::utils::Rectangle<i32, smithay::utils::Physical>, smithay::utils::Rectangle<i32, smithay::utils::Physical>) {
     // Target phone aspect ratio: 9:16 (portrait)
     let phone_aspect = 9.0 / 16.0;
     let screen_aspect = screen_w as f64 / screen_h as f64;
 
     if screen_aspect > phone_aspect {
-        // Screen is wider than phone - add bars on sides
+        // Screen is wider than phone - viewport is LEFT-JUSTIFIED, bar on RIGHT only
         let phone_width = (screen_h as f64 * phone_aspect) as i32;
-        let bar_width = (screen_w - phone_width) / 2;
+        let bar_width = screen_w - phone_width;
 
+        // No left bar - viewport starts at x=0
         let left_bar = smithay::utils::Rectangle::new(
             (0, 0).into(),
-            (bar_width, screen_h).into(),
+            (0, 0).into(),
         );
+        // Right bar takes all remaining space
         let right_bar = smithay::utils::Rectangle::new(
-            (screen_w - bar_width, 0).into(),
+            (phone_width, 0).into(),
             (bar_width, screen_h).into(),
         );
 
