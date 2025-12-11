@@ -36,6 +36,9 @@ pub enum QuickSettingsAction {
     Lock,
     Settings,  // Now launches Flutter Settings app
     BrightnessChanged(f32),
+    RecordingToggle,
+    PhoneModeToggle,
+    TouchEffectsToggle,
 }
 
 /// Actions that can be triggered from the on-screen keyboard
@@ -200,6 +203,24 @@ impl SlintShell {
         shell.on_brightness_changed(move |value| {
             info!("Slint Brightness changed callback: {}", value);
             qs_clone.borrow_mut().push(QuickSettingsAction::BrightnessChanged(value));
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_recording_toggled(move || {
+            info!("Slint Recording toggle callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::RecordingToggle);
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_phone_mode_toggled(move || {
+            info!("Slint Phone mode toggle callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::PhoneModeToggle);
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_touch_effects_toggled(move || {
+            info!("Slint Touch effects toggle callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::TouchEffectsToggle);
         });
 
         // Create pending switcher tap storage
@@ -425,6 +446,21 @@ impl SlintShell {
     /// Set Rotation locked state
     pub fn set_rotation_locked(&self, locked: bool) {
         self.shell.set_rotation_locked(locked);
+    }
+
+    /// Set Recording active state
+    pub fn set_recording_active(&self, active: bool) {
+        self.shell.set_recording_active(active);
+    }
+
+    /// Set Phone mode enabled state
+    pub fn set_phone_mode_enabled(&self, enabled: bool) {
+        self.shell.set_phone_mode_enabled(enabled);
+    }
+
+    /// Set Touch effects enabled state
+    pub fn set_touch_effects_enabled(&self, enabled: bool) {
+        self.shell.set_touch_effects_enabled(enabled);
     }
 
     /// Set WiFi SSID

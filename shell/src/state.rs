@@ -148,6 +148,36 @@ pub struct Flick {
 
     // System status (hardware integration)
     pub system: SystemStatus,
+
+    // === Recording & Visual Effects ===
+
+    /// Phone shape mode - letterbox sides for phone-aspect recording
+    pub phone_shape_enabled: bool,
+
+    /// Screen recording state
+    pub recording_active: bool,
+    pub recording_process: Option<std::process::Child>,
+
+    /// Touch effects - list of active ripple animations
+    pub touch_effects: Vec<TouchEffect>,
+
+    /// Touch effects enabled (user setting)
+    pub touch_effects_enabled: bool,
+}
+
+/// A touch ripple effect animation
+#[derive(Clone)]
+pub struct TouchEffect {
+    /// Touch position (screen coordinates)
+    pub position: smithay::utils::Point<f64, Logical>,
+    /// When the effect started
+    pub start_time: Instant,
+    /// Duration of the effect
+    pub duration: std::time::Duration,
+    /// Maximum radius of the ripple
+    pub max_radius: f64,
+    /// Color of the ripple (RGBA)
+    pub color: [f32; 4],
 }
 
 impl Flick {
@@ -247,7 +277,178 @@ impl Flick {
             window_keyboard_state: HashMap::new(),
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
+            phone_shape_enabled: std::env::var("FLICK_LETTERBOX").map(|v| v == "1" || v.to_lowercase() == "true").unwrap_or(false),
+            recording_active: false,
+            recording_process: None,
+            touch_effects: Vec::new(),
+            touch_effects_enabled: true,  // Enabled by default - they're that cool!
         }
+    }
+
+    /// Get the effective viewport rectangle when phone shape mode is enabled
+    /// Returns the area inside the letterbox bars (or full screen if disabled)
+    pub fn effective_viewport(&self) -> smithay::utils::Rectangle<i32, Logical> {
+        use smithay::utils::Rectangle;
+
+        if !self.phone_shape_enabled {
+            return Rectangle::new((0, 0).into(), self.screen_size);
+        }
+
+        let phone_aspect = 9.0 / 16.0;
+        let screen_aspect = self.screen_size.w as f64 / self.screen_size.h as f64;
+
+        if screen_aspect > phone_aspect {
+            // Screen is wider than phone - viewport is centered with bars on sides
+            let phone_width = (self.screen_size.h as f64 * phone_aspect) as i32;
+            let bar_width = (self.screen_size.w - phone_width) / 2;
+            Rectangle::new(
+                (bar_width, 0).into(),
+                (phone_width, self.screen_size.h).into(),
+            )
+        } else {
+            // Screen is already narrow enough - full screen
+            Rectangle::new((0, 0).into(), self.screen_size)
+        }
+    }
+
+    /// Convert screen coordinates to viewport-relative coordinates
+    /// Returns None if the point is outside the viewport (in the letterbox bars)
+    pub fn screen_to_viewport(&self, screen_pos: smithay::utils::Point<f64, Logical>) -> Option<smithay::utils::Point<f64, Logical>> {
+        let viewport = self.effective_viewport();
+        let vx = viewport.loc.x as f64;
+        let vy = viewport.loc.y as f64;
+        let vw = viewport.size.w as f64;
+        let vh = viewport.size.h as f64;
+
+        // Check if point is inside viewport
+        if screen_pos.x < vx || screen_pos.x >= vx + vw ||
+           screen_pos.y < vy || screen_pos.y >= vy + vh {
+            return None;
+        }
+
+        // Convert to viewport-relative coordinates
+        Some((screen_pos.x - vx, screen_pos.y - vy).into())
+    }
+
+    /// Convert viewport-relative coordinates to screen coordinates
+    pub fn viewport_to_screen(&self, viewport_pos: smithay::utils::Point<f64, Logical>) -> smithay::utils::Point<f64, Logical> {
+        let viewport = self.effective_viewport();
+        (viewport_pos.x + viewport.loc.x as f64, viewport_pos.y + viewport.loc.y as f64).into()
+    }
+
+    /// Get the viewport size (the size apps should use)
+    pub fn viewport_size(&self) -> Size<i32, Logical> {
+        self.effective_viewport().size
+    }
+
+    /// Add a touch ripple effect at the given position
+    pub fn add_touch_effect(&mut self, position: smithay::utils::Point<f64, Logical>) {
+        if !self.touch_effects_enabled {
+            return;
+        }
+
+        let effect = TouchEffect {
+            position,
+            start_time: Instant::now(),
+            duration: std::time::Duration::from_millis(600),
+            max_radius: 80.0,
+            color: [0.3, 0.7, 1.0, 0.6],  // Bright cyan-blue
+        };
+        self.touch_effects.push(effect);
+    }
+
+    /// Update touch effects - remove expired ones, returns true if any are active
+    pub fn update_touch_effects(&mut self) -> bool {
+        let now = Instant::now();
+        self.touch_effects.retain(|e| now.duration_since(e.start_time) < e.duration);
+        !self.touch_effects.is_empty()
+    }
+
+    /// Toggle screen recording - starts/stops wf-recorder
+    pub fn toggle_recording(&mut self) {
+        if self.recording_active {
+            self.stop_recording();
+        } else {
+            self.start_recording();
+        }
+    }
+
+    /// Start screen recording using wf-recorder
+    pub fn start_recording(&mut self) {
+        if self.recording_active {
+            return;
+        }
+
+        // Generate timestamped filename
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let videos_dir = format!("{}/Videos", home);
+
+        // Create Videos directory if it doesn't exist
+        let _ = std::fs::create_dir_all(&videos_dir);
+
+        let output_file = format!("{}/flick_recording_{}.mp4", videos_dir, timestamp);
+
+        tracing::info!("Starting screen recording to: {}", output_file);
+
+        // Try wf-recorder first (Wayland native), then fall back to ffmpeg
+        match std::process::Command::new("wf-recorder")
+            .args(["-f", &output_file, "-c", "libx264", "-p", "preset=ultrafast"])
+            .spawn()
+        {
+            Ok(child) => {
+                self.recording_process = Some(child);
+                self.recording_active = true;
+                tracing::info!("Screen recording started with wf-recorder");
+            }
+            Err(e) => {
+                tracing::warn!("wf-recorder not available ({}), trying ffmpeg...", e);
+                // Fallback to ffmpeg with pipewire capture
+                match std::process::Command::new("ffmpeg")
+                    .args([
+                        "-f", "pipewire", "-i", "default",
+                        "-c:v", "libx264", "-preset", "ultrafast",
+                        "-y", &output_file
+                    ])
+                    .spawn()
+                {
+                    Ok(child) => {
+                        self.recording_process = Some(child);
+                        self.recording_active = true;
+                        tracing::info!("Screen recording started with ffmpeg");
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to start recording: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Stop screen recording
+    pub fn stop_recording(&mut self) {
+        if !self.recording_active {
+            return;
+        }
+
+        if let Some(ref mut child) = self.recording_process {
+            // Send SIGINT (Ctrl+C) to gracefully stop recording
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::CommandExt;
+                unsafe {
+                    libc::kill(child.id() as i32, libc::SIGINT);
+                }
+            }
+            // Wait a bit then force kill if needed
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let _ = child.kill();
+            let _ = child.wait();
+            tracing::info!("Screen recording stopped");
+        }
+
+        self.recording_process = None;
+        self.recording_active = false;
     }
 
     /// Send gesture progress to shell for interactive animations
@@ -612,37 +813,44 @@ impl Flick {
     /// When keyboard shows, reduce window height to fit above keyboard
     /// When keyboard hides, restore full screen height
     pub fn resize_windows_for_keyboard(&mut self, keyboard_visible: bool) {
-        let keyboard_height = std::cmp::max(200, (self.screen_size.h as f32 * 0.22) as i32);
-        let available_height = if keyboard_visible {
-            self.screen_size.h - keyboard_height
+        // Use viewport size in letterbox mode, screen size otherwise
+        let base_size = if self.phone_shape_enabled {
+            self.effective_viewport().size
         } else {
-            self.screen_size.h
+            self.screen_size
         };
 
-        tracing::info!("Resizing windows for keyboard: visible={}, available_height={}",
-            keyboard_visible, available_height);
+        let keyboard_height = std::cmp::max(200, (base_size.h as f32 * 0.22) as i32);
+        let available_height = if keyboard_visible {
+            base_size.h - keyboard_height
+        } else {
+            base_size.h
+        };
+
+        tracing::info!("Resizing windows for keyboard: visible={}, available_height={}, letterbox={}",
+            keyboard_visible, available_height, self.phone_shape_enabled);
 
         // Resize all app windows
         for window in self.space.elements() {
             // Only resize actual app windows (not override redirects, etc.)
             if let Some(toplevel) = window.toplevel() {
                 let new_size: smithay::utils::Size<i32, smithay::utils::Logical> =
-                    (self.screen_size.w, available_height).into();
+                    (base_size.w, available_height).into();
                 toplevel.with_pending_state(|state| {
                     state.size = Some(new_size);
                 });
                 toplevel.send_configure();
-                tracing::debug!("Resized Wayland window to {}x{}", self.screen_size.w, available_height);
+                tracing::debug!("Resized Wayland window to {}x{}", base_size.w, available_height);
             }
 
             // Handle X11 windows
             if let Some(x11_surface) = window.x11_surface() {
                 let new_geo = smithay::utils::Rectangle::from_loc_and_size(
                     (0, 0),
-                    (self.screen_size.w, available_height),
+                    (base_size.w, available_height),
                 );
                 let _ = x11_surface.configure(new_geo);
-                tracing::debug!("Resized X11 window to {}x{}", self.screen_size.w, available_height);
+                tracing::debug!("Resized X11 window to {}x{}", base_size.w, available_height);
             }
         }
     }

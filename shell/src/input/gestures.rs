@@ -13,7 +13,7 @@
 //! - Long press
 //! - Tap
 
-use smithay::utils::{Logical, Point, Size};
+use smithay::utils::{Logical, Point, Rectangle, Size};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -211,6 +211,9 @@ pub enum SlotGesture {
 pub struct GestureRecognizer {
     pub config: GestureConfig,
     pub screen_size: Size<i32, Logical>,
+    /// Effective viewport for edge detection (supports letterbox mode)
+    /// When set, edge gestures use viewport bounds instead of screen bounds
+    pub viewport: Option<Rectangle<i32, Logical>>,
     /// Per-slot touch tracking
     pub points: HashMap<i32, TouchPoint>,
     /// Per-slot gesture state
@@ -238,6 +241,7 @@ impl GestureRecognizer {
         Self {
             config: GestureConfig::default(),
             screen_size,
+            viewport: None,
             points: HashMap::new(),
             slot_gestures: HashMap::new(),
             active_gesture: None,
@@ -246,19 +250,43 @@ impl GestureRecognizer {
         }
     }
 
+    /// Set the effective viewport for edge detection (for letterbox mode)
+    pub fn set_viewport(&mut self, viewport: Option<Rectangle<i32, Logical>>) {
+        self.viewport = viewport;
+    }
+
     /// Check if a point is in an edge zone
+    /// Uses viewport bounds if set (letterbox mode), otherwise uses screen bounds
     pub fn detect_edge(&self, pos: Point<f64, Logical>) -> Option<Edge> {
         let threshold = self.config.edge_threshold;
-        let w = self.screen_size.w as f64;
-        let h = self.screen_size.h as f64;
 
-        if pos.x < threshold {
+        // Use viewport bounds if available, otherwise use full screen
+        let (x, y, w, h) = if let Some(viewport) = &self.viewport {
+            (
+                viewport.loc.x as f64,
+                viewport.loc.y as f64,
+                viewport.size.w as f64,
+                viewport.size.h as f64,
+            )
+        } else {
+            (0.0, 0.0, self.screen_size.w as f64, self.screen_size.h as f64)
+        };
+
+        // Check if point is inside viewport (for letterbox mode, ignore touches outside)
+        if self.viewport.is_some() {
+            if pos.x < x || pos.x >= x + w || pos.y < y || pos.y >= y + h {
+                return None; // Touch is outside viewport (in letterbox bars)
+            }
+        }
+
+        // Detect edges relative to viewport bounds
+        if pos.x < x + threshold {
             Some(Edge::Left)
-        } else if pos.x > w - threshold {
+        } else if pos.x > x + w - threshold {
             Some(Edge::Right)
-        } else if pos.y < threshold {
+        } else if pos.y < y + threshold {
             Some(Edge::Top)
-        } else if pos.y > h - threshold {
+        } else if pos.y > y + h - threshold {
             Some(Edge::Bottom)
         } else {
             None

@@ -321,6 +321,13 @@ pub fn run() -> Result<()> {
     let screen_size = (720, 1440).into();
     let mut state = Flick::new(display, loop_handle.clone(), screen_size);
 
+    // If phone shape mode is enabled (via FLICK_LETTERBOX env var), set up gesture viewport
+    if state.phone_shape_enabled {
+        let viewport = state.effective_viewport();
+        state.gesture_recognizer.set_viewport(Some(viewport));
+        info!("Letterbox mode enabled - gesture viewport: {:?}", viewport);
+    }
+
     info!("Wayland socket: {:?}", state.socket_name);
 
     // Set environment variables
@@ -413,13 +420,26 @@ pub fn run() -> Result<()> {
         state.screen_size = mode.size.to_logical(1);
         // Update gesture recognizer with actual screen size
         state.gesture_recognizer.screen_size = state.screen_size;
+        // Update gesture viewport if phone shape mode is enabled
+        if state.phone_shape_enabled {
+            let viewport = state.effective_viewport();
+            state.gesture_recognizer.set_viewport(Some(viewport));
+            info!("Gesture viewport updated for letterbox mode: {:?}", viewport);
+        }
         // Update shell with actual screen size
         state.shell.screen_size = state.screen_size;
         state.shell.quick_settings.screen_size = state.screen_size;
-        // Update Slint UI with actual screen size
+        // Update Slint UI with actual screen size (or viewport size in letterbox mode)
+        // Calculate size before borrowing slint_ui to avoid borrow conflict
+        let ui_size = if state.phone_shape_enabled {
+            state.effective_viewport().size
+        } else {
+            state.screen_size
+        };
+        let phone_shape = state.phone_shape_enabled;
         if let Some(ref mut slint_ui) = state.shell.slint_ui {
-            slint_ui.set_size(state.screen_size);
-            info!("Slint UI size updated to: {:?}", state.screen_size);
+            slint_ui.set_size(ui_size);
+            info!("Slint UI size updated to: {:?} (letterbox={})", ui_size, phone_shape);
         }
         info!("Screen size updated to: {:?}", state.screen_size);
     }
@@ -555,6 +575,10 @@ pub fn run() -> Result<()> {
             let card_spacing = card_width * 0.35;
             state.shell.update_switcher_physics(num_windows, card_spacing);
         }
+
+        // Update touch effects (expire old ones and check if we need to keep animating)
+        let has_touch_effects = state.update_touch_effects();
+        let _ = has_touch_effects; // Will use for continuous redraw if needed
 
         // Skip rendering if session is not active (VT switched away)
         if !*session_active.borrow() {
@@ -780,6 +804,130 @@ fn init_gpu(
     ))
 }
 
+/// Create a touch ripple effect buffer (expanding circle with fading glow)
+fn create_touch_effect_buffer(
+    effect: &crate::state::TouchEffect,
+    now: std::time::Instant,
+) -> Option<(MemoryRenderBuffer, smithay::utils::Point<i32, smithay::utils::Physical>)> {
+    let elapsed = now.duration_since(effect.start_time);
+    let progress = elapsed.as_secs_f32() / effect.duration.as_secs_f32();
+
+    if progress >= 1.0 {
+        return None;
+    }
+
+    // Current radius expands from 0 to max
+    let current_radius = (effect.max_radius * progress as f64) as i32;
+    if current_radius < 2 {
+        return None;
+    }
+
+    // Calculate fade: start at 0.6, fade out to 0
+    let alpha = (1.0 - progress) * 0.6;
+
+    // Buffer size is 2x radius + some padding for anti-aliasing
+    let size = (current_radius * 2 + 4) as usize;
+    let center = size / 2;
+
+    // Create RGBA buffer
+    let mut pixels = vec![0u8; size * size * 4];
+
+    // Base color from effect (usually cyan/blue glow)
+    let r = (effect.color[0] * 255.0) as u8;
+    let g = (effect.color[1] * 255.0) as u8;
+    let b = (effect.color[2] * 255.0) as u8;
+
+    // Draw the ring (not filled circle for nicer ripple effect)
+    let ring_thickness = (current_radius as f32 * 0.3).max(3.0) as i32;
+    let inner_radius = (current_radius - ring_thickness).max(0);
+    let outer_radius = current_radius;
+
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as i32 - center as i32;
+            let dy = y as i32 - center as i32;
+            let dist_sq = dx * dx + dy * dy;
+            let dist = (dist_sq as f32).sqrt();
+
+            // Check if in ring zone
+            if dist >= inner_radius as f32 && dist <= outer_radius as f32 {
+                // Smooth edges with anti-aliasing
+                let edge_fade = if dist < (inner_radius as f32 + 1.0) {
+                    dist - inner_radius as f32
+                } else if dist > (outer_radius as f32 - 1.0) {
+                    outer_radius as f32 - dist
+                } else {
+                    1.0
+                };
+
+                // Also add radial gradient within ring
+                let ring_progress = (dist - inner_radius as f32) / ring_thickness as f32;
+                let radial_fade = 1.0 - (ring_progress - 0.5).abs() * 2.0;
+
+                let pixel_alpha = (alpha * edge_fade.clamp(0.0, 1.0) * (0.3 + 0.7 * radial_fade)) as f32;
+                let a = (pixel_alpha * 255.0) as u8;
+
+                let idx = (y * size + x) * 4;
+                pixels[idx] = r;
+                pixels[idx + 1] = g;
+                pixels[idx + 2] = b;
+                pixels[idx + 3] = a;
+            }
+        }
+    }
+
+    // Create buffer
+    let mut buffer = MemoryRenderBuffer::new(
+        smithay::backend::allocator::Fourcc::Abgr8888,
+        (size as i32, size as i32),
+        1,
+        smithay::utils::Transform::Normal,
+        None,
+    );
+
+    let _: Result<(), std::convert::Infallible> = buffer.render().draw(|buf| {
+        if buf.len() == pixels.len() {
+            buf.copy_from_slice(&pixels);
+        }
+        Ok(vec![smithay::utils::Rectangle::from_size((size as i32, size as i32).into())])
+    });
+
+    // Position so center of effect is at touch point
+    let pos_x = effect.position.x as i32 - center as i32;
+    let pos_y = effect.position.y as i32 - center as i32;
+
+    Some((buffer, (pos_x, pos_y).into()))
+}
+
+/// Get phone letterbox bar dimensions (for 9:16 phone aspect ratio in center)
+fn get_phone_letterbox_bars(screen_w: i32, screen_h: i32) -> (smithay::utils::Rectangle<i32, smithay::utils::Physical>, smithay::utils::Rectangle<i32, smithay::utils::Physical>) {
+    // Target phone aspect ratio: 9:16 (portrait)
+    let phone_aspect = 9.0 / 16.0;
+    let screen_aspect = screen_w as f64 / screen_h as f64;
+
+    if screen_aspect > phone_aspect {
+        // Screen is wider than phone - add bars on sides
+        let phone_width = (screen_h as f64 * phone_aspect) as i32;
+        let bar_width = (screen_w - phone_width) / 2;
+
+        let left_bar = smithay::utils::Rectangle::new(
+            (0, 0).into(),
+            (bar_width, screen_h).into(),
+        );
+        let right_bar = smithay::utils::Rectangle::new(
+            (screen_w - bar_width, 0).into(),
+            (bar_width, screen_h).into(),
+        );
+
+        (left_bar, right_bar)
+    } else {
+        // Screen is already narrow enough or narrower - no bars needed
+        (
+            smithay::utils::Rectangle::new((0, 0).into(), (0, 0).into()),
+            smithay::utils::Rectangle::new((0, 0).into(), (0, 0).into()),
+        )
+    }
+}
 
 fn render_surface(
     renderer: &mut GlesRenderer,
@@ -1051,8 +1199,13 @@ fn render_surface(
                     Ok(vec![Rectangle::from_size((width as i32, height as i32).into())])
                 });
 
-                // Create render element
-                let loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, 0).into();
+                // Create render element - position at viewport origin in letterbox mode
+                let loc: smithay::utils::Point<i32, smithay::utils::Physical> = if state.phone_shape_enabled {
+                    let viewport = state.effective_viewport();
+                    (viewport.loc.x, viewport.loc.y).into()
+                } else {
+                    (0, 0).into()
+                };
                 match MemoryRenderBufferRenderElement::from_buffer(
                     renderer,
                     loc.to_f64(),
@@ -1083,6 +1236,65 @@ fn render_surface(
         }
     } else {
         tracing::debug!("View {:?} not rendered via Slint (not in Slint render list)", shell_view);
+    }
+
+    // === OVERLAY ELEMENTS (touch effects and phone mode letterbox bars) ===
+    // These render ON TOP of everything, added at front (front-to-back order)
+
+    // Phone mode letterbox bars (black bars on sides for phone-shaped viewport)
+    if state.phone_shape_enabled {
+        use smithay::backend::renderer::element::solid::SolidColorBuffer;
+        use smithay::backend::renderer::element::Kind;
+        let (left_bar, right_bar) = get_phone_letterbox_bars(state.screen_size.w, state.screen_size.h);
+
+        // Create solid black bars
+        let bar_color = [0.0f32, 0.0, 0.0, 1.0]; // Solid black
+
+        if left_bar.size.w > 0 {
+            let buffer = SolidColorBuffer::new((left_bar.size.w, left_bar.size.h), bar_color);
+            let left_element = SolidColorRenderElement::from_buffer(
+                &buffer,
+                (left_bar.loc.x, left_bar.loc.y),
+                Scale::from(1.0),
+                1.0,
+                Kind::Unspecified,
+            );
+            // Insert at front so it renders on top
+            slint_elements.insert(0, HomeRenderElement::Solid(left_element));
+        }
+
+        if right_bar.size.w > 0 {
+            let buffer = SolidColorBuffer::new((right_bar.size.w, right_bar.size.h), bar_color);
+            let right_element = SolidColorRenderElement::from_buffer(
+                &buffer,
+                (right_bar.loc.x, right_bar.loc.y),
+                Scale::from(1.0),
+                1.0,
+                Kind::Unspecified,
+            );
+            slint_elements.insert(0, HomeRenderElement::Solid(right_element));
+        }
+    }
+
+    // Touch ripple effects
+    if !state.touch_effects.is_empty() {
+        let now = std::time::Instant::now();
+        for effect in &state.touch_effects {
+            if let Some((buffer, pos)) = create_touch_effect_buffer(effect, now) {
+                if let Ok(effect_element) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    pos.to_f64(),
+                    &buffer,
+                    None,
+                    None,
+                    None,
+                    smithay::backend::renderer::element::Kind::Unspecified,
+                ) {
+                    // Insert at front so it renders on top of everything (including letterbox bars)
+                    slint_elements.insert(0, HomeRenderElement::Icon(effect_element));
+                }
+            }
+        }
     }
 
     // Switcher uses a separate element type that can hold both solid colors and window content
@@ -1310,6 +1522,60 @@ fn render_surface(
         }
 
         tracing::debug!("Switcher: {} windows, focused={}, scroll={:.1}", window_count, focused_index, scroll_offset);
+    }
+
+    // Add overlays to switcher_elements if in Switcher view
+    if shell_view == ShellView::Switcher {
+        // Phone mode letterbox bars for switcher
+        if state.phone_shape_enabled {
+            use smithay::backend::renderer::element::solid::SolidColorBuffer;
+            use smithay::backend::renderer::element::Kind;
+            let (left_bar, right_bar) = get_phone_letterbox_bars(state.screen_size.w, state.screen_size.h);
+            let bar_color = [0.0f32, 0.0, 0.0, 1.0];
+
+            if left_bar.size.w > 0 {
+                let buffer = SolidColorBuffer::new((left_bar.size.w, left_bar.size.h), bar_color);
+                let left_element = SolidColorRenderElement::from_buffer(
+                    &buffer,
+                    (left_bar.loc.x, left_bar.loc.y),
+                    Scale::from(1.0),
+                    1.0,
+                    Kind::Unspecified,
+                );
+                switcher_elements.insert(0, SwitcherRenderElement::Solid(left_element));
+            }
+            if right_bar.size.w > 0 {
+                let buffer = SolidColorBuffer::new((right_bar.size.w, right_bar.size.h), bar_color);
+                let right_element = SolidColorRenderElement::from_buffer(
+                    &buffer,
+                    (right_bar.loc.x, right_bar.loc.y),
+                    Scale::from(1.0),
+                    1.0,
+                    Kind::Unspecified,
+                );
+                switcher_elements.insert(0, SwitcherRenderElement::Solid(right_element));
+            }
+        }
+
+        // Touch effects for switcher
+        if !state.touch_effects.is_empty() {
+            let now = std::time::Instant::now();
+            for effect in &state.touch_effects {
+                if let Some((buffer, pos)) = create_touch_effect_buffer(effect, now) {
+                    if let Ok(effect_element) = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        pos.to_f64(),
+                        &buffer,
+                        None,
+                        None,
+                        None,
+                        smithay::backend::renderer::element::Kind::Unspecified,
+                    ) {
+                        switcher_elements.insert(0, SwitcherRenderElement::Icon(effect_element));
+                    }
+                }
+            }
+        }
     }
 
     // Render based on what view we're in
@@ -1562,9 +1828,14 @@ fn render_surface(
                         Ok(vec![Rectangle::from_size((width as i32, keyboard_height as i32).into())])
                     });
 
-                    // Position keyboard at bottom of screen
-                    let keyboard_y_pos = state.screen_size.h as i32 - keyboard_height as i32;
-                    let loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, keyboard_y_pos).into();
+                    // Position keyboard at bottom of screen (or viewport in letterbox mode)
+                    let (kb_x, kb_y_pos) = if state.phone_shape_enabled {
+                        let viewport = state.effective_viewport();
+                        (viewport.loc.x, viewport.loc.y + viewport.size.h - keyboard_height as i32)
+                    } else {
+                        (0, state.screen_size.h as i32 - keyboard_height as i32)
+                    };
+                    let loc: smithay::utils::Point<i32, smithay::utils::Physical> = (kb_x, kb_y_pos).into();
                     if let Ok(slint_element) = MemoryRenderBufferRenderElement::from_buffer(
                         renderer,
                         loc.to_f64(),
@@ -1576,7 +1847,7 @@ fn render_surface(
                     ) {
                         // Insert keyboard at position 0 (front) so it renders ON TOP of Python lock screen
                         lock_elements.insert(0, SwitcherRenderElement::Icon(slint_element));
-                        tracing::info!("Lock screen: keyboard overlay added at y={}", keyboard_y_pos);
+                        tracing::info!("Lock screen: keyboard overlay added at y={}", kb_y_pos);
                     }
                 }
             }
@@ -2104,9 +2375,14 @@ fn render_surface(
                         Ok(vec![Rectangle::from_size((width as i32, keyboard_height as i32).into())])
                     });
 
-                    // Position keyboard at bottom of screen
-                    let keyboard_y_pos = state.screen_size.h as i32 - keyboard_height as i32;
-                    let loc: smithay::utils::Point<i32, smithay::utils::Physical> = (0, keyboard_y_pos).into();
+                    // Position keyboard at bottom of screen (or viewport in letterbox mode)
+                    let (kb_x, kb_y_pos) = if state.phone_shape_enabled {
+                        let viewport = state.effective_viewport();
+                        (viewport.loc.x, viewport.loc.y + viewport.size.h - keyboard_height as i32)
+                    } else {
+                        (0, state.screen_size.h as i32 - keyboard_height as i32)
+                    };
+                    let loc: smithay::utils::Point<i32, smithay::utils::Physical> = (kb_x, kb_y_pos).into();
                     if let Ok(slint_element) = MemoryRenderBufferRenderElement::from_buffer(
                         renderer,
                         loc.to_f64(),
@@ -2118,7 +2394,7 @@ fn render_surface(
                     ) {
                         // Add keyboard overlay FIRST (on top in front-to-back)
                         app_keyboard_elements.push(SwitcherRenderElement::Icon(slint_element));
-                        tracing::info!("App view: keyboard overlay added (cropped to {}px at y={})", keyboard_height, keyboard_y_pos);
+                        tracing::info!("App view: keyboard overlay added (cropped to {}px at y={})", keyboard_height, kb_y_pos);
                     }
                 }
             }
@@ -2137,19 +2413,81 @@ fn render_surface(
                             1.0,
                         );
 
-                    let screen_w = state.screen_size.w;
-                    let screen_h = state.screen_size.h;
+                    // Use viewport bounds in letterbox mode, screen bounds otherwise
+                    let (crop_x, crop_y, crop_w, crop_h) = if state.phone_shape_enabled {
+                        let viewport = state.effective_viewport();
+                        (viewport.loc.x, viewport.loc.y, viewport.size.w, viewport.size.h)
+                    } else {
+                        (0, 0, state.screen_size.w, state.screen_size.h)
+                    };
                     let crop_rect: Rectangle<i32, smithay::utils::Physical> = Rectangle::new(
-                        (0, 0).into(),
-                        (screen_w, screen_h).into(),
+                        (crop_x, crop_y).into(),
+                        (crop_w, crop_h).into(),
                     );
 
                     for elem in window_render_elements {
                         let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(1.0));
-                        let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (loc.x, loc.y).into();
+                        // Offset window position by viewport origin in letterbox mode
+                        let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = if state.phone_shape_enabled {
+                            let viewport = state.effective_viewport();
+                            (viewport.loc.x + loc.x, viewport.loc.y + loc.y).into()
+                        } else {
+                            (loc.x, loc.y).into()
+                        };
                         let relocated = RelocateRenderElement::from_element(scaled, final_pos, Relocate::Relative);
                         if let Some(cropped) = CropRenderElement::from_element(relocated, Scale::from(scale), crop_rect) {
                             app_keyboard_elements.push(cropped.into());
+                        }
+                    }
+                }
+            }
+
+            // Add overlays to app view with keyboard
+            // Phone mode letterbox bars
+            if state.phone_shape_enabled {
+                use smithay::backend::renderer::element::solid::SolidColorBuffer;
+                let (left_bar, right_bar) = get_phone_letterbox_bars(state.screen_size.w, state.screen_size.h);
+                let bar_color = [0.0f32, 0.0, 0.0, 1.0];
+
+                if left_bar.size.w > 0 {
+                    let buffer = SolidColorBuffer::new((left_bar.size.w, left_bar.size.h), bar_color);
+                    let left_element = SolidColorRenderElement::from_buffer(
+                        &buffer,
+                        (left_bar.loc.x, left_bar.loc.y),
+                        Scale::from(1.0),
+                        1.0,
+                        Kind::Unspecified,
+                    );
+                    app_keyboard_elements.insert(0, SwitcherRenderElement::Solid(left_element));
+                }
+                if right_bar.size.w > 0 {
+                    let buffer = SolidColorBuffer::new((right_bar.size.w, right_bar.size.h), bar_color);
+                    let right_element = SolidColorRenderElement::from_buffer(
+                        &buffer,
+                        (right_bar.loc.x, right_bar.loc.y),
+                        Scale::from(1.0),
+                        1.0,
+                        Kind::Unspecified,
+                    );
+                    app_keyboard_elements.insert(0, SwitcherRenderElement::Solid(right_element));
+                }
+            }
+
+            // Touch effects for app view with keyboard
+            if !state.touch_effects.is_empty() {
+                let now = std::time::Instant::now();
+                for effect in &state.touch_effects {
+                    if let Some((buffer, pos)) = create_touch_effect_buffer(effect, now) {
+                        if let Ok(effect_element) = MemoryRenderBufferRenderElement::from_buffer(
+                            renderer,
+                            pos.to_f64(),
+                            &buffer,
+                            None,
+                            None,
+                            None,
+                            smithay::backend::renderer::element::Kind::Unspecified,
+                        ) {
+                            app_keyboard_elements.insert(0, SwitcherRenderElement::Icon(effect_element));
                         }
                     }
                 }
@@ -2574,13 +2912,39 @@ fn handle_input_event(
             // Debug: Log touch position and screen size
             info!("Touch down at ({:.0}, {:.0}), screen size: {:?}", touch_pos.x, touch_pos.y, screen);
 
+            // Compute Slint-relative touch coordinates for letterbox mode
+            // Slint UI is rendered at viewport_loc, so we need to transform screen coords
+            let slint_touch_pos = if state.phone_shape_enabled {
+                let viewport = state.effective_viewport();
+                smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+                    touch_pos.x - viewport.loc.x as f64,
+                    touch_pos.y - viewport.loc.y as f64,
+                ))
+            } else {
+                touch_pos
+            };
+
+            // Add touch effect if enabled
+            if state.touch_effects_enabled {
+                state.add_touch_effect(touch_pos);
+            }
+
             // Check if keyboard is visible and touch is in keyboard area
+            // In letterbox mode, use viewport coordinates for keyboard bounds
             let keyboard_visible = state.shell.slint_ui.as_ref()
                 .map(|ui| ui.is_keyboard_visible())
                 .unwrap_or(false);
-            let keyboard_height = std::cmp::max(200, (state.screen_size.h as f32 * 0.22) as i32);
-            let keyboard_top = state.screen_size.h - keyboard_height;
-            let touch_on_keyboard = keyboard_visible && touch_pos.y >= keyboard_top as f64;
+            let (viewport_loc, viewport_size) = if state.phone_shape_enabled {
+                let viewport = state.effective_viewport();
+                (viewport.loc, viewport.size)
+            } else {
+                ((0, 0).into(), state.screen_size)
+            };
+            let keyboard_height = std::cmp::max(200, (viewport_size.h as f32 * 0.22) as i32);
+            let keyboard_top = viewport_loc.y + viewport_size.h - keyboard_height;
+            // Touch is on keyboard if within viewport horizontal bounds and below keyboard_top
+            let in_viewport_x = touch_pos.x >= viewport_loc.x as f64 && touch_pos.x < (viewport_loc.x + viewport_size.w) as f64;
+            let touch_on_keyboard = keyboard_visible && in_viewport_x && touch_pos.y >= keyboard_top as f64;
             info!("Touch down kb check: kb_visible={}, kb_height={}, kb_top={}, touch_y={}, on_kb={}",
                   keyboard_visible, keyboard_height, keyboard_top, touch_pos.y, touch_on_keyboard);
 
@@ -2718,8 +3082,9 @@ fn handle_input_event(
                     }
                 } else {
                     // Forward touch to Slint for built-in lock screen interaction
+                    // Use slint_touch_pos for correct letterbox coordinate transformation
                     if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                        slint_ui.dispatch_pointer_pressed(slint_touch_pos.x as f32, slint_touch_pos.y as f32);
                     }
                 }
             }
@@ -2753,18 +3118,18 @@ fn handle_input_event(
                         // Start dragging this category
                         state.shell.start_drag(index, touch_pos);
                         info!("Started dragging category at index {}", index);
-                        // Update Slint to show floating tile
+                        // Update Slint to show floating tile (use slint_touch_pos for letterbox)
                         if let Some(ref slint_ui) = state.shell.slint_ui {
                             slint_ui.set_dragging_index(index as i32);
-                            slint_ui.set_drag_position(touch_pos.x as f32, touch_pos.y as f32);
+                            slint_ui.set_drag_position(slint_touch_pos.x as f32, slint_touch_pos.y as f32);
                         }
                     }
                 } else {
-                    // Forward touch to Slint for visual feedback
-                    info!("Dispatching touch to Slint at ({}, {}), slint_ui={}",
-                          touch_pos.x, touch_pos.y, state.shell.slint_ui.is_some());
+                    // Forward touch to Slint for visual feedback (use slint_touch_pos for letterbox)
+                    info!("Dispatching touch to Slint at ({}, {}) -> slint ({}, {}), slint_ui={}",
+                          touch_pos.x, touch_pos.y, slint_touch_pos.x, slint_touch_pos.y, state.shell.slint_ui.is_some());
                     if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                        slint_ui.dispatch_pointer_pressed(slint_touch_pos.x as f32, slint_touch_pos.y as f32);
                     } else {
                         info!("WARNING: slint_ui is None!");
                     }
@@ -2853,11 +3218,11 @@ fn handle_input_event(
 
             // Check if touch is on Quick Settings panel
             if state.shell.view == crate::shell::ShellView::QuickSettings {
-                info!("QS DEBUG: Touch DOWN in QuickSettings at ({:.0}, {:.0})", touch_pos.x, touch_pos.y);
+                info!("QS DEBUG: Touch DOWN in QuickSettings at ({:.0}, {:.0}) -> slint ({:.0}, {:.0})", touch_pos.x, touch_pos.y, slint_touch_pos.x, slint_touch_pos.y);
                 state.shell.start_qs_touch(touch_pos.x, touch_pos.y);
-                // Dispatch to Slint for toggle visual feedback and callbacks
+                // Dispatch to Slint for toggle visual feedback and callbacks (use slint_touch_pos for letterbox)
                 if let Some(ref slint_ui) = state.shell.slint_ui {
-                    slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                    slint_ui.dispatch_pointer_pressed(slint_touch_pos.x as f32, slint_touch_pos.y as f32);
                 }
             }
 
@@ -2866,9 +3231,9 @@ fn handle_input_event(
             // Keyboard is at bottom of screen, so only dispatch if touch is in keyboard area
             if touch_on_keyboard {
                 if let Some(ref slint_ui) = state.shell.slint_ui {
-                    // Touch is on keyboard - dispatch to Slint
-                    slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
-                    info!("Keyboard touch at ({}, {})", touch_pos.x, touch_pos.y);
+                    // Touch is on keyboard - dispatch to Slint (use slint_touch_pos for letterbox)
+                    slint_ui.dispatch_pointer_pressed(slint_touch_pos.x as f32, slint_touch_pos.y as f32);
+                    info!("Keyboard touch at ({}, {}) -> slint ({}, {})", touch_pos.x, touch_pos.y, slint_touch_pos.x, slint_touch_pos.y);
                 }
             }
 
@@ -2921,6 +3286,17 @@ fn handle_input_event(
                 event.x_transformed(screen.w),
                 event.y_transformed(screen.h),
             ));
+
+            // Compute Slint-relative touch coordinates for letterbox mode
+            let slint_touch_pos = if state.phone_shape_enabled {
+                let viewport = state.effective_viewport();
+                smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+                    touch_pos.x - viewport.loc.x as f64,
+                    touch_pos.y - viewport.loc.y as f64,
+                ))
+            } else {
+                touch_pos
+            };
 
             // Feed to gesture recognizer
             let slot_id: i32 = event.slot().into();
@@ -3034,10 +3410,10 @@ fn handle_input_event(
                 state.update_home_gesture(progress);
             }
 
-            // Lock screen touch motion is handled by Slint
+            // Lock screen touch motion is handled by Slint (use slint_touch_pos for letterbox)
             if state.shell.view == crate::shell::ShellView::LockScreen {
                 if let Some(ref slint_ui) = state.shell.slint_ui {
-                    slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                    slint_ui.dispatch_pointer_moved(slint_touch_pos.x as f32, slint_touch_pos.y as f32);
                 }
             }
 
@@ -3049,10 +3425,10 @@ fn handle_input_event(
                 // This also runs in the render loop for cases where finger is completely still
                 state.shell.check_and_show_long_press();
 
-                // Forward touch motion to Slint (if not in wiggle mode)
+                // Forward touch motion to Slint (if not in wiggle mode) - use slint_touch_pos for letterbox
                 if !state.shell.wiggle_mode {
                     if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                        slint_ui.dispatch_pointer_moved(slint_touch_pos.x as f32, slint_touch_pos.y as f32);
                     }
                 }
             }
@@ -3060,9 +3436,9 @@ fn handle_input_event(
             // Update drag position in wiggle mode
             if state.shell.view == crate::shell::ShellView::Home && state.shell.wiggle_mode && state.shell.dragging_index.is_some() {
                 state.shell.update_drag(touch_pos);
-                // Update Slint floating tile position
+                // Update Slint floating tile position (use slint_touch_pos for letterbox)
                 if let Some(ref slint_ui) = state.shell.slint_ui {
-                    slint_ui.set_drag_position(touch_pos.x as f32, touch_pos.y as f32);
+                    slint_ui.set_drag_position(slint_touch_pos.x as f32, slint_touch_pos.y as f32);
                 }
             }
 
@@ -3190,13 +3566,25 @@ fn handle_input_event(
                     let drag_distance = (dx * dx + dy * dy).sqrt();
                     let use_pos = if drag_distance < 15.0 { kb_pos } else { kb_last };
 
-                    // Calculate key using math
-                    let keyboard_height = state.get_keyboard_height() as f32;
-                    let screen_width = state.screen_size.w as f32;
-                    let keyboard_top = state.screen_size.h as f32 - keyboard_height;
-                    let y_in_keyboard = use_pos.y as f32 - keyboard_top;
+                    // Transform to viewport-relative coordinates for letterbox mode
+                    let (slint_pos, viewport_width, viewport_height) = if state.phone_shape_enabled {
+                        let viewport = state.effective_viewport();
+                        let transformed = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+                            use_pos.x - viewport.loc.x as f64,
+                            use_pos.y - viewport.loc.y as f64,
+                        ));
+                        (transformed, viewport.size.w as f32, viewport.size.h as f32)
+                    } else {
+                        (use_pos, state.screen_size.w as f32, state.screen_size.h as f32)
+                    };
 
-                    info!("EARLY KB TAP: pos=({:.1}, {:.1}), y_in_kb={:.1}", use_pos.x, use_pos.y, y_in_keyboard);
+                    // Calculate key using math (with viewport coordinates)
+                    let keyboard_height = state.get_keyboard_height() as f32;
+                    let keyboard_top = viewport_height - keyboard_height;
+                    let y_in_keyboard = slint_pos.y as f32 - keyboard_top;
+
+                    info!("EARLY KB TAP: pos=({:.1}, {:.1}), slint_pos=({:.1}, {:.1}), y_in_kb={:.1}",
+                          use_pos.x, use_pos.y, slint_pos.x, slint_pos.y, y_in_keyboard);
 
                     // If on Python lock screen, ensure focus is set before processing keyboard
                     if state.shell.view == crate::shell::ShellView::LockScreen && state.shell.lock_screen_active {
@@ -3217,18 +3605,20 @@ fn handle_input_event(
 
                     if y_in_keyboard >= 0.0 {
                         if let Some(ref slint_ui) = state.shell.slint_ui {
-                            // Visual feedback
-                            slint_ui.dispatch_pointer_released(use_pos.x as f32, use_pos.y as f32);
+                            // Visual feedback (use viewport-relative coords)
+                            slint_ui.dispatch_pointer_released(slint_pos.x as f32, slint_pos.y as f32);
                             let _ = slint_ui.take_pending_keyboard_actions(); // Clear Slint actions
 
-                            // Use math-based key detection
+                            // Use math-based key detection (with viewport coords)
                             let shifted = slint_ui.is_keyboard_shifted();
                             let layout = slint_ui.get_keyboard_layout();
+                            info!("EARLY KB: trigger_keyboard_key_at x={:.1}, y_in_kb={:.1}, width={:.1}",
+                                  slint_pos.x, y_in_keyboard, viewport_width);
                             let key_found = slint_ui.trigger_keyboard_key_at(
-                                use_pos.x as f32,
+                                slint_pos.x as f32,
                                 y_in_keyboard,
                                 keyboard_height,
-                                screen_width,
+                                viewport_width,
                                 shifted,
                                 layout,
                             );
@@ -3742,6 +4132,35 @@ fn handle_input_event(
                                     state.system.set_brightness(value);
                                     info!("Brightness set to {:.0}%", value * 100.0);
                                 }
+                                QuickSettingsAction::RecordingToggle => {
+                                    state.toggle_recording();
+                                    let active = state.recording_active;
+                                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                                        slint_ui.set_recording_active(active);
+                                    }
+                                    info!("Recording toggled: {}", active);
+                                }
+                                QuickSettingsAction::PhoneModeToggle => {
+                                    state.phone_shape_enabled = !state.phone_shape_enabled;
+                                    // Update gesture recognizer viewport for new letterbox bounds
+                                    let viewport = if state.phone_shape_enabled {
+                                        Some(state.effective_viewport())
+                                    } else {
+                                        None
+                                    };
+                                    state.gesture_recognizer.set_viewport(viewport);
+                                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                                        slint_ui.set_phone_mode_enabled(state.phone_shape_enabled);
+                                    }
+                                    info!("Phone mode toggled: {}", state.phone_shape_enabled);
+                                }
+                                QuickSettingsAction::TouchEffectsToggle => {
+                                    state.touch_effects_enabled = !state.touch_effects_enabled;
+                                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                                        slint_ui.set_touch_effects_enabled(state.touch_effects_enabled);
+                                    }
+                                    info!("Touch effects toggled: {}", state.touch_effects_enabled);
+                                }
                             }
                         }
                     }
@@ -3849,29 +4268,47 @@ fn handle_input_event(
                     // Skip if EARLY path already processed this keyboard tap (to avoid duplicate input)
                     if kb_visible && !keyboard_was_dismissed && touch_was_on_keyboard && !early_kb_processed {
                         if let Some(pos) = keyboard_touch_pos.or(last_touch_pos) {
-                            // Dispatch to Slint for visual feedback only
-                            slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
+                            // Transform pos to viewport-relative coordinates for letterbox mode
+                            let (slint_pos, viewport_width) = if state.phone_shape_enabled {
+                                let viewport = state.effective_viewport();
+                                let transformed = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+                                    pos.x - viewport.loc.x as f64,
+                                    pos.y - viewport.loc.y as f64,
+                                ));
+                                (transformed, viewport.size.w as f32)
+                            } else {
+                                (pos, state.screen_size.w as f32)
+                            };
+
+                            // Dispatch to Slint for visual feedback only (use transformed coords)
+                            slint_ui.dispatch_pointer_released(slint_pos.x as f32, slint_pos.y as f32);
                             // Clear any Slint actions - we'll use math instead
                             let _ = slint_ui.take_pending_keyboard_actions();
 
                             // Always use math-based key detection - no gaps possible
+                            // Use viewport dimensions in letterbox mode
                             let keyboard_height = state.get_keyboard_height() as f32;
-                            let screen_width = state.screen_size.w as f32;
-                            let keyboard_top = state.screen_size.h as f32 - keyboard_height;
-                            let y_in_keyboard = pos.y as f32 - keyboard_top;
+                            let viewport_height = if state.phone_shape_enabled {
+                                state.effective_viewport().size.h as f32
+                            } else {
+                                state.screen_size.h as f32
+                            };
+                            let keyboard_top = viewport_height - keyboard_height;
+                            let y_in_keyboard = slint_pos.y as f32 - keyboard_top;
 
-                            info!("KEYBOARD TAP: pos=({:.1}, {:.1}), kb_top={:.1}, y_in_kb={:.1}",
-                                  pos.x, pos.y, keyboard_top, y_in_keyboard);
+                            info!("KEYBOARD TAP: pos=({:.1}, {:.1}), slint_pos=({:.1}, {:.1}), kb_top={:.1}, y_in_kb={:.1}",
+                                  pos.x, pos.y, slint_pos.x, slint_pos.y, keyboard_top, y_in_keyboard);
 
                             if y_in_keyboard >= 0.0 {
                                 let shifted = slint_ui.is_keyboard_shifted();
                                 let layout = slint_ui.get_keyboard_layout();
-                                info!("KEYBOARD TAP: calling trigger_keyboard_key_at");
+                                info!("KEYBOARD TAP: calling trigger_keyboard_key_at with x={:.1}, y_in_kb={:.1}, width={:.1}",
+                                      slint_pos.x, y_in_keyboard, viewport_width);
                                 slint_ui.trigger_keyboard_key_at(
-                                    pos.x as f32,
+                                    slint_pos.x as f32,
                                     y_in_keyboard,
                                     keyboard_height,
-                                    screen_width,
+                                    viewport_width,
                                     shifted,
                                     layout,
                                 );

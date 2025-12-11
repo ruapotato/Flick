@@ -1334,4 +1334,12 @@ impl Shell {
     pub fn get_qs_brightness(&self) -> f32 {
         self.quick_settings.brightness
     }
+
+    /// Check for pending keyboard visibility request from IPC
+    /// Returns Some(true) to show, Some(false) to hide, None if no request
+    pub fn check_keyboard_request(&mut self) -> Option<bool> {
+        // TODO: Implement IPC-based keyboard request handling
+        // For now, return None (no pending request)
+        None
+    }
 }

@@ -66,6 +66,9 @@ lazy_static = "1.4"
 pam = "0.7"
 bcrypt = "0.15"
 
+# Unix signals (for recording stop)
+libc = "0.2"
+
 [features]
 default = ["udev"]
 udev = []

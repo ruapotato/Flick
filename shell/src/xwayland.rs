@@ -30,24 +30,30 @@ impl XwmHandler for Flick {
         let current_geo = window.geometry();
         tracing::info!("X11 window current geometry: {:?}", current_geo);
 
-        // Configure the window to fullscreen
-        if let Some(output) = self.outputs.first() {
-            let output_size = output
+        // Configure the window to fullscreen (or viewport size in letterbox mode)
+        // Use viewport size in letterbox mode so apps don't expand to full screen
+        let target_size = if self.phone_shape_enabled {
+            self.effective_viewport().size
+        } else if let Some(output) = self.outputs.first() {
+            output
                 .current_mode()
                 .map(|m| m.size)
-                .unwrap_or((1920, 1080).into());
+                .unwrap_or((1920, 1080).into())
+                .to_logical(1)
+        } else {
+            (1920, 1080).into()
+        };
 
-            let geo = Rectangle::new(
-                (0, 0).into(),
-                output_size.to_logical(1),
-            );
+        let geo = Rectangle::new(
+            (0, 0).into(),
+            target_size,
+        );
 
-            tracing::info!("Configuring X11 window to fullscreen: {:?}", geo);
+        tracing::info!("Configuring X11 window to size: {:?} (letterbox={})", geo, self.phone_shape_enabled);
 
-            // Configure the X11 window
-            if let Err(e) = window.configure(geo) {
-                tracing::warn!("Failed to configure X11 window: {:?}", e);
-            }
+        // Configure the X11 window
+        if let Err(e) = window.configure(geo) {
+            tracing::warn!("Failed to configure X11 window: {:?}", e);
         }
 
         // Map the window
@@ -132,16 +138,23 @@ impl XwmHandler for Flick {
     ) {
         tracing::debug!("X11 configure request: {:?}", window.window_id());
 
-        // Honor the window's requested geometry during initial configuration
-        // We'll resize to fullscreen when the window is actually mapped
-        let geo = window.geometry();
-        let new_geo = Rectangle::new(
-            (x.unwrap_or(geo.loc.x), y.unwrap_or(geo.loc.y)).into(),
-            (
-                w.map(|w| w as i32).unwrap_or(geo.size.w).max(1),
-                h.map(|h| h as i32).unwrap_or(geo.size.h).max(1),
-            ).into(),
-        );
+        // In letterbox mode, enforce viewport size to prevent apps from resizing to full screen
+        // This is critical for the lock screen and other apps to stay within the letterbox
+        let new_geo = if self.phone_shape_enabled {
+            let viewport = self.effective_viewport();
+            tracing::info!("X11 configure request enforcing viewport size: {:?} (letterbox mode)", viewport.size);
+            Rectangle::new((0, 0).into(), viewport.size)
+        } else {
+            // Without letterbox, honor the window's requested geometry
+            let geo = window.geometry();
+            Rectangle::new(
+                (x.unwrap_or(geo.loc.x), y.unwrap_or(geo.loc.y)).into(),
+                (
+                    w.map(|w| w as i32).unwrap_or(geo.size.w).max(1),
+                    h.map(|h| h as i32).unwrap_or(geo.size.h).max(1),
+                ).into(),
+            )
+        };
 
         if let Err(e) = window.configure(new_geo) {
             tracing::warn!("Failed to configure X11 window: {:?}", e);

@@ -1216,6 +1216,9 @@ component QuickSettingsPanel inherits Rectangle {
     in property <bool> flashlight-enabled: false;
     in property <bool> airplane-enabled: false;
     in property <bool> rotation-locked: false;
+    in property <bool> recording-active: false;
+    in property <bool> phone-mode-enabled: false;
+    in property <bool> touch-effects-enabled: true;
     in property <string> wifi-ssid: "Home WiFi";
     in property <int> battery-percent: 85;
     in property <string> time: "12:00";
@@ -1230,6 +1233,9 @@ component QuickSettingsPanel inherits Rectangle {
     callback rotation-toggled();
     callback lock-pressed();
     callback settings-pressed();
+    callback recording-toggled();
+    callback phone-mode-toggled();
+    callback touch-effects-toggled();
     callback notification-dismissed(int);
     callback notification-tapped(int);
     callback clear-all-notifications();
@@ -1302,9 +1308,9 @@ component QuickSettingsPanel inherits Rectangle {
             }
         }
 
-        // Quick toggles - 2 rows of 4
+        // Quick toggles - 3 rows of 4
         Rectangle {
-            height: 200px;
+            height: 296px;
             background: Theme.surface;
 
             VerticalLayout {
@@ -1376,6 +1382,40 @@ component QuickSettingsPanel inherits Rectangle {
                         icon: "⚙";
                         enabled: false;
                         toggled => { settings-pressed(); }
+                    }
+                }
+
+                // Row 3 - Recording & Visual Effects
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: space-around;
+
+                    QuickToggle {
+                        label: recording-active ? "Stop" : "Record";
+                        icon: "⏺";
+                        enabled: recording-active;
+                        toggled => { recording-toggled(); }
+                    }
+
+                    QuickToggle {
+                        label: "Phone";
+                        icon: "📱";
+                        enabled: phone-mode-enabled;
+                        toggled => { phone-mode-toggled(); }
+                    }
+
+                    QuickToggle {
+                        label: "Effects";
+                        icon: "✨";
+                        enabled: touch-effects-enabled;
+                        toggled => { touch-effects-toggled(); }
+                    }
+
+                    // Placeholder for future feature
+                    Rectangle {
+                        width: 80px;
+                        height: 80px;
+                        background: transparent;
                     }
                 }
             }
@@ -1776,6 +1816,9 @@ export component FlickShell inherits Window {
     in property <bool> flashlight-enabled: false;
     in property <bool> airplane-enabled: false;
     in property <bool> rotation-locked: false;
+    in property <bool> recording-active: false;
+    in property <bool> phone-mode-enabled: false;
+    in property <bool> touch-effects-enabled: true;
     in property <string> wifi-ssid: "WiFi";
     in property <int> battery-percent: 85;
     in property <[Notification]> notifications: [];
@@ -1836,6 +1879,9 @@ export component FlickShell inherits Window {
     callback rotation-toggled();
     callback lock-pressed();
     callback settings-pressed();
+    callback recording-toggled();
+    callback phone-mode-toggled();
+    callback touch-effects-toggled();
     callback notification-dismissed(int);
     callback notification-tapped(int);
     callback clear-all-notifications();
@@ -1890,6 +1936,9 @@ export component FlickShell inherits Window {
         flashlight-enabled: flashlight-enabled;
         airplane-enabled: airplane-enabled;
         rotation-locked: rotation-locked;
+        recording-active: recording-active;
+        phone-mode-enabled: phone-mode-enabled;
+        touch-effects-enabled: touch-effects-enabled;
         wifi-ssid: wifi-ssid;
         battery-percent: battery-percent;
         notifications: notifications;
@@ -1903,6 +1952,9 @@ export component FlickShell inherits Window {
         rotation-toggled => { rotation-toggled(); }
         lock-pressed => { lock-pressed(); }
         settings-pressed => { settings-pressed(); }
+        recording-toggled => { recording-toggled(); }
+        phone-mode-toggled => { phone-mode-toggled(); }
+        touch-effects-toggled => { touch-effects-toggled(); }
         notification-dismissed(id) => { notification-dismissed(id); }
         notification-tapped(id) => { notification-tapped(id); }
         clear-all-notifications => { clear-all-notifications(); }
