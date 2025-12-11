@@ -250,7 +250,7 @@ impl Flick {
             keyboard_pointer_cleared: false,
             window_keyboard_state: HashMap::new(),
             touch_effects: Vec::new(),
-            touch_effects_enabled: true,  // Enabled by default - they're that cool!
+            touch_effects_enabled: Self::load_compositor_settings(),  // Load from config
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
         }
@@ -946,6 +946,43 @@ impl Flick {
             self.touch_effects.clear();
         }
         tracing::info!("Touch effects {}", if enabled { "enabled" } else { "disabled" });
+        // Save to config file
+        Self::save_compositor_settings(enabled);
+    }
+
+    /// Load compositor settings from config file
+    pub fn load_compositor_settings() -> bool {
+        let config_path = Self::compositor_settings_path();
+        if let Ok(contents) = std::fs::read_to_string(&config_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                return json.get("touch_effects_enabled")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+            }
+        }
+        true // Default to enabled
+    }
+
+    /// Save compositor settings to config file
+    pub fn save_compositor_settings(touch_effects_enabled: bool) {
+        let config_path = Self::compositor_settings_path();
+        if let Some(parent) = config_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let json = serde_json::json!({
+            "touch_effects_enabled": touch_effects_enabled
+        });
+        if let Ok(contents) = serde_json::to_string_pretty(&json) {
+            let _ = std::fs::write(&config_path, contents);
+        }
+    }
+
+    /// Get path to compositor settings file
+    fn compositor_settings_path() -> std::path::PathBuf {
+        std::env::var("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"))
+            .join(".local/state/flick/compositor_settings.json")
     }
 }
 

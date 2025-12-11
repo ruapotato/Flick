@@ -288,6 +288,104 @@ class SettingsRow(BoxLayout):
         self.value_label.text = text
 
 
+class ToggleRow(BoxLayout):
+    """A settings row with a toggle switch"""
+    is_on = BooleanProperty(False)
+
+    def __init__(self, label_text, subtitle=None, is_on=False, on_toggle=None,
+                 icon_color=None, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'horizontal'
+        self.size_hint_y = None
+        self.height = dp(72) if subtitle else dp(60)
+        self.padding = [dp(16), dp(12)]
+        self.spacing = dp(16)
+        self.on_toggle_callback = on_toggle
+        self.is_on = is_on
+
+        # Icon placeholder (colored circle)
+        self.icon_widget = Widget(size_hint=(None, None), size=(dp(40), dp(40)))
+        self.icon_color = icon_color or THEME['accent']
+        self.add_widget(self.icon_widget)
+
+        # Text content
+        text_box = BoxLayout(orientation='vertical', spacing=dp(2))
+
+        self.label = Label(
+            text=label_text,
+            font_size=dp(17),
+            halign='left',
+            valign='center',
+            color=THEME['text_primary'],
+            bold=True
+        )
+        self.label.bind(size=self.label.setter('text_size'))
+        text_box.add_widget(self.label)
+
+        if subtitle:
+            self.subtitle_label = Label(
+                text=subtitle,
+                font_size=dp(13),
+                halign='left',
+                valign='center',
+                color=THEME['text_dim']
+            )
+            self.subtitle_label.bind(size=self.subtitle_label.setter('text_size'))
+            text_box.add_widget(self.subtitle_label)
+
+        self.add_widget(text_box)
+
+        # Toggle switch on right
+        self.toggle_widget = Widget(size_hint=(None, None), size=(dp(56), dp(32)))
+        self.add_widget(self.toggle_widget)
+
+        self.bind(pos=self._update_canvas, size=self._update_canvas, is_on=self._update_canvas)
+        Clock.schedule_once(lambda dt: self._update_canvas())
+
+    def _update_canvas(self, *args):
+        self.canvas.before.clear()
+        with self.canvas.before:
+            # Icon circle
+            icon_x = self.pos[0] + dp(16)
+            icon_y = self.pos[1] + (self.height - dp(40)) / 2
+            Color(*self.icon_color)
+            Ellipse(pos=(icon_x, icon_y), size=(dp(40), dp(40)))
+
+            # Icon inner (white circle)
+            inner = dp(16)
+            Color(1, 1, 1, 0.9)
+            Ellipse(pos=(icon_x + (dp(40) - inner) / 2, icon_y + (dp(40) - inner) / 2),
+                   size=(inner, inner))
+
+            # Toggle track
+            toggle_x = self.pos[0] + self.width - dp(16) - dp(56)
+            toggle_y = self.pos[1] + (self.height - dp(32)) / 2
+            if self.is_on:
+                Color(*THEME['accent'])
+            else:
+                Color(*THEME['surface_light'])
+            RoundedRectangle(pos=(toggle_x, toggle_y), size=(dp(56), dp(32)), radius=[dp(16)])
+
+            # Toggle knob
+            knob_x = toggle_x + (dp(28) if self.is_on else dp(4))
+            knob_y = toggle_y + dp(4)
+            Color(1, 1, 1, 1)
+            Ellipse(pos=(knob_x, knob_y), size=(dp(24), dp(24)))
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            return True
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        if self.collide_point(*touch.pos):
+            self.is_on = not self.is_on
+            if self.on_toggle_callback:
+                self.on_toggle_callback(self.is_on)
+            return True
+        return super().on_touch_up(touch)
+
+
 class SectionHeader(Label):
     """Section header with accent color"""
     def __init__(self, text, **kwargs):
@@ -933,6 +1031,16 @@ class FlickSettingsApp(App):
         )
         content.add_widget(self.bg_image_row)
 
+        # Touch effects toggle
+        self.touch_effects_row = ToggleRow(
+            "Touch Effects",
+            subtitle="Show ripple circles when touching screen",
+            is_on=self._load_touch_effects_enabled(),
+            on_toggle=self._on_touch_effects_toggle,
+            icon_color=(0.3, 0.7, 0.9, 1)  # Cyan tint
+        )
+        content.add_widget(self.touch_effects_row)
+
         # Info section
         content.add_widget(SectionHeader("INFO"))
 
@@ -1176,6 +1284,31 @@ class FlickSettingsApp(App):
         elif self.config_data.method == "pattern":
             popup = PatternSetupPopup(on_complete=self._on_pattern_set)
             popup.open()
+
+    def _load_touch_effects_enabled(self):
+        """Load touch effects setting from compositor config"""
+        config_path = Path.home() / ".local" / "state" / "flick" / "compositor_settings.json"
+        try:
+            if config_path.exists():
+                with open(config_path) as f:
+                    data = json.load(f)
+                    return data.get("touch_effects_enabled", True)
+        except Exception as e:
+            logger.warning(f"Failed to load touch effects setting: {e}")
+        return True  # Default to enabled
+
+    def _on_touch_effects_toggle(self, enabled):
+        """Handle touch effects toggle"""
+        logger.info(f"Touch effects toggled: {enabled}")
+        config_path = Path.home() / ".local" / "state" / "flick" / "compositor_settings.json"
+        try:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            data = {"touch_effects_enabled": enabled}
+            with open(config_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            logger.info(f"Saved touch effects setting: {enabled}")
+        except Exception as e:
+            logger.error(f"Failed to save touch effects setting: {e}")
 
 
 if __name__ == "__main__":
