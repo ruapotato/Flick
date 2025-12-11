@@ -288,7 +288,10 @@ fn char_to_evdev(c: char) -> Option<(u32, bool)> {
     Some((keycode, shift))
 }
 
-pub fn run() -> Result<()> {
+use crate::Args;
+use crate::demo::DemoState;
+
+pub fn run(args: Args) -> Result<()> {
     info!("Starting udev backend");
 
     // Create event loop
@@ -409,20 +412,45 @@ pub fn run() -> Result<()> {
     };
 
     // Update screen size to actual output size
-    if let Some(mode) = output.current_mode() {
-        state.screen_size = mode.size.to_logical(1);
-        // Update gesture recognizer with actual screen size
-        state.gesture_recognizer.screen_size = state.screen_size;
-        // Update shell with actual screen size
-        state.shell.screen_size = state.screen_size;
-        state.shell.quick_settings.screen_size = state.screen_size;
-        // Update Slint UI with actual screen size
-        if let Some(ref mut slint_ui) = state.shell.slint_ui {
-            slint_ui.set_size(state.screen_size);
-            info!("Slint UI size updated to: {:?}", state.screen_size);
+    let actual_screen_size = if let Some(mode) = output.current_mode() {
+        mode.size.to_logical(1)
+    } else {
+        state.screen_size
+    };
+
+    // Initialize demo mode if requested
+    state.actual_screen_size = actual_screen_size;
+    if let Some(ref demo_size) = args.demo {
+        state.demo_state = DemoState::new(
+            demo_size,
+            actual_screen_size.w as u32,
+            actual_screen_size.h as u32,
+            args.touch_indicators,
+        );
+        if state.demo_state.is_some() {
+            info!("Demo mode initialized successfully");
         }
-        info!("Screen size updated to: {:?}", state.screen_size);
     }
+
+    // In demo mode, use the demo viewport size; otherwise use actual screen size
+    let effective_screen_size = if let Some(ref ds) = state.demo_state {
+        (ds.viewport_width as i32, ds.viewport_height as i32).into()
+    } else {
+        actual_screen_size
+    };
+
+    state.screen_size = effective_screen_size;
+    // Update gesture recognizer with effective screen size
+    state.gesture_recognizer.screen_size = state.screen_size;
+    // Update shell with effective screen size
+    state.shell.screen_size = state.screen_size;
+    state.shell.quick_settings.screen_size = state.screen_size;
+    // Update Slint UI with effective screen size
+    if let Some(ref mut slint_ui) = state.shell.slint_ui {
+        slint_ui.set_size(state.screen_size);
+        info!("Slint UI size updated to: {:?}", state.screen_size);
+    }
+    info!("Screen size: {:?} (actual: {:?})", state.screen_size, actual_screen_size);
 
     // Clone surfaces for DRM event handler
     let surfaces_for_drm = gpu.surfaces.clone();
@@ -559,6 +587,11 @@ pub fn run() -> Result<()> {
         // Skip rendering if session is not active (VT switched away)
         if !*session_active.borrow() {
             continue;
+        }
+
+        // Clean up finished touch indicators in demo mode
+        if let Some(ref mut demo) = state.demo_state {
+            demo.cleanup_finished();
         }
 
         // Reset buffers after VT switch back
@@ -2562,17 +2595,34 @@ fn handle_input_event(
             use smithay::backend::input::{TouchEvent, AbsolutePositionEvent};
 
             debug!("Touch down at slot {:?}", event.slot());
-            let screen = state.screen_size;
-            let touch_pos = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
-                event.x_transformed(screen.w),
-                event.y_transformed(screen.h),
-            ));
 
-            // Feed to gesture recognizer (use slot id or 0 for single-touch)
+            // In demo mode, use actual screen size for touch transformation
+            let screen = state.actual_screen_size;
+            let raw_x = event.x_transformed(screen.w);
+            let raw_y = event.y_transformed(screen.h);
+
+            // Track touch for demo mode indicators (using raw screen coordinates)
             let slot_id: i32 = event.slot().into();
+            if let Some(ref mut demo) = state.demo_state {
+                demo.touch_down(slot_id, raw_x, raw_y);
+            }
+
+            // Transform to viewport coordinates for gesture handling
+            let touch_pos = if let Some(ref demo) = state.demo_state {
+                // In demo mode, transform screen coords to viewport coords
+                let vx = raw_x - demo.offset_x as f64;
+                let vy = raw_y - demo.offset_y as f64;
+                // Clamp to viewport bounds
+                smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+                    vx.max(0.0).min(demo.viewport_width as f64),
+                    vy.max(0.0).min(demo.viewport_height as f64),
+                ))
+            } else {
+                smithay::utils::Point::<f64, smithay::utils::Logical>::from((raw_x, raw_y))
+            };
 
             // Debug: Log touch position and screen size
-            info!("Touch down at ({:.0}, {:.0}), screen size: {:?}", touch_pos.x, touch_pos.y, screen);
+            info!("Touch down at ({:.0}, {:.0}), screen size: {:?}", touch_pos.x, touch_pos.y, state.screen_size);
 
             // Check if keyboard is visible and touch is in keyboard area
             let keyboard_visible = state.shell.slint_ui.as_ref()
@@ -2916,14 +2966,29 @@ fn handle_input_event(
             use smithay::backend::input::{TouchEvent, AbsolutePositionEvent};
 
             debug!("Touch motion at slot {:?}", event.slot());
-            let screen = state.screen_size;
-            let touch_pos = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
-                event.x_transformed(screen.w),
-                event.y_transformed(screen.h),
-            ));
 
-            // Feed to gesture recognizer
+            // In demo mode, use actual screen size for touch transformation
+            let screen = state.actual_screen_size;
+            let raw_x = event.x_transformed(screen.w);
+            let raw_y = event.y_transformed(screen.h);
+
+            // Track touch for demo mode indicators
             let slot_id: i32 = event.slot().into();
+            if let Some(ref mut demo) = state.demo_state {
+                demo.touch_motion(slot_id, raw_x, raw_y);
+            }
+
+            // Transform to viewport coordinates for gesture handling
+            let touch_pos = if let Some(ref demo) = state.demo_state {
+                let vx = raw_x - demo.offset_x as f64;
+                let vy = raw_y - demo.offset_y as f64;
+                smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+                    vx.max(0.0).min(demo.viewport_width as f64),
+                    vy.max(0.0).min(demo.viewport_height as f64),
+                ))
+            } else {
+                smithay::utils::Point::<f64, smithay::utils::Logical>::from((raw_x, raw_y))
+            };
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
                 debug!("Gesture update: {:?}", gesture_event);
                 // Update integrated shell state
@@ -3150,8 +3215,11 @@ fn handle_input_event(
 
             info!(">>>TOUCH>>> UP slot={:?}", event.slot());
 
-            // Save touch position BEFORE touch_up removes it from gesture recognizer
+            // Track touch for demo mode indicators
             let slot_id: i32 = event.slot().into();
+            if let Some(ref mut demo) = state.demo_state {
+                demo.touch_up(slot_id);
+            }
             let last_touch_pos = state.gesture_recognizer.get_touch_position(slot_id);
 
             // Check keyboard area for debugging

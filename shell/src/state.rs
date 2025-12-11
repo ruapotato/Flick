@@ -99,8 +99,13 @@ pub struct Flick {
     pub viewports: HashMap<u32, Viewport>,
     pub next_viewport_id: u32,
 
-    // Screen size
+    // Screen size (effective size - viewport size in demo mode, actual screen otherwise)
     pub screen_size: Size<i32, Logical>,
+
+    // Demo mode state (phone-sized viewport on larger screen)
+    pub demo_state: Option<crate::demo::DemoState>,
+    /// Actual screen size (used in demo mode to know full screen dimensions)
+    pub actual_screen_size: Size<i32, Logical>,
 
     // XWayland
     pub xwayland: Option<XWayland>,
@@ -225,6 +230,8 @@ impl Flick {
             viewports: HashMap::new(),
             next_viewport_id: 0,
             screen_size,
+            demo_state: None,
+            actual_screen_size: screen_size,
             xwayland: None,
             xwm: None,
             xwayland_shell_state: None,

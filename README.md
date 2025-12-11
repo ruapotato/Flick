@@ -1,14 +1,18 @@
 # Flick
 
-A mobile-first Wayland compositor and shell for Linux phones, designed to replace Phosh and Plasma Mobile as the go-to Linux mobile desktop environment.
+An alternative mobile interface for Linux phones, designed as a gesture-first alternative to Phosh and Plasma Mobile for Debian/Droidian devices.
 
 **Why Flick?** Phosh (GNOME/GTK) and Plasma Mobile (KDE/Qt) are desktop environments squeezed onto phones. Flick is built from the ground up for mobile - gestures are the primary input, not an afterthought. Rust + Smithay + Slint means it's lean, fast, and doesn't carry decades of desktop baggage.
 
-**Target devices:** PinePhone, PinePhone Pro, Librem 5, FuriPhone FLXS1/FLXS1s, and any Linux phone running postmarketOS, Mobian, or Droidian.
+**Target devices:** Debian/Droidian devices including FuriOS (FuriPhone FLXS1/FLXS1s), PinePhone, PinePhone Pro, Librem 5, and devices running postmarketOS or Mobian.
 
-## Current Status
+**Goal:** Provide an alternative interface that can co-exist alongside Phosh on mobile Linux distributions, giving users a choice of shell experiences.
 
-**Working:**
+## Current Status: ~80% Complete
+
+The core compositor and shell UI work well when running directly on hardware (TTY mode). The project is usable for basic tasks but still has rough edges.
+
+**Working (TTY/Hardware mode):**
 - Wayland compositor with DRM/KMS rendering (60fps)
 - Touch gesture navigation (edge swipes, multi-touch)
 - Home screen with categorized app grid
@@ -17,12 +21,14 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 - Lock screen with PIN authentication (Python/Kivy app)
 - On-screen keyboard (Slint-based, integrated into shell)
 - XWayland support for X11 apps
-- Smooth animated transitions throughout
 
-**In Progress:**
-- Keyboard input routing to lock screen
-- PAM integration for lock screen (system password auth)
-- Settings app
+**Known Issues / Missing:**
+- Gesture animation alignment issues (visual polish needed)
+- Nested/embedded mode (running as window) has many bugs - for development only
+- Keyboard input routing incomplete
+- PAM integration for lock screen not implemented
+- No notification support yet
+- No settings app yet
 
 ## Architecture
 
@@ -129,7 +135,7 @@ Press `Ctrl+Alt+F1` through `Ctrl+Alt+F12` to switch between virtual terminals.
 
 ## Roadmap
 
-### Phase 1: Core Shell (Done)
+### Phase 1: Core Shell (~80% Done)
 - [x] Wayland compositor (Smithay)
 - [x] DRM/KMS + GBM rendering
 - [x] Touch gesture recognition
@@ -139,9 +145,10 @@ Press `Ctrl+Alt+F1` through `Ctrl+Alt+F12` to switch between virtual terminals.
 - [x] Lock screen (PIN)
 - [x] On-screen keyboard (Slint-based)
 - [x] XWayland support
-- [x] Animated transitions
+- [ ] Animated transitions (partially working, alignment issues)
+- [ ] Nested/embedded mode polish (many bugs)
 
-### Phase 2: Daily Driver Basics (Current)
+### Phase 2: Daily Driver Basics
 - [ ] Keyboard input routing to all apps
 - [ ] PAM authentication for lock screen (Linux password)
 - [ ] Notifications (freedesktop notification daemon)

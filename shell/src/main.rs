@@ -15,6 +15,7 @@ mod viewport;
 mod xwayland;
 pub mod system;
 pub mod text_input;
+pub mod demo;
 
 use std::path::PathBuf;
 
@@ -39,6 +40,19 @@ pub struct Args {
     /// Scale factor for windowed mode (e.g., 0.5 to halve the window size)
     #[arg(long, default_value = "1.0")]
     pub scale: f32,
+
+    /// Demo mode: render phone-sized viewport centered on screen (WIDTHxHEIGHT, e.g., 1080x2340)
+    /// Shows touch indicators and can record video
+    #[arg(long)]
+    pub demo: Option<String>,
+
+    /// Record demo to video file (requires --demo)
+    #[arg(long)]
+    pub record: Option<String>,
+
+    /// Show touch indicators (circles where you touch) - enabled by default in demo mode
+    #[arg(long, default_value = "true")]
+    pub touch_indicators: bool,
 }
 
 fn main() -> Result<()> {
@@ -90,7 +104,12 @@ fn main() -> Result<()> {
         info!("Running in windowed mode (winit backend) with size={} scale={}", args.size, args.scale);
         backend::winit::run(args)
     } else {
-        info!("Running on hardware (udev backend)");
-        backend::udev::run()
+        if let Some(ref demo_size) = args.demo {
+            info!("Running in DEMO mode with viewport={}, record={:?}, touch_indicators={}",
+                  demo_size, args.record, args.touch_indicators);
+        } else {
+            info!("Running on hardware (udev backend)");
+        }
+        backend::udev::run(args)
     }
 }

@@ -259,6 +259,89 @@ fn transform_coords(x: f64, y: f64, _width: i32, _height: i32) -> (f64, f64) {
     (x, y)
 }
 
+/// Process gesture events with backend-specific handling
+/// This adds the animation/transition handling that the shell's handle_gesture doesn't do
+fn process_gesture_event(state: &mut Flick, gesture_event: &crate::input::GestureEvent) {
+    use crate::input::{Edge, GestureEvent};
+
+    // First let the shell handle basic state updates
+    state.shell.handle_gesture(gesture_event);
+
+    // Then handle backend-specific transitions/animations
+    match gesture_event {
+        GestureEvent::EdgeSwipeStart { edge, .. } => {
+            info!("Edge swipe started: {:?}", edge);
+            match edge {
+                Edge::Top => {
+                    state.start_close_gesture();
+                }
+                Edge::Bottom => {
+                    state.start_home_gesture();
+                }
+                Edge::Left => {
+                    state.qs_gesture_active = true;
+                    state.qs_gesture_progress = 0.0;
+                    info!("QS gesture started");
+                }
+                Edge::Right => {
+                    state.switcher_gesture_active = true;
+                    state.switcher_gesture_progress = 0.0;
+                    info!("Switcher gesture started");
+                }
+            }
+        }
+        GestureEvent::EdgeSwipeUpdate { edge, progress, .. } => {
+            match edge {
+                Edge::Top => {
+                    state.update_close_gesture(*progress);
+                }
+                Edge::Bottom => {
+                    state.update_home_gesture(*progress);
+                }
+                Edge::Left => {
+                    state.qs_gesture_progress = *progress;
+                }
+                Edge::Right => {
+                    state.switcher_gesture_progress = *progress;
+                }
+            }
+        }
+        GestureEvent::EdgeSwipeEnd { edge, completed, .. } => {
+            info!("Edge swipe ended: {:?} completed={}", edge, completed);
+            match edge {
+                Edge::Top => {
+                    state.end_close_gesture(*completed);
+                }
+                Edge::Bottom => {
+                    state.end_home_gesture(*completed);
+                }
+                Edge::Left => {
+                    state.qs_gesture_active = false;
+                    state.qs_gesture_progress = 0.0;
+                    if *completed {
+                        state.system.refresh();
+                        state.shell.sync_quick_settings(&state.system);
+                        info!("Quick Settings opened");
+                    }
+                }
+                Edge::Right => {
+                    state.switcher_gesture_active = false;
+                    state.switcher_gesture_progress = 0.0;
+                    if *completed {
+                        state.save_keyboard_state_for_current_window();
+                        let num_windows = state.space.elements().count();
+                        let screen_w = state.screen_size.w as f64;
+                        let card_width = screen_w * 0.80;
+                        let card_spacing = card_width * 0.35;
+                        state.shell.open_switcher(num_windows, card_spacing);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Handle winit input events, converting to touch-like gestures
 fn handle_winit_input(
     state: &mut Flick,
@@ -350,7 +433,7 @@ fn handle_winit_input(
                     // Complete the gesture
                     if let Some(gesture_event) = state.gesture_recognizer.touch_up(0) {
                         info!("X11 gesture completed: {:?}", gesture_event);
-                        state.shell.handle_gesture(&gesture_event);
+                        process_gesture_event(state, &gesture_event);
                         if let GestureEvent::Tap { position } = &gesture_event {
                             handle_tap(state, *position);
                         }
@@ -424,7 +507,7 @@ fn handle_winit_input(
 
                 // Feed motion to gesture recognizer
                 if let Some(gesture_event) = state.gesture_recognizer.touch_motion(0, new_pos) {
-                    state.shell.handle_gesture(&gesture_event);
+                    process_gesture_event(state, &gesture_event);
                 }
 
                 // Update Slint with pointer position
@@ -468,7 +551,7 @@ fn handle_winit_input(
 
                 // Simulate touch move
                 if let Some(gesture_event) = state.gesture_recognizer.touch_motion(0, *mouse_pos) {
-                    state.shell.handle_gesture(&gesture_event);
+                    process_gesture_event(state, &gesture_event);
                 }
 
                 // For pointer motion to apps, just send the location
@@ -585,7 +668,7 @@ fn handle_winit_input(
                             // Complete the gesture
                             if let Some(gesture_event) = state.gesture_recognizer.touch_up(0) {
                                 info!("X11 gesture completed (via button release): {:?}", gesture_event);
-                                state.shell.handle_gesture(&gesture_event);
+                                process_gesture_event(state, &gesture_event);
                                 if let GestureEvent::Tap { position } = &gesture_event {
                                     handle_tap(state, *position);
                                 }
@@ -665,7 +748,7 @@ fn handle_winit_input(
                         // Complete gesture
                         if let Some(gesture_event) = state.gesture_recognizer.touch_up(0) {
                             info!("Gesture completed: {:?}", gesture_event);
-                            state.shell.handle_gesture(&gesture_event);
+                            process_gesture_event(state, &gesture_event);
 
                             // Handle tap on home screen (but skip if keyboard was dismissed)
                             if !keyboard_was_dismissed {
@@ -950,7 +1033,7 @@ fn handle_winit_input(
 
             // Feed to gesture recognizer
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(0, touch_pos) {
-                state.shell.handle_gesture(&gesture_event);
+                process_gesture_event(state, &gesture_event);
             }
 
             // Update Slint
@@ -1000,7 +1083,7 @@ fn handle_winit_input(
             // Complete gesture
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(0) {
                 info!("Gesture completed: {:?}", gesture_event);
-                state.shell.handle_gesture(&gesture_event);
+                process_gesture_event(state, &gesture_event);
 
                 // Handle tap on home screen (but skip if keyboard was dismissed)
                 if !keyboard_was_dismissed {
@@ -1099,6 +1182,249 @@ fn render_frame(
 
         // Get shell view to determine what to render
         let shell_view = state.shell.view.clone();
+
+        // Check for active gestures that need animated rendering
+        let qs_gesture_active = state.qs_gesture_active;
+        let qs_progress = state.qs_gesture_progress;
+        let switcher_gesture_active = state.switcher_gesture_active;
+        let switcher_progress = state.switcher_gesture_progress;
+        let screen_w = state.screen_size.w as f64;
+        let screen_h = state.screen_size.h as f64;
+
+        // Handle QS gesture animation (swipe from left)
+        if qs_gesture_active && qs_progress > 0.0 {
+            // Render QS panel sliding in from left
+            let categories = state.shell.app_manager.get_category_info();
+            if let Some(ref mut slint_ui) = state.shell.slint_ui {
+                slint_ui.set_view("qs");
+                slint_ui.process_events();
+                slint_ui.request_redraw();
+
+                if let Some((width, height, pixels)) = slint_ui.render() {
+                    use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
+
+                    let buffer = MemoryRenderBuffer::from_slice(
+                        &pixels,
+                        smithay::backend::allocator::Fourcc::Abgr8888,
+                        (width as i32, height as i32),
+                        1,
+                        Transform::Normal,
+                        None,
+                    );
+
+                    // QS panel slides in from left: -screen_w (off screen) to 0 (on screen)
+                    // progress 0->1 maps to x_offset -screen_w -> 0
+                    let max_progress = screen_w / 300.0; // Same as udev
+                    let normalized = (qs_progress / max_progress).clamp(0.0, 1.0);
+                    let x_offset = -screen_w * (1.0 - normalized);
+
+                    let element = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        (x_offset, 0.0),
+                        &buffer,
+                        None,
+                        None,
+                        None,
+                        smithay::backend::renderer::element::Kind::Unspecified,
+                    );
+
+                    if let Ok(elem) = element {
+                        elements.push(WinitRenderElement::Slint(elem));
+                    }
+                }
+            }
+
+            // Render home behind it (partially visible)
+            if let Some(ref mut slint_ui) = state.shell.slint_ui {
+                slint_ui.set_view("home");
+                update_slint_state(&ShellView::Home, 0, &categories, slint_ui);
+
+                if let Some((width, height, pixels)) = slint_ui.render() {
+                    use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
+
+                    let buffer = MemoryRenderBuffer::from_slice(
+                        &pixels,
+                        smithay::backend::allocator::Fourcc::Abgr8888,
+                        (width as i32, height as i32),
+                        1,
+                        Transform::Normal,
+                        None,
+                    );
+
+                    let element = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        (0.0, 0.0),
+                        &buffer,
+                        None,
+                        None,
+                        None,
+                        smithay::backend::renderer::element::Kind::Unspecified,
+                    );
+
+                    if let Ok(elem) = element {
+                        // Insert at back so home is behind QS
+                        elements.push(WinitRenderElement::Slint(elem));
+                    }
+                }
+            }
+
+            // Render with gesture background
+            let res = damage_tracker.render_output(
+                renderer,
+                &mut fb,
+                0, // Force full redraw during gesture
+                &elements,
+                [0.05, 0.05, 0.08, 1.0],
+            );
+
+            return match res {
+                Ok(r) => Ok(r),
+                Err(e) => Err(smithay::backend::SwapBuffersError::ContextLost(
+                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e))),
+                )),
+            };
+        }
+
+        // Handle Switcher gesture animation (swipe from right)
+        if switcher_gesture_active && switcher_progress > 0.0 {
+            // Render switcher sliding in from right
+            if let Some(ref mut slint_ui) = state.shell.slint_ui {
+                slint_ui.set_view("switcher");
+                slint_ui.process_events();
+                slint_ui.request_redraw();
+
+                if let Some((width, height, pixels)) = slint_ui.render() {
+                    use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
+
+                    let buffer = MemoryRenderBuffer::from_slice(
+                        &pixels,
+                        smithay::backend::allocator::Fourcc::Abgr8888,
+                        (width as i32, height as i32),
+                        1,
+                        Transform::Normal,
+                        None,
+                    );
+
+                    // Switcher slides in from right: screen_w (off screen) to 0 (on screen)
+                    let normalized = switcher_progress.clamp(0.0, 1.0);
+                    let x_offset = screen_w * (1.0 - normalized);
+
+                    let element = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        (x_offset, 0.0),
+                        &buffer,
+                        None,
+                        None,
+                        None,
+                        smithay::backend::renderer::element::Kind::Unspecified,
+                    );
+
+                    if let Ok(elem) = element {
+                        elements.push(WinitRenderElement::Slint(elem));
+                    }
+                }
+            }
+
+            // Render with gesture background
+            let res = damage_tracker.render_output(
+                renderer,
+                &mut fb,
+                0, // Force full redraw during gesture
+                &elements,
+                [0.08, 0.08, 0.12, 1.0],
+            );
+
+            return match res {
+                Ok(r) => Ok(r),
+                Err(e) => Err(smithay::backend::SwapBuffersError::ContextLost(
+                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e))),
+                )),
+            };
+        }
+
+        // Handle Home gesture animation (swipe up from bottom while in App view)
+        // Check if home gesture is active by looking for home_gesture_window
+        let home_gesture_active = state.home_gesture_window.is_some() && shell_view == ShellView::App;
+        let close_gesture_active = state.close_gesture_window.is_some() && shell_view == ShellView::App;
+
+        if home_gesture_active || close_gesture_active {
+            info!("Home/Close gesture active: home={}, close={}", home_gesture_active, close_gesture_active);
+
+            // First render the home grid as background
+            let categories = state.shell.app_manager.get_category_info();
+            if let Some(ref mut slint_ui) = state.shell.slint_ui {
+                slint_ui.set_view("home");
+                update_slint_state(&ShellView::Home, 0, &categories, slint_ui);
+                slint_ui.process_events();
+                slint_ui.request_redraw();
+
+                if let Some((width, height, pixels)) = slint_ui.render() {
+                    use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
+
+                    let buffer = MemoryRenderBuffer::from_slice(
+                        &pixels,
+                        smithay::backend::allocator::Fourcc::Abgr8888,
+                        (width as i32, height as i32),
+                        1,
+                        Transform::Normal,
+                        None,
+                    );
+
+                    let element = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        (0.0, 0.0),
+                        &buffer,
+                        None,
+                        None,
+                        None,
+                        smithay::backend::renderer::element::Kind::Unspecified,
+                    );
+
+                    if let Ok(elem) = element {
+                        elements.push(WinitRenderElement::Slint(elem));
+                    }
+                }
+            }
+
+            // Now render the window at its current position (being moved by update_home/close_gesture)
+            let gesture_window = if home_gesture_active {
+                state.home_gesture_window.clone()
+            } else {
+                state.close_gesture_window.clone()
+            };
+
+            if let Some(ref window) = gesture_window {
+                if let Some(loc) = state.space.element_location(window) {
+                    let window_render_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window
+                        .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                            renderer,
+                            (loc.x, loc.y).into(),
+                            smithay::utils::Scale::from(1.0),
+                            1.0,
+                        );
+
+                    for elem in window_render_elements {
+                        elements.push(WinitRenderElement::Surface(elem));
+                    }
+                }
+            }
+
+            // Render with gesture background
+            let res = damage_tracker.render_output(
+                renderer,
+                &mut fb,
+                0, // Force full redraw during gesture
+                &elements,
+                [0.10, 0.10, 0.18, 1.0], // Same background as home view
+            );
+
+            return match res {
+                Ok(r) => Ok(r),
+                Err(e) => Err(smithay::backend::SwapBuffersError::ContextLost(
+                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e))),
+                )),
+            };
+        }
 
         // Check if we should render the Python lock screen app
         let window_count = state.space.elements().count();
