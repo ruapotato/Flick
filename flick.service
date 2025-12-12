@@ -1,0 +1,34 @@
+[Unit]
+Description=Flick Mobile Shell
+After=systemd-user-sessions.service seatd.service
+Requires=seatd.service
+Conflicts=greetd.service phosh.service
+
+[Service]
+Type=simple
+
+# Switch VT as root before starting
+ExecStartPre=+/usr/bin/chvt 2
+
+# Run Flick directly - it will connect to the existing seatd
+ExecStart=/home/david/Flick/shell/target/release/flick
+User=david
+StandardOutput=journal
+StandardError=journal
+
+# Environment for DRM/Wayland
+Environment=XDG_SESSION_TYPE=wayland
+Environment=XDG_CURRENT_DESKTOP=Flick
+Environment=XDG_SEAT=seat0
+Environment=XDG_VTNR=2
+Environment=HOME=/home/david
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=LIBSEAT_BACKEND=seatd
+
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target
+Alias=display-manager.service

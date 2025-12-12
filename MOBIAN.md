@@ -10,9 +10,18 @@ cd ~/Flick
 ```
 
 This script will:
-1. Install all system dependencies
+1. Install all system dependencies (including seatd)
 2. Install Rust if not present
 3. Build Flick from source (takes 30-60+ minutes on PinePhone)
+4. Add user to video group
+5. Install and enable the Flick systemd service
+6. Disable greetd/Phosh
+
+After installation, reboot or run:
+```bash
+sudo systemctl stop greetd
+sudo systemctl start flick
+```
 
 ## Manual Installation
 
@@ -35,7 +44,8 @@ sudo apt install -y \
     curl \
     build-essential \
     libdisplay-info-dev \
-    libpixman-1-dev
+    libpixman-1-dev \
+    seatd
 ```
 
 ### 2. Install Rust
@@ -58,46 +68,56 @@ cargo build --release
 sudo usermod -aG video $USER
 ```
 
-Then logout and login for the group change to take effect.
+### 5. Install Systemd Service
+
+```bash
+sudo ./install-service.sh
+```
+
+Or manually copy the service file:
+```bash
+sudo cp flick.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable seatd
+sudo systemctl enable flick
+sudo systemctl disable greetd
+```
 
 ## Running Flick
 
-**IMPORTANT**: Flick must be run from a local TTY, NOT over SSH. The compositor needs direct seat access to the GPU.
+### Via Systemd (Recommended)
 
-### Option 1: Manual Testing (Recommended for first test)
+Start Flick:
+```bash
+sudo systemctl stop greetd    # Stop Phosh first
+sudo systemctl start flick
+```
 
-1. On your PinePhone, open a terminal or switch to a TTY (hardware keyboard: Ctrl+Alt+F2)
+View logs:
+```bash
+journalctl -u flick -f
+```
 
-2. Login as your user
+### Manual Testing
 
-3. Stop the display manager:
+If you want to test without the service:
+
+1. Stop any running display manager:
    ```bash
    sudo systemctl stop greetd
-   sudo systemctl stop phosh  # if running
+   sudo systemctl stop flick
    ```
 
-4. Run Flick:
+2. Switch to TTY2:
+   ```bash
+   sudo chvt 2
+   ```
+
+3. Run Flick directly:
    ```bash
    cd ~/Flick
    ./start.sh
    ```
-
-5. To return to Phosh:
-   ```bash
-   # Press Ctrl+Alt+F1 or kill Flick, then:
-   sudo systemctl start greetd
-   ```
-
-### Option 2: Install as a Session (Advanced)
-
-You can install Flick as a greetd session to select it from the greeter:
-
-```bash
-cd ~/Flick
-./install-session.sh
-```
-
-Then reboot and select "Flick" from the greeter.
 
 ## Gestures
 
@@ -110,14 +130,44 @@ Then reboot and select "Flick" from the greeter.
 | Swipe up from Quick Settings | Return to home |
 | Swipe up from App Switcher | Return to home |
 
+## Switching Between Flick and Phosh
+
+**Switch to Phosh:**
+```bash
+sudo systemctl stop flick
+sudo systemctl disable flick
+sudo systemctl enable greetd
+sudo systemctl start greetd
+```
+
+**Switch to Flick:**
+```bash
+sudo systemctl stop greetd
+sudo systemctl disable greetd
+sudo systemctl enable flick
+sudo systemctl start flick
+```
+
 ## Troubleshooting
 
 ### "No usable GPU found" / "Resource temporarily unavailable"
 
 This error occurs when:
-1. Another compositor (Phosh/phoc) is still running - make sure to stop greetd
-2. You're running over SSH - Flick needs local seat access
-3. User not in video group - run `sudo usermod -aG video $USER` and re-login
+1. Another compositor (Phosh/phoc) is still running - stop greetd first
+2. seatd service not running - run `sudo systemctl start seatd`
+3. User not in video group - run `sudo usermod -aG video $USER` and reboot
+
+### Service fails to start
+
+Check logs:
+```bash
+journalctl -u flick -n 50
+```
+
+Ensure seatd is running:
+```bash
+sudo systemctl status seatd
+```
 
 ### Black screen after starting
 
@@ -125,8 +175,9 @@ The PinePhone's display may need a moment to initialize. Wait 5-10 seconds.
 
 ### Can't switch back to Phosh
 
-From a TTY or SSH:
+From SSH:
 ```bash
+sudo systemctl stop flick
 sudo systemctl start greetd
 sudo chvt 7
 ```
@@ -134,25 +185,13 @@ sudo chvt 7
 ## Known Limitations on PinePhone
 
 - Build takes 30-60+ minutes on the PinePhone's A64 SoC
-- Some app icons may not load (GNOME symbolic icons)
-- First run may take a few seconds to render
+- Animations may be slow due to GPU limitations
+- Some app icons may not load (GNOME symbolic icons need hicolor fallbacks)
+- Settings app toggles are not yet functional
+- App switcher animations need optimization
 
-## Switching Between Flick and Phosh
+## Files
 
-Flick and Phosh cannot run simultaneously. To switch:
-
-**From Phosh to Flick:**
-```bash
-sudo systemctl stop greetd
-# Switch to TTY2 using hardware keyboard or:
-sudo chvt 2
-# Login and run:
-~/Flick/start.sh
-```
-
-**From Flick to Phosh:**
-```bash
-# Kill Flick (Ctrl+C if running in terminal)
-sudo systemctl start greetd
-sudo chvt 7
-```
+- `/etc/systemd/system/flick.service` - Systemd service file
+- `~/Flick/shell/target/release/flick` - Flick binary
+- `~/.local/state/flick/` - Logs and state files
