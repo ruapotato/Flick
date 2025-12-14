@@ -203,32 +203,10 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
     // Set EGL platform environment variable
     std::env::set_var("EGL_PLATFORM", "hwcomposer");
 
-    // Initialize HWC2 FIRST (before EGL) - this is critical for some devices
-    info!("Initializing HWC2 device...");
-    let (hwc2_device, hwc2_display) = match Hwc2Device::new() {
-        Some(device) => {
-            info!("HWC2 device created successfully");
-            match device.get_primary_display() {
-                Some(display) => {
-                    info!("HWC2 primary display acquired");
-                    // Power on the display via HWC2
-                    match display.set_power_mode(true) {
-                        Ok(()) => info!("HWC2 display powered ON"),
-                        Err(e) => warn!("Failed to set HWC2 power mode: {}", e),
-                    }
-                    (Some(device), Some(display))
-                }
-                None => {
-                    warn!("Failed to get HWC2 primary display");
-                    (Some(device), None)
-                }
-            }
-        }
-        None => {
-            warn!("Failed to create HWC2 device - display presentation may not work!");
-            (None, None)
-        }
-    };
+    // Skip HWC2 for now - it hangs on this device
+    // TODO: Investigate why hwc2_compat_device_new blocks
+    info!("Skipping HWC2 initialization (known to hang on some devices)");
+    let (hwc2_device, hwc2_display): (Option<Hwc2Device>, Option<Hwc2Display>) = (None, None);
 
     // Create present callback data
     let frame_ready = Rc::new(AtomicBool::new(true));
