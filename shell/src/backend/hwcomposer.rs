@@ -612,8 +612,9 @@ fn render_frame(
         }
 
         if log_frame || frame_num == 1 || frame_num == 40 || frame_num == 80 || frame_num == 120 {
+            let (sw, sh) = (display.width, display.height);
             info!("Test mode frame {}: color=({:.1},{:.1},{:.1}) screen={}x{}",
-                frame_num, color[0], color[1], color[2], display.width, display.height);
+                frame_num, color[0], color[1], color[2], sw, sh);
         }
     } else {
         // Normal rendering mode
