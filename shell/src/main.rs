@@ -32,6 +32,11 @@ struct Args {
     /// Run in windowed mode (for development)
     #[arg(short, long)]
     windowed: bool,
+
+    /// Use hwcomposer backend (for Droidian/libhybris devices)
+    #[cfg(feature = "hwcomposer")]
+    #[arg(long)]
+    hwcomposer: bool,
 }
 
 fn main() -> Result<()> {
@@ -83,6 +88,12 @@ fn main() -> Result<()> {
         info!("Running in windowed mode (winit backend)");
         backend::winit::run()
     } else {
+        #[cfg(feature = "hwcomposer")]
+        if args.hwcomposer {
+            info!("Running on hardware (hwcomposer backend for Droidian)");
+            return backend::hwcomposer::run();
+        }
+
         info!("Running on hardware (udev backend)");
         backend::udev::run()
     }

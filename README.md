@@ -6,6 +6,33 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 
 **Target devices:** PinePhone, PinePhone Pro, Librem 5, FuriPhone FLXS1/FLXS1s, and any Linux phone running postmarketOS, Mobian, or Droidian.
 
+## Device Compatibility
+
+| Device Type | Status | Notes |
+|-------------|--------|-------|
+| **Native Linux** (PinePhone, Librem 5) | ✅ Works | Standard DRM/KMS, full support |
+| **PostmarketOS** (mainline kernel) | ✅ Works | Uses freedreno/panfrost DRM drivers |
+| **Mobian** | ✅ Works | Standard Linux graphics stack |
+| **Droidian** (Android phones) | 🚧 In Progress | Requires hwcomposer backend (see below) |
+
+### Droidian / libhybris Support
+
+Droidian and similar Android-based Linux distributions use **libhybris** to run Android's hardware abstraction layer (HAL) for graphics. This means:
+
+- **Display**: Controlled by Android's hwcomposer, not standard Linux DRM/KMS
+- **GPU**: Accessed through Android's graphics stack, not Mesa DRM
+- **Current limitation**: Flick's DRM backend cannot acquire display control on these devices
+
+**What we found testing on Pixel 3a (Droidian):**
+```
+GL Renderer: "llvmpipe (LLVM 19.1.7, 128 bits)"  # Software rendering only
+Mode-setting failed: DRM access error (Invalid argument)
+```
+
+The DRM device exists but is meant to be controlled by hwcomposer, not directly by applications. Phosh works on Droidian because wlroots has a hwcomposer backend - we're working on adding one to Flick.
+
+**Workaround (temporary)**: None currently. Native Linux devices work fully.
+
 ## Current Status
 
 **Working:**
@@ -142,6 +169,7 @@ Press `Ctrl+Alt+F1` through `Ctrl+Alt+F12` to switch between virtual terminals.
 - [x] Animated transitions
 
 ### Phase 2: Daily Driver Basics (Current)
+- [ ] Hwcomposer backend for Droidian/libhybris devices
 - [ ] Keyboard input routing to all apps
 - [ ] PAM authentication for lock screen (Linux password)
 - [ ] Notifications (freedesktop notification daemon)
