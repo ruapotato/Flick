@@ -81,6 +81,8 @@ struct HwcDisplay {
 /// Present callback data
 struct PresentCallbackData {
     frame_ready: Rc<AtomicBool>,
+    hwc2_display: *mut hwcomposer_ffi::hwc2_compat_display_t,
+    buffer_slot: std::sync::atomic::AtomicU32,
 }
 
 /// Present callback - called when hwcomposer has a buffer ready to display
@@ -95,10 +97,57 @@ unsafe extern "C" fn present_callback(
 
     let data = &*(user_data as *const PresentCallbackData);
 
-    // Get and close the fence (synchronous wait)
-    let fence_fd = hwcomposer_ffi::get_buffer_fence(buffer);
-    if fence_fd >= 0 {
-        unsafe { libc::close(fence_fd) };
+    // Get the acquire fence from the buffer
+    let acquire_fence = hwcomposer_ffi::get_buffer_fence(buffer);
+
+    // Present via HWC2 if we have a display
+    if !data.hwc2_display.is_null() && !buffer.is_null() {
+        // Get current slot and increment for next buffer
+        let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
+
+        // Set client target with the buffer
+        let err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
+            data.hwc2_display,
+            slot,
+            buffer,
+            acquire_fence,
+            0, // HAL_DATASPACE_UNKNOWN
+        );
+
+        if err == 0 {
+            // Validate display
+            let mut num_types: u32 = 0;
+            let mut num_requests: u32 = 0;
+            let validate_err = hwcomposer_ffi::hwc2_compat_display_validate(
+                data.hwc2_display,
+                &mut num_types,
+                &mut num_requests,
+            );
+
+            // Accept changes if needed (validate_err == 3 means HAS_CHANGES)
+            if validate_err == 0 || validate_err == 3 {
+                if num_types > 0 || num_requests > 0 {
+                    hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display);
+                }
+
+                // Present the frame
+                let mut present_fence: i32 = -1;
+                let present_err = hwcomposer_ffi::hwc2_compat_display_present(
+                    data.hwc2_display,
+                    &mut present_fence,
+                );
+
+                // Set the present fence on the buffer for the next frame
+                if present_err == 0 && present_fence >= 0 {
+                    hwcomposer_ffi::set_buffer_fence(buffer, present_fence);
+                }
+            }
+        }
+    } else {
+        // No HWC2, just close the fence
+        if acquire_fence >= 0 {
+            libc::close(acquire_fence);
+        }
     }
 
     data.frame_ready.store(true, Ordering::Release);
@@ -287,10 +336,15 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
         (None, None)
     };
 
-    // Create present callback data
+    // Create present callback data with HWC2 display pointer
     let frame_ready = Rc::new(AtomicBool::new(true));
+    let hwc2_display_ptr = hwc2_display.as_ref()
+        .map(|d| d.as_ptr())
+        .unwrap_or(std::ptr::null_mut());
     let callback_data = Box::new(PresentCallbackData {
         frame_ready: frame_ready.clone(),
+        hwc2_display: hwc2_display_ptr,
+        buffer_slot: std::sync::atomic::AtomicU32::new(0),
     });
     let callback_data_ptr = Box::into_raw(callback_data) as *mut c_void;
 
