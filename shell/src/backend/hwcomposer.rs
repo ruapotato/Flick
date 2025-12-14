@@ -20,21 +20,8 @@ use tracing::{debug, error, info, warn};
 
 use smithay::{
     backend::{
-        egl::{EGLContext, EGLDisplay},
         input::InputEvent,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
-        renderer::{
-            damage::OutputDamageTracker,
-            gles::GlesRenderer,
-            Bind, Frame, Renderer,
-            element::{
-                AsRenderElements,
-                surface::WaylandSurfaceRenderElement,
-                solid::SolidColorRenderElement,
-                memory::MemoryRenderBufferRenderElement,
-                utils::{CropRenderElement, RelocateRenderElement, RescaleRenderElement},
-            },
-        },
         session::{
             libseat::LibSeatSession,
             Event as SessionEvent, Session,
@@ -49,7 +36,7 @@ use smithay::{
     utils::Transform,
 };
 
-use smithay::backend::renderer::{ImportAll, ImportMem};
+// Note: ImportAll/ImportMem will be needed once we integrate proper Smithay rendering
 
 use crate::state::Flick;
 use crate::shell::ShellView;
@@ -92,10 +79,11 @@ struct HwcDisplay {
     egl_instance: egl::DynamicInstance<egl::EGL1_4>,
     egl_display: egl::Display,
     egl_surface: egl::Surface,
+    #[allow(dead_code)]
     egl_context: egl::Context,
-    smithay_renderer: GlesRenderer,
-    damage_tracker: OutputDamageTracker,
+    #[allow(dead_code)]
     width: u32,
+    #[allow(dead_code)]
     height: u32,
 }
 
@@ -273,33 +261,14 @@ fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
 
     info!("Made EGL context current");
 
-    // Now create Smithay's EGL structures on top of our raw EGL
-    // We need to create a GlesRenderer that uses our EGL context
-    // This is tricky because Smithay expects to own the EGL context
+    // Initialize GL function pointers
+    unsafe { gl::init(); }
 
-    // For now, we'll create a simple wrapper that uses raw GL calls
-    // The proper solution would be to extend Smithay to support external EGL contexts
+    // For now, skip Smithay's renderer and use direct OpenGL rendering
+    // This is a proof-of-concept to verify hwcomposer works
+    // Later we can properly integrate with Smithay's rendering pipeline
 
-    // Create Smithay EGL display from default (it will use the same hwcomposer display)
-    let smithay_egl_display = unsafe {
-        EGLDisplay::from_raw(
-            egl_display.as_ptr() as *mut _,
-            std::ptr::null_mut(),
-        )
-    }.map_err(|e| anyhow::anyhow!("Failed to wrap EGL display: {:?}", e))?;
-
-    // Create Smithay EGL context
-    let smithay_egl_context = EGLContext::new(&smithay_egl_display)
-        .map_err(|e| anyhow::anyhow!("Failed to create Smithay EGL context: {:?}", e))?;
-
-    // Create GLES renderer
-    let smithay_renderer = unsafe { GlesRenderer::new(smithay_egl_context) }
-        .map_err(|e| anyhow::anyhow!("Failed to create GLES renderer: {:?}", e))?;
-
-    info!("Created Smithay GLES renderer");
-
-    // Create damage tracker
-    let damage_tracker = OutputDamageTracker::from_output(output);
+    info!("HWComposer display initialized successfully");
 
     Ok(HwcDisplay {
         native_window,
@@ -307,8 +276,6 @@ fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
         egl_display,
         egl_surface,
         egl_context,
-        smithay_renderer,
-        damage_tracker,
         width,
         height,
     })
@@ -648,15 +615,69 @@ fn render_frame(
     Ok(())
 }
 
-// Placeholder for gl module - in real implementation would use gl crate
+// OpenGL ES function types and constants
 mod gl {
+    use std::os::raw::c_void;
+
     pub const COLOR_BUFFER_BIT: u32 = 0x00004000;
 
-    pub unsafe fn ClearColor(_r: f32, _g: f32, _b: f32, _a: f32) {
-        // Would call actual glClearColor
+    // Function pointer types
+    type GlClearColorFn = unsafe extern "C" fn(f32, f32, f32, f32);
+    type GlClearFn = unsafe extern "C" fn(u32);
+
+    // Cached function pointers
+    static mut GL_CLEAR_COLOR: Option<GlClearColorFn> = None;
+    static mut GL_CLEAR: Option<GlClearFn> = None;
+    static mut INITIALIZED: bool = false;
+
+    /// Initialize GL function pointers using libGLESv2
+    pub unsafe fn init() {
+        if INITIALIZED {
+            return;
+        }
+
+        // Load libGLESv2
+        let lib = libc::dlopen(
+            b"libGLESv2.so.2\0".as_ptr() as *const _,
+            libc::RTLD_NOW | libc::RTLD_GLOBAL,
+        );
+        if lib.is_null() {
+            // Try alternate name
+            let lib = libc::dlopen(
+                b"libGLESv2.so\0".as_ptr() as *const _,
+                libc::RTLD_NOW | libc::RTLD_GLOBAL,
+            );
+            if lib.is_null() {
+                tracing::error!("Failed to load libGLESv2");
+                return;
+            }
+        }
+
+        // Load glClearColor
+        let clear_color = libc::dlsym(lib, b"glClearColor\0".as_ptr() as *const _);
+        if !clear_color.is_null() {
+            GL_CLEAR_COLOR = Some(std::mem::transmute::<*mut c_void, GlClearColorFn>(clear_color));
+        }
+
+        // Load glClear
+        let clear = libc::dlsym(lib, b"glClear\0".as_ptr() as *const _);
+        if !clear.is_null() {
+            GL_CLEAR = Some(std::mem::transmute::<*mut c_void, GlClearFn>(clear));
+        }
+
+        INITIALIZED = true;
+        tracing::info!("OpenGL ES functions loaded");
     }
 
-    pub unsafe fn Clear(_mask: u32) {
-        // Would call actual glClear
+    pub unsafe fn ClearColor(r: f32, g: f32, b: f32, a: f32) {
+        if let Some(func) = GL_CLEAR_COLOR {
+            func(r, g, b, a);
+        }
+    }
+
+    pub unsafe fn Clear(mask: u32) {
+        if let Some(func) = GL_CLEAR {
+            func(mask);
+        }
     }
 }
