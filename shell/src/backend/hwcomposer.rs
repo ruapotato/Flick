@@ -104,6 +104,11 @@ unsafe extern "C" fn present_callback(
     // Get the acquire fence from the buffer
     let acquire_fence = hwcomposer_ffi::get_buffer_fence(buffer);
 
+    // Debug: log buffer info
+    if count % 60 == 0 {
+        eprintln!("Present callback #{}: buffer={:?}, acquire_fence={}", count, buffer, acquire_fence);
+    }
+
     // Present via HWC2 if we have a display (layer is optional for client composition)
     if !data.hwc2_display.is_null() && !buffer.is_null() {
         // Get current slot and increment for next buffer
