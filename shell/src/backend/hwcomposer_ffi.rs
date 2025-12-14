@@ -207,8 +207,11 @@ extern "C" {
     /// useVrComposer should typically be false
     pub fn hwc2_compat_device_new(use_vr_composer: bool) -> *mut hwc2_compat_device_t;
 
-    /// Destroy HWC2 device
-    pub fn hwc2_compat_device_destroy(device: *mut hwc2_compat_device_t);
+    /// Destroy a display (not the device itself)
+    pub fn hwc2_compat_device_destroy_display(
+        device: *mut hwc2_compat_device_t,
+        display: *mut hwc2_compat_display_t,
+    );
 
     /// Get display by ID (typically 0 for primary display)
     pub fn hwc2_compat_device_get_display_by_id(
@@ -323,13 +326,8 @@ impl Hwc2Device {
     }
 }
 
-impl Drop for Hwc2Device {
-    fn drop(&mut self) {
-        if !self.device.is_null() {
-            unsafe { hwc2_compat_device_destroy(self.device) };
-        }
-    }
-}
+// Note: HWC2 device doesn't have a destroy function - it's a singleton
+// managed by the hwc2 library internally
 
 /// Safe wrapper for HWC2 display
 pub struct Hwc2Display {
