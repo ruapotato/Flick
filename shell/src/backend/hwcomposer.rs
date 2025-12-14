@@ -100,6 +100,33 @@ unsafe extern "C" fn present_callback(
     data.frame_ready.store(true, Ordering::Release);
 }
 
+/// Try to unblank the display via fbdev
+fn unblank_display() {
+    use std::fs::OpenOptions;
+    use std::os::unix::io::AsRawFd;
+
+    // Try fbdev ioctl to unblank
+    const FBIOBLANK: libc::c_ulong = 0x4611;
+    const FB_BLANK_UNBLANK: libc::c_int = 0;
+
+    if let Ok(fb) = OpenOptions::new().write(true).open("/dev/fb0") {
+        let fd = fb.as_raw_fd();
+        let result = unsafe { libc::ioctl(fd, FBIOBLANK, FB_BLANK_UNBLANK) };
+        if result == 0 {
+            info!("Display unblanked via fbdev ioctl");
+        } else {
+            warn!("fbdev unblank ioctl failed: {}", std::io::Error::last_os_error());
+        }
+    } else {
+        warn!("Could not open /dev/fb0 to unblank display");
+    }
+
+    // Also try sysfs method
+    if let Ok(()) = std::fs::write("/sys/class/graphics/fb0/blank", "0") {
+        info!("Display unblanked via sysfs");
+    }
+}
+
 /// Get display dimensions from environment or system
 fn get_display_dimensions() -> (u32, u32) {
     // Try environment variables first
@@ -151,6 +178,9 @@ fn get_display_dimensions() -> (u32, u32) {
 fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
     let (width, height) = get_display_dimensions();
     info!("Initializing hwcomposer display: {}x{}", width, height);
+
+    // Try to unblank the display first
+    unblank_display();
 
     // Set EGL platform environment variable
     std::env::set_var("EGL_PLATFORM", "hwcomposer");
