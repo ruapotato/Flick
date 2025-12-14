@@ -82,7 +82,10 @@ struct HwcDisplay {
 struct PresentCallbackData {
     frame_ready: Rc<AtomicBool>,
     hwc2_display: *mut hwcomposer_ffi::hwc2_compat_display_t,
+    hwc2_layer: *mut hwcomposer_ffi::hwc2_compat_layer_t,
     buffer_slot: std::sync::atomic::AtomicU32,
+    present_count: std::sync::atomic::AtomicU32,
+    present_errors: std::sync::atomic::AtomicU32,
 }
 
 /// Present callback - called when hwcomposer has a buffer ready to display
@@ -96,17 +99,26 @@ unsafe extern "C" fn present_callback(
     }
 
     let data = &*(user_data as *const PresentCallbackData);
+    let count = data.present_count.fetch_add(1, Ordering::Relaxed);
 
     // Get the acquire fence from the buffer
     let acquire_fence = hwcomposer_ffi::get_buffer_fence(buffer);
 
-    // Present via HWC2 if we have a display
-    if !data.hwc2_display.is_null() && !buffer.is_null() {
+    // Present via HWC2 if we have a display and layer
+    if !data.hwc2_display.is_null() && !data.hwc2_layer.is_null() && !buffer.is_null() {
         // Get current slot and increment for next buffer
         let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
 
+        // Set buffer on the layer
+        let layer_err = hwcomposer_ffi::hwc2_compat_layer_set_buffer(
+            data.hwc2_layer,
+            slot,
+            buffer,
+            acquire_fence,
+        );
+
         // Set client target with the buffer
-        let err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
+        let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
             data.hwc2_display,
             slot,
             buffer,
@@ -114,39 +126,57 @@ unsafe extern "C" fn present_callback(
             0, // HAL_DATASPACE_UNKNOWN
         );
 
-        if err == 0 {
-            // Validate display
-            let mut num_types: u32 = 0;
-            let mut num_requests: u32 = 0;
-            let validate_err = hwcomposer_ffi::hwc2_compat_display_validate(
+        // Validate display
+        let mut num_types: u32 = 0;
+        let mut num_requests: u32 = 0;
+        let validate_err = hwcomposer_ffi::hwc2_compat_display_validate(
+            data.hwc2_display,
+            &mut num_types,
+            &mut num_requests,
+        );
+
+        // Accept changes if needed (validate_err == 3 means HAS_CHANGES)
+        if validate_err == 0 || validate_err == 3 {
+            if num_types > 0 || num_requests > 0 {
+                hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display);
+            }
+
+            // Present the frame
+            let mut present_fence: i32 = -1;
+            let present_err = hwcomposer_ffi::hwc2_compat_display_present(
                 data.hwc2_display,
-                &mut num_types,
-                &mut num_requests,
+                &mut present_fence,
             );
 
-            // Accept changes if needed (validate_err == 3 means HAS_CHANGES)
-            if validate_err == 0 || validate_err == 3 {
-                if num_types > 0 || num_requests > 0 {
-                    hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display);
-                }
+            if present_err != 0 {
+                data.present_errors.fetch_add(1, Ordering::Relaxed);
+            }
 
-                // Present the frame
-                let mut present_fence: i32 = -1;
-                let present_err = hwcomposer_ffi::hwc2_compat_display_present(
-                    data.hwc2_display,
-                    &mut present_fence,
-                );
+            // Set the present fence on the buffer for the next frame
+            if present_fence >= 0 {
+                hwcomposer_ffi::set_buffer_fence(buffer, present_fence);
+            }
 
-                // Set the present fence on the buffer for the next frame
-                if present_err == 0 && present_fence >= 0 {
-                    hwcomposer_ffi::set_buffer_fence(buffer, present_fence);
-                }
+            // Log progress every 60 frames
+            if count % 60 == 0 {
+                eprintln!("HWC2 present #{}: layer_err={}, target_err={}, validate_err={}, present_err={}, errors={}",
+                    count, layer_err, target_err, validate_err, present_err,
+                    data.present_errors.load(Ordering::Relaxed));
+            }
+        } else {
+            data.present_errors.fetch_add(1, Ordering::Relaxed);
+            if count % 60 == 0 {
+                eprintln!("HWC2 validate failed: err={}", validate_err);
             }
         }
     } else {
         // No HWC2, just close the fence
         if acquire_fence >= 0 {
             libc::close(acquire_fence);
+        }
+        if count % 60 == 0 {
+            eprintln!("Present callback #{}: no HWC2 display={:?} layer={:?} buffer={:?}",
+                count, data.hwc2_display, data.hwc2_layer, buffer);
         }
     }
 
@@ -336,15 +366,71 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
         (None, None)
     };
 
-    // Create present callback data with HWC2 display pointer
+    // Create HWC2 layer if we have a display
+    let hwc2_layer = if let Some(ref display) = hwc2_display {
+        match display.create_layer() {
+            Some(layer) => {
+                info!("Created HWC2 layer");
+                // Configure the layer for fullscreen client composition
+                let w = width as i32;
+                let h = height as i32;
+
+                // Set composition type to CLIENT (we render, HWC just displays)
+                if let Err(e) = layer.set_composition_type(hwcomposer_ffi::hwc2_composition::HWC2_COMPOSITION_CLIENT) {
+                    warn!("Failed to set layer composition type: {}", e);
+                }
+
+                // Set blend mode to NONE (opaque)
+                if let Err(e) = layer.set_blend_mode(hwcomposer_ffi::hwc2_blend_mode::HWC2_BLEND_MODE_NONE) {
+                    warn!("Failed to set layer blend mode: {}", e);
+                }
+
+                // Set display frame (where on screen)
+                if let Err(e) = layer.set_display_frame(0, 0, w, h) {
+                    warn!("Failed to set layer display frame: {}", e);
+                }
+
+                // Set source crop (portion of buffer)
+                if let Err(e) = layer.set_source_crop(0.0, 0.0, width as f32, height as f32) {
+                    warn!("Failed to set layer source crop: {}", e);
+                }
+
+                // Set visible region
+                if let Err(e) = layer.set_visible_region(0, 0, w, h) {
+                    warn!("Failed to set layer visible region: {}", e);
+                }
+
+                // Set plane alpha to fully opaque
+                if let Err(e) = layer.set_plane_alpha(1.0) {
+                    warn!("Failed to set layer plane alpha: {}", e);
+                }
+
+                Some(layer)
+            }
+            None => {
+                warn!("Failed to create HWC2 layer");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Create present callback data with HWC2 display and layer pointers
     let frame_ready = Rc::new(AtomicBool::new(true));
     let hwc2_display_ptr = hwc2_display.as_ref()
         .map(|d| d.as_ptr())
         .unwrap_or(std::ptr::null_mut());
+    let hwc2_layer_ptr = hwc2_layer.as_ref()
+        .map(|l| l.as_ptr())
+        .unwrap_or(std::ptr::null_mut());
     let callback_data = Box::new(PresentCallbackData {
         frame_ready: frame_ready.clone(),
         hwc2_display: hwc2_display_ptr,
+        hwc2_layer: hwc2_layer_ptr,
         buffer_slot: std::sync::atomic::AtomicU32::new(0),
+        present_count: std::sync::atomic::AtomicU32::new(0),
+        present_errors: std::sync::atomic::AtomicU32::new(0),
     });
     let callback_data_ptr = Box::into_raw(callback_data) as *mut c_void;
 
