@@ -596,11 +596,13 @@ fn render_frame(
     match shell_view {
         ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault => {
             // Get Slint rendered pixels
-            if let Some((width, height, pixels)) = state.slint_shell.render() {
-                unsafe {
-                    gl::render_texture(width, height, &pixels, display.width, display.height);
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                if let Some((width, height, pixels)) = slint_ui.render() {
+                    unsafe {
+                        gl::render_texture(width, height, &pixels, display.width, display.height);
+                    }
+                    debug!("Rendered Slint UI {}x{}", width, height);
                 }
-                debug!("Rendered Slint UI {}x{}", width, height);
             }
         }
         ShellView::App | ShellView::LockScreen => {
