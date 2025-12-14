@@ -586,14 +586,28 @@ fn render_frame(
         ShellView::App | ShellView::LockScreen => [0.0, 0.0, 0.0, 1.0],
     };
 
-    // Clear screen with background color using raw GL
+    // Clear screen with background color
     unsafe {
         gl::ClearColor(bg_color[0], bg_color[1], bg_color[2], bg_color[3]);
         gl::Clear(gl::COLOR_BUFFER_BIT);
     }
 
-    // TODO: Add full rendering logic here
-    // For now, just swap buffers to verify the pipeline works
+    // Render Slint UI for shell views
+    match shell_view {
+        ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault => {
+            // Get Slint rendered pixels
+            if let Some((width, height, pixels)) = state.slint_shell.render() {
+                unsafe {
+                    gl::render_texture(width, height, &pixels, display.width, display.height);
+                }
+                debug!("Rendered Slint UI {}x{}", width, height);
+            }
+        }
+        ShellView::App | ShellView::LockScreen => {
+            // For apps/lock screen, we'll render Wayland surfaces later
+            // For now, just show the background
+        }
+    }
 
     // Swap buffers
     display.egl_instance.swap_buffers(display.egl_display, display.egl_surface)
@@ -602,22 +616,128 @@ fn render_frame(
     Ok(())
 }
 
-// OpenGL ES function types and constants
+// OpenGL ES 2.0 bindings for texture rendering
 mod gl {
-    use std::os::raw::c_void;
+    use std::os::raw::{c_char, c_int, c_uint, c_void};
+    use std::ffi::CString;
 
+    // GL constants
     pub const COLOR_BUFFER_BIT: u32 = 0x00004000;
+    pub const TEXTURE_2D: u32 = 0x0DE1;
+    pub const RGBA: u32 = 0x1908;
+    pub const UNSIGNED_BYTE: u32 = 0x1401;
+    pub const TEXTURE_MIN_FILTER: u32 = 0x2801;
+    pub const TEXTURE_MAG_FILTER: u32 = 0x2800;
+    pub const LINEAR: i32 = 0x2601;
+    pub const FLOAT: u32 = 0x1406;
+    pub const TRIANGLE_STRIP: u32 = 0x0005;
+    pub const VERTEX_SHADER: u32 = 0x8B31;
+    pub const FRAGMENT_SHADER: u32 = 0x8B30;
+    pub const COMPILE_STATUS: u32 = 0x8B81;
+    pub const LINK_STATUS: u32 = 0x8B82;
+    pub const BLEND: u32 = 0x0BE2;
+    pub const SRC_ALPHA: u32 = 0x0302;
+    pub const ONE_MINUS_SRC_ALPHA: u32 = 0x0303;
+    pub const FALSE: u8 = 0;
 
     // Function pointer types
-    type GlClearColorFn = unsafe extern "C" fn(f32, f32, f32, f32);
-    type GlClearFn = unsafe extern "C" fn(u32);
+    type ClearColorFn = unsafe extern "C" fn(f32, f32, f32, f32);
+    type ClearFn = unsafe extern "C" fn(u32);
+    type ViewportFn = unsafe extern "C" fn(i32, i32, i32, i32);
+    type GenTexturesFn = unsafe extern "C" fn(i32, *mut u32);
+    type BindTextureFn = unsafe extern "C" fn(u32, u32);
+    type TexImage2DFn = unsafe extern "C" fn(u32, i32, i32, i32, i32, i32, u32, u32, *const c_void);
+    type TexParameteriFn = unsafe extern "C" fn(u32, u32, i32);
+    type CreateShaderFn = unsafe extern "C" fn(u32) -> u32;
+    type ShaderSourceFn = unsafe extern "C" fn(u32, i32, *const *const c_char, *const i32);
+    type CompileShaderFn = unsafe extern "C" fn(u32);
+    type GetShaderivFn = unsafe extern "C" fn(u32, u32, *mut i32);
+    type CreateProgramFn = unsafe extern "C" fn() -> u32;
+    type AttachShaderFn = unsafe extern "C" fn(u32, u32);
+    type LinkProgramFn = unsafe extern "C" fn(u32);
+    type GetProgramivFn = unsafe extern "C" fn(u32, u32, *mut i32);
+    type UseProgramFn = unsafe extern "C" fn(u32);
+    type GetAttribLocationFn = unsafe extern "C" fn(u32, *const c_char) -> i32;
+    type GetUniformLocationFn = unsafe extern "C" fn(u32, *const c_char) -> i32;
+    type EnableVertexAttribArrayFn = unsafe extern "C" fn(u32);
+    type VertexAttribPointerFn = unsafe extern "C" fn(u32, i32, u32, u8, i32, *const c_void);
+    type DrawArraysFn = unsafe extern "C" fn(u32, i32, i32);
+    type Uniform1iFn = unsafe extern "C" fn(i32, i32);
+    type ActiveTextureFn = unsafe extern "C" fn(u32);
+    type EnableFn = unsafe extern "C" fn(u32);
+    type DisableFn = unsafe extern "C" fn(u32);
+    type BlendFuncFn = unsafe extern "C" fn(u32, u32);
+    type DeleteTexturesFn = unsafe extern "C" fn(i32, *const u32);
+    type DeleteShaderFn = unsafe extern "C" fn(u32);
+    type DeleteProgramFn = unsafe extern "C" fn(u32);
 
     // Cached function pointers
-    static mut GL_CLEAR_COLOR: Option<GlClearColorFn> = None;
-    static mut GL_CLEAR: Option<GlClearFn> = None;
-    static mut INITIALIZED: bool = false;
+    static mut FN_CLEAR_COLOR: Option<ClearColorFn> = None;
+    static mut FN_CLEAR: Option<ClearFn> = None;
+    static mut FN_VIEWPORT: Option<ViewportFn> = None;
+    static mut FN_GEN_TEXTURES: Option<GenTexturesFn> = None;
+    static mut FN_BIND_TEXTURE: Option<BindTextureFn> = None;
+    static mut FN_TEX_IMAGE_2D: Option<TexImage2DFn> = None;
+    static mut FN_TEX_PARAMETERI: Option<TexParameteriFn> = None;
+    static mut FN_CREATE_SHADER: Option<CreateShaderFn> = None;
+    static mut FN_SHADER_SOURCE: Option<ShaderSourceFn> = None;
+    static mut FN_COMPILE_SHADER: Option<CompileShaderFn> = None;
+    static mut FN_GET_SHADERIV: Option<GetShaderivFn> = None;
+    static mut FN_CREATE_PROGRAM: Option<CreateProgramFn> = None;
+    static mut FN_ATTACH_SHADER: Option<AttachShaderFn> = None;
+    static mut FN_LINK_PROGRAM: Option<LinkProgramFn> = None;
+    static mut FN_GET_PROGRAMIV: Option<GetProgramivFn> = None;
+    static mut FN_USE_PROGRAM: Option<UseProgramFn> = None;
+    static mut FN_GET_ATTRIB_LOCATION: Option<GetAttribLocationFn> = None;
+    static mut FN_GET_UNIFORM_LOCATION: Option<GetUniformLocationFn> = None;
+    static mut FN_ENABLE_VERTEX_ATTRIB_ARRAY: Option<EnableVertexAttribArrayFn> = None;
+    static mut FN_VERTEX_ATTRIB_POINTER: Option<VertexAttribPointerFn> = None;
+    static mut FN_DRAW_ARRAYS: Option<DrawArraysFn> = None;
+    static mut FN_UNIFORM1I: Option<Uniform1iFn> = None;
+    static mut FN_ACTIVE_TEXTURE: Option<ActiveTextureFn> = None;
+    static mut FN_ENABLE: Option<EnableFn> = None;
+    static mut FN_DISABLE: Option<DisableFn> = None;
+    static mut FN_BLEND_FUNC: Option<BlendFuncFn> = None;
+    static mut FN_DELETE_TEXTURES: Option<DeleteTexturesFn> = None;
+    static mut FN_DELETE_SHADER: Option<DeleteShaderFn> = None;
+    static mut FN_DELETE_PROGRAM: Option<DeleteProgramFn> = None;
 
-    /// Initialize GL function pointers using libGLESv2
+    static mut INITIALIZED: bool = false;
+    static mut SHADER_PROGRAM: u32 = 0;
+    static mut ATTR_POSITION: i32 = -1;
+    static mut ATTR_TEXCOORD: i32 = -1;
+    static mut UNIFORM_TEXTURE: i32 = -1;
+
+    // Vertex shader - simple pass-through
+    const VERTEX_SHADER_SRC: &str = r#"
+        attribute vec2 a_position;
+        attribute vec2 a_texcoord;
+        varying vec2 v_texcoord;
+        void main() {
+            gl_Position = vec4(a_position, 0.0, 1.0);
+            v_texcoord = a_texcoord;
+        }
+    "#;
+
+    // Fragment shader - texture sampling
+    const FRAGMENT_SHADER_SRC: &str = r#"
+        precision mediump float;
+        varying vec2 v_texcoord;
+        uniform sampler2D u_texture;
+        void main() {
+            gl_FragColor = texture2D(u_texture, v_texcoord);
+        }
+    "#;
+
+    unsafe fn load_fn<T>(lib: *mut c_void, name: &[u8]) -> Option<T> {
+        let ptr = libc::dlsym(lib, name.as_ptr() as *const _);
+        if ptr.is_null() {
+            None
+        } else {
+            Some(std::mem::transmute_copy(&ptr))
+        }
+    }
+
     pub unsafe fn init() {
         if INITIALIZED {
             return;
@@ -628,43 +748,209 @@ mod gl {
             b"libGLESv2.so.2\0".as_ptr() as *const _,
             libc::RTLD_NOW | libc::RTLD_GLOBAL,
         );
-        if lib.is_null() {
-            // Try alternate name
-            let lib = libc::dlopen(
+        let lib = if lib.is_null() {
+            libc::dlopen(
                 b"libGLESv2.so\0".as_ptr() as *const _,
                 libc::RTLD_NOW | libc::RTLD_GLOBAL,
-            );
-            if lib.is_null() {
-                tracing::error!("Failed to load libGLESv2");
-                return;
+            )
+        } else {
+            lib
+        };
+
+        if lib.is_null() {
+            tracing::error!("Failed to load libGLESv2");
+            return;
+        }
+
+        // Load all GL functions
+        FN_CLEAR_COLOR = load_fn(lib, b"glClearColor\0");
+        FN_CLEAR = load_fn(lib, b"glClear\0");
+        FN_VIEWPORT = load_fn(lib, b"glViewport\0");
+        FN_GEN_TEXTURES = load_fn(lib, b"glGenTextures\0");
+        FN_BIND_TEXTURE = load_fn(lib, b"glBindTexture\0");
+        FN_TEX_IMAGE_2D = load_fn(lib, b"glTexImage2D\0");
+        FN_TEX_PARAMETERI = load_fn(lib, b"glTexParameteri\0");
+        FN_CREATE_SHADER = load_fn(lib, b"glCreateShader\0");
+        FN_SHADER_SOURCE = load_fn(lib, b"glShaderSource\0");
+        FN_COMPILE_SHADER = load_fn(lib, b"glCompileShader\0");
+        FN_GET_SHADERIV = load_fn(lib, b"glGetShaderiv\0");
+        FN_CREATE_PROGRAM = load_fn(lib, b"glCreateProgram\0");
+        FN_ATTACH_SHADER = load_fn(lib, b"glAttachShader\0");
+        FN_LINK_PROGRAM = load_fn(lib, b"glLinkProgram\0");
+        FN_GET_PROGRAMIV = load_fn(lib, b"glGetProgramiv\0");
+        FN_USE_PROGRAM = load_fn(lib, b"glUseProgram\0");
+        FN_GET_ATTRIB_LOCATION = load_fn(lib, b"glGetAttribLocation\0");
+        FN_GET_UNIFORM_LOCATION = load_fn(lib, b"glGetUniformLocation\0");
+        FN_ENABLE_VERTEX_ATTRIB_ARRAY = load_fn(lib, b"glEnableVertexAttribArray\0");
+        FN_VERTEX_ATTRIB_POINTER = load_fn(lib, b"glVertexAttribPointer\0");
+        FN_DRAW_ARRAYS = load_fn(lib, b"glDrawArrays\0");
+        FN_UNIFORM1I = load_fn(lib, b"glUniform1i\0");
+        FN_ACTIVE_TEXTURE = load_fn(lib, b"glActiveTexture\0");
+        FN_ENABLE = load_fn(lib, b"glEnable\0");
+        FN_DISABLE = load_fn(lib, b"glDisable\0");
+        FN_BLEND_FUNC = load_fn(lib, b"glBlendFunc\0");
+        FN_DELETE_TEXTURES = load_fn(lib, b"glDeleteTextures\0");
+        FN_DELETE_SHADER = load_fn(lib, b"glDeleteShader\0");
+        FN_DELETE_PROGRAM = load_fn(lib, b"glDeleteProgram\0");
+
+        // Create shader program
+        if let Some(program) = create_shader_program() {
+            SHADER_PROGRAM = program;
+
+            let pos_name = CString::new("a_position").unwrap();
+            let tex_name = CString::new("a_texcoord").unwrap();
+            let uni_name = CString::new("u_texture").unwrap();
+
+            if let Some(f) = FN_GET_ATTRIB_LOCATION {
+                ATTR_POSITION = f(program, pos_name.as_ptr());
+                ATTR_TEXCOORD = f(program, tex_name.as_ptr());
             }
-        }
+            if let Some(f) = FN_GET_UNIFORM_LOCATION {
+                UNIFORM_TEXTURE = f(program, uni_name.as_ptr());
+            }
 
-        // Load glClearColor
-        let clear_color = libc::dlsym(lib, b"glClearColor\0".as_ptr() as *const _);
-        if !clear_color.is_null() {
-            GL_CLEAR_COLOR = Some(std::mem::transmute::<*mut c_void, GlClearColorFn>(clear_color));
-        }
-
-        // Load glClear
-        let clear = libc::dlsym(lib, b"glClear\0".as_ptr() as *const _);
-        if !clear.is_null() {
-            GL_CLEAR = Some(std::mem::transmute::<*mut c_void, GlClearFn>(clear));
+            tracing::info!("GL shader program created: program={}, pos={}, tex={}, uni={}",
+                SHADER_PROGRAM, ATTR_POSITION, ATTR_TEXCOORD, UNIFORM_TEXTURE);
         }
 
         INITIALIZED = true;
-        tracing::info!("OpenGL ES functions loaded");
+        tracing::info!("OpenGL ES 2.0 functions loaded");
     }
 
+    unsafe fn create_shader_program() -> Option<u32> {
+        let create_shader = FN_CREATE_SHADER?;
+        let shader_source = FN_SHADER_SOURCE?;
+        let compile_shader = FN_COMPILE_SHADER?;
+        let get_shaderiv = FN_GET_SHADERIV?;
+        let create_program = FN_CREATE_PROGRAM?;
+        let attach_shader = FN_ATTACH_SHADER?;
+        let link_program = FN_LINK_PROGRAM?;
+        let get_programiv = FN_GET_PROGRAMIV?;
+
+        // Create vertex shader
+        let vs = create_shader(VERTEX_SHADER);
+        let vs_src = CString::new(VERTEX_SHADER_SRC).unwrap();
+        let vs_ptr = vs_src.as_ptr();
+        shader_source(vs, 1, &vs_ptr, std::ptr::null());
+        compile_shader(vs);
+
+        let mut status: i32 = 0;
+        get_shaderiv(vs, COMPILE_STATUS, &mut status);
+        if status == 0 {
+            tracing::error!("Vertex shader compilation failed");
+            return None;
+        }
+
+        // Create fragment shader
+        let fs = create_shader(FRAGMENT_SHADER);
+        let fs_src = CString::new(FRAGMENT_SHADER_SRC).unwrap();
+        let fs_ptr = fs_src.as_ptr();
+        shader_source(fs, 1, &fs_ptr, std::ptr::null());
+        compile_shader(fs);
+
+        get_shaderiv(fs, COMPILE_STATUS, &mut status);
+        if status == 0 {
+            tracing::error!("Fragment shader compilation failed");
+            return None;
+        }
+
+        // Create program
+        let program = create_program();
+        attach_shader(program, vs);
+        attach_shader(program, fs);
+        link_program(program);
+
+        get_programiv(program, LINK_STATUS, &mut status);
+        if status == 0 {
+            tracing::error!("Shader program linking failed");
+            return None;
+        }
+
+        Some(program)
+    }
+
+    #[allow(non_snake_case)]
     pub unsafe fn ClearColor(r: f32, g: f32, b: f32, a: f32) {
-        if let Some(func) = GL_CLEAR_COLOR {
-            func(r, g, b, a);
-        }
+        if let Some(f) = FN_CLEAR_COLOR { f(r, g, b, a); }
     }
 
+    #[allow(non_snake_case)]
     pub unsafe fn Clear(mask: u32) {
-        if let Some(func) = GL_CLEAR {
-            func(mask);
+        if let Some(f) = FN_CLEAR { f(mask); }
+    }
+
+    /// Render a texture (RGBA pixel buffer) to fill the screen
+    pub unsafe fn render_texture(tex_width: u32, tex_height: u32, pixels: &[u8], screen_width: u32, screen_height: u32) {
+        if SHADER_PROGRAM == 0 || ATTR_POSITION < 0 || ATTR_TEXCOORD < 0 {
+            tracing::warn!("Shader not initialized");
+            return;
         }
+
+        // Set viewport
+        if let Some(f) = FN_VIEWPORT {
+            f(0, 0, screen_width as i32, screen_height as i32);
+        }
+
+        // Create and bind texture
+        let mut texture: u32 = 0;
+        if let Some(f) = FN_GEN_TEXTURES { f(1, &mut texture); }
+        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, texture); }
+
+        // Set texture parameters
+        if let Some(f) = FN_TEX_PARAMETERI {
+            f(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
+            f(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
+        }
+
+        // Upload texture data
+        if let Some(f) = FN_TEX_IMAGE_2D {
+            f(TEXTURE_2D, 0, RGBA as i32, tex_width as i32, tex_height as i32,
+              0, RGBA, UNSIGNED_BYTE, pixels.as_ptr() as *const c_void);
+        }
+
+        // Use shader program
+        if let Some(f) = FN_USE_PROGRAM { f(SHADER_PROGRAM); }
+
+        // Set texture uniform
+        if let Some(f) = FN_ACTIVE_TEXTURE { f(0x84C0); } // GL_TEXTURE0
+        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, texture); }
+        if let Some(f) = FN_UNIFORM1I { f(UNIFORM_TEXTURE, 0); }
+
+        // Full-screen quad vertices (position + texcoord interleaved)
+        // Note: Y is flipped for texcoord because Slint renders top-down
+        #[rustfmt::skip]
+        let vertices: [f32; 16] = [
+            // Position (x, y)  // TexCoord (u, v)
+            -1.0, -1.0,         0.0, 1.0,  // Bottom-left
+             1.0, -1.0,         1.0, 1.0,  // Bottom-right
+            -1.0,  1.0,         0.0, 0.0,  // Top-left
+             1.0,  1.0,         1.0, 0.0,  // Top-right
+        ];
+
+        // Set vertex attributes
+        if let Some(f) = FN_ENABLE_VERTEX_ATTRIB_ARRAY {
+            f(ATTR_POSITION as u32);
+            f(ATTR_TEXCOORD as u32);
+        }
+
+        if let Some(f) = FN_VERTEX_ATTRIB_POINTER {
+            let stride = 4 * std::mem::size_of::<f32>() as i32;
+            f(ATTR_POSITION as u32, 2, FLOAT, FALSE, stride, vertices.as_ptr() as *const c_void);
+            f(ATTR_TEXCOORD as u32, 2, FLOAT, FALSE, stride,
+              (vertices.as_ptr() as *const f32).add(2) as *const c_void);
+        }
+
+        // Enable blending for transparency
+        if let Some(f) = FN_ENABLE { f(BLEND); }
+        if let Some(f) = FN_BLEND_FUNC { f(SRC_ALPHA, ONE_MINUS_SRC_ALPHA); }
+
+        // Draw
+        if let Some(f) = FN_DRAW_ARRAYS {
+            f(TRIANGLE_STRIP, 0, 4);
+        }
+
+        // Cleanup
+        if let Some(f) = FN_DISABLE { f(BLEND); }
+        if let Some(f) = FN_DELETE_TEXTURES { f(1, &texture); }
     }
 }
