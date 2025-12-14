@@ -43,7 +43,7 @@ use crate::shell::ShellView;
 
 use super::hwcomposer_ffi::{
     self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format,
-    Hwc2Device, Hwc2Display, hwc2_initialize,
+    Hwc2Device, Hwc2Display, hwc2_initialize, gralloc_initialize,
 };
 
 // Re-use khronos-egl for raw EGL access
@@ -89,9 +89,6 @@ struct PresentCallbackData {
 }
 
 /// Present callback - called when hwcomposer has a buffer ready to display
-///
-/// Note: libhybris-hwcomposerwindow handles HWC2 presentation internally.
-/// This callback is just for synchronization - we wait for the fence and signal ready.
 unsafe extern "C" fn present_callback(
     user_data: *mut c_void,
     _window: *mut ANativeWindow,
@@ -107,14 +104,80 @@ unsafe extern "C" fn present_callback(
     // Get the acquire fence from the buffer
     let acquire_fence = hwcomposer_ffi::get_buffer_fence(buffer);
 
-    // Debug: log buffer info occasionally
-    if count % 120 == 0 {
-        eprintln!("Present callback #{}: buffer={:?}, fence={}", count, buffer, acquire_fence);
-    }
+    // Present via HWC2 if we have a display
+    if !data.hwc2_display.is_null() && !buffer.is_null() {
+        // Get current slot and increment for next buffer
+        let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
 
-    // Close the fence - libhybris handles the actual presentation
-    if acquire_fence >= 0 {
-        libc::close(acquire_fence);
+        // Set buffer on the layer (if we have one)
+        let layer_err = if !data.hwc2_layer.is_null() {
+            hwcomposer_ffi::hwc2_compat_layer_set_buffer(
+                data.hwc2_layer,
+                slot,
+                buffer,
+                acquire_fence,
+            )
+        } else {
+            0 // No layer, skip
+        };
+
+        // Set client target with the buffer
+        let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
+            data.hwc2_display,
+            slot,
+            buffer,
+            acquire_fence,
+            0, // HAL_DATASPACE_UNKNOWN
+        );
+
+        // Validate display
+        let mut num_types: u32 = 0;
+        let mut num_requests: u32 = 0;
+        let validate_err = hwcomposer_ffi::hwc2_compat_display_validate(
+            data.hwc2_display,
+            &mut num_types,
+            &mut num_requests,
+        );
+
+        // Accept changes if needed (validate_err == 3 means HAS_CHANGES)
+        if validate_err == 0 || validate_err == 3 {
+            if num_types > 0 || num_requests > 0 {
+                hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display);
+            }
+
+            // Present the frame
+            let mut present_fence: i32 = -1;
+            let present_err = hwcomposer_ffi::hwc2_compat_display_present(
+                data.hwc2_display,
+                &mut present_fence,
+            );
+
+            if present_err != 0 {
+                data.present_errors.fetch_add(1, Ordering::Relaxed);
+            }
+
+            // Set the present fence on the buffer for the next frame
+            if present_fence >= 0 {
+                hwcomposer_ffi::set_buffer_fence(buffer, present_fence);
+            }
+
+            // Log progress every 60 frames
+            if count % 60 == 0 {
+                eprintln!("HWC2 present #{}: layer={}, target={}, validate={}, present={}, errors={}",
+                    count, layer_err, target_err, validate_err, present_err,
+                    data.present_errors.load(Ordering::Relaxed));
+            }
+        } else {
+            data.present_errors.fetch_add(1, Ordering::Relaxed);
+            if count % 60 == 0 {
+                eprintln!("HWC2 validate failed: err={}", validate_err);
+            }
+        }
+    } else {
+        // No HWC2, just close the fence
+        if acquire_fence >= 0 {
+            libc::close(acquire_fence);
+        }
     }
 
     data.frame_ready.store(true, Ordering::Release);
@@ -245,6 +308,11 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
 
     let (hwc2_device, hwc2_display): (Option<Hwc2Device>, Option<Hwc2Display>) = if hwc_service_active {
         info!("Android hwcomposer service is active");
+
+        // Initialize gralloc first (required for buffer allocation)
+        info!("Initializing hybris gralloc...");
+        gralloc_initialize();
+        info!("Gralloc initialized");
 
         // Initialize HWC2 subsystem BEFORE creating device
         info!("Calling hybris_hwc2_initialize()...");

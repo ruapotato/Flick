@@ -276,6 +276,18 @@ pub struct HWC2EventListener {
     pub on_refresh_received: OnRefreshReceivedCallback,
 }
 
+// Gralloc initialization
+#[link(name = "gralloc")]
+extern "C" {
+    /// Initialize hybris gralloc - needed for buffer allocation
+    pub fn hybris_gralloc_initialize(framebuffer: c_int);
+}
+
+/// Initialize gralloc subsystem
+pub fn gralloc_initialize() {
+    unsafe { hybris_gralloc_initialize(0) };
+}
+
 #[link(name = "hwc2")]
 extern "C" {
     /// Initialize HWC2 subsystem - may need to be called before hwc2_compat_device_new
