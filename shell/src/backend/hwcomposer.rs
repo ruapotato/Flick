@@ -328,17 +328,27 @@ fn handle_input_event(
 
     match event {
         InputEvent::Keyboard { event } => {
+            use smithay::backend::input::KeyState;
+
             let keycode = event.key_code();
+            let raw_keycode: u32 = keycode.raw();
             let key_state = event.state();
+            let pressed = key_state == KeyState::Pressed;
+
+            // Smithay Keycode.raw() returns XKB keycodes (evdev + 8)
+            // Subtract 8 to get the raw evdev keycode
+            let evdev_keycode = raw_keycode.saturating_sub(8);
+            debug!("Keyboard event: evdev_keycode={}, pressed={}", evdev_keycode, pressed);
 
             // Track modifier state
+            // Evdev keycodes: 29=LCtrl, 97=RCtrl, 56=LAlt, 100=RAlt, 42=LShift, 54=RShift, 125=LSuper, 126=RSuper
             {
                 let mut mods = modifiers.borrow_mut();
-                match keycode {
-                    29 | 97 => mods.ctrl = key_state == smithay::backend::input::KeyState::Pressed,
-                    56 | 100 => mods.alt = key_state == smithay::backend::input::KeyState::Pressed,
-                    42 | 54 => mods.shift = key_state == smithay::backend::input::KeyState::Pressed,
-                    125 | 126 => mods.super_key = key_state == smithay::backend::input::KeyState::Pressed,
+                match evdev_keycode {
+                    29 | 97 => mods.ctrl = pressed,
+                    56 | 100 => mods.alt = pressed,
+                    42 | 54 => mods.shift = pressed,
+                    125 | 126 => mods.super_key = pressed,
                     _ => {}
                 }
             }
@@ -346,14 +356,16 @@ fn handle_input_event(
             let serial = smithay::utils::SERIAL_COUNTER.next_serial();
             let time = event.time_msec();
 
-            state.seat.get_keyboard().unwrap().input::<(), _>(
-                state,
-                keycode,
-                key_state,
-                serial,
-                time,
-                |_, _, _| FilterResult::Forward,
-            );
+            if let Some(keyboard) = state.seat.get_keyboard() {
+                keyboard.input::<(), _>(
+                    state,
+                    keycode,
+                    key_state,
+                    serial,
+                    time,
+                    |_, _, _| FilterResult::Forward,
+                );
+            }
         }
 
         InputEvent::PointerMotion { event } => {
