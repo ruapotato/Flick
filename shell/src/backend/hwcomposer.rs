@@ -46,21 +46,8 @@ use super::hwcomposer_ffi::{self, HwcNativeWindow, ANativeWindow, ANativeWindowB
 // Re-use khronos-egl for raw EGL access
 use khronos_egl as egl;
 
-// Render element types (same as udev backend)
-smithay::backend::renderer::element::render_elements! {
-    pub SwitcherRenderElement<R> where
-        R: ImportAll + ImportMem;
-    Solid=SolidColorRenderElement,
-    Window=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
-    Icon=MemoryRenderBufferRenderElement<R>,
-}
-
-smithay::backend::renderer::element::render_elements! {
-    pub HomeRenderElement<R> where
-        R: ImportMem;
-    Solid=SolidColorRenderElement,
-    Icon=MemoryRenderBufferRenderElement<R>,
-}
+// Note: Render element macros would go here once we integrate proper Smithay rendering
+// For now, we use direct OpenGL rendering as a proof-of-concept
 
 /// Keyboard modifier state
 #[derive(Default)]
