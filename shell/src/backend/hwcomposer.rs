@@ -41,7 +41,10 @@ use smithay::{
 use crate::state::Flick;
 use crate::shell::ShellView;
 
-use super::hwcomposer_ffi::{self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format, Hwc2Device, Hwc2Display};
+use super::hwcomposer_ffi::{
+    self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format,
+    Hwc2Device, Hwc2Display, hwc2_initialize,
+};
 
 // Re-use khronos-egl for raw EGL access
 use khronos_egl as egl;
@@ -203,10 +206,56 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
     // Set EGL platform environment variable
     std::env::set_var("EGL_PLATFORM", "hwcomposer");
 
-    // Skip HWC2 for now - it hangs on this device
-    // TODO: Investigate why hwc2_compat_device_new blocks
-    info!("Skipping HWC2 initialization (known to hang on some devices)");
-    let (hwc2_device, hwc2_display): (Option<Hwc2Device>, Option<Hwc2Display>) = (None, None);
+    // Initialize HWC2 subsystem BEFORE creating device
+    // This is critical - without it, hwc2_compat_device_new() may hang
+    info!("Calling hybris_hwc2_initialize()...");
+    hwc2_initialize();
+    info!("HWC2 subsystem initialized");
+
+    // Now try to create HWC2 device
+    info!("Creating HWC2 device...");
+    let hwc2_device = Hwc2Device::new();
+
+    let (hwc2_device, hwc2_display): (Option<Hwc2Device>, Option<Hwc2Display>) = match hwc2_device {
+        Some(device) => {
+            info!("HWC2 device created successfully");
+
+            // Trigger hotplug for primary display (ID 0)
+            device.on_hotplug(0, true);
+            info!("Triggered hotplug for primary display");
+
+            // Get primary display
+            match device.get_primary_display() {
+                Some(display) => {
+                    info!("Got HWC2 primary display");
+
+                    // Get display config
+                    if let Some(config) = display.get_active_config() {
+                        info!("HWC2 display config: {}x{} @ {:.1}fps, DPI: {:.1}x{:.1}",
+                            config.width, config.height,
+                            1_000_000_000.0 / config.vsync_period as f64,
+                            config.dpi_x, config.dpi_y);
+                    }
+
+                    // Power on display
+                    match display.set_power_mode(true) {
+                        Ok(()) => info!("HWC2 display powered on"),
+                        Err(e) => warn!("Failed to power on HWC2 display: error {}", e),
+                    }
+
+                    (Some(device), Some(display))
+                }
+                None => {
+                    warn!("Failed to get HWC2 primary display");
+                    (Some(device), None)
+                }
+            }
+        }
+        None => {
+            warn!("Failed to create HWC2 device - display presentation may not work");
+            (None, None)
+        }
+    };
 
     // Create present callback data
     let frame_ready = Rc::new(AtomicBool::new(true));
