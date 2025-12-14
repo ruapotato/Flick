@@ -284,6 +284,8 @@ fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
     // Initialize GL function pointers
     unsafe { gl::init(); }
 
+    info!("About to initialize HWC2 for display power management...");
+
     // Initialize HWC2 for display power management
     let (hwc2_device, hwc2_display) = match Hwc2Device::new() {
         Some(device) => {
