@@ -104,18 +104,22 @@ unsafe extern "C" fn present_callback(
     // Get the acquire fence from the buffer
     let acquire_fence = hwcomposer_ffi::get_buffer_fence(buffer);
 
-    // Present via HWC2 if we have a display and layer
-    if !data.hwc2_display.is_null() && !data.hwc2_layer.is_null() && !buffer.is_null() {
+    // Present via HWC2 if we have a display (layer is optional for client composition)
+    if !data.hwc2_display.is_null() && !buffer.is_null() {
         // Get current slot and increment for next buffer
         let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
 
-        // Set buffer on the layer
-        let layer_err = hwcomposer_ffi::hwc2_compat_layer_set_buffer(
-            data.hwc2_layer,
-            slot,
-            buffer,
-            acquire_fence,
-        );
+        // Set buffer on the layer (if we have one)
+        let layer_err = if !data.hwc2_layer.is_null() {
+            hwcomposer_ffi::hwc2_compat_layer_set_buffer(
+                data.hwc2_layer,
+                slot,
+                buffer,
+                acquire_fence,
+            )
+        } else {
+            0 // No layer, skip
+        };
 
         // Set client target with the buffer
         let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
