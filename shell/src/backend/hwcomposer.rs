@@ -402,7 +402,7 @@ fn handle_input_event(
             use smithay::backend::input::{TouchEvent, AbsolutePositionEvent};
             use smithay::utils::Point;
 
-            let slot_id = event.slot().map(|s| s.id() as i32).unwrap_or(0);
+            let slot_id: i32 = event.slot().into();
             let position = event.position_transformed(state.screen_size);
             let touch_pos = Point::from((position.x, position.y));
 
@@ -415,7 +415,7 @@ fn handle_input_event(
             use smithay::backend::input::{TouchEvent, AbsolutePositionEvent};
             use smithay::utils::Point;
 
-            let slot_id = event.slot().map(|s| s.id() as i32).unwrap_or(0);
+            let slot_id: i32 = event.slot().into();
             let position = event.position_transformed(state.screen_size);
             let touch_pos = Point::from((position.x, position.y));
 
@@ -427,7 +427,7 @@ fn handle_input_event(
         InputEvent::TouchUp { event } => {
             use smithay::backend::input::TouchEvent;
 
-            let slot_id = event.slot().map(|s| s.id() as i32).unwrap_or(0);
+            let slot_id: i32 = event.slot().into();
 
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {
                 debug!("Gesture touch_up: {:?}", gesture_event);
