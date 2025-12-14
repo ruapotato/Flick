@@ -357,28 +357,36 @@ fn handle_input_event(
         }
 
         InputEvent::PointerMotion { event } => {
+            use smithay::backend::input::PointerMotionEvent;
+
             let delta = event.delta();
-            state.pointer_location += delta;
+            debug!("Pointer motion: delta=({}, {})", delta.x, delta.y);
 
-            state.pointer_location.x = state.pointer_location.x
-                .max(0.0)
-                .min(state.screen_size.w as f64);
-            state.pointer_location.y = state.pointer_location.y
-                .max(0.0)
-                .min(state.screen_size.h as f64);
+            // Get pointer and notify of relative motion
+            if let Some(pointer) = state.seat.get_pointer() {
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                let mut pointer_pos = pointer.current_location();
+                pointer_pos.x += delta.x;
+                pointer_pos.y += delta.y;
 
-            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-            let pointer = state.seat.get_pointer().unwrap();
+                // Clamp to screen bounds
+                let screen = state.screen_size;
+                pointer_pos.x = pointer_pos.x.max(0.0).min(screen.w as f64);
+                pointer_pos.y = pointer_pos.y.max(0.0).min(screen.h as f64);
 
-            pointer.motion(
-                state,
-                state.pointer_focus.clone(),
-                &smithay::input::pointer::MotionEvent {
-                    location: state.pointer_location,
-                    serial,
-                    time: event.time_msec(),
-                },
-            );
+                // No focus tracking for now - mobile is touch-focused
+                let focus = None;
+
+                pointer.motion(
+                    state,
+                    focus,
+                    &smithay::input::pointer::MotionEvent {
+                        location: pointer_pos,
+                        serial,
+                        time: event.time_msec(),
+                    },
+                );
+            }
         }
 
         InputEvent::PointerButton { event } => {
