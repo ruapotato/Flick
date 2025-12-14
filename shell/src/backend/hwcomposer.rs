@@ -206,13 +206,26 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
     // Set EGL platform environment variable
     std::env::set_var("EGL_PLATFORM", "hwcomposer");
 
-    // Check if android-service@hwcomposer is running
-    // This service must be active for HWC2 to work on Droidian
-    let hwc_service_active = std::process::Command::new("systemctl")
+    // Check if android hwcomposer is running
+    // Either the systemd service is active, OR the composer process is running directly
+    let systemd_active = std::process::Command::new("systemctl")
         .args(["is-active", "--quiet", "android-service@hwcomposer.service"])
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
+
+    // Also check if the composer process is running directly (in case started via script)
+    let composer_process_running = std::process::Command::new("pgrep")
+        .args(["-f", "android.hardware.graphics.composer"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    let hwc_service_active = systemd_active || composer_process_running;
+
+    if composer_process_running && !systemd_active {
+        info!("Composer process running (started directly, not via systemd)");
+    }
 
     let (hwc2_device, hwc2_display): (Option<Hwc2Device>, Option<Hwc2Display>) = if hwc_service_active {
         info!("Android hwcomposer service is active");
