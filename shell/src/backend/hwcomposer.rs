@@ -41,7 +41,7 @@ use smithay::{
 use crate::state::Flick;
 use crate::shell::ShellView;
 
-use super::hwcomposer_ffi::{self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format};
+use super::hwcomposer_ffi::{self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format, Hwc2Device, Hwc2Display};
 
 // Re-use khronos-egl for raw EGL access
 use khronos_egl as egl;
@@ -70,6 +70,9 @@ struct HwcDisplay {
     egl_context: egl::Context,
     width: u32,
     height: u32,
+    // HWC2 for display presentation
+    hwc2_device: Option<Hwc2Device>,
+    hwc2_display: Option<Hwc2Display>,
 }
 
 /// Present callback data
@@ -190,15 +193,42 @@ fn get_display_dimensions() -> (u32, u32) {
 }
 
 /// Initialize EGL and hwcomposer display
-fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
+fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
     let (width, height) = get_display_dimensions();
     info!("Initializing hwcomposer display: {}x{}", width, height);
 
-    // Try to unblank the display first
+    // Try to unblank the display first via sysfs
     unblank_display();
 
     // Set EGL platform environment variable
     std::env::set_var("EGL_PLATFORM", "hwcomposer");
+
+    // Initialize HWC2 FIRST (before EGL) - this is critical for some devices
+    info!("Initializing HWC2 device...");
+    let (hwc2_device, hwc2_display) = match Hwc2Device::new() {
+        Some(device) => {
+            info!("HWC2 device created successfully");
+            match device.get_primary_display() {
+                Some(display) => {
+                    info!("HWC2 primary display acquired");
+                    // Power on the display via HWC2
+                    match display.set_power_mode(true) {
+                        Ok(()) => info!("HWC2 display powered ON"),
+                        Err(e) => warn!("Failed to set HWC2 power mode: {}", e),
+                    }
+                    (Some(device), Some(display))
+                }
+                None => {
+                    warn!("Failed to get HWC2 primary display");
+                    (Some(device), None)
+                }
+            }
+        }
+        None => {
+            warn!("Failed to create HWC2 device - display presentation may not work!");
+            (None, None)
+        }
+    };
 
     // Create present callback data
     let frame_ready = Rc::new(AtomicBool::new(true));
@@ -309,6 +339,8 @@ fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
         egl_context,
         width,
         height,
+        hwc2_device,
+        hwc2_display,
     })
 }
 
