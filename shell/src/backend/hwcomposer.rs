@@ -41,7 +41,7 @@ use smithay::{
 use crate::state::Flick;
 use crate::shell::ShellView;
 
-use super::hwcomposer_ffi::{self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format, Hwc2Device, Hwc2Display};
+use super::hwcomposer_ffi::{self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format};
 
 // Re-use khronos-egl for raw EGL access
 use khronos_egl as egl;
@@ -70,10 +70,6 @@ struct HwcDisplay {
     egl_context: egl::Context,
     width: u32,
     height: u32,
-    // HWC2 for actual display presentation
-    #[allow(dead_code)]
-    hwc2_device: Hwc2Device,
-    hwc2_display: Hwc2Display,
 }
 
 /// Present callback data
@@ -283,22 +279,6 @@ fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
     // Initialize GL function pointers
     unsafe { gl::init(); }
 
-    // Initialize HWC2 device and display for actual frame presentation
-    info!("Initializing HWC2 device...");
-    let hwc2_device = Hwc2Device::new()
-        .ok_or_else(|| anyhow::anyhow!("Failed to create HWC2 device"))?;
-    info!("HWC2 device created");
-
-    let hwc2_display = hwc2_device.get_primary_display()
-        .ok_or_else(|| anyhow::anyhow!("Failed to get HWC2 primary display"))?;
-    info!("Got HWC2 primary display");
-
-    // Turn on the display
-    match hwc2_display.set_power_mode(true) {
-        Ok(()) => info!("HWC2 display power mode set to ON"),
-        Err(e) => warn!("Failed to set HWC2 power mode: {}", e),
-    }
-
     info!("HWComposer display initialized successfully");
 
     Ok(HwcDisplay {
@@ -309,8 +289,6 @@ fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
         egl_context,
         width,
         height,
-        hwc2_device,
-        hwc2_display,
     })
 }
 
@@ -704,25 +682,9 @@ fn render_frame(
         }
     }
 
-    // Swap EGL buffers
+    // Swap EGL buffers - this triggers the present callback which handles display
     display.egl_instance.swap_buffers(display.egl_display, display.egl_surface)
         .map_err(|e| anyhow::anyhow!("Failed to swap buffers: {:?}", e))?;
-
-    // Present via HWC2 (this actually shows the frame on screen)
-    match display.hwc2_display.present() {
-        Ok(fence) => {
-            // Wait on fence if valid, then close it
-            if fence >= 0 {
-                unsafe { libc::close(fence) };
-            }
-        }
-        Err(e) => {
-            // Log error but don't fail - some errors are recoverable
-            if frame_num % 60 == 0 {
-                warn!("HWC2 present error: {}", e);
-            }
-        }
-    }
 
     Ok(())
 }
