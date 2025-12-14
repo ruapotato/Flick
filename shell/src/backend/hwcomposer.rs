@@ -41,7 +41,7 @@ use smithay::{
 use crate::state::Flick;
 use crate::shell::ShellView;
 
-use super::hwcomposer_ffi::{self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format};
+use super::hwcomposer_ffi::{self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format, Hwc2Device, Hwc2Display};
 
 // Re-use khronos-egl for raw EGL access
 use khronos_egl as egl;
@@ -70,6 +70,11 @@ struct HwcDisplay {
     egl_context: egl::Context,
     width: u32,
     height: u32,
+    // HWC2 for display power management
+    #[allow(dead_code)]
+    hwc2_device: Option<Hwc2Device>,
+    #[allow(dead_code)]
+    hwc2_display: Option<Hwc2Display>,
 }
 
 /// Present callback data
@@ -279,6 +284,32 @@ fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
     // Initialize GL function pointers
     unsafe { gl::init(); }
 
+    // Initialize HWC2 for display power management
+    let (hwc2_device, hwc2_display) = match Hwc2Device::new() {
+        Some(device) => {
+            info!("HWC2 device created");
+            match device.get_primary_display() {
+                Some(display) => {
+                    info!("HWC2 primary display acquired");
+                    // Power on the display
+                    match display.set_power_mode(true) {
+                        Ok(()) => info!("HWC2 display powered ON"),
+                        Err(e) => warn!("Failed to set HWC2 power mode: {}", e),
+                    }
+                    (Some(device), Some(display))
+                }
+                None => {
+                    warn!("Failed to get HWC2 primary display");
+                    (Some(device), None)
+                }
+            }
+        }
+        None => {
+            warn!("Failed to create HWC2 device - display may not power on");
+            (None, None)
+        }
+    };
+
     info!("HWComposer display initialized successfully");
 
     Ok(HwcDisplay {
@@ -289,6 +320,8 @@ fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
         egl_context,
         width,
         height,
+        hwc2_device,
+        hwc2_display,
     })
 }
 
