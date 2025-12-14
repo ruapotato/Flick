@@ -564,12 +564,21 @@ pub fn run() -> Result<()> {
     }
 }
 
+// Frame counter for render_frame logging
+static mut RENDER_FRAME_COUNT: u64 = 0;
+
 /// Render a frame to the hwcomposer display
 fn render_frame(
     display: &mut HwcDisplay,
     state: &Flick,
     _output: &Output,
 ) -> Result<()> {
+    let frame_num = unsafe {
+        RENDER_FRAME_COUNT += 1;
+        RENDER_FRAME_COUNT
+    };
+    let log_frame = frame_num % 60 == 0;
+
     // Make our EGL context current
     display.egl_instance.make_current(
         display.egl_display,
@@ -578,36 +587,73 @@ fn render_frame(
         Some(display.egl_context),
     ).map_err(|e| anyhow::anyhow!("Failed to make context current: {:?}", e))?;
 
-    // Determine background color based on shell view
-    let shell_view = state.shell.view;
-    let bg_color = match shell_view {
-        ShellView::Home | ShellView::QuickSettings | ShellView::PickDefault => [0.1, 0.1, 0.15, 1.0],
-        ShellView::Switcher => [0.05, 0.05, 0.08, 1.0],
-        ShellView::App | ShellView::LockScreen => [0.0, 0.0, 0.0, 1.0],
-    };
-
-    // Clear screen with background color
+    // Set viewport to full screen
     unsafe {
-        gl::ClearColor(bg_color[0], bg_color[1], bg_color[2], bg_color[3]);
-        gl::Clear(gl::COLOR_BUFFER_BIT);
+        if let Some(f) = gl::FN_VIEWPORT {
+            f(0, 0, display.width as i32, display.height as i32);
+        }
     }
 
-    // Render Slint UI for shell views
-    match shell_view {
-        ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault => {
-            // Get Slint rendered pixels
-            if let Some(ref slint_ui) = state.shell.slint_ui {
-                if let Some((width, height, pixels)) = slint_ui.render() {
-                    unsafe {
-                        gl::render_texture(width, height, &pixels, display.width, display.height);
+    // For first 120 frames, render alternating bright colors to test basic rendering
+    let test_mode = frame_num <= 120;
+
+    if test_mode {
+        // Cycle through bright colors: red, green, blue every 40 frames
+        let color = match (frame_num / 40) % 3 {
+            0 => [1.0f32, 0.0, 0.0, 1.0], // Red
+            1 => [0.0, 1.0, 0.0, 1.0],    // Green
+            _ => [0.0, 0.0, 1.0, 1.0],    // Blue
+        };
+
+        unsafe {
+            gl::ClearColor(color[0], color[1], color[2], color[3]);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+            gl::Flush();
+        }
+
+        if log_frame || frame_num == 1 || frame_num == 40 || frame_num == 80 || frame_num == 120 {
+            info!("Test mode frame {}: color=({:.1},{:.1},{:.1}) screen={}x{}",
+                frame_num, color[0], color[1], color[2], display.width, display.height);
+        }
+    } else {
+        // Normal rendering mode
+        // Determine background color based on shell view
+        let shell_view = state.shell.view;
+        let bg_color = match shell_view {
+            ShellView::Home | ShellView::QuickSettings | ShellView::PickDefault => [0.1, 0.1, 0.15, 1.0],
+            ShellView::Switcher => [0.05, 0.05, 0.08, 1.0],
+            ShellView::App | ShellView::LockScreen => [0.0, 0.0, 0.0, 1.0],
+        };
+
+        // Clear screen with background color
+        unsafe {
+            gl::ClearColor(bg_color[0], bg_color[1], bg_color[2], bg_color[3]);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+        }
+
+        // Render Slint UI for shell views
+        match shell_view {
+            ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault => {
+                // Get Slint rendered pixels
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    if let Some((width, height, pixels)) = slint_ui.render() {
+                        unsafe {
+                            gl::render_texture(width, height, &pixels, display.width, display.height);
+                        }
+                        if log_frame {
+                            debug!("Rendered Slint UI {}x{}", width, height);
+                        }
+                    } else if log_frame {
+                        warn!("Slint render() returned None");
                     }
-                    debug!("Rendered Slint UI {}x{}", width, height);
+                } else if log_frame {
+                    warn!("No slint_ui available");
                 }
             }
-        }
-        ShellView::App | ShellView::LockScreen => {
-            // For apps/lock screen, we'll render Wayland surfaces later
-            // For now, just show the background
+            ShellView::App | ShellView::LockScreen => {
+                // For apps/lock screen, we'll render Wayland surfaces later
+                // For now, just show the background
+            }
         }
     }
 
@@ -672,11 +718,14 @@ mod gl {
     type DeleteTexturesFn = unsafe extern "C" fn(i32, *const u32);
     type DeleteShaderFn = unsafe extern "C" fn(u32);
     type DeleteProgramFn = unsafe extern "C" fn(u32);
+    type GetErrorFn = unsafe extern "C" fn() -> u32;
+    type FlushFn = unsafe extern "C" fn();
+    type FinishFn = unsafe extern "C" fn();
 
     // Cached function pointers
     static mut FN_CLEAR_COLOR: Option<ClearColorFn> = None;
     static mut FN_CLEAR: Option<ClearFn> = None;
-    static mut FN_VIEWPORT: Option<ViewportFn> = None;
+    pub static mut FN_VIEWPORT: Option<ViewportFn> = None;
     static mut FN_GEN_TEXTURES: Option<GenTexturesFn> = None;
     static mut FN_BIND_TEXTURE: Option<BindTextureFn> = None;
     static mut FN_TEX_IMAGE_2D: Option<TexImage2DFn> = None;
@@ -703,6 +752,9 @@ mod gl {
     static mut FN_DELETE_TEXTURES: Option<DeleteTexturesFn> = None;
     static mut FN_DELETE_SHADER: Option<DeleteShaderFn> = None;
     static mut FN_DELETE_PROGRAM: Option<DeleteProgramFn> = None;
+    static mut FN_GET_ERROR: Option<GetErrorFn> = None;
+    static mut FN_FLUSH: Option<FlushFn> = None;
+    static mut FN_FINISH: Option<FinishFn> = None;
 
     static mut INITIALIZED: bool = false;
     static mut SHADER_PROGRAM: u32 = 0;
@@ -794,6 +846,9 @@ mod gl {
         FN_DELETE_TEXTURES = load_fn(lib, b"glDeleteTextures\0");
         FN_DELETE_SHADER = load_fn(lib, b"glDeleteShader\0");
         FN_DELETE_PROGRAM = load_fn(lib, b"glDeleteProgram\0");
+        FN_GET_ERROR = load_fn(lib, b"glGetError\0");
+        FN_FLUSH = load_fn(lib, b"glFlush\0");
+        FN_FINISH = load_fn(lib, b"glFinish\0");
 
         // Create shader program
         if let Some(program) = create_shader_program() {
@@ -881,42 +936,93 @@ mod gl {
         if let Some(f) = FN_CLEAR { f(mask); }
     }
 
+    #[allow(non_snake_case)]
+    pub unsafe fn GetError() -> u32 {
+        if let Some(f) = FN_GET_ERROR { f() } else { 0 }
+    }
+
+    #[allow(non_snake_case)]
+    pub unsafe fn Flush() {
+        if let Some(f) = FN_FLUSH { f(); }
+    }
+
+    #[allow(non_snake_case)]
+    pub unsafe fn Finish() {
+        if let Some(f) = FN_FINISH { f(); }
+    }
+
+    fn check_error(location: &str) {
+        unsafe {
+            let err = GetError();
+            if err != 0 {
+                tracing::error!("GL error at {}: 0x{:04X}", location, err);
+            }
+        }
+    }
+
+    // Frame counter for throttled logging
+    static mut FRAME_COUNT: u64 = 0;
+
     /// Render a texture (RGBA pixel buffer) to fill the screen
     pub unsafe fn render_texture(tex_width: u32, tex_height: u32, pixels: &[u8], screen_width: u32, screen_height: u32) {
+        FRAME_COUNT += 1;
+        let log_frame = FRAME_COUNT % 60 == 0; // Log every 60 frames
+
         if SHADER_PROGRAM == 0 || ATTR_POSITION < 0 || ATTR_TEXCOORD < 0 {
             tracing::warn!("Shader not initialized");
             return;
         }
 
+        // Clear any pending errors
+        while GetError() != 0 {}
+
         // Set viewport
         if let Some(f) = FN_VIEWPORT {
             f(0, 0, screen_width as i32, screen_height as i32);
         }
+        check_error("viewport");
 
         // Create and bind texture
         let mut texture: u32 = 0;
         if let Some(f) = FN_GEN_TEXTURES { f(1, &mut texture); }
+        check_error("genTextures");
+
         if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, texture); }
+        check_error("bindTexture");
 
         // Set texture parameters
         if let Some(f) = FN_TEX_PARAMETERI {
             f(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
             f(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
         }
+        check_error("texParameteri");
 
         // Upload texture data
+        let expected_size = (tex_width * tex_height * 4) as usize;
+        if pixels.len() != expected_size {
+            tracing::error!("Pixel buffer size mismatch: got {}, expected {}", pixels.len(), expected_size);
+            return;
+        }
+
         if let Some(f) = FN_TEX_IMAGE_2D {
             f(TEXTURE_2D, 0, RGBA as i32, tex_width as i32, tex_height as i32,
               0, RGBA, UNSIGNED_BYTE, pixels.as_ptr() as *const c_void);
         }
+        check_error("texImage2D");
 
         // Use shader program
         if let Some(f) = FN_USE_PROGRAM { f(SHADER_PROGRAM); }
+        check_error("useProgram");
 
         // Set texture uniform
         if let Some(f) = FN_ACTIVE_TEXTURE { f(0x84C0); } // GL_TEXTURE0
+        check_error("activeTexture");
+
         if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, texture); }
+        check_error("bindTexture2");
+
         if let Some(f) = FN_UNIFORM1I { f(UNIFORM_TEXTURE, 0); }
+        check_error("uniform1i");
 
         // Full-screen quad vertices (position + texcoord interleaved)
         // Note: Y is flipped for texcoord because Slint renders top-down
@@ -934,6 +1040,7 @@ mod gl {
             f(ATTR_POSITION as u32);
             f(ATTR_TEXCOORD as u32);
         }
+        check_error("enableVertexAttribArray");
 
         if let Some(f) = FN_VERTEX_ATTRIB_POINTER {
             let stride = 4 * std::mem::size_of::<f32>() as i32;
@@ -941,18 +1048,34 @@ mod gl {
             f(ATTR_TEXCOORD as u32, 2, FLOAT, FALSE, stride,
               (vertices.as_ptr() as *const f32).add(2) as *const c_void);
         }
+        check_error("vertexAttribPointer");
 
         // Enable blending for transparency
         if let Some(f) = FN_ENABLE { f(BLEND); }
         if let Some(f) = FN_BLEND_FUNC { f(SRC_ALPHA, ONE_MINUS_SRC_ALPHA); }
+        check_error("blend setup");
 
         // Draw
         if let Some(f) = FN_DRAW_ARRAYS {
             f(TRIANGLE_STRIP, 0, 4);
         }
+        check_error("drawArrays");
+
+        // Flush to ensure commands are sent to GPU
+        Flush();
 
         // Cleanup
         if let Some(f) = FN_DISABLE { f(BLEND); }
         if let Some(f) = FN_DELETE_TEXTURES { f(1, &texture); }
+
+        if log_frame {
+            // Log first few pixels to verify content
+            let r = pixels.get(0).copied().unwrap_or(0);
+            let g = pixels.get(1).copied().unwrap_or(0);
+            let b = pixels.get(2).copied().unwrap_or(0);
+            let a = pixels.get(3).copied().unwrap_or(0);
+            tracing::info!("Frame {}: texture={}x{} -> screen={}x{}, tex_id={}, first_pixel=RGBA({},{},{},{})",
+                FRAME_COUNT, tex_width, tex_height, screen_width, screen_height, texture, r, g, b, a);
+        }
     }
 }
