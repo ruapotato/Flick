@@ -116,6 +116,14 @@ unsafe extern "C" fn present_callback(
         // Get current slot and increment for next buffer
         let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
 
+        // Duplicate the acquire fence since HWC2 takes ownership
+        // One for layer buffer, one for client target
+        let layer_fence = if acquire_fence >= 0 {
+            libc::dup(acquire_fence)
+        } else {
+            -1
+        };
+
         // Step 1: Set layer buffer (links the buffer to our layer)
         // Must be done BEFORE validate
         let layer_err = if !data.hwc2_layer.is_null() {
@@ -123,9 +131,12 @@ unsafe extern "C" fn present_callback(
                 data.hwc2_layer,
                 slot,
                 buffer,
-                acquire_fence,
+                layer_fence,
             )
         } else {
+            if layer_fence >= 0 {
+                libc::close(layer_fence);
+            }
             0
         };
 
@@ -136,7 +147,7 @@ unsafe extern "C" fn present_callback(
             data.hwc2_display,
             slot,
             buffer,
-            acquire_fence,
+            acquire_fence, // Original fence goes here
             0, // HAL_DATASPACE_UNKNOWN
         );
 
@@ -1033,6 +1044,9 @@ fn render_frame(
             }
         }
     }
+
+    // Ensure GPU has finished rendering before swapping
+    unsafe { gl::Finish(); }
 
     // Swap EGL buffers - this triggers the present callback which handles display
     display.egl_instance.swap_buffers(display.egl_display, display.egl_surface)
