@@ -977,21 +977,24 @@ fn render_frame(
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
 
-        // TEST: Skip Slint texture rendering, just cycle through colors
-        // This tests if glClear always works vs texture rendering
-        let color = match (frame_num / 30) % 4 {
-            0 => [1.0f32, 0.0, 1.0, 1.0], // Magenta
-            1 => [1.0, 1.0, 0.0, 1.0],    // Yellow
-            2 => [0.0, 1.0, 1.0, 1.0],    // Cyan
-            _ => [1.0, 0.5, 0.0, 1.0],    // Orange
-        };
-        unsafe {
-            gl::ClearColor(color[0], color[1], color[2], color[3]);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-            gl::Flush();
-        }
-        if log_frame {
-            info!("Normal mode frame {}: color=({:.1},{:.1},{:.1})", frame_num, color[0], color[1], color[2]);
+        // Render Slint UI for shell views
+        match shell_view {
+            ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault => {
+                // Get Slint rendered pixels
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    if let Some((width, height, pixels)) = slint_ui.render() {
+                        unsafe {
+                            gl::render_texture(width, height, &pixels, display.width, display.height);
+                        }
+                        if log_frame {
+                            debug!("Rendered Slint UI {}x{}", width, height);
+                        }
+                    }
+                }
+            }
+            ShellView::App | ShellView::LockScreen => {
+                // For apps/lock screen, render Wayland surfaces (TODO)
+            }
         }
     }
 
