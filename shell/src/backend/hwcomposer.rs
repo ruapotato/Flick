@@ -833,7 +833,8 @@ pub fn run() -> Result<()> {
     let mut hwc_display = init_hwc_display(&output)?;
 
     // Update state with actual HWC2 screen size (which may differ from initial guess)
-    let hwc2_size: Size<i32, Logical> = (hwc_display.width as i32, hwc_display.height as i32).into();
+    let hwc2_size: smithay::utils::Size<i32, smithay::utils::Logical> =
+        (hwc_display.width as i32, hwc_display.height as i32).into();
     info!("Updating screen size to HWC2 dimensions: {}x{}", hwc_display.width, hwc_display.height);
     state.screen_size = hwc2_size;
     state.gesture_recognizer.screen_size = hwc2_size;
