@@ -1180,14 +1180,20 @@ fn render_frame(
                             wl_surface,
                             (),
                             |surface, _surface_data, ()| {
+                                debug!("  filter: checking surface {:?}", surface.id());
                                 // Check if this surface has a buffer
+                                debug!("  filter: calling with_states");
                                 let has_buffer = smithay::wayland::compositor::with_states(surface, |data| {
-                                    data.cached_state
+                                    debug!("    filter: inside with_states");
+                                    let result = data.cached_state
                                         .get::<smithay::wayland::compositor::SurfaceAttributes>()
                                         .current()
                                         .buffer
-                                        .is_some()
+                                        .is_some();
+                                    debug!("    filter: has_buffer={}", result);
+                                    result
                                 });
+                                debug!("  filter: after with_states, has_buffer={}", has_buffer);
 
                                 if has_buffer {
                                     TraversalAction::DoChildren(())
@@ -1196,25 +1202,29 @@ fn render_frame(
                                 }
                             },
                             |surface, _surface_data, ()| {
+                                debug!("  post: rendering surface {:?}", surface.id());
                                 // Render this surface's buffer
                                 smithay::wayland::compositor::with_states(surface, |data| {
+                                    debug!("    post: inside with_states");
                                     let mut binding = data.cached_state
                                         .get::<smithay::wayland::compositor::SurfaceAttributes>();
                                     let attrs = binding.current();
+                                    debug!("    post: got attrs");
 
                                     if let Some(ref buffer_assignment) = attrs.buffer {
+                                        debug!("    post: has buffer assignment");
                                         if let smithay::wayland::compositor::BufferAssignment::NewBuffer(buffer) = buffer_assignment {
+                                            debug!("    post: NewBuffer, calling with_buffer_contents");
                                             // Try to get buffer contents via SHM
                                             let result = with_buffer_contents(buffer, |ptr, len, buf_data| {
+                                                debug!("      post: inside with_buffer_contents");
                                                 let width = buf_data.width as u32;
                                                 let height = buf_data.height as u32;
                                                 let stride = buf_data.stride as u32;
                                                 let format = buf_data.format;
 
-                                                if log_frame {
-                                                    info!("Surface buffer: {}x{}, stride={}, format={:?}, len={}",
-                                                        width, height, stride, format, len);
-                                                }
+                                                info!("Surface buffer: {}x{}, stride={}, format={:?}, len={}",
+                                                    width, height, stride, format, len);
 
                                                 // Convert buffer to RGBA if needed and render
                                                 // For now, assume ARGB8888/XRGB8888 format
@@ -1222,20 +1232,27 @@ fn render_frame(
                                                     std::slice::from_raw_parts(ptr, len)
                                                 };
 
+                                                debug!("      post: calling gl::render_texture");
                                                 // Render the surface buffer as a texture
                                                 unsafe {
                                                     gl::render_texture(width, height, pixels, display.width, display.height);
                                                 }
+                                                debug!("      post: after gl::render_texture");
                                             });
+                                            debug!("    post: after with_buffer_contents");
 
                                             if let Err(e) = result {
-                                                if log_frame {
-                                                    warn!("Failed to access buffer contents: {:?}", e);
-                                                }
+                                                warn!("Failed to access buffer contents: {:?}", e);
                                             }
+                                        } else {
+                                            debug!("    post: not a NewBuffer");
                                         }
+                                    } else {
+                                        debug!("    post: no buffer assignment");
                                     }
+                                    debug!("    post: exiting with_states");
                                 });
+                                debug!("  post: done rendering surface");
                             },
                             |_, _, ()| true,
                         );
