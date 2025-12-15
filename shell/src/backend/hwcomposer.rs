@@ -31,7 +31,7 @@ use smithay::{
     reexports::{
         calloop::{EventLoop, timer::{Timer, TimeoutAction}},
         input::Libinput,
-        wayland_server::Display,
+        wayland_server::{Display, Resource},
     },
     utils::Transform,
     wayland::{
