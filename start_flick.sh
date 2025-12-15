@@ -4,7 +4,11 @@
 
 set -e
 
-FLICK_BIN="$HOME/Flick/shell/target/release/flick"
+# Get the actual user's home, even if running via sudo
+REAL_HOME="${SUDO_USER:+$(eval echo ~$SUDO_USER)}"
+REAL_HOME="${REAL_HOME:-$HOME}"
+
+FLICK_BIN="$REAL_HOME/Flick/shell/target/release/flick"
 
 if [ ! -f "$FLICK_BIN" ]; then
     echo "Error: flick binary not found at $FLICK_BIN"
