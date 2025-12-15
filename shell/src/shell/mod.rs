@@ -23,7 +23,40 @@ use crate::input::{Edge, GestureEvent};
 use std::path::PathBuf;
 
 /// Path to Flick's lock screen app (Python/Kivy)
-pub const FLICK_LOCKSCREEN_EXEC: &str = "/home/david/Flick/apps/flick_lockscreen/flick_lockscreen.py";
+/// Get the Flick project root directory
+/// Checks in order: FLICK_ROOT env var, executable's grandparent dir, HOME/Flick
+pub fn get_flick_root() -> std::path::PathBuf {
+    // 1. Check FLICK_ROOT env var
+    if let Ok(root) = std::env::var("FLICK_ROOT") {
+        return std::path::PathBuf::from(root);
+    }
+
+    // 2. Try to find from executable path (e.g., /path/to/Flick/shell/target/release/flick)
+    if let Ok(exe) = std::env::current_exe() {
+        // Go up from flick -> release -> target -> shell -> Flick
+        if let Some(flick_root) = exe.parent()  // release/
+            .and_then(|p| p.parent())           // target/
+            .and_then(|p| p.parent())           // shell/
+            .and_then(|p| p.parent())           // Flick/
+        {
+            if flick_root.join("apps").exists() {
+                return flick_root.to_path_buf();
+            }
+        }
+    }
+
+    // 3. Fallback to HOME/Flick
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/droidian".to_string());
+    std::path::PathBuf::from(home).join("Flick")
+}
+
+/// Lock screen executable path
+pub fn get_lockscreen_exec() -> String {
+    get_flick_root()
+        .join("apps/flick_lockscreen/flick_lockscreen.py")
+        .to_string_lossy()
+        .to_string()
+}
 
 /// Path to unlock signal file (written by lock screen app on successful auth)
 pub fn unlock_signal_path() -> PathBuf {
@@ -451,12 +484,13 @@ impl Shell {
             return false;
         }
 
-        tracing::info!("Launching external lock screen app: {}", FLICK_LOCKSCREEN_EXEC);
+        let exec_path = get_lockscreen_exec();
+        tracing::info!("Launching external lock screen app: {}", exec_path);
 
-        match std::process::Command::new("sh")
-            .arg("-c")
-            .arg(FLICK_LOCKSCREEN_EXEC)
+        match std::process::Command::new("python3")
+            .arg(&exec_path)
             .env("WAYLAND_DISPLAY", socket_name)
+            .env("XDG_RUNTIME_DIR", std::env::var("XDG_RUNTIME_DIR").unwrap_or_default())
             .spawn()
         {
             Ok(_) => {
