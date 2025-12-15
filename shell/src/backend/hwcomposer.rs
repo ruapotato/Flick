@@ -90,6 +90,12 @@ struct PresentCallbackData {
 }
 
 /// Present callback - called when hwcomposer has a buffer ready to display
+///
+/// HWC2 CLIENT composition flow:
+/// 1. Validate display - tells HWC what layers we have
+/// 2. Accept changes - confirm the composition plan
+/// 3. Set client target - provide our GPU-rendered buffer for CLIENT layers
+/// 4. Present - submit the frame to display
 unsafe extern "C" fn present_callback(
     user_data: *mut c_void,
     _window: *mut ANativeWindow,
@@ -110,28 +116,8 @@ unsafe extern "C" fn present_callback(
         // Get current slot and increment for next buffer
         let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
 
-        // Set buffer on the layer (if we have one)
-        let layer_err = if !data.hwc2_layer.is_null() {
-            hwcomposer_ffi::hwc2_compat_layer_set_buffer(
-                data.hwc2_layer,
-                slot,
-                buffer,
-                acquire_fence,
-            )
-        } else {
-            0 // No layer, skip
-        };
-
-        // Set client target with the buffer
-        let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
-            data.hwc2_display,
-            slot,
-            buffer,
-            acquire_fence,
-            0, // HAL_DATASPACE_UNKNOWN
-        );
-
-        // Validate display
+        // Step 1: Validate display composition
+        // This tells HWC2 about our layer configuration
         let mut num_types: u32 = 0;
         let mut num_requests: u32 = 0;
         let validate_err = hwcomposer_ffi::hwc2_compat_display_validate(
@@ -140,39 +126,50 @@ unsafe extern "C" fn present_callback(
             &mut num_requests,
         );
 
-        // Accept changes if needed (validate_err == 3 means HAS_CHANGES)
-        if validate_err == 0 || validate_err == 3 {
-            if num_types > 0 || num_requests > 0 {
-                hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display);
-            }
+        // Step 2: Accept changes - always call after successful validate
+        // validate_err == 0 means success, == 3 means HAS_CHANGES (also success)
+        let accept_err = if validate_err == 0 || validate_err == 3 {
+            hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display)
+        } else {
+            validate_err // Pass through the error
+        };
 
-            // Present the frame
-            let mut present_fence: i32 = -1;
-            let present_err = hwcomposer_ffi::hwc2_compat_display_present(
+        // Step 3: Set client target with our GPU-rendered buffer
+        // For CLIENT composition, this IS the buffer containing our rendered frame
+        // Note: We do NOT set layer buffer for CLIENT composition - only client target
+        let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
+            data.hwc2_display,
+            slot,
+            buffer,
+            acquire_fence,
+            0, // HAL_DATASPACE_UNKNOWN
+        );
+
+        // Step 4: Present the frame
+        let mut present_fence: i32 = -1;
+        let present_err = if validate_err == 0 || validate_err == 3 {
+            hwcomposer_ffi::hwc2_compat_display_present(
                 data.hwc2_display,
                 &mut present_fence,
-            );
-
-            if present_err != 0 {
-                data.present_errors.fetch_add(1, Ordering::Relaxed);
-            }
-
-            // Set the present fence on the buffer for the next frame
-            if present_fence >= 0 {
-                hwcomposer_ffi::set_buffer_fence(buffer, present_fence);
-            }
-
-            // Log progress every 60 frames
-            if count % 60 == 0 {
-                eprintln!("HWC2 present #{}: layer={}, target={}, validate={}, present={}, errors={}",
-                    count, layer_err, target_err, validate_err, present_err,
-                    data.present_errors.load(Ordering::Relaxed));
-            }
+            )
         } else {
+            -1 // Skip present if validate failed
+        };
+
+        if present_err != 0 && present_err != -1 {
             data.present_errors.fetch_add(1, Ordering::Relaxed);
-            if count % 60 == 0 {
-                eprintln!("HWC2 validate failed: err={}", validate_err);
-            }
+        }
+
+        // Set the present fence on the buffer for the next frame
+        if present_fence >= 0 {
+            hwcomposer_ffi::set_buffer_fence(buffer, present_fence);
+        }
+
+        // Log progress every 60 frames (or first 5 frames for debugging)
+        if count % 60 == 0 || count < 5 {
+            eprintln!("HWC2 present #{}: validate={} (types={}, reqs={}), accept={}, target={}, present={}, fence={}, errors={}",
+                count, validate_err, num_types, num_requests, accept_err, target_err, present_err, present_fence,
+                data.present_errors.load(Ordering::Relaxed));
         }
     } else {
         // No HWC2, just close the fence
@@ -422,6 +419,12 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
                             Err(e) => warn!("Failed to power on HWC2 display: error {}", e),
                         }
 
+                        // Enable vsync for timing synchronization
+                        match display.set_vsync_enabled(true) {
+                            Ok(()) => info!("HWC2 vsync enabled"),
+                            Err(e) => warn!("Failed to enable vsync: error {}", e),
+                        }
+
                         (Some(device), Some(display))
                     }
                     None => {
@@ -482,6 +485,12 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
                     warn!("Failed to set layer plane alpha: {}", e);
                 }
 
+                // Set transform to none (no rotation/flip)
+                if let Err(e) = layer.set_transform(hwcomposer_ffi::hwc2_transform::HWC_TRANSFORM_NONE) {
+                    warn!("Failed to set layer transform: {}", e);
+                }
+
+                info!("HWC2 layer configured: {}x{}", w, h);
                 Some(layer)
             }
             None => {
