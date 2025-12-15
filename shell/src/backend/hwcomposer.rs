@@ -44,6 +44,7 @@ use crate::shell::ShellView;
 use super::hwcomposer_ffi::{
     self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format,
     Hwc2Device, Hwc2Display, hwc2_initialize, gralloc_initialize,
+    HWC2EventListener, hwc2_compat_device_t, hwc2_display_t,
 };
 
 // Re-use khronos-egl for raw EGL access
@@ -181,6 +182,49 @@ unsafe extern "C" fn present_callback(
     }
 
     data.frame_ready.store(true, Ordering::Release);
+}
+
+// ============================================================================
+// HWC2 Event Callbacks
+// ============================================================================
+
+/// Global HWC2 device pointer for use in callbacks
+static mut HWC2_DEVICE_PTR: *mut hwc2_compat_device_t = std::ptr::null_mut();
+
+/// Vsync callback - called when display vsync occurs
+unsafe extern "C" fn hwc2_on_vsync(
+    _listener: *mut HWC2EventListener,
+    _sequence_id: i32,
+    _display: hwc2_display_t,
+    _timestamp: i64,
+) {
+    // We don't use vsync for now, but the callback must exist
+}
+
+/// Hotplug callback - called when display is connected/disconnected
+unsafe extern "C" fn hwc2_on_hotplug(
+    _listener: *mut HWC2EventListener,
+    _sequence_id: i32,
+    display: hwc2_display_t,
+    connected: bool,
+    primary_display: bool,
+) {
+    eprintln!("HWC2 hotplug: display={}, connected={}, primary={}",
+              display, connected, primary_display);
+
+    // Notify the HWC2 device about the hotplug event
+    if !HWC2_DEVICE_PTR.is_null() {
+        hwcomposer_ffi::hwc2_compat_device_on_hotplug(HWC2_DEVICE_PTR, display, connected);
+    }
+}
+
+/// Refresh callback - called when display needs refresh
+unsafe extern "C" fn hwc2_on_refresh(
+    _listener: *mut HWC2EventListener,
+    _sequence_id: i32,
+    _display: hwc2_display_t,
+) {
+    // We don't use refresh callbacks for now
 }
 
 /// Try to unblank/power on the display via various methods
@@ -327,9 +371,31 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
             Some(device) => {
                 info!("HWC2 device created successfully");
 
+                // Store device pointer for callbacks
+                unsafe {
+                    HWC2_DEVICE_PTR = device.as_ptr();
+                }
+
+                // Create event listener with our callbacks
+                // Note: This must be leaked/static because HWC2 keeps a reference to it
+                let event_listener = Box::leak(Box::new(HWC2EventListener {
+                    on_vsync_received: Some(hwc2_on_vsync),
+                    on_hotplug_received: Some(hwc2_on_hotplug),
+                    on_refresh_received: Some(hwc2_on_refresh),
+                }));
+
+                // Register callbacks with the device
+                info!("Registering HWC2 callbacks...");
+                device.register_callback(event_listener as *mut _, 0);
+                info!("HWC2 callbacks registered");
+
                 // Trigger hotplug for primary display (ID 0)
+                // This tells the hwcomposer that display 0 is connected
                 device.on_hotplug(0, true);
                 info!("Triggered hotplug for primary display");
+
+                // Small delay to allow hotplug processing
+                std::thread::sleep(std::time::Duration::from_millis(100));
 
                 // Get primary display
                 match device.get_primary_display() {
