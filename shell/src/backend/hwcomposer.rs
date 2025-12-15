@@ -117,13 +117,15 @@ unsafe extern "C" fn present_callback(
         let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
 
         // Step 1: Set layer buffer (links the buffer to our layer)
+        // For CLIENT composition, pass -1 (no fence) since the actual content comes from client_target
+        // The layer is just a placeholder telling HWC2 the geometry
         // Must be done BEFORE validate
         let layer_err = if !data.hwc2_layer.is_null() {
             hwcomposer_ffi::hwc2_compat_layer_set_buffer(
                 data.hwc2_layer,
                 slot,
                 buffer,
-                acquire_fence,
+                -1, // No fence for layer - CLIENT composition uses client_target
             )
         } else {
             0
@@ -131,12 +133,13 @@ unsafe extern "C" fn present_callback(
 
         // Step 2: Set client target with our GPU-rendered buffer
         // For CLIENT composition, this IS the buffer containing our rendered frame
+        // Pass the acquire fence HERE (HWC2 takes ownership)
         // Must be done BEFORE validate
         let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
             data.hwc2_display,
             slot,
             buffer,
-            acquire_fence,
+            acquire_fence, // Fence only goes here for CLIENT composition
             0, // HAL_DATASPACE_UNKNOWN
         );
 
