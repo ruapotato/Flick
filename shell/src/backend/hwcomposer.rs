@@ -1025,14 +1025,8 @@ pub fn run() -> Result<()> {
     loop {
         // Dispatch incoming Wayland client requests - this is critical!
         // Without this, clients connect but their protocol messages are never processed.
-        // Clone the Rc first to avoid borrowing state twice
-        let display = state.display.clone();
-        if let Err(e) = display.borrow_mut().dispatch_clients(&mut state) {
-            error!("Error dispatching Wayland clients: {:?}", e);
-        }
-
-        // Flush responses back to clients
-        state.display_handle.flush_clients().ok();
+        // Use the safe dispatch_clients method that handles the borrow properly.
+        state.dispatch_clients();
 
         // Dispatch calloop events
         event_loop
