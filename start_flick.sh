@@ -8,14 +8,13 @@ set -e
 # Kill any existing flick process
 sudo pkill -9 flick 2>/dev/null || true
 
-# Start hwcomposer service if not running
-if ! pgrep -f 'android.hardware.graphics.composer' > /dev/null; then
-    echo "Starting hwcomposer service..."
-    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' /usr/lib/halium-wrappers/android-service.sh hwcomposer start
-    sleep 2
-else
-    echo "hwcomposer service already running"
-fi
+# Always restart hwcomposer service for clean state
+echo "Restarting hwcomposer service for clean state..."
+sudo pkill -9 composer 2>/dev/null || true
+sleep 1
+sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' /usr/lib/halium-wrappers/android-service.sh hwcomposer start
+sleep 2
+echo "hwcomposer service started"
 
 echo "Starting Flick..."
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
