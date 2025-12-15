@@ -971,12 +971,9 @@ pub fn run() -> Result<()> {
         slint_ui.set_size(state.screen_size);
     }
 
-    // Launch lock screen if configured
+    // Lock screen is now rendered by Slint UI, no external app needed
     if state.shell.lock_screen_active {
-        info!("Lock screen configured - launching on startup");
-        if let Some(socket) = state.socket_name.to_str() {
-            state.shell.launch_lock_screen_app(socket);
-        }
+        info!("Lock screen active - using built-in Slint lock screen");
     }
 
     // Track session state
