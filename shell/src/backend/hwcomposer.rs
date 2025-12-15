@@ -93,6 +93,10 @@ struct PresentCallbackData {
 }
 
 /// Present callback - called when hwcomposer has a buffer ready to display
+///
+/// NOTE: We let libhybris-hwcomposerwindow handle the actual HWC2 presentation internally.
+/// Our callback just closes the acquire fence and marks the frame as ready.
+/// Attempting to call HWC2 functions here can interfere with libhybris's internal state.
 unsafe extern "C" fn present_callback(
     user_data: *mut c_void,
     _window: *mut ANativeWindow,
@@ -105,86 +109,15 @@ unsafe extern "C" fn present_callback(
     let data = &*(user_data as *const PresentCallbackData);
     let count = data.present_count.fetch_add(1, Ordering::Relaxed);
 
-    // Get the acquire fence from the buffer
+    // Get and close the acquire fence - libhybris will handle display presentation
     let acquire_fence = hwcomposer_ffi::get_buffer_fence(buffer);
+    if acquire_fence >= 0 {
+        libc::close(acquire_fence);
+    }
 
-    // Present via HWC2 if we have a display
-    if !data.hwc2_display.is_null() && !buffer.is_null() {
-        // Get current slot and increment for next buffer
-        let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
-
-        // Set buffer on the layer (if we have one)
-        // NOTE: Pass -1 (no fence) to layer - the fence goes to set_client_target
-        // HWC2 takes ownership of fences, so we can't pass the same fd twice
-        let layer_err = if !data.hwc2_layer.is_null() {
-            hwcomposer_ffi::hwc2_compat_layer_set_buffer(
-                data.hwc2_layer,
-                slot,
-                buffer,
-                -1, // No fence for layer - use client_target fence only
-            )
-        } else {
-            0 // No layer, skip
-        };
-
-        // Set client target with the buffer and the acquire fence
-        // This is the main presentation path for CLIENT composition
-        let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
-            data.hwc2_display,
-            slot,
-            buffer,
-            acquire_fence, // Only pass fence here
-            0, // HAL_DATASPACE_UNKNOWN
-        );
-
-        // Validate display
-        let mut num_types: u32 = 0;
-        let mut num_requests: u32 = 0;
-        let validate_err = hwcomposer_ffi::hwc2_compat_display_validate(
-            data.hwc2_display,
-            &mut num_types,
-            &mut num_requests,
-        );
-
-        // Accept changes if needed (validate_err == 3 means HAS_CHANGES)
-        if validate_err == 0 || validate_err == 3 {
-            if num_types > 0 || num_requests > 0 {
-                hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display);
-            }
-
-            // Present the frame
-            let mut present_fence: i32 = -1;
-            let present_err = hwcomposer_ffi::hwc2_compat_display_present(
-                data.hwc2_display,
-                &mut present_fence,
-            );
-
-            if present_err != 0 {
-                data.present_errors.fetch_add(1, Ordering::Relaxed);
-            }
-
-            // Set the present fence on the buffer for the next frame
-            if present_fence >= 0 {
-                hwcomposer_ffi::set_buffer_fence(buffer, present_fence);
-            }
-
-            // Log progress every 60 frames
-            if count % 60 == 0 {
-                eprintln!("HWC2 present #{}: layer={}, target={}, validate={}, present={}, errors={}",
-                    count, layer_err, target_err, validate_err, present_err,
-                    data.present_errors.load(Ordering::Relaxed));
-            }
-        } else {
-            data.present_errors.fetch_add(1, Ordering::Relaxed);
-            if count % 60 == 0 {
-                eprintln!("HWC2 validate failed: err={}", validate_err);
-            }
-        }
-    } else {
-        // No HWC2, just close the fence
-        if acquire_fence >= 0 {
-            libc::close(acquire_fence);
-        }
+    // Log every 60 frames
+    if count % 60 == 0 {
+        eprintln!("Present callback #{}", count);
     }
 
     data.frame_ready.store(true, Ordering::Release);
