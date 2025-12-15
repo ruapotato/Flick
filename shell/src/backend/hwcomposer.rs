@@ -975,8 +975,18 @@ pub fn run() -> Result<()> {
     // Bind EGL to Wayland display for libhybris clients
     // This is required for EGL_WL_bind_wayland_display extension to work
     {
-        // Try to bind EGL to Wayland display
+        // Get the raw wl_display pointer using wayland-backend's server_system feature
+        let display_ref = state.display.borrow();
+        let backend = display_ref.backend();
+
+        // With server_system feature, backend provides display_ptr()
+        #[cfg(feature = "hwcomposer")]
         unsafe {
+            use wayland_backend::server::Backend as WaylandBackend;
+
+            // The backend's handle has display_ptr() method with server_system feature
+            let wl_display_ptr = backend.handle().display_ptr();
+
             // Load eglBindWaylandDisplayWL function
             type EglBindWaylandDisplayWL = unsafe extern "C" fn(
                 *mut std::ffi::c_void, // EGLDisplay
@@ -984,11 +994,17 @@ pub fn run() -> Result<()> {
             ) -> u32; // EGLBoolean
 
             let bind_fn_ptr = hwc_display.egl_instance.get_proc_address("eglBindWaylandDisplayWL");
-            if bind_fn_ptr.is_some() {
-                // Function is available but wl_display pointer access not implemented
-                // A proper implementation would need to track the wl_display during creation
-                warn!("eglBindWaylandDisplayWL available but wl_display pointer access not implemented");
-                warn!("libhybris EGL clients may not work correctly");
+            if let Some(fn_ptr) = bind_fn_ptr {
+                let bind_wayland_display: EglBindWaylandDisplayWL = std::mem::transmute(fn_ptr);
+                let result = bind_wayland_display(
+                    hwc_display.egl_display.as_ptr() as *mut std::ffi::c_void,
+                    wl_display_ptr as *mut std::ffi::c_void,
+                );
+                if result == egl::TRUE as u32 {
+                    info!("Successfully bound EGL to Wayland display");
+                } else {
+                    warn!("Failed to bind EGL to Wayland display (result={})", result);
+                }
             } else {
                 info!("eglBindWaylandDisplayWL not available (may be OK for non-libhybris)");
             }
