@@ -1174,89 +1174,59 @@ fn render_frame(
                         let wl_surface = toplevel.wl_surface();
                         debug!("Window {} surface: {:?}", i, wl_surface.id());
 
-                        // Walk the surface tree and render each surface
-                        debug!("Window {} starting surface tree walk", i);
-                        with_surface_tree_downward(
-                            wl_surface,
-                            (),
-                            |surface, _surface_data, ()| {
-                                debug!("  filter: checking surface {:?}", surface.id());
-                                // Check if this surface has a buffer
-                                debug!("  filter: calling with_states");
-                                let has_buffer = smithay::wayland::compositor::with_states(surface, |data| {
-                                    debug!("    filter: inside with_states");
-                                    let result = data.cached_state
-                                        .get::<smithay::wayland::compositor::SurfaceAttributes>()
-                                        .current()
-                                        .buffer
-                                        .is_some();
-                                    debug!("    filter: has_buffer={}", result);
-                                    result
-                                });
-                                debug!("  filter: after with_states, has_buffer={}", has_buffer);
+                        // Try to render the toplevel surface directly (avoiding with_surface_tree_downward)
+                        // This avoids potential deadlocks with with_states() during tree traversal
+                        debug!("Window {} trying direct surface render", i);
 
-                                if has_buffer {
-                                    TraversalAction::DoChildren(())
-                                } else {
-                                    TraversalAction::SkipChildren
-                                }
-                            },
-                            |surface, _surface_data, ()| {
-                                debug!("  post: rendering surface {:?}", surface.id());
-                                // Render this surface's buffer
-                                smithay::wayland::compositor::with_states(surface, |data| {
-                                    debug!("    post: inside with_states");
-                                    let mut binding = data.cached_state
-                                        .get::<smithay::wayland::compositor::SurfaceAttributes>();
-                                    let attrs = binding.current();
-                                    debug!("    post: got attrs");
+                        // Get buffer from the surface data without tree walk
+                        let buffer_info: Option<(u32, u32, Vec<u8>)> = smithay::wayland::compositor::with_states(wl_surface, |data| {
+                            debug!("  direct: inside with_states");
+                            let mut binding = data.cached_state
+                                .get::<smithay::wayland::compositor::SurfaceAttributes>();
+                            let attrs = binding.current();
 
-                                    if let Some(ref buffer_assignment) = attrs.buffer {
-                                        debug!("    post: has buffer assignment");
-                                        if let smithay::wayland::compositor::BufferAssignment::NewBuffer(buffer) = buffer_assignment {
-                                            debug!("    post: NewBuffer, calling with_buffer_contents");
-                                            // Try to get buffer contents via SHM
-                                            let result = with_buffer_contents(buffer, |ptr, len, buf_data| {
-                                                debug!("      post: inside with_buffer_contents");
-                                                let width = buf_data.width as u32;
-                                                let height = buf_data.height as u32;
-                                                let stride = buf_data.stride as u32;
-                                                let format = buf_data.format;
-
-                                                info!("Surface buffer: {}x{}, stride={}, format={:?}, len={}",
-                                                    width, height, stride, format, len);
-
-                                                // Convert buffer to RGBA if needed and render
-                                                // For now, assume ARGB8888/XRGB8888 format
-                                                let pixels = unsafe {
-                                                    std::slice::from_raw_parts(ptr, len)
-                                                };
-
-                                                debug!("      post: calling gl::render_texture");
-                                                // Render the surface buffer as a texture
-                                                unsafe {
-                                                    gl::render_texture(width, height, pixels, display.width, display.height);
-                                                }
-                                                debug!("      post: after gl::render_texture");
-                                            });
-                                            debug!("    post: after with_buffer_contents");
-
-                                            if let Err(e) = result {
-                                                warn!("Failed to access buffer contents: {:?}", e);
-                                            }
-                                        } else {
-                                            debug!("    post: not a NewBuffer");
+                            if let Some(ref buffer_assignment) = attrs.buffer {
+                                debug!("  direct: has buffer assignment");
+                                if let smithay::wayland::compositor::BufferAssignment::NewBuffer(buffer) = buffer_assignment {
+                                    debug!("  direct: NewBuffer, getting contents");
+                                    let result = with_buffer_contents(buffer, |ptr, len, buf_data| {
+                                        let width = buf_data.width as u32;
+                                        let height = buf_data.height as u32;
+                                        let pixels = unsafe {
+                                            std::slice::from_raw_parts(ptr, len).to_vec()
+                                        };
+                                        info!("Surface buffer: {}x{}, stride={}, format={:?}, len={}",
+                                            width, height, buf_data.stride, buf_data.format, len);
+                                        (width, height, pixels)
+                                    });
+                                    match result {
+                                        Ok(data) => Some(data),
+                                        Err(e) => {
+                                            warn!("Failed to access buffer contents: {:?}", e);
+                                            None
                                         }
-                                    } else {
-                                        debug!("    post: no buffer assignment");
                                     }
-                                    debug!("    post: exiting with_states");
-                                });
-                                debug!("  post: done rendering surface");
-                            },
-                            |_, _, ()| true,
-                        );
-                        debug!("Window {} finished surface tree walk", i);
+                                } else {
+                                    debug!("  direct: not a NewBuffer (removed?)");
+                                    None
+                                }
+                            } else {
+                                debug!("  direct: no buffer assignment");
+                                None
+                            }
+                        });
+                        debug!("Window {} after with_states", i);
+
+                        // Render outside of with_states to avoid holding locks
+                        if let Some((width, height, pixels)) = buffer_info {
+                            debug!("Window {} rendering {}x{} buffer", i, width, height);
+                            unsafe {
+                                gl::render_texture(width, height, &pixels, display.width, display.height);
+                            }
+                            debug!("Window {} render complete", i);
+                        } else {
+                            debug!("Window {} no buffer to render", i);
+                        }
                     }
                 }
                 debug!("ShellView::App: finished rendering windows");
