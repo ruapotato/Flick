@@ -1125,6 +1125,9 @@ fn render_frame(
         // Render Slint UI for shell views (including lock screen)
         match shell_view {
             ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault | ShellView::LockScreen => {
+                // Update Slint timers and animations (needed for clock updates, etc.)
+                slint::platform::update_timers_and_animations();
+
                 // Get Slint rendered pixels
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     if let Some((width, height, pixels)) = slint_ui.render() {
