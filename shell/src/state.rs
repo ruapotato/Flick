@@ -1073,12 +1073,21 @@ impl CompositorHandler for Flick {
                         let width = buf_data.width as u32;
                         let height = buf_data.height as u32;
                         let stride = buf_data.stride as u32;
-                        // Only copy the actual buffer data, not the entire SHM pool
-                        let buffer_len = (stride * height) as usize;
-                        let pixels = unsafe {
-                            std::slice::from_raw_parts(ptr, buffer_len).to_vec()
-                        };
-                        tracing::debug!("Captured buffer: {}x{}, stride={}, {} bytes", width, height, stride, buffer_len);
+                        let row_bytes = (width * 4) as usize; // RGBA = 4 bytes per pixel
+
+                        // Copy row by row to strip stride padding
+                        let mut pixels = Vec::with_capacity(row_bytes * height as usize);
+                        for y in 0..height {
+                            let row_start = (y * stride) as usize;
+                            let row_end = row_start + row_bytes;
+                            let row = unsafe {
+                                std::slice::from_raw_parts(ptr.add(row_start), row_bytes)
+                            };
+                            pixels.extend_from_slice(row);
+                        }
+
+                        tracing::debug!("Captured buffer: {}x{}, stride={}, stored {} bytes (stripped padding)",
+                            width, height, stride, pixels.len());
                         StoredBuffer { width, height, stride, pixels }
                     });
 
