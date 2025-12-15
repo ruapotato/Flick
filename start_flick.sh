@@ -52,6 +52,16 @@ echo "Starting Flick..."
 if [ "$1" = "--bg" ]; then
     sudo -E "$FLICK_BIN" --hwcomposer > /tmp/flick.log 2>&1 &
     sleep 2
+
+    # Fix Wayland socket permissions so non-root clients can connect
+    SOCKET_PATH="$XDG_RUNTIME_DIR/wayland-"
+    for sock in ${SOCKET_PATH}*; do
+        if [ -S "$sock" ]; then
+            sudo chmod 0777 "$sock"
+            echo "Fixed permissions on $sock"
+        fi
+    done
+
     echo "Flick running in background. Logs: /tmp/flick.log"
 else
     sudo -E "$FLICK_BIN" --hwcomposer
