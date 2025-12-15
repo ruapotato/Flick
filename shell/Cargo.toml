@@ -69,6 +69,9 @@ bcrypt = "0.15"
 # System (for hwcomposer FFI)
 libc = "0.2"
 
+# Wayland protocol generation
+wayland-scanner = "0.31"
+
 # EGL for hwcomposer backend (used when feature enabled)
 khronos-egl = { version = "6.0", features = ["dynamic"], optional = true }
 

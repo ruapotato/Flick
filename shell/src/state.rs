@@ -70,6 +70,7 @@ use crate::viewport::Viewport;
 use crate::shell::Shell;
 use crate::system::SystemStatus;
 use crate::text_input::{TextInputState, TextInputHandler};
+use crate::android_wlegl::{AndroidWleglState, AndroidWleglHandler};
 
 /// Client-specific state
 #[derive(Default)]
@@ -103,6 +104,7 @@ pub struct Flick {
     pub seat_state: SeatState<Self>,
     pub seat: Seat<Self>,
     pub text_input_state: TextInputState,
+    pub android_wlegl_state: AndroidWleglState,
 
     // Desktop
     pub space: Space<Window>,
@@ -194,6 +196,7 @@ impl Flick {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display_handle);
         let data_device_state = DataDeviceState::new::<Self>(&display_handle);
         let text_input_state = TextInputState::new::<Self>(&display_handle);
+        let android_wlegl_state = AndroidWleglState::new::<Self>(&display_handle);
 
         // Set up seat (input devices)
         let mut seat_state = SeatState::new();
@@ -241,6 +244,7 @@ impl Flick {
             output_manager_state,
             data_device_state,
             text_input_state,
+            android_wlegl_state,
             seat_state,
             seat,
             space: Space::default(),
@@ -1327,6 +1331,14 @@ impl TextInputHandler for Flick {
     }
 }
 
+impl AndroidWleglHandler for Flick {
+    fn android_buffer_created(&mut self, buffer: &smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer) {
+        // Log the buffer creation for now
+        // Full buffer import implementation will come next
+        tracing::info!("Android buffer created: {:?}", buffer.id());
+    }
+}
+
 // Delegate macros
 delegate_compositor!(Flick);
 delegate_shm!(Flick);
@@ -1335,3 +1347,4 @@ delegate_data_device!(Flick);
 delegate_output!(Flick);
 delegate_xdg_shell!(Flick);
 crate::delegate_text_input!(Flick);
+crate::delegate_android_wlegl!(Flick);

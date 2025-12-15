@@ -16,6 +16,7 @@ mod xwayland;
 mod touch_effects;
 pub mod system;
 pub mod text_input;
+pub mod android_wlegl;
 
 use std::path::PathBuf;
 
