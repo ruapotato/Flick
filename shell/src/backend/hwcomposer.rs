@@ -348,9 +348,16 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
     // Log detection results for debugging
     info!("HWC service detection: systemd={}, pgrep={}", systemd_active, composer_process_running);
 
-    // Always try HWC2 initialization - the detection is unreliable from within Flick
-    // If the service isn't running, initialization will fail gracefully
-    let hwc_service_active = true;
+    // Check if we should skip HWC2 device creation (use simpler EGL-only path)
+    // The HWC2 device creation crashes on some devices, so we provide a fallback
+    let skip_hwc2 = std::env::var("FLICK_SKIP_HWC2").is_ok();
+
+    let hwc_service_active = if skip_hwc2 {
+        info!("FLICK_SKIP_HWC2 set - skipping HWC2 device creation");
+        false
+    } else {
+        true
+    };
 
     if composer_process_running && !systemd_active {
         info!("Composer process running (started directly, not via systemd)");
