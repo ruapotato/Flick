@@ -148,8 +148,18 @@ unsafe extern "C" fn present_callback(
                 data.present_errors.fetch_add(1, Ordering::Relaxed);
             }
 
-            // Close present fence - we don't need to wait on it
+            // Wait on present fence to ensure frame is displayed before next present
             if present_fence >= 0 {
+                // Use poll to wait on the sync fence (timeout 100ms)
+                let mut pfd = libc::pollfd {
+                    fd: present_fence,
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+                let poll_ret = libc::poll(&mut pfd, 1, 100);
+                if poll_ret < 0 && count % 60 == 0 {
+                    eprintln!("poll on present_fence failed: {}", *libc::__errno_location());
+                }
                 libc::close(present_fence);
             }
 
