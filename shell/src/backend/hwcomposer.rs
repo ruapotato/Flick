@@ -1036,28 +1036,28 @@ pub fn run() -> Result<()> {
         // Use the safe dispatch_clients method that handles the borrow properly.
         state.dispatch_clients();
 
-        if log_loop {
-            debug!("Dispatch clients complete");
-        }
+        // Log every loop iteration for debugging
+        debug!("Loop {}: after dispatch_clients", loop_count);
 
         // Dispatch calloop events
         event_loop
             .dispatch(Some(Duration::from_millis(1)), &mut state)
             .map_err(|e| anyhow::anyhow!("Event loop error: {:?}", e))?;
 
-        if log_loop {
-            debug!("Calloop dispatch complete");
-        }
+        debug!("Loop {}: after calloop dispatch", loop_count);
 
         // Skip rendering if session not active
         if !*session_active.borrow() {
+            debug!("Loop {}: session not active, skipping render", loop_count);
             continue;
         }
 
+        debug!("Loop {}: calling render_frame", loop_count);
         // Render frame
         if let Err(e) = render_frame(&mut hwc_display, &state, &output) {
             error!("Render error: {:?}", e);
         }
+        debug!("Loop {}: after render_frame", loop_count);
 
         // Send frame callbacks to Wayland clients
         state.space.elements().for_each(|window| {
