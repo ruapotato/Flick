@@ -116,26 +116,8 @@ unsafe extern "C" fn present_callback(
         // Get current slot and increment for next buffer
         let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
 
-        // Step 1: Validate display composition
-        // This tells HWC2 about our layer configuration
-        let mut num_types: u32 = 0;
-        let mut num_requests: u32 = 0;
-        let validate_err = hwcomposer_ffi::hwc2_compat_display_validate(
-            data.hwc2_display,
-            &mut num_types,
-            &mut num_requests,
-        );
-
-        // Step 2: Accept changes - always call after successful validate
-        // validate_err == 0 means success, == 3 means HAS_CHANGES (also success)
-        let accept_err = if validate_err == 0 || validate_err == 3 {
-            hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display)
-        } else {
-            validate_err // Pass through the error
-        };
-
-        // Step 3: Set layer buffer (links the buffer to our layer)
-        // Even for CLIENT composition, HWC2 may need to know the layer's buffer
+        // Step 1: Set layer buffer (links the buffer to our layer)
+        // Must be done BEFORE validate
         let layer_err = if !data.hwc2_layer.is_null() {
             hwcomposer_ffi::hwc2_compat_layer_set_buffer(
                 data.hwc2_layer,
@@ -147,8 +129,9 @@ unsafe extern "C" fn present_callback(
             0
         };
 
-        // Step 4: Set client target with our GPU-rendered buffer
+        // Step 2: Set client target with our GPU-rendered buffer
         // For CLIENT composition, this IS the buffer containing our rendered frame
+        // Must be done BEFORE validate
         let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
             data.hwc2_display,
             slot,
@@ -156,6 +139,24 @@ unsafe extern "C" fn present_callback(
             acquire_fence,
             0, // HAL_DATASPACE_UNKNOWN
         );
+
+        // Step 3: Validate display composition
+        // Must be called AFTER all buffers are configured
+        let mut num_types: u32 = 0;
+        let mut num_requests: u32 = 0;
+        let validate_err = hwcomposer_ffi::hwc2_compat_display_validate(
+            data.hwc2_display,
+            &mut num_types,
+            &mut num_requests,
+        );
+
+        // Step 4: Accept changes - always call after successful validate
+        // validate_err == 0 means success, == 3 means HAS_CHANGES (also success)
+        let accept_err = if validate_err == 0 || validate_err == 3 {
+            hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display)
+        } else {
+            validate_err // Pass through the error
+        };
 
         // Step 5: Present the frame
         let mut present_fence: i32 = -1;
