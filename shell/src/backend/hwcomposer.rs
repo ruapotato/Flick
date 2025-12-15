@@ -34,6 +34,10 @@ use smithay::{
         wayland_server::Display,
     },
     utils::Transform,
+    wayland::{
+        compositor::{with_surface_tree_downward, TraversalAction},
+        shm::with_buffer_contents,
+    },
 };
 
 // Note: ImportAll/ImportMem will be needed once we integrate proper Smithay rendering
@@ -905,6 +909,16 @@ pub fn run() -> Result<()> {
         if let Err(e) = render_frame(&mut hwc_display, &state, &output) {
             error!("Render error: {:?}", e);
         }
+
+        // Send frame callbacks to Wayland clients
+        state.space.elements().for_each(|window| {
+            window.send_frame(
+                &output,
+                state.start_time.elapsed(),
+                Some(Duration::ZERO),
+                |_, _| Some(output.clone()),
+            );
+        });
     }
 }
 
@@ -993,7 +1007,83 @@ fn render_frame(
                 }
             }
             ShellView::App | ShellView::LockScreen => {
-                // For apps/lock screen, render Wayland surfaces (TODO)
+                // Render Wayland client surfaces (windows)
+                let windows: Vec<_> = state.space.elements().cloned().collect();
+                if log_frame {
+                    info!("Rendering {} Wayland windows", windows.len());
+                }
+
+                for window in windows.iter() {
+                    // Get the surface from the window
+                    if let Some(toplevel) = window.toplevel() {
+                        let wl_surface = toplevel.wl_surface();
+
+                        // Walk the surface tree and render each surface
+                        with_surface_tree_downward(
+                            wl_surface,
+                            (),
+                            |surface, _surface_data, ()| {
+                                // Check if this surface has a buffer
+                                let has_buffer = smithay::wayland::compositor::with_states(surface, |data| {
+                                    data.cached_state
+                                        .get::<smithay::wayland::compositor::SurfaceAttributes>()
+                                        .current()
+                                        .buffer
+                                        .is_some()
+                                });
+
+                                if has_buffer {
+                                    TraversalAction::DoChildren(())
+                                } else {
+                                    TraversalAction::SkipChildren
+                                }
+                            },
+                            |surface, _surface_data, ()| {
+                                // Render this surface's buffer
+                                smithay::wayland::compositor::with_states(surface, |data| {
+                                    let mut binding = data.cached_state
+                                        .get::<smithay::wayland::compositor::SurfaceAttributes>();
+                                    let attrs = binding.current();
+
+                                    if let Some(ref buffer_assignment) = attrs.buffer {
+                                        if let smithay::wayland::compositor::BufferAssignment::NewBuffer(buffer) = buffer_assignment {
+                                            // Try to get buffer contents via SHM
+                                            let result = with_buffer_contents(buffer, |ptr, len, buf_data| {
+                                                let width = buf_data.width as u32;
+                                                let height = buf_data.height as u32;
+                                                let stride = buf_data.stride as u32;
+                                                let format = buf_data.format;
+
+                                                if log_frame {
+                                                    info!("Surface buffer: {}x{}, stride={}, format={:?}, len={}",
+                                                        width, height, stride, format, len);
+                                                }
+
+                                                // Convert buffer to RGBA if needed and render
+                                                // For now, assume ARGB8888/XRGB8888 format
+                                                let pixels = unsafe {
+                                                    std::slice::from_raw_parts(ptr, len)
+                                                };
+
+                                                // Render the surface buffer as a texture
+                                                unsafe {
+                                                    gl::render_texture(width, height, pixels, display.width, display.height);
+                                                }
+                                            });
+
+                                            if let Err(e) = result {
+                                                if log_frame {
+                                                    warn!("Failed to access buffer contents: {:?}", e);
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            },
+                            |_, _, ()| true,
+                        );
+                    }
+                }
             }
         }
     }
