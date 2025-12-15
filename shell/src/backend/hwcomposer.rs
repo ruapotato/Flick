@@ -1111,9 +1111,9 @@ fn render_frame(
         // Determine background color based on shell view
         let shell_view = state.shell.view;
         let bg_color = match shell_view {
-            ShellView::Home | ShellView::QuickSettings | ShellView::PickDefault => [0.1, 0.1, 0.15, 1.0],
+            ShellView::Home | ShellView::QuickSettings | ShellView::PickDefault | ShellView::LockScreen => [0.1, 0.1, 0.15, 1.0],
             ShellView::Switcher => [0.05, 0.05, 0.08, 1.0],
-            ShellView::App | ShellView::LockScreen => [0.0, 0.0, 0.0, 1.0],
+            ShellView::App => [0.0, 0.0, 0.0, 1.0],
         };
 
         // Clear screen with background color
@@ -1122,9 +1122,9 @@ fn render_frame(
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
 
-        // Render Slint UI for shell views
+        // Render Slint UI for shell views (including lock screen)
         match shell_view {
-            ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault => {
+            ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault | ShellView::LockScreen => {
                 // Get Slint rendered pixels
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     if let Some((width, height, pixels)) = slint_ui.render() {
@@ -1137,7 +1137,7 @@ fn render_frame(
                     }
                 }
             }
-            ShellView::App | ShellView::LockScreen => {
+            ShellView::App => {
                 // Render Wayland client surfaces (windows)
                 let windows: Vec<_> = state.space.elements().cloned().collect();
                 if log_frame {
