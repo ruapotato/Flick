@@ -48,9 +48,10 @@ fi
 
 log_info "Using flick binary: $FLICK_BIN"
 
-# Kill any existing flick process
+# Kill any existing flick compositor process (not this script!)
 log_info "Stopping any existing Flick processes..."
-sudo pkill -9 flick 2>/dev/null || true
+sudo pkill -9 -x flick 2>/dev/null || true
+sudo pkill -9 -f 'flick --hwcomposer' 2>/dev/null || true
 sleep 0.5
 
 # Restart hwcomposer service for clean state
