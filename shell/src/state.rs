@@ -55,6 +55,7 @@ pub struct StoredBuffer {
     pub width: u32,
     pub height: u32,
     pub stride: u32,
+    pub format: u32, // wl_shm format
     pub pixels: Vec<u8>,
 }
 
@@ -1073,22 +1074,36 @@ impl CompositorHandler for Flick {
                         let width = buf_data.width as u32;
                         let height = buf_data.height as u32;
                         let stride = buf_data.stride as u32;
-                        let row_bytes = (width * 4) as usize; // RGBA = 4 bytes per pixel
+                        let format = buf_data.format as u32;
+                        let row_bytes = (width * 4) as usize; // 4 bytes per pixel
 
-                        // Copy row by row to strip stride padding
+                        // wl_shm formats (little-endian byte order in memory):
+                        // Argb8888 = 0 -> bytes are B, G, R, A
+                        // Xrgb8888 = 1 -> bytes are B, G, R, X
+                        // We need RGBA for OpenGL
+                        let is_xrgb = format == 1; // Xrgb8888
+
+                        // Copy row by row, converting BGRA/BGRX to RGBA
                         let mut pixels = Vec::with_capacity(row_bytes * height as usize);
                         for y in 0..height {
                             let row_start = (y * stride) as usize;
-                            let row_end = row_start + row_bytes;
-                            let row = unsafe {
-                                std::slice::from_raw_parts(ptr.add(row_start), row_bytes)
-                            };
-                            pixels.extend_from_slice(row);
+                            for x in 0..width as usize {
+                                let pixel_offset = row_start + x * 4;
+                                let b = unsafe { *ptr.add(pixel_offset) };
+                                let g = unsafe { *ptr.add(pixel_offset + 1) };
+                                let r = unsafe { *ptr.add(pixel_offset + 2) };
+                                let a = if is_xrgb { 255 } else { unsafe { *ptr.add(pixel_offset + 3) } };
+                                // Output as RGBA
+                                pixels.push(r);
+                                pixels.push(g);
+                                pixels.push(b);
+                                pixels.push(a);
+                            }
                         }
 
-                        tracing::debug!("Captured buffer: {}x{}, stride={}, stored {} bytes (stripped padding)",
-                            width, height, stride, pixels.len());
-                        StoredBuffer { width, height, stride, pixels }
+                        tracing::debug!("Captured buffer: {}x{}, stride={}, format={}, stored {} bytes",
+                            width, height, stride, format, pixels.len());
+                        StoredBuffer { width, height, stride, format, pixels }
                     });
 
                     if let Ok(stored) = buffer_data {
