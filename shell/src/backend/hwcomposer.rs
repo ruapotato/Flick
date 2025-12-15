@@ -975,10 +975,6 @@ pub fn run() -> Result<()> {
     // Bind EGL to Wayland display for libhybris clients
     // This is required for EGL_WL_bind_wayland_display extension to work
     {
-        // Get the wayland display file descriptor to derive the wl_display pointer
-        // This is a workaround since wayland-server doesn't directly expose the pointer
-        let poll_fd = state.display.borrow().backend().poll_fd();
-
         // Try to bind EGL to Wayland display
         unsafe {
             // Load eglBindWaylandDisplayWL function
@@ -988,9 +984,8 @@ pub fn run() -> Result<()> {
             ) -> u32; // EGLBoolean
 
             let bind_fn_ptr = hwc_display.egl_instance.get_proc_address("eglBindWaylandDisplayWL");
-            if let Some(fn_ptr) = bind_fn_ptr {
-                // Try to get the wl_display from the fd using wayland_sys
-                // For now, we'll try calling with a null pointer which might fail gracefully
+            if bind_fn_ptr.is_some() {
+                // Function is available but wl_display pointer access not implemented
                 // A proper implementation would need to track the wl_display during creation
                 warn!("eglBindWaylandDisplayWL available but wl_display pointer access not implemented");
                 warn!("libhybris EGL clients may not work correctly");
@@ -998,9 +993,6 @@ pub fn run() -> Result<()> {
                 info!("eglBindWaylandDisplayWL not available (may be OK for non-libhybris)");
             }
         }
-
-        // Log the poll fd for debugging
-        debug!("Wayland display poll_fd: {:?}", poll_fd);
     }
 
     // Update state with actual screen size
