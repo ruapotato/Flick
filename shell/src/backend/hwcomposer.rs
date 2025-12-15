@@ -972,6 +972,10 @@ pub fn run() -> Result<()> {
     // Initialize hwcomposer display
     let mut hwc_display = init_hwc_display(&output)?;
 
+    // TODO: Bind EGL to Wayland display for libhybris clients
+    // This requires getting the raw wl_display* pointer which needs wayland_sys crate
+    // For now, android_wlegl protocol handles buffer sharing
+
     // Update state with actual screen size
     state.screen_size = (width as i32, height as i32).into();
     state.gesture_recognizer.screen_size = state.screen_size;
