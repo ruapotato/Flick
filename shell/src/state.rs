@@ -883,12 +883,15 @@ impl Flick {
         let display_ptr = self.display.as_ptr();
         let self_ptr = self as *mut Self;
         unsafe {
+            tracing::debug!("dispatch_clients: calling Display::dispatch_clients");
             if let Err(e) = (*display_ptr).dispatch_clients(&mut *self_ptr) {
                 tracing::warn!("Failed to dispatch clients: {:?}", e);
             }
+            tracing::debug!("dispatch_clients: returned from Display::dispatch_clients");
             if let Err(e) = (*display_ptr).flush_clients() {
                 tracing::warn!("Failed to flush clients: {:?}", e);
             }
+            tracing::debug!("dispatch_clients: complete");
         }
     }
 
