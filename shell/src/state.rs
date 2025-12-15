@@ -1069,14 +1069,16 @@ impl CompositorHandler for Flick {
                 use smithay::wayland::compositor::BufferAssignment;
                 if let BufferAssignment::NewBuffer(buffer) = buffer_assignment {
                     // Try to capture SHM buffer contents
-                    let buffer_data = with_buffer_contents(buffer, |ptr, len, buf_data| {
+                    let buffer_data = with_buffer_contents(buffer, |ptr, _pool_len, buf_data| {
                         let width = buf_data.width as u32;
                         let height = buf_data.height as u32;
                         let stride = buf_data.stride as u32;
+                        // Only copy the actual buffer data, not the entire SHM pool
+                        let buffer_len = (stride * height) as usize;
                         let pixels = unsafe {
-                            std::slice::from_raw_parts(ptr, len).to_vec()
+                            std::slice::from_raw_parts(ptr, buffer_len).to_vec()
                         };
-                        tracing::debug!("Captured buffer: {}x{}, stride={}, {} bytes", width, height, stride, len);
+                        tracing::debug!("Captured buffer: {}x{}, stride={}, {} bytes", width, height, stride, buffer_len);
                         StoredBuffer { width, height, stride, pixels }
                     });
 
