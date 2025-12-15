@@ -114,23 +114,26 @@ unsafe extern "C" fn present_callback(
         let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
 
         // Set buffer on the layer (if we have one)
+        // NOTE: Pass -1 (no fence) to layer - the fence goes to set_client_target
+        // HWC2 takes ownership of fences, so we can't pass the same fd twice
         let layer_err = if !data.hwc2_layer.is_null() {
             hwcomposer_ffi::hwc2_compat_layer_set_buffer(
                 data.hwc2_layer,
                 slot,
                 buffer,
-                acquire_fence,
+                -1, // No fence for layer - use client_target fence only
             )
         } else {
             0 // No layer, skip
         };
 
-        // Set client target with the buffer
+        // Set client target with the buffer and the acquire fence
+        // This is the main presentation path for CLIENT composition
         let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
             data.hwc2_display,
             slot,
             buffer,
-            acquire_fence,
+            acquire_fence, // Only pass fence here
             0, // HAL_DATASPACE_UNKNOWN
         );
 
@@ -964,7 +967,11 @@ fn render_frame(
                 frame_num, color[0], color[1], color[2], sw, sh);
         }
     } else {
-        // Normal rendering mode
+        // Normal rendering mode - log first entry and every 60 frames
+        if frame_num == 121 {
+            info!("Exiting test mode, starting normal rendering (frame 121)");
+        }
+
         // Determine background color based on shell view
         let shell_view = state.shell.view;
         let bg_color = match shell_view {
@@ -972,6 +979,10 @@ fn render_frame(
             ShellView::Switcher => [0.05, 0.05, 0.08, 1.0],
             ShellView::App | ShellView::LockScreen => [0.0, 0.0, 0.0, 1.0],
         };
+
+        if log_frame {
+            info!("Frame {}: view={:?}, rendering", frame_num, shell_view);
+        }
 
         // Clear screen with background color
         unsafe {
@@ -1001,6 +1012,9 @@ fn render_frame(
             ShellView::App | ShellView::LockScreen => {
                 // For apps/lock screen, we'll render Wayland surfaces later
                 // For now, just show the background
+                if log_frame {
+                    debug!("App/LockScreen view - background only");
+                }
             }
         }
     }
