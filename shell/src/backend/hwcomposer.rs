@@ -976,7 +976,7 @@ pub fn run() -> Result<()> {
     // This is required for EGL_WL_bind_wayland_display extension to work
     {
         // Get the raw wl_display pointer using wayland-backend's server_system feature
-        let display_ref = state.display.borrow();
+        let mut display_ref = state.display.borrow_mut();
         let backend = display_ref.backend();
 
         // With server_system feature, backend provides display_ptr()
