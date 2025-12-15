@@ -3,9 +3,6 @@
 //! This backend runs on Android-based Linux distributions (Droidian, UBports, etc.)
 //! that use libhybris to access Android's hwcomposer HAL for graphics.
 //!
-//! First partly working version: Test colors display and Slint shell renders,
-//! but lock screen app frames don't update after initial display.
-//!
 //! Environment variables:
 //! - EGL_PLATFORM=hwcomposer (set automatically)
 //! - FLICK_DISPLAY_WIDTH / FLICK_DISPLAY_HEIGHT (optional, override display size)
@@ -942,7 +939,8 @@ fn render_frame(
     }
 
     // For first 120 frames, render alternating bright colors to test basic rendering
-    let test_mode = frame_num <= 120;
+    // Also flash colors every 60 frames after to verify display is still updating
+    let test_mode = frame_num <= 120 || (frame_num % 60 == 0);
 
     if test_mode {
         // Cycle through bright colors: red, green, blue every 40 frames
