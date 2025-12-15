@@ -77,8 +77,6 @@ struct HwcDisplay {
     // HWC2 for display presentation
     hwc2_device: Option<Hwc2Device>,
     hwc2_display: Option<Hwc2Display>,
-    // Shared fence for frame pacing (set by present_callback, read by render_frame)
-    present_fence: std::sync::Arc<std::sync::atomic::AtomicI32>,
 }
 
 /// Present callback data
@@ -89,8 +87,6 @@ struct PresentCallbackData {
     buffer_slot: std::sync::atomic::AtomicU32,
     present_count: std::sync::atomic::AtomicU32,
     present_errors: std::sync::atomic::AtomicU32,
-    /// Shared fence for frame pacing (set here, read by render_frame)
-    present_fence: std::sync::Arc<std::sync::atomic::AtomicI32>,
 }
 
 /// Present callback - called when hwcomposer has a buffer ready to display
@@ -120,21 +116,43 @@ unsafe extern "C" fn present_callback(
         // Get current slot and increment for next buffer
         let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
 
-        // For CLIENT composition, we ONLY set client_target (not layer buffer).
-        // The layer is marked as CLIENT type, meaning HWC2 reads from client_target.
-        // Setting layer_set_buffer for CLIENT layers is incorrect and may confuse HWC2.
+        // Duplicate the acquire fence since HWC2 takes ownership
+        // One for layer buffer, one for client target
+        let layer_fence = if acquire_fence >= 0 {
+            libc::dup(acquire_fence)
+        } else {
+            -1
+        };
 
-        // Step 1: Set client target with our GPU-rendered buffer
+        // Step 1: Set layer buffer (links the buffer to our layer)
+        // Must be done BEFORE validate
+        let layer_err = if !data.hwc2_layer.is_null() {
+            hwcomposer_ffi::hwc2_compat_layer_set_buffer(
+                data.hwc2_layer,
+                slot,
+                buffer,
+                layer_fence,
+            )
+        } else {
+            if layer_fence >= 0 {
+                libc::close(layer_fence);
+            }
+            0
+        };
+
+        // Step 2: Set client target with our GPU-rendered buffer
         // For CLIENT composition, this IS the buffer containing our rendered frame
+        // Must be done BEFORE validate
         let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
             data.hwc2_display,
             slot,
             buffer,
-            acquire_fence,
+            acquire_fence, // Original fence goes here
             0, // HAL_DATASPACE_UNKNOWN
         );
 
-        // Step 2: Validate display composition
+        // Step 3: Validate display composition
+        // Must be called AFTER all buffers are configured
         let mut num_types: u32 = 0;
         let mut num_requests: u32 = 0;
         let validate_err = hwcomposer_ffi::hwc2_compat_display_validate(
@@ -143,7 +161,7 @@ unsafe extern "C" fn present_callback(
             &mut num_requests,
         );
 
-        // Step 3: Accept changes - always call after successful validate
+        // Step 4: Accept changes - always call after successful validate
         // validate_err == 0 means success, == 3 means HAS_CHANGES (also success)
         let accept_err = if validate_err == 0 || validate_err == 3 {
             hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display)
@@ -151,7 +169,7 @@ unsafe extern "C" fn present_callback(
             validate_err // Pass through the error
         };
 
-        // Step 4: Present the frame
+        // Step 5: Present the frame
         let mut present_fence: i32 = -1;
         let present_err = if validate_err == 0 || validate_err == 3 {
             hwcomposer_ffi::hwc2_compat_display_present(
@@ -166,24 +184,15 @@ unsafe extern "C" fn present_callback(
             data.present_errors.fetch_add(1, Ordering::Relaxed);
         }
 
-        // Set the present fence on the buffer for libhybris to wait on before reuse
-        // Also store a duplicate for frame pacing in the render loop
+        // Set the present fence on the buffer for the next frame
         if present_fence >= 0 {
-            // Duplicate fence: one for buffer sync, one for frame pacing
-            let fence_for_pacing = libc::dup(present_fence);
             hwcomposer_ffi::set_buffer_fence(buffer, present_fence);
-
-            // Close any previously stored fence before storing new one
-            let old_fence = data.present_fence.swap(fence_for_pacing, Ordering::AcqRel);
-            if old_fence >= 0 {
-                libc::close(old_fence);
-            }
         }
 
         // Log progress every 60 frames (or first 5 frames for debugging)
         if count % 60 == 0 || count < 5 {
-            eprintln!("HWC2 present #{}: validate={} (types={}, reqs={}), accept={}, target={}, present={}, fence={}, errors={}",
-                count, validate_err, num_types, num_requests, accept_err, target_err, present_err, present_fence,
+            eprintln!("HWC2 present #{}: validate={} (types={}, reqs={}), accept={}, layer={}, target={}, present={}, fence={}, errors={}",
+                count, validate_err, num_types, num_requests, accept_err, layer_err, target_err, present_err, present_fence,
                 data.present_errors.load(Ordering::Relaxed));
         }
     } else {
@@ -517,9 +526,6 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
         None
     };
 
-    // Create shared fence for frame pacing (shared between callback and render loop)
-    let present_fence = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(-1));
-
     // Create present callback data with HWC2 display and layer pointers
     let frame_ready = Rc::new(AtomicBool::new(true));
     let hwc2_display_ptr = hwc2_display.as_ref()
@@ -535,7 +541,6 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
         buffer_slot: std::sync::atomic::AtomicU32::new(0),
         present_count: std::sync::atomic::AtomicU32::new(0),
         present_errors: std::sync::atomic::AtomicU32::new(0),
-        present_fence: present_fence.clone(),
     });
     let callback_data_ptr = Box::into_raw(callback_data) as *mut c_void;
 
@@ -643,7 +648,6 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
         height,
         hwc2_device,
         hwc2_display,
-        present_fence,
     })
 }
 
@@ -961,28 +965,6 @@ fn render_frame(
         RENDER_FRAME_COUNT
     };
     let log_frame = frame_num % 60 == 0;
-
-    // Wait on the previous frame's present fence before starting a new frame
-    // This ensures proper frame pacing and prevents buffer overruns
-    let fence_to_wait = display.present_fence.swap(-1, Ordering::AcqRel);
-    if fence_to_wait >= 0 {
-        // sync_wait: wait for fence to signal (timeout -1 = infinite wait)
-        // This call blocks until the previous frame has been displayed
-        let wait_result = unsafe {
-            // Using poll to wait on the fence with a reasonable timeout
-            let mut pfd = libc::pollfd {
-                fd: fence_to_wait,
-                events: libc::POLLIN,
-                revents: 0,
-            };
-            libc::poll(&mut pfd, 1, 16) // 16ms timeout (one frame at 60fps)
-        };
-        unsafe { libc::close(fence_to_wait); }
-
-        if log_frame && wait_result <= 0 {
-            debug!("Frame sync: wait_result={}", wait_result);
-        }
-    }
 
     // Make our EGL context current
     display.egl_instance.make_current(
