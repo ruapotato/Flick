@@ -832,14 +832,17 @@ pub fn run() -> Result<()> {
     // Initialize hwcomposer display
     let mut hwc_display = init_hwc_display(&output)?;
 
-    // Update state with actual screen size
-    state.screen_size = (width as i32, height as i32).into();
-    state.gesture_recognizer.screen_size = state.screen_size;
-    state.shell.screen_size = state.screen_size;
-    state.shell.quick_settings.screen_size = state.screen_size;
+    // Update state with actual HWC2 screen size (which may differ from initial guess)
+    let hwc2_size: Size<i32, Logical> = (hwc_display.width as i32, hwc_display.height as i32).into();
+    info!("Updating screen size to HWC2 dimensions: {}x{}", hwc_display.width, hwc_display.height);
+    state.screen_size = hwc2_size;
+    state.gesture_recognizer.screen_size = hwc2_size;
+    state.shell.screen_size = hwc2_size;
+    state.shell.quick_settings.screen_size = hwc2_size;
 
     if let Some(ref mut slint_ui) = state.shell.slint_ui {
-        slint_ui.set_size(state.screen_size);
+        slint_ui.set_size(hwc2_size);
+        info!("Slint UI resized to {}x{}", hwc2_size.w, hwc2_size.h);
     }
 
     // Launch lock screen if configured
