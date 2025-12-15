@@ -34,10 +34,7 @@ use smithay::{
         wayland_server::{Display, Resource},
     },
     utils::Transform,
-    wayland::{
-        compositor::{with_surface_tree_downward, TraversalAction},
-        shm::with_buffer_contents,
-    },
+    wayland::compositor,
 };
 
 // Note: ImportAll/ImportMem will be needed once we integrate proper Smithay rendering
@@ -1174,44 +1171,26 @@ fn render_frame(
                         let wl_surface = toplevel.wl_surface();
                         debug!("Window {} surface: {:?}", i, wl_surface.id());
 
-                        // Try to render the toplevel surface directly (avoiding with_surface_tree_downward)
-                        // This avoids potential deadlocks with with_states() during tree traversal
-                        debug!("Window {} trying direct surface render", i);
+                        // Render using stored buffer data from commit handler
+                        debug!("Window {} trying to render stored buffer", i);
 
-                        // Get buffer from the surface data without tree walk
-                        let buffer_info: Option<(u32, u32, Vec<u8>)> = smithay::wayland::compositor::with_states(wl_surface, |data| {
-                            debug!("  direct: inside with_states");
-                            let mut binding = data.cached_state
-                                .get::<smithay::wayland::compositor::SurfaceAttributes>();
-                            let attrs = binding.current();
+                        // Get stored buffer from surface user data
+                        let buffer_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(wl_surface, |data| {
+                            debug!("  stored: inside with_states");
+                            use std::cell::RefCell;
+                            use crate::state::SurfaceBufferData;
 
-                            if let Some(ref buffer_assignment) = attrs.buffer {
-                                debug!("  direct: has buffer assignment");
-                                if let smithay::wayland::compositor::BufferAssignment::NewBuffer(buffer) = buffer_assignment {
-                                    debug!("  direct: NewBuffer, getting contents");
-                                    let result = with_buffer_contents(buffer, |ptr, len, buf_data| {
-                                        let width = buf_data.width as u32;
-                                        let height = buf_data.height as u32;
-                                        let pixels = unsafe {
-                                            std::slice::from_raw_parts(ptr, len).to_vec()
-                                        };
-                                        info!("Surface buffer: {}x{}, stride={}, format={:?}, len={}",
-                                            width, height, buf_data.stride, buf_data.format, len);
-                                        (width, height, pixels)
-                                    });
-                                    match result {
-                                        Ok(data) => Some(data),
-                                        Err(e) => {
-                                            warn!("Failed to access buffer contents: {:?}", e);
-                                            None
-                                        }
-                                    }
+                            if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                let data = buffer_data.borrow();
+                                if let Some(ref stored) = data.buffer {
+                                    debug!("  stored: found buffer {}x{}", stored.width, stored.height);
+                                    Some((stored.width, stored.height, stored.pixels.clone()))
                                 } else {
-                                    debug!("  direct: not a NewBuffer (removed?)");
+                                    debug!("  stored: no buffer in data_map");
                                     None
                                 }
                             } else {
-                                debug!("  direct: no buffer assignment");
+                                debug!("  stored: no SurfaceBufferData in data_map");
                                 None
                             }
                         });
@@ -1219,13 +1198,13 @@ fn render_frame(
 
                         // Render outside of with_states to avoid holding locks
                         if let Some((width, height, pixels)) = buffer_info {
-                            debug!("Window {} rendering {}x{} buffer", i, width, height);
+                            debug!("Window {} rendering {}x{} buffer ({} bytes)", i, width, height, pixels.len());
                             unsafe {
                                 gl::render_texture(width, height, &pixels, display.width, display.height);
                             }
                             debug!("Window {} render complete", i);
                         } else {
-                            debug!("Window {} no buffer to render", i);
+                            debug!("Window {} no stored buffer to render", i);
                         }
                     }
                 }

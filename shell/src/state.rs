@@ -28,8 +28,8 @@ use smithay::{
     wayland::{
         buffer::BufferHandler,
         compositor::{
-            get_parent, is_sync_subsurface, CompositorClientState, CompositorHandler,
-            CompositorState,
+            get_parent, is_sync_subsurface, with_states, CompositorClientState, CompositorHandler,
+            CompositorState, SurfaceAttributes,
         },
         output::{OutputHandler, OutputManagerState},
         selection::{
@@ -42,12 +42,27 @@ use smithay::{
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
         },
-        shm::{ShmHandler, ShmState},
+        shm::{with_buffer_contents, ShmHandler, ShmState},
         socket::ListeningSocketSource,
     },
     wayland::xwayland_shell::XWaylandShellState,
     xwayland::{xwm::X11Wm, XWayland},
 };
+
+/// Stored buffer data for a surface (for rendering without Smithay's renderer)
+#[derive(Debug, Clone)]
+pub struct StoredBuffer {
+    pub width: u32,
+    pub height: u32,
+    pub stride: u32,
+    pub pixels: Vec<u8>,
+}
+
+/// User data key for storing buffer data on surfaces
+#[derive(Debug, Default)]
+pub struct SurfaceBufferData {
+    pub buffer: Option<StoredBuffer>,
+}
 
 use crate::input::{GestureRecognizer, GestureAction};
 use crate::viewport::Viewport;
@@ -1042,6 +1057,40 @@ impl CompositorHandler for Flick {
 
     fn commit(&mut self, surface: &WlSurface) {
         tracing::debug!("Surface commit: {:?}", surface.id());
+
+        // Capture buffer data for hwcomposer backend before on_commit_buffer_handler clears it
+        // This stores the SHM buffer pixels so we can render without Smithay's renderer
+        with_states(surface, |data| {
+            let mut binding = data.cached_state
+                .get::<SurfaceAttributes>();
+            let attrs = binding.current();
+
+            if let Some(ref buffer_assignment) = attrs.buffer {
+                use smithay::wayland::compositor::BufferAssignment;
+                if let BufferAssignment::NewBuffer(buffer) = buffer_assignment {
+                    // Try to capture SHM buffer contents
+                    let buffer_data = with_buffer_contents(buffer, |ptr, len, buf_data| {
+                        let width = buf_data.width as u32;
+                        let height = buf_data.height as u32;
+                        let stride = buf_data.stride as u32;
+                        let pixels = unsafe {
+                            std::slice::from_raw_parts(ptr, len).to_vec()
+                        };
+                        tracing::debug!("Captured buffer: {}x{}, stride={}, {} bytes", width, height, stride, len);
+                        StoredBuffer { width, height, stride, pixels }
+                    });
+
+                    if let Ok(stored) = buffer_data {
+                        // Store in surface user data
+                        data.data_map.insert_if_missing(|| RefCell::new(SurfaceBufferData::default()));
+                        if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                            buffer_data.borrow_mut().buffer = Some(stored);
+                        }
+                    }
+                }
+            }
+        });
+
         smithay::backend::renderer::utils::on_commit_buffer_handler::<Self>(surface);
 
         // Update popup manager state
