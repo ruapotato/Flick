@@ -1084,8 +1084,8 @@ fn render_frame(
     }
 
     // For first 120 frames, render alternating bright colors to test basic rendering
-    // Also flash colors every 60 frames after to verify display is still updating
-    let test_mode = frame_num <= 120 || (frame_num % 60 == 0);
+    // Also flash colors for 10 frames every 120 frames after to verify display is still updating
+    let test_mode = frame_num <= 120 || (frame_num % 120 < 10);
 
     if test_mode {
         // Cycle through bright colors: red, green, blue every 40 frames
@@ -1110,6 +1110,9 @@ fn render_frame(
         // Normal rendering mode
         // Determine background color based on shell view
         let shell_view = state.shell.view;
+        if log_frame {
+            info!("Shell view: {:?}, lock_screen_active: {}", shell_view, state.shell.lock_screen_active);
+        }
         let bg_color = match shell_view {
             ShellView::Home | ShellView::QuickSettings | ShellView::PickDefault | ShellView::LockScreen => [0.1, 0.1, 0.15, 1.0],
             ShellView::Switcher => [0.05, 0.05, 0.08, 1.0],
