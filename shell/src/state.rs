@@ -148,6 +148,9 @@ pub struct Flick {
     pub touch_effects_enabled: bool,
     pub settings_last_check: std::time::Instant,
 
+    // Touch position tracking for hwcomposer backend
+    pub last_touch_pos: HashMap<i32, smithay::utils::Point<f64, smithay::utils::Logical>>,
+
     // Integrated shell UI
     pub shell: Shell,
 
@@ -253,6 +256,7 @@ impl Flick {
             touch_effects: Vec::new(),
             touch_effects_enabled: Self::load_compositor_settings(),  // Load from config
             settings_last_check: Instant::now(),
+            last_touch_pos: HashMap::new(),
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
         }
