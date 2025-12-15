@@ -1022,16 +1022,32 @@ pub fn run() -> Result<()> {
     info!("Entering event loop");
 
     // Main event loop
+    let mut loop_count: u64 = 0;
     loop {
+        loop_count += 1;
+        let log_loop = loop_count % 1000 == 0;
+
+        if log_loop {
+            debug!("Event loop iteration {}", loop_count);
+        }
+
         // Dispatch incoming Wayland client requests - this is critical!
         // Without this, clients connect but their protocol messages are never processed.
         // Use the safe dispatch_clients method that handles the borrow properly.
         state.dispatch_clients();
 
+        if log_loop {
+            debug!("Dispatch clients complete");
+        }
+
         // Dispatch calloop events
         event_loop
             .dispatch(Some(Duration::from_millis(1)), &mut state)
             .map_err(|e| anyhow::anyhow!("Event loop error: {:?}", e))?;
+
+        if log_loop {
+            debug!("Calloop dispatch complete");
+        }
 
         // Skip rendering if session not active
         if !*session_active.borrow() {
