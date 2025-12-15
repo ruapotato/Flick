@@ -320,8 +320,8 @@ fn get_display_dimensions() -> (u32, u32) {
 
 /// Initialize EGL and hwcomposer display
 fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
-    let (width, height) = get_display_dimensions();
-    info!("Initializing hwcomposer display: {}x{}", width, height);
+    let (mut width, mut height) = get_display_dimensions();
+    info!("Initializing hwcomposer display: {}x{} (initial)", width, height);
 
     // Try to unblank the display first via sysfs
     unblank_display();
@@ -402,12 +402,18 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
                     Some(display) => {
                         info!("Got HWC2 primary display");
 
-                        // Get display config
+                        // Get display config and update our dimensions to match HWC2
                         if let Some(config) = display.get_active_config() {
                             info!("HWC2 display config: {}x{} @ {:.1}fps, DPI: {:.1}x{:.1}",
                                 config.width, config.height,
                                 1_000_000_000.0 / config.vsync_period as f64,
                                 config.dpi_x, config.dpi_y);
+                            // Use HWC2's dimensions - they're authoritative
+                            if config.width > 0 && config.height > 0 {
+                                width = config.width as u32;
+                                height = config.height as u32;
+                                info!("Using HWC2 dimensions: {}x{}", width, height);
+                            }
                         }
 
                         // Power on display
