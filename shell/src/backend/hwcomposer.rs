@@ -113,7 +113,19 @@ unsafe extern "C" fn present_callback(
         // Get current slot and increment for next buffer
         let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
 
-        // Set client target with the buffer and acquire fence
+        // Set buffer on the layer (if we have one)
+        let layer_err = if !data.hwc2_layer.is_null() {
+            hwcomposer_ffi::hwc2_compat_layer_set_buffer(
+                data.hwc2_layer,
+                slot,
+                buffer,
+                acquire_fence,
+            )
+        } else {
+            0 // No layer, skip
+        };
+
+        // Set client target with the buffer
         let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
             data.hwc2_display,
             slot,
@@ -131,7 +143,7 @@ unsafe extern "C" fn present_callback(
             &mut num_requests,
         );
 
-        // Accept changes if needed
+        // Accept changes if needed (validate_err == 3 means HAS_CHANGES)
         if validate_err == 0 || validate_err == 3 {
             if num_types > 0 || num_requests > 0 {
                 hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display);
@@ -148,35 +160,21 @@ unsafe extern "C" fn present_callback(
                 data.present_errors.fetch_add(1, Ordering::Relaxed);
             }
 
-            // Wait on present fence to ensure frame is displayed before next present
+            // Set the present fence on the buffer for the next frame
             if present_fence >= 0 {
-                // Use poll to wait on the sync fence (timeout 100ms)
-                let mut pfd = libc::pollfd {
-                    fd: present_fence,
-                    events: libc::POLLIN,
-                    revents: 0,
-                };
-                let poll_ret = libc::poll(&mut pfd, 1, 100);
-                if poll_ret < 0 && count % 60 == 0 {
-                    eprintln!("poll on present_fence failed: {}", *libc::__errno_location());
-                }
-                libc::close(present_fence);
+                hwcomposer_ffi::set_buffer_fence(buffer, present_fence);
             }
 
-            // Log every 60 frames
+            // Log progress every 60 frames
             if count % 60 == 0 {
-                eprintln!("HWC2 present #{}: target={}, validate={}, present={}, errors={}",
-                    count, target_err, validate_err, present_err,
+                eprintln!("HWC2 present #{}: layer={}, target={}, validate={}, present={}, errors={}",
+                    count, layer_err, target_err, validate_err, present_err,
                     data.present_errors.load(Ordering::Relaxed));
             }
         } else {
             data.present_errors.fetch_add(1, Ordering::Relaxed);
             if count % 60 == 0 {
                 eprintln!("HWC2 validate failed: err={}", validate_err);
-            }
-            // Close fence if validate failed
-            if acquire_fence >= 0 {
-                libc::close(acquire_fence);
             }
         }
     } else {
@@ -966,11 +964,7 @@ fn render_frame(
                 frame_num, color[0], color[1], color[2], sw, sh);
         }
     } else {
-        // Normal rendering mode - log first entry and every 60 frames
-        if frame_num == 121 {
-            info!("Exiting test mode, starting normal rendering (frame 121)");
-        }
-
+        // Normal rendering mode
         // Determine background color based on shell view
         let shell_view = state.shell.view;
         let bg_color = match shell_view {
@@ -978,10 +972,6 @@ fn render_frame(
             ShellView::Switcher => [0.05, 0.05, 0.08, 1.0],
             ShellView::App | ShellView::LockScreen => [0.0, 0.0, 0.0, 1.0],
         };
-
-        if log_frame {
-            info!("Frame {}: view={:?}, rendering", frame_num, shell_view);
-        }
 
         // Clear screen with background color
         unsafe {
@@ -1011,9 +1001,6 @@ fn render_frame(
             ShellView::App | ShellView::LockScreen => {
                 // For apps/lock screen, we'll render Wayland surfaces later
                 // For now, just show the background
-                if log_frame {
-                    debug!("App/LockScreen view - background only");
-                }
             }
         }
     }
