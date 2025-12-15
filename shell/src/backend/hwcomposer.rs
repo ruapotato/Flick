@@ -1164,16 +1164,18 @@ fn render_frame(
             ShellView::App => {
                 // Render Wayland client surfaces (windows)
                 let windows: Vec<_> = state.space.elements().cloned().collect();
-                if log_frame {
-                    info!("Rendering {} Wayland windows", windows.len());
-                }
+                debug!("ShellView::App: rendering {} Wayland windows", windows.len());
 
-                for window in windows.iter() {
+                for (i, window) in windows.iter().enumerate() {
+                    debug!("Processing window {}", i);
                     // Get the surface from the window
                     if let Some(toplevel) = window.toplevel() {
+                        debug!("Window {} has toplevel", i);
                         let wl_surface = toplevel.wl_surface();
+                        debug!("Window {} surface: {:?}", i, wl_surface.id());
 
                         // Walk the surface tree and render each surface
+                        debug!("Window {} starting surface tree walk", i);
                         with_surface_tree_downward(
                             wl_surface,
                             (),
@@ -1237,12 +1239,15 @@ fn render_frame(
                             },
                             |_, _, ()| true,
                         );
+                        debug!("Window {} finished surface tree walk", i);
                     }
                 }
+                debug!("ShellView::App: finished rendering windows");
             }
         }
     }
 
+    debug!("render_frame: before swap_buffers");
     // Swap EGL buffers - this triggers the present callback which handles display
     display.egl_instance.swap_buffers(display.egl_display, display.egl_surface)
         .map_err(|e| anyhow::anyhow!("Failed to swap buffers: {:?}", e))?;
