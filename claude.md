@@ -93,9 +93,16 @@ Build takes ~8 minutes on phone.
 - OpenGL ES rendering: WORKING (test colors, Slint UI)
 - HWC2 device creation: WORKING
 - HWC2 display access: WORKING
-- HWC2 layer creation: FAILING (returns NULL)
-- HWC2 present calls: Return success (0) but display stays black
-- Physical display: BLACK
+- HWC2 layer creation: WORKING (after callback registration)
+- HWC2 present calls: WORKING (validate->accept->present flow)
+- Physical display: WORKING (shows UI)
+- Touch input: WORKING (gestures recognized)
+
+### Quick Start
+```bash
+# Run flick on phone (from local machine)
+./start_phone.sh
+```
 
 ### Key Files
 - `shell/src/backend/hwcomposer.rs` - Main backend
@@ -110,13 +117,17 @@ Build takes ~8 minutes on phone.
 - android-service@hwcomposer.service OR
 - Direct start: `sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' /usr/lib/halium-wrappers/android-service.sh hwcomposer start`
 
-### Research Needed
-- How phoc/wlroots handles hwcomposer on droidian
-- Why layer creation fails
-- Whether libhybris-hwcomposerwindow handles HWC2 internally
-- Correct initialization sequence
+### HWC2 Present Flow (Critical!)
+The correct order for HWC2 frame presentation:
+1. Set layer buffer (hwc2_compat_layer_set_buffer)
+2. Set client target (hwc2_compat_display_set_client_target)
+3. Validate display (hwc2_compat_display_validate)
+4. Accept changes (hwc2_compat_display_accept_changes)
+5. Present (hwc2_compat_display_present)
+
+Buffer/fence must be set BEFORE validate, not after!
 
 ### Notes
-- phosh works on this device, so hwcomposer IS functional
-- Layer creation may require callback registration first
-- May need to look at phoc source code
+- HWC2 callbacks must be registered before layer creation works
+- Duplicate fences when passing to multiple HWC2 calls (HWC2 takes ownership)
+- Call glFinish() before eglSwapBuffers for proper GPU sync
