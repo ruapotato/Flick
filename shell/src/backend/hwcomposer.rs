@@ -345,10 +345,17 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
         .map(|s| s.success())
         .unwrap_or(false);
 
-    let hwc_service_active = systemd_active || composer_process_running;
+    // Log detection results for debugging
+    info!("HWC service detection: systemd={}, pgrep={}", systemd_active, composer_process_running);
+
+    // Always try HWC2 initialization - the detection is unreliable from within Flick
+    // If the service isn't running, initialization will fail gracefully
+    let hwc_service_active = true;
 
     if composer_process_running && !systemd_active {
         info!("Composer process running (started directly, not via systemd)");
+    } else if !systemd_active && !composer_process_running {
+        info!("Detection failed but trying HWC2 anyway (detection unreliable from within compositor)");
     }
 
     let (hwc2_device, hwc2_display): (Option<Hwc2Device>, Option<Hwc2Display>) = if hwc_service_active {
