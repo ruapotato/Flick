@@ -134,9 +134,21 @@ unsafe extern "C" fn present_callback(
             validate_err // Pass through the error
         };
 
-        // Step 3: Set client target with our GPU-rendered buffer
+        // Step 3: Set layer buffer (links the buffer to our layer)
+        // Even for CLIENT composition, HWC2 may need to know the layer's buffer
+        let layer_err = if !data.hwc2_layer.is_null() {
+            hwcomposer_ffi::hwc2_compat_layer_set_buffer(
+                data.hwc2_layer,
+                slot,
+                buffer,
+                acquire_fence,
+            )
+        } else {
+            0
+        };
+
+        // Step 4: Set client target with our GPU-rendered buffer
         // For CLIENT composition, this IS the buffer containing our rendered frame
-        // Note: We do NOT set layer buffer for CLIENT composition - only client target
         let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
             data.hwc2_display,
             slot,
@@ -145,7 +157,7 @@ unsafe extern "C" fn present_callback(
             0, // HAL_DATASPACE_UNKNOWN
         );
 
-        // Step 4: Present the frame
+        // Step 5: Present the frame
         let mut present_fence: i32 = -1;
         let present_err = if validate_err == 0 || validate_err == 3 {
             hwcomposer_ffi::hwc2_compat_display_present(
@@ -167,8 +179,8 @@ unsafe extern "C" fn present_callback(
 
         // Log progress every 60 frames (or first 5 frames for debugging)
         if count % 60 == 0 || count < 5 {
-            eprintln!("HWC2 present #{}: validate={} (types={}, reqs={}), accept={}, target={}, present={}, fence={}, errors={}",
-                count, validate_err, num_types, num_requests, accept_err, target_err, present_err, present_fence,
+            eprintln!("HWC2 present #{}: validate={} (types={}, reqs={}), accept={}, layer={}, target={}, present={}, fence={}, errors={}",
+                count, validate_err, num_types, num_requests, accept_err, layer_err, target_err, present_err, present_fence,
                 data.present_errors.load(Ordering::Relaxed));
         }
     } else {
