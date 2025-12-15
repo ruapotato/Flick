@@ -35,8 +35,17 @@ fi
 sleep 2
 echo "hwcomposer started"
 
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+# Use the real user's runtime directory, not root's
+REAL_UID=$(id -u "${SUDO_USER:-$USER}")
+export XDG_RUNTIME_DIR="/run/user/$REAL_UID"
 export EGL_PLATFORM=hwcomposer
+
+# Ensure the runtime dir exists and is accessible
+if [ ! -d "$XDG_RUNTIME_DIR" ]; then
+    echo "Warning: XDG_RUNTIME_DIR $XDG_RUNTIME_DIR does not exist, creating..."
+    mkdir -p "$XDG_RUNTIME_DIR"
+    chown "$REAL_UID:$REAL_UID" "$XDG_RUNTIME_DIR"
+fi
 
 echo "Starting Flick..."
 
