@@ -223,16 +223,6 @@ pub mod hwc2_blend_mode {
     pub const HWC2_BLEND_MODE_COVERAGE: i32 = 3;
 }
 
-/// HWC2 transform values
-pub mod hwc2_transform {
-    pub const HWC_TRANSFORM_NONE: i32 = 0;
-    pub const HWC_TRANSFORM_FLIP_H: i32 = 1;
-    pub const HWC_TRANSFORM_FLIP_V: i32 = 2;
-    pub const HWC_TRANSFORM_ROT_90: i32 = 4;
-    pub const HWC_TRANSFORM_ROT_180: i32 = 3;
-    pub const HWC_TRANSFORM_ROT_270: i32 = 7;
-}
-
 /// HWC2 error codes
 pub type hwc2_error_t = i32;
 
@@ -451,11 +441,6 @@ extern "C" {
         bottom: i32,
     ) -> hwc2_error_t;
 
-    pub fn hwc2_compat_layer_set_transform(
-        layer: *mut hwc2_compat_layer_t,
-        transform: i32,
-    ) -> hwc2_error_t;
-
     /// Get fence from output fences
     pub fn hwc2_compat_out_fences_get_fence(
         fences: *mut hwc2_compat_out_fences_t,
@@ -622,18 +607,6 @@ impl Hwc2Display {
             Err(err)
         }
     }
-
-    /// Enable or disable vsync
-    pub fn set_vsync_enabled(&self, enabled: bool) -> Result<(), hwc2_error_t> {
-        let err = unsafe {
-            hwc2_compat_display_set_vsync_enabled(self.display, if enabled { 1 } else { 0 })
-        };
-        if err == 0 {
-            Ok(())
-        } else {
-            Err(err)
-        }
-    }
 }
 
 /// Safe wrapper for HWC2 layer
@@ -715,16 +688,6 @@ impl Hwc2Layer {
     /// Set visible region
     pub fn set_visible_region(&self, left: i32, top: i32, right: i32, bottom: i32) -> Result<(), hwc2_error_t> {
         let err = unsafe { hwc2_compat_layer_set_visible_region(self.layer, left, top, right, bottom) };
-        if err == 0 {
-            Ok(())
-        } else {
-            Err(err)
-        }
-    }
-
-    /// Set transform (rotation/flip)
-    pub fn set_transform(&self, transform: i32) -> Result<(), hwc2_error_t> {
-        let err = unsafe { hwc2_compat_layer_set_transform(self.layer, transform) };
         if err == 0 {
             Ok(())
         } else {

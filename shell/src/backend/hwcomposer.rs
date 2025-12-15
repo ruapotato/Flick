@@ -41,7 +41,11 @@ use smithay::{
 use crate::state::Flick;
 use crate::shell::ShellView;
 
-use super::hwcomposer_ffi::{self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format};
+use super::hwcomposer_ffi::{
+    self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format,
+    Hwc2Device, Hwc2Display, hwc2_initialize, gralloc_initialize,
+    HWC2EventListener, hwc2_compat_device_t, hwc2_display_t,
+};
 
 // Re-use khronos-egl for raw EGL access
 use khronos_egl as egl;
@@ -70,11 +74,19 @@ struct HwcDisplay {
     egl_context: egl::Context,
     width: u32,
     height: u32,
+    // HWC2 for display presentation
+    hwc2_device: Option<Hwc2Device>,
+    hwc2_display: Option<Hwc2Display>,
 }
 
 /// Present callback data
 struct PresentCallbackData {
     frame_ready: Rc<AtomicBool>,
+    hwc2_display: *mut hwcomposer_ffi::hwc2_compat_display_t,
+    hwc2_layer: *mut hwcomposer_ffi::hwc2_compat_layer_t,
+    buffer_slot: std::sync::atomic::AtomicU32,
+    present_count: std::sync::atomic::AtomicU32,
+    present_errors: std::sync::atomic::AtomicU32,
 }
 
 /// Present callback - called when hwcomposer has a buffer ready to display
@@ -88,22 +100,156 @@ unsafe extern "C" fn present_callback(
     }
 
     let data = &*(user_data as *const PresentCallbackData);
+    let count = data.present_count.fetch_add(1, Ordering::Relaxed);
 
-    // Get and close the fence (synchronous wait)
-    let fence_fd = hwcomposer_ffi::get_buffer_fence(buffer);
-    if fence_fd >= 0 {
-        unsafe { libc::close(fence_fd) };
+    // Get the acquire fence from the buffer
+    let acquire_fence = hwcomposer_ffi::get_buffer_fence(buffer);
+
+    // Present via HWC2 if we have a display
+    if !data.hwc2_display.is_null() && !buffer.is_null() {
+        // Get current slot and increment for next buffer
+        let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
+
+        // Set buffer on the layer (if we have one)
+        let layer_err = if !data.hwc2_layer.is_null() {
+            hwcomposer_ffi::hwc2_compat_layer_set_buffer(
+                data.hwc2_layer,
+                slot,
+                buffer,
+                acquire_fence,
+            )
+        } else {
+            0 // No layer, skip
+        };
+
+        // Set client target with the buffer
+        let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
+            data.hwc2_display,
+            slot,
+            buffer,
+            acquire_fence,
+            0, // HAL_DATASPACE_UNKNOWN
+        );
+
+        // Validate display
+        let mut num_types: u32 = 0;
+        let mut num_requests: u32 = 0;
+        let validate_err = hwcomposer_ffi::hwc2_compat_display_validate(
+            data.hwc2_display,
+            &mut num_types,
+            &mut num_requests,
+        );
+
+        // Accept changes if needed (validate_err == 3 means HAS_CHANGES)
+        if validate_err == 0 || validate_err == 3 {
+            if num_types > 0 || num_requests > 0 {
+                hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display);
+            }
+
+            // Present the frame
+            let mut present_fence: i32 = -1;
+            let present_err = hwcomposer_ffi::hwc2_compat_display_present(
+                data.hwc2_display,
+                &mut present_fence,
+            );
+
+            if present_err != 0 {
+                data.present_errors.fetch_add(1, Ordering::Relaxed);
+            }
+
+            // Set the present fence on the buffer for the next frame
+            if present_fence >= 0 {
+                hwcomposer_ffi::set_buffer_fence(buffer, present_fence);
+            }
+
+            // Log progress every 60 frames
+            if count % 60 == 0 {
+                eprintln!("HWC2 present #{}: layer={}, target={}, validate={}, present={}, errors={}",
+                    count, layer_err, target_err, validate_err, present_err,
+                    data.present_errors.load(Ordering::Relaxed));
+            }
+        } else {
+            data.present_errors.fetch_add(1, Ordering::Relaxed);
+            if count % 60 == 0 {
+                eprintln!("HWC2 validate failed: err={}", validate_err);
+            }
+        }
+    } else {
+        // No HWC2, just close the fence
+        if acquire_fence >= 0 {
+            libc::close(acquire_fence);
+        }
     }
 
     data.frame_ready.store(true, Ordering::Release);
 }
 
-/// Try to unblank the display via fbdev
+// ============================================================================
+// HWC2 Event Callbacks
+// ============================================================================
+
+/// Global HWC2 device pointer for use in callbacks
+static mut HWC2_DEVICE_PTR: *mut hwc2_compat_device_t = std::ptr::null_mut();
+
+/// Vsync callback - called when display vsync occurs
+unsafe extern "C" fn hwc2_on_vsync(
+    _listener: *mut HWC2EventListener,
+    _sequence_id: i32,
+    _display: hwc2_display_t,
+    _timestamp: i64,
+) {
+    // We don't use vsync for now, but the callback must exist
+}
+
+/// Hotplug callback - called when display is connected/disconnected
+unsafe extern "C" fn hwc2_on_hotplug(
+    _listener: *mut HWC2EventListener,
+    _sequence_id: i32,
+    display: hwc2_display_t,
+    connected: bool,
+    primary_display: bool,
+) {
+    eprintln!("HWC2 hotplug: display={}, connected={}, primary={}",
+              display, connected, primary_display);
+
+    // Notify the HWC2 device about the hotplug event
+    if !HWC2_DEVICE_PTR.is_null() {
+        hwcomposer_ffi::hwc2_compat_device_on_hotplug(HWC2_DEVICE_PTR, display, connected);
+    }
+}
+
+/// Refresh callback - called when display needs refresh
+unsafe extern "C" fn hwc2_on_refresh(
+    _listener: *mut HWC2EventListener,
+    _sequence_id: i32,
+    _display: hwc2_display_t,
+) {
+    // We don't use refresh callbacks for now
+}
+
+/// Try to unblank/power on the display via various methods
 fn unblank_display() {
     use std::fs::OpenOptions;
     use std::os::unix::io::AsRawFd;
 
-    // Try fbdev ioctl to unblank
+    // Method 1: Try backlight bl_power sysfs (most reliable on Qualcomm devices)
+    // bl_power: 0 = FB_BLANK_UNBLANK (on), 4 = FB_BLANK_POWERDOWN (off)
+    if let Ok(()) = std::fs::write("/sys/class/backlight/panel0-backlight/bl_power", "0") {
+        info!("Display powered on via backlight bl_power sysfs");
+    } else {
+        debug!("Could not write to panel0-backlight/bl_power");
+    }
+
+    // Method 2: Set brightness to max if it's at 0
+    if let Ok(brightness) = std::fs::read_to_string("/sys/class/backlight/panel0-backlight/brightness") {
+        if brightness.trim() == "0" {
+            if let Ok(()) = std::fs::write("/sys/class/backlight/panel0-backlight/brightness", "255") {
+                info!("Backlight brightness set to max");
+            }
+        }
+    }
+
+    // Method 3: Try fbdev ioctl to unblank
     const FBIOBLANK: libc::c_ulong = 0x4611;
     const FB_BLANK_UNBLANK: libc::c_int = 0;
 
@@ -113,15 +259,15 @@ fn unblank_display() {
         if result == 0 {
             info!("Display unblanked via fbdev ioctl");
         } else {
-            warn!("fbdev unblank ioctl failed: {}", std::io::Error::last_os_error());
+            debug!("fbdev unblank ioctl failed: {}", std::io::Error::last_os_error());
         }
     } else {
-        warn!("Could not open /dev/fb0 to unblank display");
+        debug!("Could not open /dev/fb0 to unblank display");
     }
 
-    // Also try sysfs method
+    // Method 4: Try sysfs graphics blank
     if let Ok(()) = std::fs::write("/sys/class/graphics/fb0/blank", "0") {
-        info!("Display unblanked via sysfs");
+        info!("Display unblanked via graphics sysfs");
     }
 }
 
@@ -173,20 +319,189 @@ fn get_display_dimensions() -> (u32, u32) {
 }
 
 /// Initialize EGL and hwcomposer display
-fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
+fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
     let (width, height) = get_display_dimensions();
     info!("Initializing hwcomposer display: {}x{}", width, height);
 
-    // Try to unblank the display first
+    // Try to unblank the display first via sysfs
     unblank_display();
 
     // Set EGL platform environment variable
     std::env::set_var("EGL_PLATFORM", "hwcomposer");
 
-    // Create present callback data
+    // Check if android hwcomposer is running
+    // Either the systemd service is active, OR the composer process is running directly
+    let systemd_active = std::process::Command::new("systemctl")
+        .args(["is-active", "--quiet", "android-service@hwcomposer.service"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    // Also check if the composer process is running directly (in case started via script)
+    let composer_process_running = std::process::Command::new("pgrep")
+        .args(["-f", "android.hardware.graphics.composer"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    let hwc_service_active = systemd_active || composer_process_running;
+
+    if composer_process_running && !systemd_active {
+        info!("Composer process running (started directly, not via systemd)");
+    }
+
+    let (hwc2_device, hwc2_display): (Option<Hwc2Device>, Option<Hwc2Display>) = if hwc_service_active {
+        info!("Android hwcomposer service is active");
+
+        // Initialize gralloc first (required for buffer allocation)
+        info!("Initializing hybris gralloc...");
+        gralloc_initialize();
+        info!("Gralloc initialized");
+
+        // Initialize HWC2 subsystem BEFORE creating device
+        info!("Calling hybris_hwc2_initialize()...");
+        hwc2_initialize();
+        info!("HWC2 subsystem initialized");
+
+        // Now try to create HWC2 device
+        info!("Creating HWC2 device...");
+        let hwc2_device = Hwc2Device::new();
+
+        match hwc2_device {
+            Some(device) => {
+                info!("HWC2 device created successfully");
+
+                // Store device pointer for callbacks
+                unsafe {
+                    HWC2_DEVICE_PTR = device.as_ptr();
+                }
+
+                // Create event listener with our callbacks
+                // Note: This must be leaked/static because HWC2 keeps a reference to it
+                let event_listener = Box::leak(Box::new(HWC2EventListener {
+                    on_vsync_received: Some(hwc2_on_vsync),
+                    on_hotplug_received: Some(hwc2_on_hotplug),
+                    on_refresh_received: Some(hwc2_on_refresh),
+                }));
+
+                // Register callbacks with the device
+                info!("Registering HWC2 callbacks...");
+                device.register_callback(event_listener as *mut _, 0);
+                info!("HWC2 callbacks registered");
+
+                // Trigger hotplug for primary display (ID 0)
+                // This tells the hwcomposer that display 0 is connected
+                device.on_hotplug(0, true);
+                info!("Triggered hotplug for primary display");
+
+                // Small delay to allow hotplug processing
+                std::thread::sleep(std::time::Duration::from_millis(100));
+
+                // Get primary display
+                match device.get_primary_display() {
+                    Some(display) => {
+                        info!("Got HWC2 primary display");
+
+                        // Get display config
+                        if let Some(config) = display.get_active_config() {
+                            info!("HWC2 display config: {}x{} @ {:.1}fps, DPI: {:.1}x{:.1}",
+                                config.width, config.height,
+                                1_000_000_000.0 / config.vsync_period as f64,
+                                config.dpi_x, config.dpi_y);
+                        }
+
+                        // Power on display
+                        match display.set_power_mode(true) {
+                            Ok(()) => info!("HWC2 display powered on"),
+                            Err(e) => warn!("Failed to power on HWC2 display: error {}", e),
+                        }
+
+                        (Some(device), Some(display))
+                    }
+                    None => {
+                        warn!("Failed to get HWC2 primary display");
+                        (Some(device), None)
+                    }
+                }
+            }
+            None => {
+                warn!("Failed to create HWC2 device");
+                (None, None)
+            }
+        }
+    } else {
+        error!("Android hwcomposer service is NOT running!");
+        error!("Please start it with: sudo systemctl start android-service@hwcomposer.service");
+        error!("Display output will not work without the hwcomposer service.");
+        warn!("Continuing without HWC2 - rendering will work but display may be black");
+        (None, None)
+    };
+
+    // Create HWC2 layer if we have a display
+    let hwc2_layer = if let Some(ref display) = hwc2_display {
+        match display.create_layer() {
+            Some(layer) => {
+                info!("Created HWC2 layer");
+                // Configure the layer for fullscreen client composition
+                let w = width as i32;
+                let h = height as i32;
+
+                // Set composition type to CLIENT (we render, HWC just displays)
+                if let Err(e) = layer.set_composition_type(hwcomposer_ffi::hwc2_composition::HWC2_COMPOSITION_CLIENT) {
+                    warn!("Failed to set layer composition type: {}", e);
+                }
+
+                // Set blend mode to NONE (opaque)
+                if let Err(e) = layer.set_blend_mode(hwcomposer_ffi::hwc2_blend_mode::HWC2_BLEND_MODE_NONE) {
+                    warn!("Failed to set layer blend mode: {}", e);
+                }
+
+                // Set display frame (where on screen)
+                if let Err(e) = layer.set_display_frame(0, 0, w, h) {
+                    warn!("Failed to set layer display frame: {}", e);
+                }
+
+                // Set source crop (portion of buffer)
+                if let Err(e) = layer.set_source_crop(0.0, 0.0, width as f32, height as f32) {
+                    warn!("Failed to set layer source crop: {}", e);
+                }
+
+                // Set visible region
+                if let Err(e) = layer.set_visible_region(0, 0, w, h) {
+                    warn!("Failed to set layer visible region: {}", e);
+                }
+
+                // Set plane alpha to fully opaque
+                if let Err(e) = layer.set_plane_alpha(1.0) {
+                    warn!("Failed to set layer plane alpha: {}", e);
+                }
+
+                Some(layer)
+            }
+            None => {
+                warn!("Failed to create HWC2 layer");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Create present callback data with HWC2 display and layer pointers
     let frame_ready = Rc::new(AtomicBool::new(true));
+    let hwc2_display_ptr = hwc2_display.as_ref()
+        .map(|d| d.as_ptr())
+        .unwrap_or(std::ptr::null_mut());
+    let hwc2_layer_ptr = hwc2_layer.as_ref()
+        .map(|l| l.as_ptr())
+        .unwrap_or(std::ptr::null_mut());
     let callback_data = Box::new(PresentCallbackData {
         frame_ready: frame_ready.clone(),
+        hwc2_display: hwc2_display_ptr,
+        hwc2_layer: hwc2_layer_ptr,
+        buffer_slot: std::sync::atomic::AtomicU32::new(0),
+        present_count: std::sync::atomic::AtomicU32::new(0),
+        present_errors: std::sync::atomic::AtomicU32::new(0),
     });
     let callback_data_ptr = Box::into_raw(callback_data) as *mut c_void;
 
@@ -279,6 +594,9 @@ fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
     // Initialize GL function pointers
     unsafe { gl::init(); }
 
+    // Try to power on display again after EGL init (in case it was turned off)
+    unblank_display();
+
     info!("HWComposer display initialized successfully");
 
     Ok(HwcDisplay {
@@ -289,6 +607,8 @@ fn init_hwc_display(output: &Output) -> Result<HwcDisplay> {
         egl_context,
         width,
         height,
+        hwc2_device,
+        hwc2_display,
     })
 }
 
