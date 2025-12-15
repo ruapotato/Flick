@@ -78,14 +78,28 @@ impl LockConfig {
     /// Load config from file, or return default if not found
     pub fn load() -> Self {
         if let Some(path) = Self::config_path() {
-            if let Ok(contents) = fs::read_to_string(&path) {
-                if let Ok(config) = serde_json::from_str(&contents) {
-                    tracing::info!("Loaded lock config from {:?}", path);
-                    return config;
+            tracing::info!("Looking for lock config at: {:?}", path);
+            match fs::read_to_string(&path) {
+                Ok(contents) => {
+                    tracing::info!("Read lock config file, contents: {}", contents);
+                    match serde_json::from_str(&contents) {
+                        Ok(config) => {
+                            tracing::info!("Loaded lock config from {:?}", path);
+                            return config;
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to parse lock config: {:?}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::info!("Could not read lock config file: {:?}", e);
                 }
             }
+        } else {
+            tracing::warn!("Could not determine lock config path (HOME not set?)");
         }
-        tracing::info!("No lock config found, using defaults (no lock)");
+        tracing::info!("Using default lock config (no lock)");
         Self::default()
     }
 
