@@ -25,9 +25,10 @@ Item {
     Repeater {
         model: 20
         Rectangle {
+            id: particle
             property real startX: Math.random() * lockScreen.width
             property real startY: Math.random() * lockScreen.height
-            property real duration: 8000 + Math.random() * 12000
+            property real animDuration: 8000 + Math.random() * 12000
 
             x: startX
             y: startY
@@ -41,7 +42,7 @@ Item {
                 loops: Animation.Infinite
                 PropertyAnimation {
                     to: -20
-                    duration: parent.duration
+                    duration: particle.animDuration
                     easing.type: Easing.Linear
                 }
                 PropertyAnimation {
