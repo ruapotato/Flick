@@ -525,7 +525,7 @@ impl Shell {
             .arg(&shell_cmd)
             .env("WAYLAND_DISPLAY", socket_name)
             .env("QT_QPA_PLATFORM", "wayland")
-            .env("QT_WAYLAND_CLIENT_BUFFER_INTEGRATION", "wayland-egl")
+            .env("QT_WAYLAND_CLIENT_BUFFER_INTEGRATION", "shm")
             .env("FLICK_STATE_DIR", &state_dir)
             .env("XDG_RUNTIME_DIR", std::env::var("XDG_RUNTIME_DIR").unwrap_or_default())
             .spawn()
