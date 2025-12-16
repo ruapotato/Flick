@@ -21,6 +21,8 @@ echo "$STATE_DIR" > "$STATE_DIR/state_dir.txt"
 # Run qmlscene - state dir is passed via FLICK_STATE_DIR env var
 # Note: qmlscene only takes the QML file as argument, no extras
 export FLICK_STATE_DIR="$STATE_DIR"
+# Allow QML to read local files via XMLHttpRequest
+export QML_XHR_ALLOW_FILE_READ=1
 # Suppress Qt debug output (can corrupt terminal)
 export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false;qt.accessibility.*=false"
 export QT_MESSAGE_PATTERN=""
