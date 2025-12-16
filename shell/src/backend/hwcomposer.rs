@@ -1313,6 +1313,11 @@ fn render_frame(
 
                     // Render outside of with_states to avoid holding locks
                     if let Some((width, height, pixels)) = buffer_info {
+                        // Log first pixel to verify color data
+                        if log_frame && pixels.len() >= 4 {
+                            info!("Window {} first pixel: RGBA({},{},{},{})",
+                                i, pixels[0], pixels[1], pixels[2], pixels[3]);
+                        }
                         debug!("Window {} rendering {}x{} buffer ({} bytes)", i, width, height, pixels.len());
                         unsafe {
                             gl::render_texture(width, height, &pixels, display.width, display.height);
