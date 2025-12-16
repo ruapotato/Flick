@@ -477,12 +477,15 @@ fn handle_input_event(
             info!("Input device removed: {}", device.name());
         }
         InputEvent::TouchDown { event } => {
-            let slot_id: u32 = event.slot().map(|s| s.into()).unwrap_or(0);
+            let slot_id: i32 = event.slot().map(|s| {
+                let id: u32 = s.into();
+                id as i32
+            }).unwrap_or(0);
             let position = event.position_transformed(state.screen_size);
             let touch_pos = Point::from((position.x, position.y));
 
             // Track touch position
-            state.last_touch_pos.insert(slot_id, touch_pos);
+            state.last_touch_pos.insert(slot_id as u32, touch_pos);
 
             // Process gesture
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
@@ -495,26 +498,23 @@ fn handle_input_event(
                 ShellView::App => {
                     // Forward touch to Wayland client
                     if let Some(touch) = state.seat.get_touch() {
-                        let under = state.space.element_under(touch_pos.to_f64())
-                            .map(|(window, loc)| {
-                                let wl_surface = window.toplevel()
-                                    .map(|t| t.wl_surface().clone());
-                                (wl_surface, loc)
+                        let focus = state.space.element_under(touch_pos.to_f64())
+                            .and_then(|(window, loc)| {
+                                window.toplevel().map(|t| (t.wl_surface().clone(), loc))
                             });
 
-                        if let Some((Some(surface), loc)) = under {
-                            touch.down(
-                                state,
-                                &smithay::input::touch::DownEvent {
-                                    slot: slot_id.into(),
-                                    location: touch_pos.to_f64(),
-                                },
-                                &surface,
-                                loc.to_f64(),
-                                event.time_msec(),
-                            );
-                            touch.frame(state);
-                        }
+                        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                        touch.down(
+                            state,
+                            focus,
+                            &smithay::input::touch::DownEvent {
+                                slot: event.slot(),
+                                location: touch_pos.to_f64(),
+                                serial,
+                                time: event.time_msec(),
+                            },
+                        );
+                        touch.frame(state);
                     }
                 }
                 ShellView::Home => {
@@ -543,12 +543,15 @@ fn handle_input_event(
             }
         }
         InputEvent::TouchMotion { event } => {
-            let slot_id: u32 = event.slot().map(|s| s.into()).unwrap_or(0);
+            let slot_id: i32 = event.slot().map(|s| {
+                let id: u32 = s.into();
+                id as i32
+            }).unwrap_or(0);
             let position = event.position_transformed(state.screen_size);
             let touch_pos = Point::from((position.x, position.y));
 
             // Update tracked touch position
-            state.last_touch_pos.insert(slot_id, touch_pos);
+            state.last_touch_pos.insert(slot_id as u32, touch_pos);
 
             // Process gesture
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
@@ -562,26 +565,21 @@ fn handle_input_event(
                 ShellView::App => {
                     // Forward to Wayland client
                     if let Some(touch) = state.seat.get_touch() {
-                        let under = state.space.element_under(touch_pos.to_f64())
-                            .map(|(window, loc)| {
-                                let wl_surface = window.toplevel()
-                                    .map(|t| t.wl_surface().clone());
-                                (wl_surface, loc)
+                        let focus = state.space.element_under(touch_pos.to_f64())
+                            .and_then(|(window, loc)| {
+                                window.toplevel().map(|t| (t.wl_surface().clone(), loc))
                             });
 
-                        if let Some((Some(surface), loc)) = under {
-                            touch.motion(
-                                state,
-                                &smithay::input::touch::MotionEvent {
-                                    slot: slot_id.into(),
-                                    location: touch_pos.to_f64(),
-                                },
-                                &surface,
-                                loc.to_f64(),
-                                event.time_msec(),
-                            );
-                            touch.frame(state);
-                        }
+                        touch.motion(
+                            state,
+                            focus,
+                            &smithay::input::touch::MotionEvent {
+                                slot: event.slot(),
+                                location: touch_pos.to_f64(),
+                                time: event.time_msec(),
+                            },
+                        );
+                        touch.frame(state);
                     }
                 }
                 ShellView::Home => {
@@ -599,10 +597,13 @@ fn handle_input_event(
             }
         }
         InputEvent::TouchUp { event } => {
-            let slot_id: u32 = event.slot().map(|s| s.into()).unwrap_or(0);
+            let slot_id: i32 = event.slot().map(|s| {
+                let id: u32 = s.into();
+                id as i32
+            }).unwrap_or(0);
 
             // Get last known position
-            let last_pos = state.last_touch_pos.get(&slot_id).copied()
+            let last_pos = state.last_touch_pos.get(&(slot_id as u32)).copied()
                 .unwrap_or_else(|| Point::from((0.0, 0.0)));
 
             // Process gesture
@@ -617,18 +618,20 @@ fn handle_input_event(
                 ShellView::App => {
                     // Forward to Wayland client
                     if let Some(touch) = state.seat.get_touch() {
+                        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                         touch.up(
                             state,
                             &smithay::input::touch::UpEvent {
-                                slot: slot_id.into(),
+                                slot: event.slot(),
+                                serial,
+                                time: event.time_msec(),
                             },
-                            event.time_msec(),
                         );
                         touch.frame(state);
                     }
                 }
                 ShellView::Home => {
-                    state.shell.end_category_touch(last_pos);
+                    state.shell.end_home_touch();
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         slint_ui.dispatch_pointer_released(last_pos.x as f32, last_pos.y as f32);
                     }
@@ -647,11 +650,11 @@ fn handle_input_event(
             }
 
             // Clean up
-            state.last_touch_pos.remove(&slot_id);
+            state.last_touch_pos.remove(&(slot_id as u32));
         }
         InputEvent::TouchCancel { .. } => {
             debug!("Touch cancel");
-            state.gesture_recognizer.reset();
+            state.gesture_recognizer.touch_cancel();
             state.last_touch_pos.clear();
         }
         InputEvent::TouchFrame { .. } => {
