@@ -70,12 +70,12 @@ The shim can now render to the display via hwcomposer. Color cycling test shows 
 - [x] Framebuffer management
 - [x] Plane state tracking
 - [x] **C API for libdrm/libgbm drop-in replacement**
+- [x] **DMA-BUF export for buffer sharing**
 
 ### In Progress
-- [ ] DMA-BUF export/import for buffer sharing
+- [ ] Testing with Weston/Sway
 
 ### Planned
-- [ ] Testing with Weston/Sway
 - [ ] Smithay backend integration
 - [ ] Atomic modesetting
 
