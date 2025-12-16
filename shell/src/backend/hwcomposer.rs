@@ -800,7 +800,7 @@ fn handle_input_event(
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
                 debug!("Gesture touch_down: {:?}", gesture_event);
 
-                // Handle edge swipe start for quick settings and app switcher
+                // Handle edge swipe start for quick settings, app switcher, and home/close gestures
                 if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
                     let shell_view = state.shell.view;
                     // Left edge = Quick Settings (blocked on lock screen)
@@ -814,6 +814,16 @@ fn handle_input_event(
                         state.switcher_gesture_active = true;
                         state.switcher_gesture_progress = 0.0;
                         info!("Switcher gesture STARTED");
+                    }
+                    // Bottom edge = Home gesture (swipe up from bottom)
+                    if *edge == crate::input::Edge::Bottom && shell_view != crate::shell::ShellView::LockScreen {
+                        state.start_home_gesture();
+                        info!("Home gesture STARTED");
+                    }
+                    // Top edge = Close gesture (swipe down from top) - only in App view
+                    if *edge == crate::input::Edge::Top && shell_view == crate::shell::ShellView::App {
+                        state.start_close_gesture();
+                        info!("Close gesture STARTED");
                     }
                 }
             }
@@ -917,6 +927,14 @@ fn handle_input_event(
                         state.switcher_gesture_active = true;
                         state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
                     }
+                    // Bottom edge = Home gesture (swipe up)
+                    if *edge == crate::input::Edge::Bottom && shell_view != crate::shell::ShellView::LockScreen {
+                        state.update_home_gesture(*progress);
+                    }
+                    // Top edge = Close gesture (swipe down)
+                    if *edge == crate::input::Edge::Top && shell_view == crate::shell::ShellView::App {
+                        state.update_close_gesture(*progress);
+                    }
                 }
             }
 
@@ -1009,6 +1027,16 @@ fn handle_input_event(
                         }
                         state.switcher_gesture_active = false;
                         state.switcher_gesture_progress = 0.0;
+                    }
+                    // Bottom edge = Home gesture (swipe up)
+                    if *edge == crate::input::Edge::Bottom {
+                        state.end_home_gesture(*completed);
+                        info!("Home gesture END, completed={}", completed);
+                    }
+                    // Top edge = Close gesture (swipe down)
+                    if *edge == crate::input::Edge::Top {
+                        state.end_close_gesture(*completed);
+                        info!("Close gesture END, completed={}", completed);
                     }
                 }
             }
