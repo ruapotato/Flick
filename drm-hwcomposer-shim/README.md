@@ -55,51 +55,152 @@ This shim bridges the gap by:
 🚧 **Work in Progress** 🚧
 
 - [x] Basic library structure
-- [x] hwcomposer HAL interface
+- [x] hwcomposer HAL interface (hwc2_compat_layer)
+- [x] HWCNativeWindow integration
 - [x] DRM device abstraction
 - [x] GBM device abstraction
 - [x] EGL integration framework
-- [ ] Full DRM ioctl implementation
-- [ ] gralloc buffer allocation
+- [x] Real FFI bindings to libhybris
+- [ ] Full gralloc buffer allocation
 - [ ] DMA-BUF sharing
-- [ ] vsync handling
-- [ ] Atomic modesetting support
 - [ ] Testing with real compositors
+- [ ] Smithay backend integration
 
 ## Building
 
+**Must be built on a Droidian/libhybris device** (requires libhybris libraries).
+
 ```bash
-cd drm-hwcomposer-shim
+# On the phone (via SSH)
+ssh droidian@<phone-ip>
+cd ~/Flick/drm-hwcomposer-shim
+
+# Source cargo environment
+source ~/.cargo/env
+
+# Build the library and test binary
 cargo build --release
+
+# Run the test
+./target/release/test_hwc
 ```
 
-### Dependencies
+### Dependencies (on target device)
 
-- Rust 1.70+
-- libhybris (on target device)
-- Android HAL libraries (hwcomposer, gralloc)
+- Rust 1.70+ (install via rustup)
+- libhybris (`libhybris-common`, `libhybris-hwcomposerwindow`)
+- hwc2_compat_layer (`libhwc2_compat_layer`)
+- EGL libraries from Android HAL
+
+On Droidian, these should be pre-installed. If not:
+```bash
+sudo apt install libhybris-common libhybris-dev
+```
+
+## FFI Bindings
+
+The shim uses the following libhybris APIs:
+
+### hwc2_compat_layer.h
+```c
+// Device management
+hwc2_compat_device_t* hwc2_compat_device_new(bool use_vr);
+hwc2_compat_display_t* hwc2_compat_device_get_display_by_id(device, id);
+HWC2DisplayConfig* hwc2_compat_display_get_active_config(display);
+
+// Display operations
+hwc2_compat_display_set_power_mode(display, mode);
+hwc2_compat_display_set_vsync_enabled(display, enabled);
+hwc2_compat_display_present(display, &fence);
+
+// Layer management
+hwc2_compat_layer_t* hwc2_compat_display_create_layer(display);
+hwc2_compat_layer_set_composition_type(layer, type);
+hwc2_compat_layer_set_display_frame(layer, l, t, r, b);
+```
+
+### HWCNativeWindow (libhybris-hwcomposerwindow)
+```c
+// Create window for EGL
+ANativeWindow* HWCNativeWindowCreate(width, height, format, present_cb, data);
+void HWCNativeWindowDestroy(window);
+
+// Buffer fence management
+int HWCNativeBufferGetFence(buffer);
+void HWCNativeBufferSetFence(buffer, fd);
+```
 
 ## Usage
 
 ### As a Library (for compositors to integrate directly)
 
 ```rust
-use drm_hwcomposer_shim::{HwcDrmDevice, HwcGbmDevice};
+use drm_hwcomposer_shim::HwcDrmDevice;
 use std::sync::Arc;
 
-// Create DRM device
-let drm = Arc::new(HwcDrmDevice::new()?);
+// Create DRM device (initializes hwcomposer)
+let drm = HwcDrmDevice::new()?;
 
-// Create GBM device from DRM
-let gbm = Arc::new(HwcGbmDevice::new(drm.clone())?);
+// Get display info
+let (width, height) = drm.get_dimensions();
+let refresh_rate = drm.get_refresh_rate();
+println!("Display: {}x{} @ {}Hz", width, height, refresh_rate);
 
-// Use gbm for buffer allocation, drm for modesetting
-// Pass to your compositor's backend...
+// Initialize EGL for rendering
+drm.init_egl()?;
+
+// Render loop
+loop {
+    // ... render with OpenGL ES ...
+    drm.swap_buffers()?;
+}
 ```
 
-### As a System Service (planned)
+### Test Binary
 
-In the future, this could run as a daemon that creates a virtual DRM device at `/dev/dri/card0`, allowing unmodified compositors to use it.
+```bash
+# On the phone
+source ~/.cargo/env
+cd ~/Flick/drm-hwcomposer-shim
+cargo run --release --bin test_hwc
+```
+
+Expected output:
+```
+Creating HwcDrmDevice...
+Display initialized successfully!
+  Resolution: 1080x2340
+  Refresh rate: 60 Hz
+  DPI: 400.0x400.0
+  Mode: 1080x2340@60
+  Physical size: 68mm x 148mm
+
+Initializing EGL...
+EGL initialized!
+
+Rendering frames...
+Frame 0 presented
+Frame 10 presented
+...
+Test complete!
+```
+
+## Troubleshooting
+
+### "Failed to create HWC2 device"
+- Ensure libhybris is properly installed
+- Check that Android HAL is accessible (`/vendor/lib64/hw/`)
+- Verify hybris environment: `EGL_PLATFORM=hwcomposer`
+
+### "Failed to get EGL display"
+- Try setting: `export EGL_PLATFORM=hwcomposer`
+- Check libEGL is the hybris version
+
+### Linker errors
+- Ensure these libraries are available:
+  - `libhybris-hwcomposerwindow.so`
+  - `libhwc2_compat_layer.so`
+  - `libEGL.so` (from hybris)
 
 ## Related Projects
 
