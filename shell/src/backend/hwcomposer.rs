@@ -989,11 +989,11 @@ fn handle_input_event(
                         if let Some(exec) = state.shell.end_home_touch() {
                             info!("Launching app from home touch: {}", exec);
                             // Get socket name for WAYLAND_DISPLAY
-                            let socket_name = state.socket_name.clone().unwrap_or_else(|| "wayland-1".to_string());
+                            let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
                             std::process::Command::new("sh")
                                 .arg("-c")
                                 .arg(&exec)
-                                .env("WAYLAND_DISPLAY", &socket_name)
+                                .env("WAYLAND_DISPLAY", socket_name)
                                 // Force software rendering so apps use SHM buffers (hwcomposer can't handle EGL buffers from apps)
                                 .env("LIBGL_ALWAYS_SOFTWARE", "1")
                                 .env("GDK_BACKEND", "wayland")
