@@ -12,21 +12,12 @@ use std::{
 };
 
 use anyhow::Result;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info};
 
 use smithay::{
-    backend::{
-        input::InputEvent,
-        libinput::{LibinputInputBackend, LibinputSessionInterface},
-        session::{
-            libseat::LibSeatSession,
-            Event as SessionEvent, Session,
-        },
-    },
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
         calloop::{EventLoop, timer::{Timer, TimeoutAction}},
-        input::Libinput,
         wayland_server::Display,
     },
     utils::Transform,
@@ -37,16 +28,6 @@ use drm_hwcomposer_shim::{HwcDrmDevice, HwcGbmDevice};
 use khronos_egl as egl;
 
 use crate::state::Flick;
-
-/// Keyboard modifier state
-#[derive(Default)]
-struct ModifierState {
-    ctrl: bool,
-    alt: bool,
-    shift: bool,
-    #[allow(dead_code)]
-    super_key: bool,
-}
 
 /// DRM Shim display state
 struct ShimDisplay {
@@ -190,6 +171,7 @@ pub fn run() -> Result<()> {
             subpixel: Subpixel::Unknown,
             make: "DRM-Shim".to_string(),
             model: "HWComposer".to_string(),
+            serial_number: "Unknown".to_string(),
         },
     );
 
@@ -223,11 +205,9 @@ pub fn run() -> Result<()> {
         },
     )?;
 
-    // Try to set up input via libseat
-    let input_result = setup_input(&mut state, &loop_handle);
-    if let Err(e) = &input_result {
-        warn!("Failed to set up input: {}. Continuing without input.", e);
-    }
+    // Skip input setup for now - just test display
+    // TODO: Add input support after display works
+    info!("Skipping input setup for initial display test");
 
     // Frame timer for rendering at 60fps
     let frame_timer = Timer::from_duration(Duration::from_millis(16));
@@ -251,76 +231,6 @@ pub fn run() -> Result<()> {
 
         // Run one iteration of the event loop
         event_loop.dispatch(Some(Duration::from_millis(1)), &mut state)?;
-    }
-}
-
-/// Set up input handling via libinput/libseat
-fn setup_input(
-    state: &mut Flick,
-    loop_handle: &smithay::reexports::calloop::LoopHandle<'static, Flick>,
-) -> Result<()> {
-    info!("Setting up input via libseat");
-
-    // Create libseat session
-    let (session, notifier) = LibSeatSession::new()?;
-
-    // Create libinput context
-    let mut libinput_context = Libinput::new_with_udev(
-        LibinputSessionInterface::from(session.clone())
-    );
-    libinput_context.udev_assign_seat("seat0")?;
-
-    // Create libinput backend
-    let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
-
-    // Insert session notifier
-    loop_handle.insert_source(notifier, |event, _, _state| {
-        match event {
-            SessionEvent::PauseSession => {
-                info!("Session paused");
-            }
-            SessionEvent::ActivateSession => {
-                info!("Session activated");
-            }
-        }
-    })?;
-
-    // Insert libinput source
-    loop_handle.insert_source(libinput_backend, |event, _, state| {
-        handle_input_event(state, event);
-    })?;
-
-    info!("Input initialized");
-    Ok(())
-}
-
-/// Handle input events
-fn handle_input_event(state: &mut Flick, event: InputEvent<LibinputInputBackend>) {
-    use smithay::backend::input::{
-        Event, KeyboardKeyEvent, PointerMotionAbsoluteEvent,
-        TouchEvent as SmithayTouchEvent,
-    };
-
-    match event {
-        InputEvent::Keyboard { event } => {
-            debug!("Keyboard event: {:?}", event.key_code());
-        }
-        InputEvent::PointerMotionAbsolute { event } => {
-            let (x, y) = (event.x(), event.y());
-            debug!("Pointer absolute: ({}, {})", x, y);
-        }
-        InputEvent::TouchDown { event } => {
-            let (x, y) = (event.x(), event.y());
-            debug!("Touch down: ({}, {})", x, y);
-        }
-        InputEvent::TouchMotion { event } => {
-            let (x, y) = (event.x(), event.y());
-            debug!("Touch motion: ({}, {})", x, y);
-        }
-        InputEvent::TouchUp { event } => {
-            debug!("Touch up");
-        }
-        _ => {}
     }
 }
 
