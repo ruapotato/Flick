@@ -165,11 +165,53 @@ pub type HWCPresentCallback = extern "C" fn(
     buffer: *mut ANativeWindowBuffer,
 );
 
-// Gralloc initialization - MUST be called before HWC2
+/// Opaque buffer handle type from Android
+#[repr(C)]
+pub struct BufferHandle {
+    _data: [u8; 0],
+}
+
+/// buffer_handle_t is a pointer to buffer handle
+pub type BufferHandleT = *mut BufferHandle;
+
+// Gralloc functions - MUST call hybris_gralloc_initialize before using
 #[link(name = "gralloc")]
 extern "C" {
     /// Initialize hybris gralloc - needed for buffer allocation
     pub fn hybris_gralloc_initialize(framebuffer: c_int);
+
+    /// Allocate a gralloc buffer
+    /// Returns 0 on success, non-zero on failure
+    pub fn hybris_gralloc_allocate(
+        width: c_int,
+        height: c_int,
+        format: c_int,
+        usage: c_int,
+        handle_ptr: *mut BufferHandleT,
+        stride_ptr: *mut u32,
+    ) -> c_int;
+
+    /// Release a gralloc buffer
+    /// was_allocated: 1 if buffer was allocated by us, 0 if imported
+    pub fn hybris_gralloc_release(handle: BufferHandleT, was_allocated: c_int) -> c_int;
+
+    /// Retain (add reference to) a gralloc buffer
+    pub fn hybris_gralloc_retain(handle: BufferHandleT) -> c_int;
+
+    /// Lock buffer for CPU access
+    /// Returns pointer to buffer data in vaddr
+    pub fn hybris_gralloc_lock(
+        handle: BufferHandleT,
+        usage: c_int,
+        l: c_int,
+        t: c_int,
+        w: c_int,
+        h: c_int,
+        vaddr: *mut *mut c_void,
+    ) -> c_int;
+
+    /// Unlock buffer after CPU access
+    pub fn hybris_gralloc_unlock(handle: BufferHandleT) -> c_int;
 }
 
 /// Initialize gralloc subsystem - call this first!

@@ -14,6 +14,10 @@ crate-type = ["lib", "cdylib"]
 name = "test_hwc"
 path = "src/bin/test_hwc.rs"
 
+[[bin]]
+name = "test_gbm"
+path = "src/bin/test_gbm.rs"
+
 [dependencies]
 # Logging
 tracing = "0.1"
