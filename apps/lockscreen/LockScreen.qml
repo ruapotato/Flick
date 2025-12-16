@@ -214,7 +214,13 @@ Item {
             anchors.centerIn: parent
             correctPin: lockScreen.correctPin
 
+            Component.onCompleted: {
+                console.log("PinEntry created, correctPin:", correctPin, "enteredPin:", enteredPin)
+            }
+
             onPinCorrect: {
+                console.log("PIN CORRECT triggered!")
+                // Write unlock signal and quit
                 writeUnlockSignal()
                 lockScreen.unlocked()
             }
@@ -240,9 +246,11 @@ Item {
     }
 
     // Write unlock signal file
+    // This uses console.log with a special marker that the shell can detect
+    // The shell's QML launcher wrapper will create the signal file
     function writeUnlockSignal() {
-        // Use Qt.createQmlObject to write file via XMLHttpRequest workaround
-        // In production, this would use a proper file I/O plugin
-        console.log("Writing unlock signal to: " + stateDir + "/unlock_signal")
+        var signalPath = stateDir + "/unlock_signal"
+        // Special marker that shell can detect in stdout
+        console.log("FLICK_UNLOCK_SIGNAL:" + signalPath)
     }
 }

@@ -1,7 +1,7 @@
 //! Integrated shell UI - rendered directly by the compositor
 //!
 //! Components:
-//! - Lock screen (PIN, pattern, password authentication - now external Python app)
+//! - Lock screen (PIN, pattern, password authentication - external QML app)
 //! - App grid (home screen)
 //! - App switcher (Android-style card stack)
 //! - Quick settings panel (notifications/toggles)
@@ -22,7 +22,6 @@ use smithay::utils::{Logical, Point, Size};
 use crate::input::{Edge, GestureEvent};
 use std::path::PathBuf;
 
-/// Path to Flick's lock screen app (Python/Kivy)
 /// Get the Flick project root directory
 /// Checks in order: FLICK_ROOT env var, executable's grandparent dir, HOME/Flick
 pub fn get_flick_root() -> std::path::PathBuf {
@@ -50,12 +49,26 @@ pub fn get_flick_root() -> std::path::PathBuf {
     std::path::PathBuf::from(home).join("Flick")
 }
 
-/// Lock screen executable path
+/// Lock screen executable path (QML app launched via qmlscene)
 pub fn get_lockscreen_exec() -> String {
     get_flick_root()
-        .join("apps/flick_lockscreen/flick_lockscreen.py")
+        .join("apps/lockscreen/main.qml")
         .to_string_lossy()
         .to_string()
+}
+
+/// Get the command to launch the lock screen (wrapper script that handles unlock signal)
+pub fn get_lockscreen_command() -> (String, Vec<String>) {
+    let wrapper_path = get_flick_root()
+        .join("apps/lockscreen/run_lockscreen.sh")
+        .to_string_lossy()
+        .to_string();
+
+    // Use wrapper script that captures output and creates unlock signal file
+    (
+        wrapper_path,
+        vec![]
+    )
 }
 
 /// Path to unlock signal file (written by lock screen app on successful auth)
@@ -484,21 +497,44 @@ impl Shell {
             return false;
         }
 
-        let exec_path = get_lockscreen_exec();
-        tracing::info!("Launching external lock screen app: {}", exec_path);
+        let (cmd, args) = get_lockscreen_command();
+        tracing::info!("Launching QML lock screen: {} {:?}", cmd, args);
 
-        match std::process::Command::new("python3")
-            .arg(&exec_path)
+        // Create log file for QML output
+        let log_path = std::env::var("HOME")
+            .map(|h| format!("{}/.local/state/flick/qml_lockscreen.log", h))
+            .unwrap_or_else(|_| "/tmp/qml_lockscreen.log".to_string());
+
+        tracing::info!("QML lock screen output will be logged to: {}", log_path);
+
+        // Use shell wrapper to capture both stdout and stderr to log file
+        let shell_cmd = format!(
+            "{} {} {} 2>&1 | tee -a {}",
+            cmd,
+            args.join(" "),
+            "",
+            log_path
+        );
+
+        let state_dir = std::env::var("HOME")
+            .map(|h| format!("{}/.local/state/flick", h))
+            .unwrap_or_else(|_| "/tmp".to_string());
+
+        match std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&shell_cmd)
             .env("WAYLAND_DISPLAY", socket_name)
+            .env("QT_QPA_PLATFORM", "wayland")
+            .env("FLICK_STATE_DIR", &state_dir)
             .env("XDG_RUNTIME_DIR", std::env::var("XDG_RUNTIME_DIR").unwrap_or_default())
             .spawn()
         {
             Ok(_) => {
-                tracing::info!("Lock screen app launched successfully");
+                tracing::info!("QML lock screen app launched successfully");
                 true
             }
             Err(e) => {
-                tracing::error!("Failed to launch lock screen app: {}", e);
+                tracing::error!("Failed to launch QML lock screen app: {}", e);
                 false
             }
         }

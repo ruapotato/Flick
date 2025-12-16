@@ -907,15 +907,25 @@ fn render_surface(
             // Update Slint UI state based on current view
             match shell_view {
                 ShellView::LockScreen => {
-                    slint_ui.set_view("lock");
-                    slint_ui.set_lock_time(&chrono::Local::now().format("%H:%M").to_string());
-                    slint_ui.set_lock_date(&chrono::Local::now().format("%A, %B %e").to_string());
-                    slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
-                    if let Some(ref err) = state.shell.lock_state.error_message {
-                        slint_ui.set_lock_error(err);
+                    // Check if QML lockscreen app is connected (has windows in space)
+                    let qml_app_connected = state.space.elements().count() > 0;
+
+                    if qml_app_connected {
+                        // QML app is running - we'll render it in the dedicated branch below
+                        // Just set a minimal view here (won't be displayed)
+                        slint_ui.set_view("lock");
+                        slint_ui.set_lock_time(&chrono::Local::now().format("%H:%M").to_string());
+                        slint_ui.set_lock_date(&chrono::Local::now().format("%A, %B %e").to_string());
                     } else {
-                        slint_ui.set_lock_error("");
+                        // QML lockscreen not connected yet - show debug info
+                        // This is a fallback that shouldn't normally be visible for long
+                        slint_ui.set_view("lock");
+                        slint_ui.set_lock_time("DEBUG");
+                        slint_ui.set_lock_date("Waiting for QML lockscreen...");
+                        slint_ui.set_lock_error("If stuck here: check ~/.local/state/flick/qml_lockscreen.log");
+                        tracing::warn!("LockScreen view but no QML app connected - showing debug fallback");
                     }
+                    slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
                 }
                 ShellView::Home => {
                     info!("RENDER: ShellView::Home - setting up home view in Slint");
@@ -1510,15 +1520,15 @@ fn render_surface(
             [0.1, 0.1, 0.18, 1.0],
         )
     } else if shell_view == ShellView::LockScreen && state.shell.lock_screen_active && state.space.elements().count() > 0 {
-        tracing::info!("RENDER BRANCH: LockScreen with Python app");
-        // Lock screen with external Python app - render ONLY the Python app window
-        // No Slint elements needed - the Python app is fullscreen
+        tracing::info!("RENDER BRANCH: LockScreen with QML app");
+        // Lock screen with external QML app - render ONLY the QML app window
+        // No Slint elements needed - the QML app is fullscreen
         use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
         use smithay::backend::renderer::element::utils::{RescaleRenderElement, Relocate, RelocateRenderElement, CropRenderElement};
 
         let mut lock_elements: Vec<SwitcherRenderElement<GlesRenderer>> = Vec::new();
 
-        // Render only windows (the Python lock screen app) - use same approach as switcher
+        // Render only windows (the QML lock screen app) - use same approach as switcher
         let windows: Vec<_> = state.space.elements().cloned().collect();
         let screen_w = state.screen_size.w as i32;
         let screen_h = state.screen_size.h as i32;
@@ -1539,7 +1549,7 @@ fn render_surface(
             );
 
             for elem in window_render_elements {
-                // Scale 1:1 - Python app should be fullscreen
+                // Scale 1:1 - QML app should be fullscreen
                 let scaled = RescaleRenderElement::from_element(elem, (0, 0).into(), Scale::from(1.0));
                 let final_pos: smithay::utils::Point<i32, smithay::utils::Physical> = (0, 0).into();
                 // Use Absolute positioning like switcher does
@@ -1551,19 +1561,19 @@ fn render_surface(
             }
         }
 
-        tracing::info!("Lock screen Python app: {} window elements", lock_elements.len());
+        tracing::info!("Lock screen QML app: {} window elements", lock_elements.len());
 
-        // Check if keyboard should be rendered on top of Python lock screen
+        // Check if keyboard should be rendered on top of QML lock screen
         let keyboard_visible = state.shell.slint_ui.as_ref()
             .map(|ui| ui.is_keyboard_visible())
             .unwrap_or(false);
 
-        // Dark background color for lock screen (matches Python app background)
+        // Dark background color for lock screen (matches QML app background)
         let lock_bg: [f32; 4] = [0.05, 0.05, 0.08, 1.0];
 
         if keyboard_visible {
-            tracing::info!("Lock screen: rendering keyboard overlay on top of Python app");
-            // Render keyboard overlay from Slint on top of Python lock screen
+            tracing::info!("Lock screen: rendering keyboard overlay on top of QML app");
+            // Render keyboard overlay from Slint on top of QML lock screen
             if let Some(ref slint_ui) = state.shell.slint_ui {
                 // Set view to app for keyboard-only render (keyboard appears in app view)
                 slint_ui.set_view("app");

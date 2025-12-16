@@ -10,7 +10,14 @@ Window {
 
     // Config
     property string correctPin: "1234"  // TODO: Load from config file
-    property string stateDir: Qt.application.arguments[1] || (Qt.getenv("HOME") + "/.local/state/flick")
+    // State dir - hardcoded to standard location
+    // The wrapper script ensures this dir exists
+    property string stateDir: "/home/david/.local/state/flick"
+
+    Component.onCompleted: {
+        console.log("Lock screen started")
+        console.log("stateDir:", stateDir)
+    }
 
     LockScreen {
         anchors.fill: parent
@@ -18,7 +25,7 @@ Window {
         stateDir: root.stateDir
 
         onUnlocked: {
-            console.log("Unlocked! Writing signal file...")
+            console.log("Unlocked! Quitting...")
             Qt.quit()
         }
     }

@@ -1021,9 +1021,9 @@ pub fn run() -> Result<()> {
         slint_ui.set_size(state.screen_size);
     }
 
-    // Launch Python lock screen app if configured
+    // Launch QML lock screen app if configured
     if state.shell.lock_screen_active {
-        info!("Lock screen active - launching Python lock screen app");
+        info!("Lock screen active - launching QML lock screen app");
         if let Some(socket) = state.socket_name.to_str() {
             state.shell.launch_lock_screen_app(socket);
         }
@@ -1193,76 +1193,127 @@ fn render_frame(
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
 
-        // Render Slint UI for shell views (including lock screen)
-        match shell_view {
-            ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault | ShellView::LockScreen => {
-                // Update Slint timers and animations (needed for clock updates, etc.)
-                slint::platform::update_timers_and_animations();
+        // Check if QML lockscreen app is connected
+        let qml_lockscreen_connected = shell_view == ShellView::LockScreen
+            && state.shell.lock_screen_active
+            && state.space.elements().count() > 0;
 
-                // Get Slint rendered pixels
-                if let Some(ref slint_ui) = state.shell.slint_ui {
-                    if let Some((width, height, pixels)) = slint_ui.render() {
-                        unsafe {
-                            gl::render_texture(width, height, &pixels, display.width, display.height);
-                        }
-                        if log_frame {
-                            debug!("Rendered Slint UI {}x{}", width, height);
+        // Render Slint UI for shell views (but not when QML lockscreen is connected)
+        if !qml_lockscreen_connected {
+            match shell_view {
+                ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault | ShellView::LockScreen => {
+                    // Update Slint timers and animations (needed for clock updates, etc.)
+                    slint::platform::update_timers_and_animations();
+
+                    // Set up Slint UI state based on current view
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        match shell_view {
+                            ShellView::LockScreen => {
+                                // QML lockscreen not connected yet - show debug info
+                                slint_ui.set_view("lock");
+                                slint_ui.set_lock_time("DEBUG");
+                                slint_ui.set_lock_date("Waiting for QML lockscreen...");
+                                slint_ui.set_lock_error("If stuck here: check ~/.local/state/flick/qml_lockscreen.log");
+                                if log_frame {
+                                    warn!("LockScreen view but no QML app connected - showing debug fallback");
+                                }
+                                slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
+                            }
+                            ShellView::Home => {
+                                slint_ui.set_view("home");
+                                let slint_categories = state.shell.get_categories_with_icons();
+                                slint_ui.set_categories(slint_categories);
+                                slint_ui.set_show_popup(state.shell.popup_showing);
+                                slint_ui.set_wiggle_mode(state.shell.wiggle_mode);
+                            }
+                            ShellView::QuickSettings => {
+                                slint_ui.set_view("quick-settings");
+                                slint_ui.set_brightness(state.shell.quick_settings.brightness);
+                                slint_ui.set_wifi_enabled(state.system.wifi_enabled);
+                                slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
+                            }
+                            ShellView::Switcher => {
+                                slint_ui.set_view("switcher");
+                                slint_ui.set_switcher_scroll(state.shell.switcher_scroll as f32);
+                            }
+                            ShellView::PickDefault => {
+                                slint_ui.set_view("pick-default");
+                            }
+                            _ => {}
                         }
                     }
-                }
-            }
-            ShellView::App => {
-                // Render Wayland client surfaces (windows)
-                let windows: Vec<_> = state.space.elements().cloned().collect();
-                debug!("ShellView::App: rendering {} Wayland windows", windows.len());
 
-                for (i, window) in windows.iter().enumerate() {
-                    debug!("Processing window {}", i);
-                    // Get the surface from the window
-                    if let Some(toplevel) = window.toplevel() {
-                        debug!("Window {} has toplevel", i);
-                        let wl_surface = toplevel.wl_surface();
-                        debug!("Window {} surface: {:?}", i, wl_surface.id());
-
-                        // Render using stored buffer data from commit handler
-                        debug!("Window {} trying to render stored buffer", i);
-
-                        // Get stored buffer from surface user data
-                        let buffer_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(wl_surface, |data| {
-                            debug!("  stored: inside with_states");
-                            use std::cell::RefCell;
-                            use crate::state::SurfaceBufferData;
-
-                            if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
-                                let data = buffer_data.borrow();
-                                if let Some(ref stored) = data.buffer {
-                                    debug!("  stored: found buffer {}x{}", stored.width, stored.height);
-                                    Some((stored.width, stored.height, stored.pixels.clone()))
-                                } else {
-                                    debug!("  stored: no buffer in data_map");
-                                    None
-                                }
-                            } else {
-                                debug!("  stored: no SurfaceBufferData in data_map");
-                                None
-                            }
-                        });
-                        debug!("Window {} after with_states", i);
-
-                        // Render outside of with_states to avoid holding locks
-                        if let Some((width, height, pixels)) = buffer_info {
-                            debug!("Window {} rendering {}x{} buffer ({} bytes)", i, width, height, pixels.len());
+                    // Get Slint rendered pixels
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        if let Some((width, height, pixels)) = slint_ui.render() {
                             unsafe {
                                 gl::render_texture(width, height, &pixels, display.width, display.height);
                             }
-                            debug!("Window {} render complete", i);
-                        } else {
-                            debug!("Window {} no stored buffer to render", i);
+                            if log_frame {
+                                debug!("Rendered Slint UI {}x{}", width, height);
+                            }
                         }
                     }
                 }
-                debug!("ShellView::App: finished rendering windows");
+                _ => {}
             }
+        }
+
+        // Render Wayland windows for App view OR QML lockscreen
+        if shell_view == ShellView::App || qml_lockscreen_connected {
+            if qml_lockscreen_connected && log_frame {
+                info!("Rendering QML lockscreen window");
+            }
+            // Render Wayland client surfaces (windows)
+            let windows: Vec<_> = state.space.elements().cloned().collect();
+            debug!("Rendering {} Wayland windows", windows.len());
+
+            for (i, window) in windows.iter().enumerate() {
+                debug!("Processing window {}", i);
+                // Get the surface from the window
+                if let Some(toplevel) = window.toplevel() {
+                    debug!("Window {} has toplevel", i);
+                    let wl_surface = toplevel.wl_surface();
+                    debug!("Window {} surface: {:?}", i, wl_surface.id());
+
+                    // Render using stored buffer data from commit handler
+                    debug!("Window {} trying to render stored buffer", i);
+
+                    // Get stored buffer from surface user data
+                    let buffer_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(wl_surface, |data| {
+                        debug!("  stored: inside with_states");
+                        use std::cell::RefCell;
+                        use crate::state::SurfaceBufferData;
+
+                        if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                            let data = buffer_data.borrow();
+                            if let Some(ref stored) = data.buffer {
+                                debug!("  stored: found buffer {}x{}", stored.width, stored.height);
+                                Some((stored.width, stored.height, stored.pixels.clone()))
+                            } else {
+                                debug!("  stored: no buffer in data_map");
+                                None
+                            }
+                        } else {
+                            debug!("  stored: no SurfaceBufferData in data_map");
+                            None
+                        }
+                    });
+                    debug!("Window {} after with_states", i);
+
+                    // Render outside of with_states to avoid holding locks
+                    if let Some((width, height, pixels)) = buffer_info {
+                        debug!("Window {} rendering {}x{} buffer ({} bytes)", i, width, height, pixels.len());
+                        unsafe {
+                            gl::render_texture(width, height, &pixels, display.width, display.height);
+                        }
+                        debug!("Window {} render complete", i);
+                    } else {
+                        debug!("Window {} no stored buffer to render", i);
+                    }
+                }
+            }
+            debug!("Finished rendering windows");
         }
     }
 
