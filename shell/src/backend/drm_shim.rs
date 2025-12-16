@@ -548,6 +548,9 @@ fn handle_input_event(
             let position = event.position_transformed(state.screen_size);
             let touch_pos = Point::from((position.x, position.y));
 
+            info!("TOUCH DOWN: slot={}, pos=({:.0}, {:.0}), view={:?}",
+                  slot_id, touch_pos.x, touch_pos.y, state.shell.view);
+
             // Track touch position
             state.last_touch_pos.insert(slot_id, touch_pos);
 
@@ -670,6 +673,11 @@ fn handle_input_event(
                         slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
                     }
                 }
+                ShellView::LockScreen => {
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                    }
+                }
                 _ => {}
             }
         }
@@ -680,6 +688,9 @@ fn handle_input_event(
             // Get last known position
             let last_pos = state.last_touch_pos.get(&slot_id).copied()
                 .unwrap_or_else(|| Point::from((0.0, 0.0)));
+
+            info!("TOUCH UP: slot={}, pos=({:.0}, {:.0}), view={:?}",
+                  slot_id, last_pos.x, last_pos.y, state.shell.view);
 
             // Process gesture
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {

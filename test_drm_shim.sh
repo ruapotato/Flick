@@ -62,22 +62,15 @@ else
     echo "Or run: newgrp input"
 fi
 
+# Clean up stale wayland sockets
+echo "Cleaning up stale sockets..."
+rm -f "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null || true
+
 echo ""
 echo "Starting Flick with DRM shim backend..."
 echo "Press Ctrl+C to stop"
 echo ""
 
-# Run Flick with the drm-shim backend
-# Use SEATD_SOCK to communicate with seatd daemon if available
+# Run Flick with sudo (needed for hwcomposer access)
 cd ~/Flick/shell
-
-# Try running without sudo first (as user, with proper session)
-# Fall back to sudo if needed for hwcomposer
-if [ -S "/run/seatd.sock" ] || [ -n "$SEATD_SOCK" ]; then
-    echo "Running with seatd..."
-    ./target/release/flick --drm-shim
-else
-    echo "Running with sudo (seatd not available)..."
-    # Run with sudo but preserve environment for input/session
-    sudo -E ./target/release/flick --drm-shim
-fi
+sudo -E ./target/release/flick --drm-shim
