@@ -507,13 +507,12 @@ impl Shell {
 
         tracing::info!("QML lock screen output will be logged to: {}", log_path);
 
-        // Use shell wrapper to capture both stdout and stderr to log file
+        // The run_lockscreen.sh already handles logging - just redirect to /dev/null
+        // to prevent Qt output from corrupting the terminal
         let shell_cmd = format!(
-            "{} {} {} 2>&1 | tee -a {}",
+            "{} {} > /dev/null 2>&1",
             cmd,
-            args.join(" "),
-            "",
-            log_path
+            args.join(" ")
         );
 
         let state_dir = std::env::var("HOME")

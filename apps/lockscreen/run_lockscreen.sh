@@ -18,6 +18,9 @@ echo "QML_FILE=$QML_FILE" >> "$LOG_FILE"
 # Run qmlscene - state dir is passed via FLICK_STATE_DIR env var
 # Note: qmlscene only takes the QML file as argument, no extras
 export FLICK_STATE_DIR="$STATE_DIR"
+# Suppress Qt debug output (can corrupt terminal)
+export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false;qt.accessibility.*=false"
+export QT_MESSAGE_PATTERN=""
 # Force software rendering completely
 export QT_QUICK_BACKEND=software
 export QT_OPENGL=software

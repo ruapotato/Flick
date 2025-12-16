@@ -1225,6 +1225,25 @@ pub fn run() -> Result<()> {
         // Use the safe dispatch_clients method that handles the borrow properly.
         state.dispatch_clients();
 
+        // Check for unlock signal from external lock screen app (QML lockscreen)
+        if state.shell.check_unlock_signal() {
+            info!("=== UNLOCK SIGNAL DETECTED (hwcomposer) ===");
+            info!("Before unlock: view={:?}, lock_screen_active={}", state.shell.view, state.shell.lock_screen_active);
+
+            // Close all windows (the QML lock screen) from the space
+            let windows_to_close: Vec<_> = state.space.elements().cloned().collect();
+            info!("Closing {} windows from space after unlock", windows_to_close.len());
+            for window in windows_to_close {
+                state.space.unmap_elem(&window);
+                if let Some(toplevel) = window.toplevel() {
+                    toplevel.send_close();
+                }
+            }
+
+            state.shell.unlock();
+            info!("After unlock: view={:?}, lock_screen_active={}", state.shell.view, state.shell.lock_screen_active);
+        }
+
         // Log every loop iteration for debugging
         debug!("Loop {}: after dispatch_clients", loop_count);
 

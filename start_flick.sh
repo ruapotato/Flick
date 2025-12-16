@@ -1,8 +1,24 @@
 #!/bin/bash
 # Start Flick compositor on Droidian phone
-# Usage: ./start_flick.sh [--bg]
+# Usage: ./start_flick.sh [--bg|--log]
+#   --bg   Run in background, log to /tmp/flick.log
+#   --log  Run with output sanitized (recommended), Ctrl+C to stop
+#   (none) Run directly (may corrupt terminal, use reset if needed)
 
 set -e
+
+# Function to restore terminal on exit
+cleanup() {
+    # Reset terminal to sane state
+    stty sane 2>/dev/null || true
+    # Clear any partial escape sequences
+    printf '\033[0m\033[?25h\033c' 2>/dev/null || true
+    echo ""
+    echo "Flick stopped."
+}
+
+# Trap signals for cleanup
+trap cleanup EXIT INT TERM
 
 # Get the actual user's home, even if running via sudo
 REAL_HOME="${SUDO_USER:+$(eval echo ~$SUDO_USER)}"
@@ -73,6 +89,57 @@ if [ "$1" = "--bg" ]; then
     done
 
     echo "Flick running in background. Logs: /tmp/flick.log"
+elif [ "$1" = "--log" ]; then
+    # Run with logging to file but show tail in terminal
+    LOG_FILE="/tmp/flick.log"
+    echo "Starting Flick with logging to $LOG_FILE"
+    echo "Press Ctrl+C to stop..."
+
+    # Start flick with output to log file
+    sudo -E "$FLICK_BIN" --hwcomposer > "$LOG_FILE" 2>&1 &
+    SUDO_PID=$!
+
+    # Get the actual flick process PID (child of sudo)
+    sleep 1
+    FLICK_PID=$(pgrep -P "$SUDO_PID" 2>/dev/null || echo "$SUDO_PID")
+
+    # Tail the log file with sanitization
+    tail -f "$LOG_FILE" 2>/dev/null | tr -cd '[:print:]\n\t' &
+    TAIL_PID=$!
+
+    # Wait for flick to exit
+    stop_all() {
+        kill "$TAIL_PID" 2>/dev/null || true
+        sudo kill -TERM "$FLICK_PID" 2>/dev/null || true
+        sleep 1
+        sudo kill -KILL "$FLICK_PID" 2>/dev/null || true
+        sudo killall -9 flick 2>/dev/null || true
+    }
+    trap stop_all INT TERM
+
+    wait "$SUDO_PID" 2>/dev/null || true
+    kill "$TAIL_PID" 2>/dev/null || true
 else
-    sudo -E "$FLICK_BIN" --hwcomposer
+    # Run directly - output may corrupt terminal, use --log for cleaner output
+    # Save terminal state
+    TERM_STATE=$(stty -g 2>/dev/null || echo "")
+
+    stop_flick() {
+        sudo killall -9 flick 2>/dev/null || true
+        # Restore terminal
+        if [ -n "$TERM_STATE" ]; then
+            stty "$TERM_STATE" 2>/dev/null || true
+        fi
+        stty sane 2>/dev/null || true
+        printf '\033[0m\033[?25h\033c' 2>/dev/null || true
+    }
+    trap stop_flick INT TERM
+
+    # Run directly
+    sudo -E "$FLICK_BIN" --hwcomposer || true
+
+    # Restore terminal state after exit
+    if [ -n "$TERM_STATE" ]; then
+        stty "$TERM_STATE" 2>/dev/null || true
+    fi
 fi

@@ -1,9 +1,14 @@
 #!/bin/bash
-# Build script for Droidian phone
+# Build Flick for Droidian phone (requires hwcomposer feature)
+# Run this on the phone, not the development machine
 
-# Source cargo environment
-source ~/.cargo/env
+set -e
 
-# Build with limited parallelism to avoid freezing
-cd ~/Flick/shell
-CARGO_BUILD_JOBS=1 cargo build --release --features hwcomposer -j1
+cd "$(dirname "$0")/shell"
+
+echo "Building Flick with hwcomposer support..."
+cargo build --release --features hwcomposer
+
+echo ""
+echo "Build complete: target/release/flick"
+echo "Run with: ./start_flick.sh"
