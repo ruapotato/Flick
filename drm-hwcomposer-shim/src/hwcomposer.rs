@@ -129,13 +129,13 @@ extern "C" fn vsync_callback(
 extern "C" fn hotplug_callback(
     _listener: *mut HWC2EventListener,
     _sequence_id: i32,
-    display: Hwc2DisplayT,
+    display_id: Hwc2DisplayT,
     connected: bool,
     primary_display: bool,
 ) {
     info!(
-        "Hotplug callback: display={}, connected={}, primary={}",
-        display, connected, primary_display
+        "Hotplug callback: display_id={}, connected={}, primary={}",
+        display_id, connected, primary_display
     );
 }
 
@@ -143,9 +143,9 @@ extern "C" fn hotplug_callback(
 extern "C" fn refresh_callback(
     _listener: *mut HWC2EventListener,
     _sequence_id: i32,
-    display: Hwc2DisplayT,
+    display_id: Hwc2DisplayT,
 ) {
-    debug!("Refresh callback: display={}", display);
+    debug!("Refresh callback: display_id={}", display_id);
 }
 
 impl Hwcomposer {
