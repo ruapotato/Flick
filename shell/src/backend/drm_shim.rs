@@ -34,12 +34,59 @@ use smithay::{
     wayland::compositor,
 };
 
+use smithay::reexports::input::{LibinputInterface};
+
 use drm_hwcomposer_shim::{HwcDrmDevice, HwcGbmDevice};
 
 use khronos_egl as egl;
 
 use crate::state::Flick;
 use crate::shell::ShellView;
+
+/// Direct input interface that bypasses libseat
+/// Used as a fallback when libseat session isn't available
+struct DirectInputInterface;
+
+impl LibinputInterface for DirectInputInterface {
+    fn open_restricted(&mut self, path: &std::path::Path, flags: i32) -> Result<std::os::unix::io::OwnedFd, i32> {
+        use std::os::unix::io::OwnedFd;
+        use std::os::unix::fs::OpenOptionsExt;
+        use std::os::unix::io::IntoRawFd;
+
+        info!("DirectInput: Opening device {:?}", path);
+
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+        options.custom_flags(flags);
+
+        // For input devices we also need write access
+        if flags & libc::O_RDWR != 0 {
+            options.write(true);
+        }
+
+        match options.open(path) {
+            Ok(file) => {
+                let fd = file.into_raw_fd();
+                info!("DirectInput: Opened {:?} as fd {}", path, fd);
+                // SAFETY: We just got this fd from open(), it's valid and we own it
+                Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+            }
+            Err(e) => {
+                warn!("DirectInput: Failed to open {:?}: {}", path, e);
+                Err(e.raw_os_error().unwrap_or(libc::ENOENT))
+            }
+        }
+    }
+
+    fn close_restricted(&mut self, fd: std::os::unix::io::OwnedFd) {
+        use std::os::unix::io::AsRawFd;
+        info!("DirectInput: Closing fd {}", fd.as_raw_fd());
+        // OwnedFd will close the fd when dropped
+        drop(fd);
+    }
+}
+
+use std::os::unix::io::{FromRawFd, AsRawFd};
 
 /// DRM Shim display state
 pub struct ShimDisplay {
@@ -159,19 +206,36 @@ pub fn run() -> Result<()> {
     let height = shim_display.height;
     let shim_display = Rc::new(RefCell::new(shim_display));
 
-    // Initialize libseat session for input device access
-    let (session, notifier) = LibSeatSession::new()
-        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+    // Try to initialize libseat session for input device access
+    // Fall back to direct input access if libseat is not available
+    let (session, notifier, libinput_backend) = match LibSeatSession::new() {
+        Ok((session, notifier)) => {
+            let session = Rc::new(RefCell::new(session));
+            info!("Session created, seat: {}", session.borrow().seat());
 
-    let session = Rc::new(RefCell::new(session));
-    info!("Session created, seat: {}", session.borrow().seat());
+            // Initialize libinput with libseat
+            let libinput_session = LibinputSessionInterface::from(session.borrow().clone());
+            let mut libinput_context = Libinput::new_with_udev(libinput_session);
+            libinput_context.udev_assign_seat(&session.borrow().seat()).unwrap();
+            let libinput_backend = LibinputInputBackend::new(libinput_context);
 
-    // Initialize libinput
-    let libinput_session = LibinputSessionInterface::from(session.borrow().clone());
-    let mut libinput_context = Libinput::new_with_udev(libinput_session);
-    libinput_context.udev_assign_seat(&session.borrow().seat()).unwrap();
+            (Some(session), Some(notifier), libinput_backend)
+        }
+        Err(e) => {
+            warn!("LibSeatSession not available: {:?}", e);
+            info!("Falling back to direct input access");
 
-    let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
+            // Initialize libinput with direct access (bypasses libseat)
+            let mut libinput_context = Libinput::new_with_udev(DirectInputInterface);
+            libinput_context.udev_assign_seat("seat0").unwrap();
+            let libinput_backend = LibinputInputBackend::new(libinput_context);
+
+            (None, None, libinput_backend)
+        }
+    };
+
+    // session is kept around for its lifetime (input device access)
+    let _session = session;
 
     // Create Wayland display
     let wayland_display: Display<Flick> = Display::new()?;
@@ -231,28 +295,31 @@ pub fn run() -> Result<()> {
     let modifiers = Rc::new(RefCell::new(ModifierState::default()));
     let modifiers_for_notifier = modifiers.clone();
 
-    // Add session notifier
-    loop_handle
-        .insert_source(notifier, move |event, _, _state| match event {
-            SessionEvent::PauseSession => {
-                info!("Session paused");
-                *session_active_for_notifier.borrow_mut() = false;
-            }
-            SessionEvent::ActivateSession => {
-                info!("Session activated");
-                *session_active_for_notifier.borrow_mut() = true;
-                *modifiers_for_notifier.borrow_mut() = ModifierState::default();
-            }
-        })
-        .map_err(|e| anyhow::anyhow!("Failed to insert session source: {:?}", e))?;
+    // Add session notifier (only if libseat session is available)
+    if let Some(notifier) = notifier {
+        loop_handle
+            .insert_source(notifier, move |event, _, _state| match event {
+                SessionEvent::PauseSession => {
+                    info!("Session paused");
+                    *session_active_for_notifier.borrow_mut() = false;
+                }
+                SessionEvent::ActivateSession => {
+                    info!("Session activated");
+                    *session_active_for_notifier.borrow_mut() = true;
+                    *modifiers_for_notifier.borrow_mut() = ModifierState::default();
+                }
+            })
+            .map_err(|e| anyhow::anyhow!("Failed to insert session source: {:?}", e))?;
+    } else {
+        info!("No session notifier - running in direct input mode");
+    }
 
     // Add libinput to event loop
-    let session_for_input = session.clone();
     let modifiers_for_input = modifiers.clone();
 
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
-            handle_input_event(state, event, &session_for_input, &modifiers_for_input);
+            handle_input_event(state, event, &modifiers_for_input);
         })
         .map_err(|e| anyhow::anyhow!("Failed to insert input source: {:?}", e))?;
 
@@ -462,7 +529,6 @@ fn render_frame(
 fn handle_input_event(
     state: &mut Flick,
     event: InputEvent<LibinputInputBackend>,
-    _session: &Rc<RefCell<LibSeatSession>>,
     _modifiers: &Rc<RefCell<ModifierState>>,
 ) {
     use smithay::backend::input::{
