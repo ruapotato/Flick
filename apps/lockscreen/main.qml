@@ -10,9 +10,11 @@ Window {
 
     // Config
     property string correctPin: "1234"  // TODO: Load from config file
-    // State dir - hardcoded to standard location
-    // The wrapper script ensures this dir exists
-    property string stateDir: "/home/david/.local/state/flick"
+    // State dir from environment (set by run_lockscreen.sh) or fallback
+    property string stateDir: {
+        var envDir = Qt.getenv("FLICK_STATE_DIR")
+        return envDir ? envDir : (Qt.getenv("HOME") + "/.local/state/flick")
+    }
 
     Component.onCompleted: {
         console.log("Lock screen started")

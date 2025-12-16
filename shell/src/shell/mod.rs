@@ -526,9 +526,14 @@ impl Shell {
             args.join(" ")
         );
 
-        let state_dir = std::env::var("HOME")
-            .map(|h| format!("{}/.local/state/flick", h))
-            .unwrap_or_else(|_| "/tmp".to_string());
+        // Use real user's home when running via sudo
+        let state_dir = if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+            format!("/home/{}/.local/state/flick", sudo_user)
+        } else {
+            std::env::var("HOME")
+                .map(|h| format!("{}/.local/state/flick", h))
+                .unwrap_or_else(|_| "/tmp".to_string())
+        };
 
         match std::process::Command::new("sh")
             .arg("-c")
