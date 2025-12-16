@@ -206,31 +206,45 @@ pub fn run() -> Result<()> {
     let height = shim_display.height;
     let shim_display = Rc::new(RefCell::new(shim_display));
 
+    // Check if running as root - if so, use direct input access since libseat won't work properly
+    let running_as_root = unsafe { libc::geteuid() } == 0;
+
     // Try to initialize libseat session for input device access
-    // Fall back to direct input access if libseat is not available
-    let (session, notifier, libinput_backend) = match LibSeatSession::new() {
-        Ok((session, notifier)) => {
-            let session = Rc::new(RefCell::new(session));
-            info!("Session created, seat: {}", session.borrow().seat());
+    // Fall back to direct input access if libseat is not available or running as root
+    let (session, notifier, libinput_backend) = if running_as_root {
+        info!("Running as root, using direct input access (bypassing libseat)");
 
-            // Initialize libinput with libseat
-            let libinput_session = LibinputSessionInterface::from(session.borrow().clone());
-            let mut libinput_context = Libinput::new_with_udev(libinput_session);
-            libinput_context.udev_assign_seat(&session.borrow().seat()).unwrap();
-            let libinput_backend = LibinputInputBackend::new(libinput_context);
+        // Initialize libinput with direct access (bypasses libseat)
+        let mut libinput_context = Libinput::new_with_udev(DirectInputInterface);
+        libinput_context.udev_assign_seat("seat0").unwrap();
+        let libinput_backend = LibinputInputBackend::new(libinput_context);
 
-            (Some(session), Some(notifier), libinput_backend)
-        }
-        Err(e) => {
-            warn!("LibSeatSession not available: {:?}", e);
-            info!("Falling back to direct input access");
+        (None, None, libinput_backend)
+    } else {
+        match LibSeatSession::new() {
+            Ok((session, notifier)) => {
+                let session = Rc::new(RefCell::new(session));
+                info!("Session created, seat: {}", session.borrow().seat());
 
-            // Initialize libinput with direct access (bypasses libseat)
-            let mut libinput_context = Libinput::new_with_udev(DirectInputInterface);
-            libinput_context.udev_assign_seat("seat0").unwrap();
-            let libinput_backend = LibinputInputBackend::new(libinput_context);
+                // Initialize libinput with libseat
+                let libinput_session = LibinputSessionInterface::from(session.borrow().clone());
+                let mut libinput_context = Libinput::new_with_udev(libinput_session);
+                libinput_context.udev_assign_seat(&session.borrow().seat()).unwrap();
+                let libinput_backend = LibinputInputBackend::new(libinput_context);
 
-            (None, None, libinput_backend)
+                (Some(session), Some(notifier), libinput_backend)
+            }
+            Err(e) => {
+                warn!("LibSeatSession not available: {:?}", e);
+                info!("Falling back to direct input access");
+
+                // Initialize libinput with direct access (bypasses libseat)
+                let mut libinput_context = Libinput::new_with_udev(DirectInputInterface);
+                libinput_context.udev_assign_seat("seat0").unwrap();
+                let libinput_backend = LibinputInputBackend::new(libinput_context);
+
+                (None, None, libinput_backend)
+            }
         }
     };
 
