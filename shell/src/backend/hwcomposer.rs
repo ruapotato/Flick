@@ -1306,15 +1306,11 @@ fn render_frame(
                     // Get Slint rendered pixels
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         if let Some((width, height, pixels)) = slint_ui.render() {
-                            if log_frame {
-                                info!("SLINT RENDERING: {}x{} (qml_connected={}, elements={})",
-                                    width, height, qml_lockscreen_connected, element_count);
-                            }
+                            // Log EVERY time Slint renders (not just log_frame)
+                            info!("SLINT RENDER frame {}: {}x{} qml_connected={} elements={}",
+                                frame_num, width, height, qml_lockscreen_connected, element_count);
                             unsafe {
                                 gl::render_texture(width, height, &pixels, display.width, display.height);
-                            }
-                            if log_frame {
-                                debug!("Rendered Slint UI {}x{}", width, height);
                             }
                         }
                     }
@@ -1325,8 +1321,9 @@ fn render_frame(
 
         // Render Wayland windows for App view OR QML lockscreen
         if shell_view == ShellView::App || qml_lockscreen_connected {
-            if qml_lockscreen_connected && log_frame {
-                info!("Rendering QML lockscreen window");
+            // Log every frame when QML lockscreen should be rendering
+            if qml_lockscreen_connected {
+                info!("QML BLOCK frame {}: entering QML render section (elements={})", frame_num, element_count);
             }
             // Render Wayland client surfaces (windows)
             let windows: Vec<_> = state.space.elements().cloned().collect();
@@ -1367,18 +1364,16 @@ fn render_frame(
 
                     // Render outside of with_states to avoid holding locks
                     if let Some((width, height, pixels)) = buffer_info {
-                        // Log first pixel to verify color data
-                        if log_frame && pixels.len() >= 4 {
-                            info!("Window {} first pixel: RGBA({},{},{},{})",
-                                i, pixels[0], pixels[1], pixels[2], pixels[3]);
+                        // Log EVERY QML render to match Slint logging
+                        if pixels.len() >= 4 {
+                            info!("QML RENDER frame {}: {}x{} first_pixel=RGBA({},{},{},{})",
+                                frame_num, width, height, pixels[0], pixels[1], pixels[2], pixels[3]);
                         }
-                        debug!("Window {} rendering {}x{} buffer ({} bytes)", i, width, height, pixels.len());
                         unsafe {
                             gl::render_texture(width, height, &pixels, display.width, display.height);
                         }
-                        debug!("Window {} render complete", i);
                     } else {
-                        debug!("Window {} no stored buffer to render", i);
+                        info!("QML NO BUFFER frame {}: window {} has no stored buffer", frame_num, i);
                     }
                 }
             }
