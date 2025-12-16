@@ -838,8 +838,18 @@ fn handle_input_event(
                 // Forward to Slint UI based on current view
                 match shell_view {
                     crate::shell::ShellView::Home => {
-                        // Start tracking home touch with y coordinate
-                        state.shell.start_home_touch(touch_pos.y, None);
+                        // Hit test to find which category was touched
+                        let touched_category = state.shell.hit_test_category(touch_pos);
+
+                        // If touching a category, use start_category_touch for app launching
+                        if let Some(category) = touched_category {
+                            info!("Touch down on category {:?}", category);
+                            state.shell.start_category_touch(touch_pos, category);
+                        } else {
+                            // Not on a category - just track for scrolling
+                            state.shell.start_home_touch(touch_pos.y, None);
+                        }
+
                         // Forward to Slint for visual feedback
                         if let Some(ref slint_ui) = state.shell.slint_ui {
                             slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
