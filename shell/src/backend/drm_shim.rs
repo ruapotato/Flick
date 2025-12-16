@@ -483,7 +483,7 @@ fn handle_input_event(
             let touch_pos = Point::from((position.x, position.y));
 
             // Track touch position
-            state.last_touch_pos.insert(slot_id as u32, touch_pos);
+            state.last_touch_pos.insert(slot_id, touch_pos);
 
             // Process gesture
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
@@ -496,12 +496,20 @@ fn handle_input_event(
                 ShellView::App => {
                     // Forward touch to Wayland client
                     if let Some(touch) = state.seat.get_touch() {
-                        let focus = state.space.element_under(touch_pos.to_f64())
-                            .and_then(|(window, loc)| {
-                                window.toplevel().map(|t| (t.wl_surface().clone(), loc))
+                        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+
+                        // Find surface under touch point
+                        let under = state.space.element_under(touch_pos.to_f64())
+                            .map(|(window, loc)| {
+                                let surface = window.toplevel()
+                                    .map(|t| t.wl_surface().clone());
+                                (surface, loc)
                             });
 
-                        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                        let focus = under.as_ref().and_then(|(surface, loc)| {
+                            surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
+                        });
+
                         touch.down(
                             state,
                             focus,
@@ -547,7 +555,7 @@ fn handle_input_event(
             let touch_pos = Point::from((position.x, position.y));
 
             // Update tracked touch position
-            state.last_touch_pos.insert(slot_id as u32, touch_pos);
+            state.last_touch_pos.insert(slot_id, touch_pos);
 
             // Process gesture
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
@@ -561,10 +569,17 @@ fn handle_input_event(
                 ShellView::App => {
                     // Forward to Wayland client
                     if let Some(touch) = state.seat.get_touch() {
-                        let focus = state.space.element_under(touch_pos.to_f64())
-                            .and_then(|(window, loc)| {
-                                window.toplevel().map(|t| (t.wl_surface().clone(), loc))
+                        // Find surface under touch point
+                        let under = state.space.element_under(touch_pos.to_f64())
+                            .map(|(window, loc)| {
+                                let surface = window.toplevel()
+                                    .map(|t| t.wl_surface().clone());
+                                (surface, loc)
                             });
+
+                        let focus = under.as_ref().and_then(|(surface, loc)| {
+                            surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
+                        });
 
                         touch.motion(
                             state,
@@ -597,7 +612,7 @@ fn handle_input_event(
             let slot_id: i32 = event.slot().into();
 
             // Get last known position
-            let last_pos = state.last_touch_pos.get(&(slot_id as u32)).copied()
+            let last_pos = state.last_touch_pos.get(&slot_id).copied()
                 .unwrap_or_else(|| Point::from((0.0, 0.0)));
 
             // Process gesture
@@ -644,7 +659,7 @@ fn handle_input_event(
             }
 
             // Clean up
-            state.last_touch_pos.remove(&(slot_id as u32));
+            state.last_touch_pos.remove(&slot_id);
         }
         InputEvent::TouchCancel { .. } => {
             debug!("Touch cancel");
