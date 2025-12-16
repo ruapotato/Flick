@@ -477,10 +477,8 @@ fn handle_input_event(
             info!("Input device removed: {}", device.name());
         }
         InputEvent::TouchDown { event } => {
-            let slot_id: i32 = event.slot().map(|s| {
-                let id: u32 = s.into();
-                id as i32
-            }).unwrap_or(0);
+            use smithay::backend::input::TouchEvent;
+            let slot_id: i32 = event.slot().into();
             let position = event.position_transformed(state.screen_size);
             let touch_pos = Point::from((position.x, position.y));
 
@@ -543,10 +541,8 @@ fn handle_input_event(
             }
         }
         InputEvent::TouchMotion { event } => {
-            let slot_id: i32 = event.slot().map(|s| {
-                let id: u32 = s.into();
-                id as i32
-            }).unwrap_or(0);
+            use smithay::backend::input::TouchEvent;
+            let slot_id: i32 = event.slot().into();
             let position = event.position_transformed(state.screen_size);
             let touch_pos = Point::from((position.x, position.y));
 
@@ -556,7 +552,7 @@ fn handle_input_event(
             // Process gesture
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
                 debug!("Gesture touch_motion: {:?}", gesture_event);
-                state.shell.handle_gesture(gesture_event);
+                state.shell.handle_gesture(&gesture_event);
             }
 
             // Handle shell-specific motion
@@ -583,7 +579,7 @@ fn handle_input_event(
                     }
                 }
                 ShellView::Home => {
-                    state.shell.update_category_drag(touch_pos);
+                    state.shell.update_drag(touch_pos);
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
                     }
@@ -597,10 +593,8 @@ fn handle_input_event(
             }
         }
         InputEvent::TouchUp { event } => {
-            let slot_id: i32 = event.slot().map(|s| {
-                let id: u32 = s.into();
-                id as i32
-            }).unwrap_or(0);
+            use smithay::backend::input::TouchEvent;
+            let slot_id: i32 = event.slot().into();
 
             // Get last known position
             let last_pos = state.last_touch_pos.get(&(slot_id as u32)).copied()
@@ -609,7 +603,7 @@ fn handle_input_event(
             // Process gesture
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {
                 debug!("Gesture touch_up: {:?}", gesture_event);
-                state.shell.handle_gesture(gesture_event);
+                state.shell.handle_gesture(&gesture_event);
             }
 
             // Handle shell-specific touch up
