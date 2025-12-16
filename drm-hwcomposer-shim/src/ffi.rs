@@ -165,14 +165,47 @@ pub type HWCPresentCallback = extern "C" fn(
     buffer: *mut ANativeWindowBuffer,
 );
 
-/// Opaque buffer handle type from Android
+/// Native handle structure from Android (hardware/libhardware/include/hardware/gralloc.h)
+/// This is the actual structure that buffer_handle_t points to.
+/// The data[] array contains numFds file descriptors followed by numInts integers.
 #[repr(C)]
-pub struct BufferHandle {
-    _data: [u8; 0],
+pub struct NativeHandleT {
+    pub version: c_int,     // sizeof(native_handle_t)
+    pub num_fds: c_int,     // number of file descriptors at &data[0]
+    pub num_ints: c_int,    // number of integers at &data[numFds]
+    // data array follows - we access it via pointer arithmetic
+    // data[0..num_fds] = file descriptors (including DMA-BUF fd)
+    // data[num_fds..num_fds+num_ints] = integers (stride, format metadata, etc.)
 }
 
-/// buffer_handle_t is a pointer to buffer handle
-pub type BufferHandleT = *mut BufferHandle;
+impl NativeHandleT {
+    /// Get the DMA-BUF file descriptor from the handle
+    /// Returns -1 if no fd is available
+    pub unsafe fn get_dmabuf_fd(&self) -> c_int {
+        if self.num_fds > 0 {
+            // The first fd is typically the DMA-BUF fd
+            let data_ptr = (self as *const NativeHandleT).add(1) as *const c_int;
+            *data_ptr
+        } else {
+            -1
+        }
+    }
+
+    /// Get all file descriptors from the handle
+    pub unsafe fn get_fds(&self) -> Vec<c_int> {
+        let mut fds = Vec::with_capacity(self.num_fds as usize);
+        if self.num_fds > 0 {
+            let data_ptr = (self as *const NativeHandleT).add(1) as *const c_int;
+            for i in 0..self.num_fds {
+                fds.push(*data_ptr.add(i as usize));
+            }
+        }
+        fds
+    }
+}
+
+/// buffer_handle_t is a pointer to native_handle_t
+pub type BufferHandleT = *mut NativeHandleT;
 
 // Gralloc functions - MUST call hybris_gralloc_initialize before using
 #[link(name = "gralloc")]

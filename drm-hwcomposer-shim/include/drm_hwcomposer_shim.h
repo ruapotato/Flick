@@ -136,11 +136,41 @@ uint64_t gbm_bo_get_modifier(gbm_bo *bo);
 /** Get number of planes */
 int gbm_bo_get_plane_count(gbm_bo *bo);
 
-/** Get DMA-BUF fd (not yet implemented) */
+/** Get DMA-BUF fd for this buffer (duplicated - caller must close) */
 int gbm_bo_get_fd(gbm_bo *bo);
 
 /** Get DMA-BUF fd for a specific plane */
 int gbm_bo_get_fd_for_plane(gbm_bo *bo, int plane);
+
+/** Import type constants */
+#define GBM_BO_IMPORT_WL_BUFFER         0x5501
+#define GBM_BO_IMPORT_EGL_IMAGE         0x5502
+#define GBM_BO_IMPORT_FD                0x5504
+#define GBM_BO_IMPORT_FD_MODIFIER       0x5505
+
+/** Import data structure for GBM_BO_IMPORT_FD */
+struct gbm_import_fd_data {
+    int fd;
+    uint32_t width;
+    uint32_t height;
+    uint32_t stride;
+    uint32_t format;
+};
+
+/** Import data structure for GBM_BO_IMPORT_FD_MODIFIER */
+struct gbm_import_fd_modifier_data {
+    uint32_t width;
+    uint32_t height;
+    uint32_t format;
+    uint32_t num_fds;
+    int fds[4];
+    int strides[4];
+    int offsets[4];
+    uint64_t modifier;
+};
+
+/** Import a buffer from an external source (DMA-BUF, etc.) */
+gbm_bo *gbm_bo_import(gbm_device *device, uint32_t type, void *buffer, uint32_t usage);
 
 /** Map buffer for CPU access */
 void *gbm_bo_map(gbm_bo *bo, uint32_t x, uint32_t y, uint32_t width, uint32_t height,

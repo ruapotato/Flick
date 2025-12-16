@@ -69,9 +69,9 @@ The shim can now render to the display via hwcomposer. Color cycling test shows 
 - [x] Buffer map/unmap for CPU access
 - [x] Framebuffer management
 - [x] Plane state tracking
+- [x] **C API for libdrm/libgbm drop-in replacement**
 
 ### In Progress
-- [ ] C API for libdrm/libgbm drop-in replacement
 - [ ] DMA-BUF export/import for buffer sharing
 
 ### Planned
@@ -192,7 +192,44 @@ The test script will:
 
 # GBM/gralloc buffer allocation test
 ./target/release/test_gbm
+
+# C API compatibility test
+./target/release/test_c_api
 ```
+
+### C API Usage (for existing applications)
+
+The shim provides a C-compatible API that can be used as a drop-in replacement for libgbm and libdrm:
+
+```c
+#include "drm_hwcomposer_shim.h"
+
+// Initialize the shim
+drm_hwcomposer_shim_init();
+
+// Use standard GBM API
+gbm_device *gbm = gbm_create_device(-1);  // fd is ignored
+gbm_bo *bo = gbm_bo_create(gbm, 1920, 1080, GBM_FORMAT_ARGB8888,
+                           GBM_BO_USE_RENDERING | GBM_BO_USE_SCANOUT);
+
+// Map for CPU access
+uint32_t stride;
+void *map_data;
+void *ptr = gbm_bo_map(bo, 0, 0, 1920, 1080, GBM_BO_TRANSFER_WRITE, &stride, &map_data);
+// ... write to buffer ...
+gbm_bo_unmap(bo, map_data);
+
+// Use standard DRM API
+drmModeRes *res = drmModeGetResources(-1);
+drmModeConnector *conn = drmModeGetConnector(-1, res->connectors[0]);
+printf("Display: %dx%d\n", conn->modes[0].hdisplay, conn->modes[0].vdisplay);
+
+// Cleanup
+gbm_bo_destroy(bo);
+gbm_device_destroy(gbm);
+```
+
+The C header is available at `include/drm_hwcomposer_shim.h`.
 
 Expected output for test_hwc:
 ```

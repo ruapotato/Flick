@@ -372,11 +372,26 @@ pub unsafe extern "C" fn gbm_bo_get_plane_count(bo: *mut gbm_bo) -> c_int {
     1 // We only support single-plane formats
 }
 
-/// Get DMA-BUF fd (not yet implemented)
+/// Get DMA-BUF fd for this buffer
+/// Returns a duplicated fd - caller is responsible for closing it
 #[no_mangle]
 pub unsafe extern "C" fn gbm_bo_get_fd(bo: *mut gbm_bo) -> c_int {
-    warn!("gbm_bo_get_fd: DMA-BUF export not yet implemented");
-    -1
+    if bo.is_null() {
+        return -1;
+    }
+
+    let bo_ref = &*bo;
+    if let Some(ref inner) = bo_ref.inner {
+        match inner.get_dmabuf_fd() {
+            Ok(fd) => fd,
+            Err(e) => {
+                debug!("gbm_bo_get_fd failed: {}", e);
+                -1
+            }
+        }
+    } else {
+        -1
+    }
 }
 
 /// Get DMA-BUF fd for a specific plane
@@ -386,6 +401,37 @@ pub unsafe extern "C" fn gbm_bo_get_fd_for_plane(bo: *mut gbm_bo, plane: c_int) 
         gbm_bo_get_fd(bo)
     } else {
         -1
+    }
+}
+
+/// Import a DMA-BUF as a buffer object
+/// This creates a gbm_bo that references the imported buffer
+#[no_mangle]
+pub unsafe extern "C" fn gbm_bo_import(
+    device: *mut gbm_device,
+    type_: u32,
+    buffer: *mut c_void,
+    usage: u32,
+) -> *mut gbm_bo {
+    if device.is_null() || buffer.is_null() {
+        return ptr::null_mut();
+    }
+
+    // GBM_BO_IMPORT_FD = 0x5504
+    // GBM_BO_IMPORT_FD_MODIFIER = 0x5505
+    const GBM_BO_IMPORT_FD: u32 = 0x5504;
+    const GBM_BO_IMPORT_FD_MODIFIER: u32 = 0x5505;
+
+    match type_ {
+        GBM_BO_IMPORT_FD | GBM_BO_IMPORT_FD_MODIFIER => {
+            // For now, we don't fully support import - would need gralloc import
+            warn!("gbm_bo_import: DMA-BUF import not fully implemented");
+            ptr::null_mut()
+        }
+        _ => {
+            error!("gbm_bo_import: Unknown import type {}", type_);
+            ptr::null_mut()
+        }
     }
 }
 

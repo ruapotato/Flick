@@ -82,6 +82,18 @@ fn main() {
                 println!("    Unmap: OK");
             }
 
+            // Test DMA-BUF export
+            println!("  Testing DMA-BUF export...");
+            let dmabuf_fd = gbm_bo_get_fd(bo);
+            if dmabuf_fd >= 0 {
+                println!("    DMA-BUF fd: {} (success!)", dmabuf_fd);
+                // Close the duplicated fd
+                libc::close(dmabuf_fd);
+                println!("    Closed fd: OK");
+            } else {
+                println!("    DMA-BUF fd: not available (this is OK for some drivers)");
+            }
+
             gbm_bo_destroy(bo);
             println!("  Buffer destroyed");
         }

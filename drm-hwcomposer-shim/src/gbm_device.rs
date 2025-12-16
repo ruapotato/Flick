@@ -112,6 +112,41 @@ impl HwcGbmBo {
         self.handle
     }
 
+    /// Get the DMA-BUF file descriptor for this buffer
+    /// Returns -1 if not available (e.g., buffer doesn't support DMA-BUF)
+    /// The returned fd is duplicated - caller is responsible for closing it
+    pub fn get_dmabuf_fd(&self) -> Result<i32> {
+        if self.handle.is_null() {
+            return Err(Error::Gralloc("Cannot get DMA-BUF fd from null buffer".into()));
+        }
+
+        let fd = unsafe { (*self.handle).get_dmabuf_fd() };
+        if fd < 0 {
+            return Err(Error::Gralloc("Buffer has no DMA-BUF fd".into()));
+        }
+
+        // Duplicate the fd so caller owns it independently
+        let dup_fd = unsafe { libc::dup(fd) };
+        if dup_fd < 0 {
+            return Err(Error::Gralloc(format!(
+                "Failed to duplicate DMA-BUF fd: {}",
+                std::io::Error::last_os_error()
+            )));
+        }
+
+        debug!("Got DMA-BUF fd {} (duped from {})", dup_fd, fd);
+        Ok(dup_fd)
+    }
+
+    /// Get all file descriptors associated with this buffer
+    /// Useful for multi-plane formats
+    pub fn get_fds(&self) -> Vec<i32> {
+        if self.handle.is_null() {
+            return vec![];
+        }
+        unsafe { (*self.handle).get_fds() }
+    }
+
     /// Lock buffer for CPU write access
     /// Returns a pointer to the buffer data
     pub fn map(&self) -> Result<*mut c_void> {
