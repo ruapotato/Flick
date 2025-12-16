@@ -12,7 +12,7 @@ use std::{
 };
 
 use anyhow::Result;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use smithay::{
     output::{Mode, Output, PhysicalProperties, Subpixel},
@@ -124,8 +124,7 @@ fn init_shim_display() -> Result<ShimDisplay> {
     // Load OpenGL ES functions
     unsafe {
         gl::load_with(|s| {
-            let c_str = std::ffi::CString::new(s).unwrap();
-            egl_instance.get_proc_address(c_str.as_c_str())
+            egl_instance.get_proc_address(s)
                 .map(|p| p as *const _)
                 .unwrap_or(std::ptr::null())
         });
@@ -149,15 +148,14 @@ pub fn run() -> Result<()> {
     info!("Starting Flick with DRM shim backend");
 
     // Initialize the shim display
-    let display = init_shim_display()?;
-    let width = display.width;
-    let height = display.height;
-    let drm_device = display.drm_device.clone();
-    let display = Rc::new(RefCell::new(display));
+    let shim_display = init_shim_display()?;
+    let width = shim_display.width;
+    let height = shim_display.height;
+    let _drm_device = shim_display.drm_device.clone();
+    let shim_display = Rc::new(RefCell::new(shim_display));
 
     // Create Wayland display
-    let mut wayland_display: Display<Flick> = Display::new()?;
-    let dh = wayland_display.handle();
+    let wayland_display: Display<Flick> = Display::new()?;
 
     // Create event loop
     let mut event_loop: EventLoop<Flick> = EventLoop::try_new()?;
@@ -188,22 +186,14 @@ pub fn run() -> Result<()> {
     );
     output.set_preferred(mode);
 
-    // Create compositor state
+    // Create compositor state (takes ownership of wayland_display)
+    let screen_size = smithay::utils::Size::from((width as i32, height as i32));
     let mut state = Flick::new(
-        &dh,
+        wayland_display,
         loop_handle.clone(),
-        None, // No seat for now, will add input later
+        screen_size,
     );
     state.space.map_output(&output, (0, 0));
-
-    // Insert Wayland display source
-    loop_handle.insert_source(
-        wayland_display.backend().poll_fd().try_clone_to_owned().unwrap().into(),
-        |_, _, state| {
-            // This will be called when there's Wayland activity
-            Ok(smithay::reexports::calloop::PostAction::Continue)
-        },
-    )?;
 
     // Skip input setup for now - just test display
     // TODO: Add input support after display works
@@ -211,26 +201,27 @@ pub fn run() -> Result<()> {
 
     // Frame timer for rendering at 60fps
     let frame_timer = Timer::from_duration(Duration::from_millis(16));
-    let display_clone = display.clone();
+    let shim_display_clone = shim_display.clone();
 
     loop_handle.insert_source(frame_timer, move |_, _, state| {
         // Render frame (test mode - color cycling)
-        render_frame(&display_clone, state);
+        render_frame(&shim_display_clone, state);
 
         // Schedule next frame
         TimeoutAction::ToDuration(Duration::from_millis(16))
-    })?;
+    }).expect("Failed to insert frame timer");
 
     info!("DRM shim backend initialized, entering event loop");
 
     // Run the event loop
     loop {
         // Dispatch Wayland events
-        wayland_display.dispatch_clients(&mut state)?;
-        wayland_display.flush_clients()?;
+        state.dispatch_clients();
 
         // Run one iteration of the event loop
-        event_loop.dispatch(Some(Duration::from_millis(1)), &mut state)?;
+        if let Err(e) = event_loop.dispatch(Some(Duration::from_millis(1)), &mut state) {
+            error!("Event loop error: {:?}", e);
+        }
     }
 }
 
