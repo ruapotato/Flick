@@ -167,7 +167,7 @@ pub type HWCPresentCallback = extern "C" fn(
 
 // Link against libhybris libraries
 #[link(name = "hybris-hwcomposerwindow")]
-#[link(name = "hwc2_compat_layer")]
+#[link(name = "hwc2")]
 extern "C" {
     // === HWC2 Compatibility Layer Functions ===
 
