@@ -31,6 +31,10 @@ export WAYLAND_DISPLAY=wayland-0
 # Ensure runtime dir exists
 mkdir -p "$XDG_RUNTIME_DIR"
 
+# Ensure log directory exists
+LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/flick"
+mkdir -p "$LOG_DIR"
+
 # Activate current session to get input device access
 echo "Activating user session..."
 if [ -n "$XDG_SESSION_ID" ]; then
