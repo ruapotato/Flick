@@ -1206,8 +1206,8 @@ fn render_frame(
     }
 
     // For first 120 frames, render alternating bright colors to test basic rendering
-    // Also flash colors for 10 frames every 120 frames after to verify display is still updating
-    let test_mode = frame_num <= 120 || (frame_num % 120 < 10);
+    // After that, normal rendering takes over
+    let test_mode = frame_num <= 120;
 
     if test_mode {
         // Cycle through bright colors: red, green, blue every 40 frames
