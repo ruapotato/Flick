@@ -19,20 +19,30 @@ fi
 echo "Stopping existing processes..."
 # Use killall with exact name to avoid killing this script
 sudo killall -9 flick 2>/dev/null || true
-sleep 0.5
-
-echo "Restarting hwcomposer..."
-sudo killall -9 android.hardware.graphics.composer 2>/dev/null || true
-sudo killall -9 composer 2>/dev/null || true
 sleep 1
 
+echo "Stopping hwcomposer completely..."
+# Kill all hwcomposer-related processes
+sudo pkill -9 -f 'graphics.composer' 2>/dev/null || true
+sudo pkill -9 -f 'hwcomposer' 2>/dev/null || true
+sudo killall -9 android.hardware.graphics.composer 2>/dev/null || true
+sudo killall -9 composer 2>/dev/null || true
+
+# Stop the service if running
+if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
+    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
+        /usr/lib/halium-wrappers/android-service.sh hwcomposer stop 2>/dev/null || true
+fi
+sleep 2
+
+echo "Restarting hwcomposer..."
 if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
     sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
         /usr/lib/halium-wrappers/android-service.sh hwcomposer start
 else
     sudo systemctl restart hwcomposer 2>/dev/null || true
 fi
-sleep 2
+sleep 3
 echo "hwcomposer started"
 
 # Use the real user's runtime directory, not root's
