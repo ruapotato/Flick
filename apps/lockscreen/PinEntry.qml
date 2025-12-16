@@ -1,15 +1,20 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
-import QtGraphicalEffects 1.15
 
 Item {
     id: pinEntry
-    width: 320
-    height: 500
+
+    // Scale based on parent width - use most of the screen
+    width: parent ? Math.min(parent.width * 0.9, 600) : 400
+    height: parent ? parent.height * 0.8 : 700
 
     property string correctPin: "1234"
     property string enteredPin: ""
     property int maxDigits: 4
+
+    // Calculate button size based on available width
+    property real buttonSize: Math.min((width - 60) / 3, 120)
+    property real buttonSpacing: buttonSize * 0.2
 
     signal pinCorrect()
     signal pinIncorrect()
@@ -19,9 +24,10 @@ Item {
     Text {
         id: title
         anchors.top: parent.top
+        anchors.topMargin: 20
         anchors.horizontalCenter: parent.horizontalCenter
         text: "Enter PIN"
-        font.pixelSize: 28
+        font.pixelSize: Math.max(32, parent.width * 0.08)
         font.weight: Font.Light
         color: "#ffffff"
     }
@@ -32,17 +38,17 @@ Item {
         anchors.top: title.bottom
         anchors.topMargin: 40
         anchors.horizontalCenter: parent.horizontalCenter
-        spacing: 20
+        spacing: buttonSize * 0.3
 
         Repeater {
             model: maxDigits
             Rectangle {
-                width: 16
-                height: 16
-                radius: 8
+                width: buttonSize * 0.25
+                height: width
+                radius: width / 2
                 color: index < enteredPin.length ? "#e94560" : "transparent"
                 border.color: index < enteredPin.length ? "#e94560" : "#444455"
-                border.width: 2
+                border.width: 3
 
                 Behavior on color {
                     ColorAnimation { duration: 150 }
@@ -63,24 +69,24 @@ Item {
         anchors.topMargin: 50
         anchors.horizontalCenter: parent.horizontalCenter
         columns: 3
-        spacing: 20
+        spacing: buttonSpacing
 
         Repeater {
             model: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"]
 
             Rectangle {
-                width: 80
-                height: 80
-                radius: 40
+                width: buttonSize
+                height: buttonSize
+                radius: buttonSize / 2
                 color: buttonMouse.pressed ? "#333344" : (modelData === "" ? "transparent" : "#1a1a2e")
-                border.color: modelData === "" ? "transparent" : "#333344"
-                border.width: 1
+                border.color: modelData === "" ? "transparent" : "#444455"
+                border.width: 2
                 visible: modelData !== ""
 
                 Text {
                     anchors.centerIn: parent
                     text: modelData
-                    font.pixelSize: modelData === "⌫" ? 28 : 36
+                    font.pixelSize: modelData === "⌫" ? buttonSize * 0.35 : buttonSize * 0.45
                     font.weight: Font.Light
                     color: "#ffffff"
                 }
@@ -91,6 +97,7 @@ Item {
                     enabled: modelData !== ""
 
                     onClicked: {
+                        console.log("Button pressed:", modelData, "current PIN:", enteredPin)
                         if (modelData === "⌫") {
                             // Backspace
                             if (enteredPin.length > 0) {
@@ -100,53 +107,14 @@ Item {
                             // Number
                             if (enteredPin.length < maxDigits) {
                                 enteredPin += modelData
+                                console.log("PIN now:", enteredPin, "length:", enteredPin.length)
 
                                 // Check PIN when complete
                                 if (enteredPin.length === maxDigits) {
+                                    console.log("PIN complete, checking:", enteredPin, "vs", correctPin)
                                     checkTimer.start()
                                 }
                             }
-                        }
-                    }
-                }
-
-                // Ripple effect
-                Rectangle {
-                    id: ripple
-                    anchors.centerIn: parent
-                    width: 0
-                    height: width
-                    radius: width / 2
-                    color: "#ffffff"
-                    opacity: 0
-
-                    SequentialAnimation {
-                        id: rippleAnim
-                        PropertyAnimation {
-                            target: ripple
-                            properties: "width,height"
-                            to: 100
-                            duration: 200
-                        }
-                        PropertyAnimation {
-                            target: ripple
-                            property: "opacity"
-                            to: 0
-                            duration: 200
-                        }
-                        PropertyAnimation {
-                            target: ripple
-                            properties: "width,height"
-                            to: 0
-                            duration: 0
-                        }
-                    }
-
-                    Connections {
-                        target: buttonMouse
-                        function onPressed() {
-                            ripple.opacity = 0.2
-                            rippleAnim.start()
                         }
                     }
                 }
@@ -157,15 +125,15 @@ Item {
     // Cancel button
     Text {
         anchors.top: numPad.bottom
-        anchors.topMargin: 30
+        anchors.topMargin: 40
         anchors.horizontalCenter: parent.horizontalCenter
         text: "Cancel"
-        font.pixelSize: 18
-        color: "#666677"
+        font.pixelSize: buttonSize * 0.25
+        color: "#888899"
 
         MouseArea {
             anchors.fill: parent
-            anchors.margins: -10
+            anchors.margins: -20
             onClicked: {
                 enteredPin = ""
                 cancelled()
@@ -178,9 +146,12 @@ Item {
         id: checkTimer
         interval: 300
         onTriggered: {
+            console.log("Checking PIN:", enteredPin, "===", correctPin, "result:", enteredPin === correctPin)
             if (enteredPin === correctPin) {
+                console.log("PIN CORRECT!")
                 pinCorrect()
             } else {
+                console.log("PIN INCORRECT!")
                 pinIncorrect()
                 clearTimer.start()
             }

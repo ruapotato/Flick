@@ -16,16 +16,17 @@ Item {
         color: "#1a1a2e"
     }
 
-    // Time display - simplified
+    // Time display - scaled for screen size
     Column {
         anchors.centerIn: parent
-        anchors.verticalCenterOffset: -80
-        spacing: 8
+        anchors.verticalCenterOffset: -parent.height * 0.15
+        spacing: 16
 
         Text {
             id: timeText
             anchors.horizontalCenter: parent.horizontalCenter
-            font.pixelSize: 96
+            font.pixelSize: Math.max(120, lockScreen.width * 0.2)
+            font.weight: Font.Light
             color: "#ffffff"
             text: Qt.formatTime(new Date(), "hh:mm")
 
@@ -40,7 +41,8 @@ Item {
         Text {
             id: dateText
             anchors.horizontalCenter: parent.horizontalCenter
-            font.pixelSize: 24
+            font.pixelSize: Math.max(28, lockScreen.width * 0.05)
+            font.weight: Font.Light
             color: "#888899"
             text: Qt.formatDate(new Date(), "dddd, MMMM d")
 
@@ -64,7 +66,7 @@ Item {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "Swipe up to unlock"
-            font.pixelSize: 16
+            font.pixelSize: Math.max(20, lockScreen.width * 0.04)
             color: "#666677"
         }
     }
