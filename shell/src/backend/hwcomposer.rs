@@ -807,27 +807,32 @@ fn handle_input_event(
 
             // Forward touch to Wayland client if connected
             if has_wayland_window && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
-                // Find the window under the touch point
-                if let Some((window, window_loc)) = state.space.element_under(touch_pos.to_f64()).map(|(w, l)| (w.clone(), l)) {
-                    if let Some(surface) = window.wl_surface() {
-                        // Calculate position relative to window
-                        let relative_pos = touch_pos.to_f64() - window_loc.to_f64();
+                if let Some(touch) = state.seat.get_touch() {
+                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
-                        // Get serial for this event
-                        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                    // Find surface under touch point
+                    let under = state.space.element_under(touch_pos.to_f64())
+                        .map(|(window, loc)| {
+                            let surface = window.toplevel()
+                                .map(|t| t.wl_surface().clone());
+                            (surface, loc)
+                        });
 
-                        // Send touch down to the surface
-                        if let Some(touch) = state.seat.get_touch() {
-                            touch.down(
-                                serial,
-                                event.time_msec(),
-                                &surface,
-                                relative_pos,
-                                slot_id,
-                            );
-                            touch.frame();
-                        }
-                    }
+                    let focus = under.as_ref().and_then(|(surface, loc)| {
+                        surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
+                    });
+
+                    touch.down(
+                        state,
+                        focus,
+                        &smithay::input::touch::DownEvent {
+                            slot: event.slot(),
+                            location: touch_pos.to_f64(),
+                            serial,
+                            time: event.time_msec(),
+                        },
+                    );
+                    touch.frame(state);
                 }
             } else {
                 // Forward to Slint UI based on current view
@@ -879,22 +884,29 @@ fn handle_input_event(
 
             // Forward touch to Wayland client if connected
             if has_wayland_window && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
-                // Find the window under the touch point
-                if let Some((window, window_loc)) = state.space.element_under(touch_pos.to_f64()).map(|(w, l)| (w.clone(), l)) {
-                    if let Some(_surface) = window.wl_surface() {
-                        // Calculate position relative to window
-                        let relative_pos = touch_pos.to_f64() - window_loc.to_f64();
+                if let Some(touch) = state.seat.get_touch() {
+                    // Find surface under touch point
+                    let under = state.space.element_under(touch_pos.to_f64())
+                        .map(|(window, loc)| {
+                            let surface = window.toplevel()
+                                .map(|t| t.wl_surface().clone());
+                            (surface, loc)
+                        });
 
-                        // Send touch motion to the surface
-                        if let Some(touch) = state.seat.get_touch() {
-                            touch.motion(
-                                event.time_msec(),
-                                slot_id,
-                                relative_pos,
-                            );
-                            touch.frame();
-                        }
-                    }
+                    let focus = under.as_ref().and_then(|(surface, loc)| {
+                        surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
+                    });
+
+                    touch.motion(
+                        state,
+                        focus,
+                        &smithay::input::touch::MotionEvent {
+                            slot: event.slot(),
+                            location: touch_pos.to_f64(),
+                            time: event.time_msec(),
+                        },
+                    );
+                    touch.frame(state);
                 }
             } else {
                 // Forward to Slint UI based on current view
@@ -939,17 +951,18 @@ fn handle_input_event(
 
             // Forward touch to Wayland client if connected
             if has_wayland_window && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
-                // Get serial for this event
-                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-
-                // Send touch up to the surface
                 if let Some(touch) = state.seat.get_touch() {
+                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+
                     touch.up(
-                        serial,
-                        event.time_msec(),
-                        slot_id,
+                        state,
+                        &smithay::input::touch::UpEvent {
+                            slot: event.slot(),
+                            serial,
+                            time: event.time_msec(),
+                        },
                     );
-                    touch.frame();
+                    touch.frame(state);
                 }
             } else {
                 // Forward to Slint UI and handle app launching
