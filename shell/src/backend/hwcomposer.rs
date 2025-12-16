@@ -1253,9 +1253,19 @@ fn render_frame(
             && state.shell.lock_screen_active
             && element_count > 0;
 
-        if log_frame {
-            info!("RENDER: view={:?}, lock_active={}, elements={}, qml_connected={}",
-                shell_view, state.shell.lock_screen_active, element_count, qml_lockscreen_connected);
+        // Log status every 60 frames, or on any change
+        static mut LAST_ELEMENT_COUNT: usize = 999;
+        static mut LAST_QML_CONNECTED: bool = false;
+        let element_changed = unsafe { LAST_ELEMENT_COUNT != element_count };
+        let connected_changed = unsafe { LAST_QML_CONNECTED != qml_lockscreen_connected };
+
+        if log_frame || element_changed || connected_changed {
+            info!("RENDER frame {}: view={:?}, lock_active={}, elements={}, qml_connected={}",
+                frame_num, shell_view, state.shell.lock_screen_active, element_count, qml_lockscreen_connected);
+            unsafe {
+                LAST_ELEMENT_COUNT = element_count;
+                LAST_QML_CONNECTED = qml_lockscreen_connected;
+            }
         }
 
         // Render Slint UI for shell views (but not when QML lockscreen is connected)
@@ -1306,9 +1316,10 @@ fn render_frame(
                     // Get Slint rendered pixels
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         if let Some((width, height, pixels)) = slint_ui.render() {
-                            // Log EVERY time Slint renders (not just log_frame)
-                            info!("SLINT RENDER frame {}: {}x{} qml_connected={} elements={}",
-                                frame_num, width, height, qml_lockscreen_connected, element_count);
+                            // Only log periodically to reduce spam
+                            if log_frame {
+                                info!("SLINT RENDER frame {}: {}x{}", frame_num, width, height);
+                            }
                             unsafe {
                                 gl::render_texture(width, height, &pixels, display.width, display.height);
                             }
@@ -1321,10 +1332,6 @@ fn render_frame(
 
         // Render Wayland windows for App view OR QML lockscreen
         if shell_view == ShellView::App || qml_lockscreen_connected {
-            // Log every frame when QML lockscreen should be rendering
-            if qml_lockscreen_connected {
-                info!("QML BLOCK frame {}: entering QML render section (elements={})", frame_num, element_count);
-            }
             // Render Wayland client surfaces (windows)
             let windows: Vec<_> = state.space.elements().cloned().collect();
             debug!("Rendering {} Wayland windows", windows.len());
@@ -1364,15 +1371,15 @@ fn render_frame(
 
                     // Render outside of with_states to avoid holding locks
                     if let Some((width, height, pixels)) = buffer_info {
-                        // Log EVERY QML render to match Slint logging
-                        if pixels.len() >= 4 {
+                        // Log periodically to reduce spam
+                        if log_frame && pixels.len() >= 4 {
                             info!("QML RENDER frame {}: {}x{} first_pixel=RGBA({},{},{},{})",
                                 frame_num, width, height, pixels[0], pixels[1], pixels[2], pixels[3]);
                         }
                         unsafe {
                             gl::render_texture(width, height, &pixels, display.width, display.height);
                         }
-                    } else {
+                    } else if log_frame {
                         info!("QML NO BUFFER frame {}: window {} has no stored buffer", frame_num, i);
                     }
                 }
