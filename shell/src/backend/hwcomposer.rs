@@ -801,30 +801,59 @@ fn handle_input_event(
                 debug!("Gesture touch_down: {:?}", gesture_event);
             }
 
-            // Forward to Slint UI based on current view
+            // Check if QML lockscreen is connected (has windows in space)
+            let has_wayland_window = state.space.elements().count() > 0;
             let shell_view = state.shell.view;
-            match shell_view {
-                crate::shell::ShellView::Home => {
-                    // Start tracking home touch with y coordinate
-                    state.shell.start_home_touch(touch_pos.y, None);
-                    // Forward to Slint for visual feedback
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+
+            // Forward touch to Wayland client if connected
+            if has_wayland_window && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
+                // Find the window under the touch point
+                if let Some((window, window_loc)) = state.space.element_under(touch_pos.to_f64()).map(|(w, l)| (w.clone(), l)) {
+                    if let Some(surface) = window.wl_surface() {
+                        // Calculate position relative to window
+                        let relative_pos = touch_pos.to_f64() - window_loc.to_f64();
+
+                        // Get serial for this event
+                        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+
+                        // Send touch down to the surface
+                        if let Some(touch) = state.seat.get_touch() {
+                            touch.down(
+                                serial,
+                                event.time_msec(),
+                                &surface,
+                                relative_pos,
+                                slot_id,
+                            );
+                            touch.frame();
+                        }
                     }
                 }
-                crate::shell::ShellView::LockScreen => {
-                    // Forward to Slint for lock screen interaction
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+            } else {
+                // Forward to Slint UI based on current view
+                match shell_view {
+                    crate::shell::ShellView::Home => {
+                        // Start tracking home touch with y coordinate
+                        state.shell.start_home_touch(touch_pos.y, None);
+                        // Forward to Slint for visual feedback
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                        }
                     }
-                }
-                crate::shell::ShellView::QuickSettings => {
-                    // Forward to Slint for quick settings
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                    crate::shell::ShellView::LockScreen => {
+                        // Forward to Slint for lock screen interaction
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                        }
                     }
+                    crate::shell::ShellView::QuickSettings => {
+                        // Forward to Slint for quick settings
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
 
@@ -844,26 +873,50 @@ fn handle_input_event(
                 debug!("Gesture touch_motion: {:?}", gesture_event);
             }
 
-            // Forward to Slint UI based on current view
+            // Check if QML lockscreen is connected
+            let has_wayland_window = state.space.elements().count() > 0;
             let shell_view = state.shell.view;
-            match shell_view {
-                crate::shell::ShellView::Home => {
-                    // Forward to Slint for scroll/drag feedback
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+
+            // Forward touch to Wayland client if connected
+            if has_wayland_window && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
+                // Find the window under the touch point
+                if let Some((window, window_loc)) = state.space.element_under(touch_pos.to_f64()).map(|(w, l)| (w.clone(), l)) {
+                    if let Some(_surface) = window.wl_surface() {
+                        // Calculate position relative to window
+                        let relative_pos = touch_pos.to_f64() - window_loc.to_f64();
+
+                        // Send touch motion to the surface
+                        if let Some(touch) = state.seat.get_touch() {
+                            touch.motion(
+                                event.time_msec(),
+                                slot_id,
+                                relative_pos,
+                            );
+                            touch.frame();
+                        }
                     }
                 }
-                crate::shell::ShellView::LockScreen => {
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+            } else {
+                // Forward to Slint UI based on current view
+                match shell_view {
+                    crate::shell::ShellView::Home => {
+                        // Forward to Slint for scroll/drag feedback
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                        }
                     }
-                }
-                crate::shell::ShellView::QuickSettings => {
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                    crate::shell::ShellView::LockScreen => {
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                        }
                     }
+                    crate::shell::ShellView::QuickSettings => {
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
 
@@ -880,75 +933,94 @@ fn handle_input_event(
                 debug!("Gesture touch_up: {:?}", gesture_event);
             }
 
-            // Forward to Slint UI and handle app launching
+            // Check if QML lockscreen is connected
+            let has_wayland_window = state.space.elements().count() > 0;
             let shell_view = state.shell.view;
-            match shell_view {
-                crate::shell::ShellView::Home => {
-                    // Forward to Slint
-                    if let Some(pos) = last_pos {
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
-                        }
-                    }
 
-                    // End home touch tracking - returns pending app if it was a tap (not scroll)
-                    if let Some(exec) = state.shell.end_home_touch() {
-                        info!("Launching app from home touch: {}", exec);
-                        std::process::Command::new("sh")
-                            .arg("-c")
-                            .arg(&exec)
-                            .spawn()
-                            .ok();
-                    }
+            // Forward touch to Wayland client if connected
+            if has_wayland_window && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
+                // Get serial for this event
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+
+                // Send touch up to the surface
+                if let Some(touch) = state.seat.get_touch() {
+                    touch.up(
+                        serial,
+                        event.time_msec(),
+                        slot_id,
+                    );
+                    touch.frame();
                 }
-                crate::shell::ShellView::LockScreen => {
-                    use crate::shell::slint_ui::LockScreenAction;
+            } else {
+                // Forward to Slint UI and handle app launching
+                match shell_view {
+                    crate::shell::ShellView::Home => {
+                        // Forward to Slint
+                        if let Some(pos) = last_pos {
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
+                            }
+                        }
 
-                    // Dispatch to Slint
-                    if let Some(pos) = last_pos {
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
+                        // End home touch tracking - returns pending app if it was a tap (not scroll)
+                        if let Some(exec) = state.shell.end_home_touch() {
+                            info!("Launching app from home touch: {}", exec);
+                            std::process::Command::new("sh")
+                                .arg("-c")
+                                .arg(&exec)
+                                .spawn()
+                                .ok();
                         }
                     }
+                    crate::shell::ShellView::LockScreen => {
+                        use crate::shell::slint_ui::LockScreenAction;
 
-                    // Poll lock actions from Slint
-                    let actions: Vec<LockScreenAction> = if let Some(ref slint_ui) = state.shell.slint_ui {
-                        slint_ui.poll_lock_actions()
-                    } else {
-                        Vec::new()
-                    };
-
-                    // Process actions
-                    for action in actions {
-                        match action {
-                            LockScreenAction::PinDigit(digit) => {
-                                state.shell.lock_state.entered_pin.push_str(&digit);
+                        // Dispatch to Slint
+                        if let Some(pos) = last_pos {
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
                             }
-                            LockScreenAction::PinBackspace => {
-                                state.shell.lock_state.entered_pin.pop();
-                            }
-                            _ => {}
                         }
-                    }
 
-                    // Try to unlock if PIN is long enough
-                    if state.shell.lock_state.entered_pin.len() >= 4 {
-                        if state.shell.try_unlock() {
-                            info!("Lock screen unlocked!");
+                        // Poll lock actions from Slint
+                        let actions: Vec<LockScreenAction> = if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.poll_lock_actions()
                         } else {
-                            // Failed attempt - reset PIN
-                            state.shell.lock_state.entered_pin.clear();
+                            Vec::new()
+                        };
+
+                        // Process actions
+                        for action in actions {
+                            match action {
+                                LockScreenAction::PinDigit(digit) => {
+                                    state.shell.lock_state.entered_pin.push_str(&digit);
+                                }
+                                LockScreenAction::PinBackspace => {
+                                    state.shell.lock_state.entered_pin.pop();
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        // Try to unlock if PIN is long enough
+                        if state.shell.lock_state.entered_pin.len() >= 4 {
+                            if state.shell.try_unlock() {
+                                info!("Lock screen unlocked!");
+                            } else {
+                                // Failed attempt - reset PIN
+                                state.shell.lock_state.entered_pin.clear();
+                            }
                         }
                     }
-                }
-                crate::shell::ShellView::QuickSettings => {
-                    if let Some(pos) = last_pos {
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
+                    crate::shell::ShellView::QuickSettings => {
+                        if let Some(pos) = last_pos {
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
+                            }
                         }
                     }
+                    _ => {}
                 }
-                _ => {}
             }
         }
 
