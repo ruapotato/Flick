@@ -37,7 +37,6 @@ use drm_hwcomposer_shim::{HwcDrmDevice, HwcGbmDevice};
 use khronos_egl as egl;
 
 use crate::state::Flick;
-use crate::shell::ShellView;
 
 /// Keyboard modifier state
 #[derive(Default)]
@@ -230,17 +229,13 @@ pub fn run() -> Result<()> {
         warn!("Failed to set up input: {}. Continuing without input.", e);
     }
 
-    // Create shell view
-    let shell_view = Rc::new(RefCell::new(ShellView::new(width, height)));
-
     // Frame timer for rendering at 60fps
     let frame_timer = Timer::from_duration(Duration::from_millis(16));
     let display_clone = display.clone();
-    let shell_view_clone = shell_view.clone();
 
     loop_handle.insert_source(frame_timer, move |_, _, state| {
-        // Render frame
-        render_frame(&display_clone, &shell_view_clone, state);
+        // Render frame (test mode - color cycling)
+        render_frame(&display_clone, state);
 
         // Schedule next frame
         TimeoutAction::ToDuration(Duration::from_millis(16))
@@ -329,23 +324,44 @@ fn handle_input_event(state: &mut Flick, event: InputEvent<LibinputInputBackend>
     }
 }
 
+/// Frame counter for color cycling (test mode)
+static mut FRAME_COUNT: u64 = 0;
+
 /// Render a frame
 fn render_frame(
     display: &Rc<RefCell<ShimDisplay>>,
-    shell_view: &Rc<RefCell<ShellView>>,
     _state: &mut Flick,
 ) {
     let display = display.borrow();
-    let mut shell = shell_view.borrow_mut();
 
-    // Clear screen
+    // Cycle through colors to show the display is working
+    let frame = unsafe {
+        FRAME_COUNT += 1;
+        FRAME_COUNT
+    };
+
+    // Change color every 60 frames (1 second at 60fps)
+    let color_index = (frame / 60) % 6;
+    let (r, g, b) = match color_index {
+        0 => (0.8, 0.1, 0.1), // Red
+        1 => (0.1, 0.8, 0.1), // Green
+        2 => (0.1, 0.1, 0.8), // Blue
+        3 => (0.8, 0.8, 0.1), // Yellow
+        4 => (0.8, 0.1, 0.8), // Magenta
+        _ => (0.1, 0.8, 0.8), // Cyan
+    };
+
+    // Clear screen with current color
     unsafe {
-        gl::ClearColor(0.1, 0.1, 0.1, 1.0);
+        gl::ClearColor(r as f32, g as f32, b as f32, 1.0);
         gl::Clear(gl::COLOR_BUFFER_BIT);
     }
 
-    // Render shell UI
-    shell.render();
+    // Log every 60 frames
+    if frame % 60 == 0 {
+        let colors = ["RED", "GREEN", "BLUE", "YELLOW", "MAGENTA", "CYAN"];
+        info!("Frame {}: Showing {}", frame, colors[color_index as usize]);
+    }
 
     // Swap buffers via the shim
     if let Err(e) = display.drm_device.swap_buffers() {
