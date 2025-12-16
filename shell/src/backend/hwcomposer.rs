@@ -1371,10 +1371,10 @@ fn render_frame(
 
                     // Render outside of with_states to avoid holding locks
                     if let Some((width, height, pixels)) = buffer_info {
-                        // Log periodically - check center pixel (where time should be)
+                        // Log periodically - check center pixel
                         if log_frame && pixels.len() >= 4 {
                             let center_x = width / 2;
-                            let center_y = height / 3; // Upper third where time is
+                            let center_y = height / 2; // Actual center
                             let center_idx = ((center_y * width + center_x) * 4) as usize;
                             let (cr, cg, cb, ca) = if center_idx + 3 < pixels.len() {
                                 (pixels[center_idx], pixels[center_idx+1], pixels[center_idx+2], pixels[center_idx+3])
