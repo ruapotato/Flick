@@ -35,11 +35,12 @@ Droidian and similar Android-based Linux distributions use **libhybris** to run 
 - XWayland support for X11 apps
 - Smooth animated transitions throughout
 - Droidian/libhybris GPU acceleration
+- **Lock screen with PIN unlock** - QML lock screen with swipe-to-unlock and PIN entry, successfully transitions to app grid
 
 **In Progress:**
-- Lock screen (QML app)
+- App launching from home screen grid
 - Settings app (QML app)
-- PAM integration for lock screen
+- PAM integration for lock screen (currently uses static PIN)
 
 ## Architecture
 
@@ -178,7 +179,9 @@ Press `Ctrl+Alt+F1` through `Ctrl+Alt+F12` to switch between virtual terminals.
 - [x] Droidian/libhybris GPU support
 
 ### Phase 2: Daily Driver Basics (Current)
-- [ ] Lock screen (QML app with PIN + PAM)
+- [x] Lock screen (QML app with PIN entry and unlock flow)
+- [ ] Lock screen PAM integration (use system password)
+- [ ] App launching from home screen
 - [ ] Settings app (QML)
 - [ ] Notifications (freedesktop notification daemon)
 - [ ] WiFi network picker
