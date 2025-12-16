@@ -15,6 +15,9 @@ mkdir -p "$STATE_DIR"
 echo "Starting QML lockscreen, state_dir=$STATE_DIR" >> "$LOG_FILE"
 echo "QML_FILE=$QML_FILE" >> "$LOG_FILE"
 
+# Write state dir to a file that QML can read (Qt5 doesn't have Qt.getenv)
+echo "$STATE_DIR" > "$STATE_DIR/state_dir.txt"
+
 # Run qmlscene - state dir is passed via FLICK_STATE_DIR env var
 # Note: qmlscene only takes the QML file as argument, no extras
 export FLICK_STATE_DIR="$STATE_DIR"

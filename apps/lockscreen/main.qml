@@ -10,13 +10,30 @@ Window {
 
     // Config
     property string correctPin: "1234"  // TODO: Load from config file
-    // State dir from environment (set by run_lockscreen.sh) or fallback
-    property string stateDir: {
-        var envDir = Qt.getenv("FLICK_STATE_DIR")
-        return envDir ? envDir : (Qt.getenv("HOME") + "/.local/state/flick")
-    }
+    // State dir - read from file created by run_lockscreen.sh wrapper
+    // Using fixed path since Qt5 QML can't read env vars directly
+    property string stateDir: "/home/droidian/.local/state/flick"
 
+    // Try to read actual state dir from file on startup
     Component.onCompleted: {
+        var xhr = new XMLHttpRequest()
+        // Try user's home first
+        var paths = [
+            "/home/droidian/.local/state/flick/state_dir.txt",
+            "/home/david/.local/state/flick/state_dir.txt",
+            "/tmp/flick_state_dir.txt"
+        ]
+        for (var i = 0; i < paths.length; i++) {
+            xhr.open("GET", "file://" + paths[i], false)
+            try {
+                xhr.send()
+                if (xhr.status === 200 && xhr.responseText.trim()) {
+                    stateDir = xhr.responseText.trim()
+                    console.log("Read stateDir from file:", stateDir)
+                    break
+                }
+            } catch(e) {}
+        }
         console.log("Lock screen started")
         console.log("stateDir:", stateDir)
     }
