@@ -67,13 +67,17 @@ fi
 echo "Cleaning up stale sockets..."
 rm -f "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null || true
 
+# Get the real user's home directory (even when running with sudo)
+REAL_HOME=$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)
+REAL_HOME="${REAL_HOME:-$HOME}"
+
 # Path to the shim library
-SHIM_LIB="$HOME/Flick/drm-hwcomposer-shim/target/release/libdrm_hwcomposer_shim.so"
+SHIM_LIB="$REAL_HOME/Flick/drm-hwcomposer-shim/target/release/libdrm_hwcomposer_shim.so"
 
 if [ ! -f "$SHIM_LIB" ]; then
     echo "ERROR: Shim library not found at $SHIM_LIB"
     echo "Building shim..."
-    cd ~/Flick/drm-hwcomposer-shim
+    cd "$REAL_HOME/Flick/drm-hwcomposer-shim"
     cargo build --release
 fi
 
@@ -85,5 +89,5 @@ echo ""
 
 # Run Flick with the shim preloaded
 # The udev backend will try to use standard DRM/GBM, but our shim intercepts those calls
-cd ~/Flick/shell
+cd "$REAL_HOME/Flick/shell"
 sudo -E LD_PRELOAD="$SHIM_LIB" ./target/release/flick
