@@ -3,7 +3,9 @@
 
 STATE_DIR="${FLICK_STATE_DIR:-$HOME/.local/state/flick}"
 LOG_FILE="$STATE_DIR/qml_lockscreen.log"
-QML_FILE="$(dirname "$0")/main.qml"
+# Use test.qml for debugging, main.qml for production
+QML_FILE="$(dirname "$0")/test.qml"
+#QML_FILE="$(dirname "$0")/main.qml"
 
 # Ensure state directory exists
 mkdir -p "$STATE_DIR"
@@ -17,13 +19,15 @@ echo "QML_FILE=$QML_FILE" >> "$LOG_FILE"
 # Run qmlscene - state dir is passed via FLICK_STATE_DIR env var
 # Note: qmlscene only takes the QML file as argument, no extras
 export FLICK_STATE_DIR="$STATE_DIR"
-# Force software rendering so text renders into shm buffer
+# Force software rendering completely
 export QT_QUICK_BACKEND=software
+export QT_OPENGL=software
 export QMLSCENE_DEVICE=softwarecontext
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
-# Disable hardware acceleration completely
 export LIBGL_ALWAYS_SOFTWARE=1
+# Try wayland-egl integration (shm not available as client)
+export QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=wayland-egl
 /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | while IFS= read -r line; do
     echo "$line" >> "$LOG_FILE"
     # Check for unlock signal marker
