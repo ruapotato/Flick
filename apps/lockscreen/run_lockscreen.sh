@@ -17,6 +17,9 @@ echo "QML_FILE=$QML_FILE" >> "$LOG_FILE"
 # Run qmlscene - state dir is passed via FLICK_STATE_DIR env var
 # Note: qmlscene only takes the QML file as argument, no extras
 export FLICK_STATE_DIR="$STATE_DIR"
+# Force software rendering so text renders into shm buffer
+export QT_QUICK_BACKEND=software
+export QT_QPA_PLATFORM=wayland
 /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | while IFS= read -r line; do
     echo "$line" >> "$LOG_FILE"
     # Check for unlock signal marker
