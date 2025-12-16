@@ -2204,17 +2204,11 @@ unsafe fn handle_drm_ioctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) 
 // =============================================================================
 
 /// Intercept open() calls to /dev/dri/*
+/// Note: We use the 2-argument form. For O_CREAT, the mode is passed as 0 (DRM opens don't create files)
 #[no_mangle]
-pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mut args: ...) -> c_int {
+pub unsafe extern "C" fn open(path: *const c_char, flags: c_int) -> c_int {
     // Initialize real function pointers
     init_real_funcs();
-
-    // Get mode argument if O_CREAT is set
-    let mode: libc::mode_t = if (flags & libc::O_CREAT) != 0 {
-        args.arg::<libc::mode_t>()
-    } else {
-        0
-    };
 
     if !path.is_null() {
         let path_str = CStr::from_ptr(path).to_str().unwrap_or("");
@@ -2234,7 +2228,7 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mut args: ...) 
 
     // For all other files, call the real open
     if let Some(real_open) = REAL_OPEN_FN {
-        real_open(path, flags, mode)
+        real_open(path, flags, 0)
     } else {
         error!("Real open function not available!");
         *libc::__errno_location() = libc::ENOSYS;
@@ -2244,16 +2238,9 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mut args: ...) 
 
 /// Intercept open64() as well (same as open on 64-bit systems)
 #[no_mangle]
-pub unsafe extern "C" fn open64(path: *const c_char, flags: c_int, mut args: ...) -> c_int {
+pub unsafe extern "C" fn open64(path: *const c_char, flags: c_int) -> c_int {
     // Initialize real function pointers
     init_real_funcs();
-
-    // Get mode argument if O_CREAT is set
-    let mode: libc::mode_t = if (flags & libc::O_CREAT) != 0 {
-        args.arg::<libc::mode_t>()
-    } else {
-        0
-    };
 
     if !path.is_null() {
         let path_str = CStr::from_ptr(path).to_str().unwrap_or("");
@@ -2267,33 +2254,18 @@ pub unsafe extern "C" fn open64(path: *const c_char, flags: c_int, mut args: ...
     }
 
     if let Some(real_open) = REAL_OPEN_FN {
-        real_open(path, flags, mode)
+        real_open(path, flags, 0)
     } else {
         *libc::__errno_location() = libc::ENOSYS;
         -1
     }
 }
 
-// Cached openat function pointer
-static mut REAL_OPENAT_FN: Option<unsafe extern "C" fn(c_int, *const c_char, c_int, libc::mode_t) -> c_int> = None;
-
 /// Intercept openat() for /dev/dri/*
 #[no_mangle]
-pub unsafe extern "C" fn openat(dirfd: c_int, path: *const c_char, flags: c_int, mut args: ...) -> c_int {
+pub unsafe extern "C" fn openat(dirfd: c_int, path: *const c_char, flags: c_int) -> c_int {
     // Initialize real function pointers
-    INIT_REAL_FUNCS.call_once(|| {
-        let openat_ptr = libc::dlsym(RTLD_NEXT, b"openat\0".as_ptr() as *const c_char);
-        if !openat_ptr.is_null() {
-            REAL_OPENAT_FN = Some(std::mem::transmute(openat_ptr));
-        }
-    });
-
-    // Get mode argument if O_CREAT is set
-    let mode: libc::mode_t = if (flags & libc::O_CREAT) != 0 {
-        args.arg::<libc::mode_t>()
-    } else {
-        0
-    };
+    init_real_funcs();
 
     if !path.is_null() {
         let path_str = CStr::from_ptr(path).to_str().unwrap_or("");
@@ -2310,13 +2282,8 @@ pub unsafe extern "C" fn openat(dirfd: c_int, path: *const c_char, flags: c_int,
         }
     }
 
-    // Call real openat
-    if let Some(real_openat) = REAL_OPENAT_FN {
-        real_openat(dirfd, path, flags, mode)
-    } else {
-        // Fallback to libc's openat
-        libc::openat(dirfd, path, flags)
-    }
+    // Call real openat using libc
+    libc::openat(dirfd, path, flags)
 }
 
 // =============================================================================
