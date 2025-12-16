@@ -24,3 +24,4 @@ Cargo.lock
 Thumbs.db
 *.pyc
 __pycache__/
+drm-hwcomposer-shim/target/

@@ -25,10 +25,8 @@ static INIT_REAL_FUNCS: Once = Once::new();
 static LIBRARY_INIT: unsafe extern "C" fn() = library_init;
 
 unsafe extern "C" fn library_init() {
-    // Initialize tracing early
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("debug")
-        .try_init();
+    // Initialize tracing early (simple init)
+    let _ = tracing_subscriber::fmt().try_init();
 
     eprintln!("=== drm-hwcomposer-shim LOADED via LD_PRELOAD ===");
     info!("drm-hwcomposer-shim: Library loaded, intercepting DRM/GBM calls");
