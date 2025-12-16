@@ -2,6 +2,7 @@
 //!
 //! This backend provides display and rendering via hwcomposer, using
 //! the drm-hwcomposer-shim crate to abstract Android's hwcomposer.
+//! Touch input comes from libinput via LibSeatSession.
 
 use std::{
     cell::RefCell,
@@ -14,12 +15,22 @@ use anyhow::Result;
 use tracing::{debug, error, info, warn};
 
 use smithay::{
+    backend::{
+        input::InputEvent,
+        libinput::{LibinputInputBackend, LibinputSessionInterface},
+        session::{
+            libseat::LibSeatSession,
+            Event as SessionEvent, Session,
+        },
+    },
+    input::keyboard::ModifiersState as ModifierState,
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
         calloop::{EventLoop, LoopHandle, timer::{Timer, TimeoutAction}},
+        input::Libinput,
         wayland_server::Display,
     },
-    utils::Transform,
+    utils::{Point, Transform},
     wayland::compositor,
 };
 
@@ -148,6 +159,20 @@ pub fn run() -> Result<()> {
     let height = shim_display.height;
     let shim_display = Rc::new(RefCell::new(shim_display));
 
+    // Initialize libseat session for input device access
+    let (session, notifier) = LibSeatSession::new()
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+    let session = Rc::new(RefCell::new(session));
+    info!("Session created, seat: {}", session.borrow().seat());
+
+    // Initialize libinput
+    let libinput_session = LibinputSessionInterface::from(session.borrow().clone());
+    let mut libinput_context = Libinput::new_with_udev(libinput_session);
+    libinput_context.udev_assign_seat(&session.borrow().seat()).unwrap();
+
+    let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
+
     // Create Wayland display
     let wayland_display: Display<Flick> = Display::new()?;
 
@@ -189,8 +214,49 @@ pub fn run() -> Result<()> {
     );
     state.space.map_output(&output, (0, 0));
 
-    // TODO: Add input handling (touch events) similar to hwcomposer backend
-    info!("Input handling not yet implemented for drm_shim backend");
+    // Update state with actual screen size
+    state.screen_size = (width as i32, height as i32).into();
+    state.gesture_recognizer.screen_size = state.screen_size;
+    state.shell.screen_size = state.screen_size;
+    state.shell.quick_settings.screen_size = state.screen_size;
+
+    if let Some(ref mut slint_ui) = state.shell.slint_ui {
+        slint_ui.set_size(state.screen_size);
+    }
+
+    // Track session state
+    let session_active = Rc::new(RefCell::new(true));
+    let session_active_for_notifier = session_active.clone();
+
+    let modifiers = Rc::new(RefCell::new(ModifierState::default()));
+    let modifiers_for_notifier = modifiers.clone();
+
+    // Add session notifier
+    loop_handle
+        .insert_source(notifier, move |event, _, _state| match event {
+            SessionEvent::PauseSession => {
+                info!("Session paused");
+                *session_active_for_notifier.borrow_mut() = false;
+            }
+            SessionEvent::ActivateSession => {
+                info!("Session activated");
+                *session_active_for_notifier.borrow_mut() = true;
+                *modifiers_for_notifier.borrow_mut() = ModifierState::default();
+            }
+        })
+        .map_err(|e| anyhow::anyhow!("Failed to insert session source: {:?}", e))?;
+
+    // Add libinput to event loop
+    let session_for_input = session.clone();
+    let modifiers_for_input = modifiers.clone();
+
+    loop_handle
+        .insert_source(libinput_backend, move |event, _, state| {
+            handle_input_event(state, event, &session_for_input, &modifiers_for_input);
+        })
+        .map_err(|e| anyhow::anyhow!("Failed to insert input source: {:?}", e))?;
+
+    info!("libinput initialized for touch input");
 
     // Frame timer for rendering at 60fps
     let frame_timer = Timer::from_duration(Duration::from_millis(16));
@@ -210,6 +276,13 @@ pub fn run() -> Result<()> {
     loop {
         // Dispatch Wayland events
         state.dispatch_clients();
+
+        // Check for unlock signal from external lock screen app
+        if state.shell.check_unlock_signal() {
+            info!("Unlock signal received, unlocking");
+            state.shell.lock_screen_active = false;
+            state.shell.view = ShellView::Home;
+        }
 
         // Run one iteration of the event loop
         if let Err(e) = event_loop.dispatch(Some(Duration::from_millis(1)), &mut state) {
@@ -382,6 +455,211 @@ fn render_frame(
     // Swap buffers
     if let Err(e) = display.drm_device.swap_buffers() {
         error!("Failed to swap buffers: {}", e);
+    }
+}
+
+/// Handle input events from libinput
+fn handle_input_event(
+    state: &mut Flick,
+    event: InputEvent<LibinputInputBackend>,
+    _session: &Rc<RefCell<LibSeatSession>>,
+    _modifiers: &Rc<RefCell<ModifierState>>,
+) {
+    use smithay::backend::input::{
+        Event, TouchEvent, AbsolutePositionEvent,
+    };
+
+    match event {
+        InputEvent::DeviceAdded { device } => {
+            info!("Input device added: {}", device.name());
+        }
+        InputEvent::DeviceRemoved { device } => {
+            info!("Input device removed: {}", device.name());
+        }
+        InputEvent::TouchDown { event } => {
+            let slot_id: u32 = event.slot().map(|s| s.into()).unwrap_or(0);
+            let position = event.position_transformed(state.screen_size);
+            let touch_pos = Point::from((position.x, position.y));
+
+            // Track touch position
+            state.last_touch_pos.insert(slot_id, touch_pos);
+
+            // Process gesture
+            if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
+                debug!("Gesture touch_down: {:?}", gesture_event);
+            }
+
+            // Handle shell-specific touch
+            let shell_view = state.shell.view;
+            match shell_view {
+                ShellView::App => {
+                    // Forward touch to Wayland client
+                    if let Some(touch) = state.seat.get_touch() {
+                        let under = state.space.element_under(touch_pos.to_f64())
+                            .map(|(window, loc)| {
+                                let wl_surface = window.toplevel()
+                                    .map(|t| t.wl_surface().clone());
+                                (wl_surface, loc)
+                            });
+
+                        if let Some((Some(surface), loc)) = under {
+                            touch.down(
+                                state,
+                                &smithay::input::touch::DownEvent {
+                                    slot: slot_id.into(),
+                                    location: touch_pos.to_f64(),
+                                },
+                                &surface,
+                                loc.to_f64(),
+                                event.time_msec(),
+                            );
+                            touch.frame(state);
+                        }
+                    }
+                }
+                ShellView::Home => {
+                    let touched_category = state.shell.hit_test_category(touch_pos);
+                    if let Some(category) = touched_category {
+                        info!("Touch down on category {:?}", category);
+                        state.shell.start_category_touch(touch_pos, category);
+                    } else {
+                        state.shell.start_home_touch(touch_pos.y, None);
+                    }
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                    }
+                }
+                ShellView::QuickSettings => {
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                    }
+                }
+                ShellView::LockScreen => {
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                    }
+                }
+                _ => {}
+            }
+        }
+        InputEvent::TouchMotion { event } => {
+            let slot_id: u32 = event.slot().map(|s| s.into()).unwrap_or(0);
+            let position = event.position_transformed(state.screen_size);
+            let touch_pos = Point::from((position.x, position.y));
+
+            // Update tracked touch position
+            state.last_touch_pos.insert(slot_id, touch_pos);
+
+            // Process gesture
+            if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
+                debug!("Gesture touch_motion: {:?}", gesture_event);
+                state.shell.handle_gesture(gesture_event);
+            }
+
+            // Handle shell-specific motion
+            let shell_view = state.shell.view;
+            match shell_view {
+                ShellView::App => {
+                    // Forward to Wayland client
+                    if let Some(touch) = state.seat.get_touch() {
+                        let under = state.space.element_under(touch_pos.to_f64())
+                            .map(|(window, loc)| {
+                                let wl_surface = window.toplevel()
+                                    .map(|t| t.wl_surface().clone());
+                                (wl_surface, loc)
+                            });
+
+                        if let Some((Some(surface), loc)) = under {
+                            touch.motion(
+                                state,
+                                &smithay::input::touch::MotionEvent {
+                                    slot: slot_id.into(),
+                                    location: touch_pos.to_f64(),
+                                },
+                                &surface,
+                                loc.to_f64(),
+                                event.time_msec(),
+                            );
+                            touch.frame(state);
+                        }
+                    }
+                }
+                ShellView::Home => {
+                    state.shell.update_category_drag(touch_pos);
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                    }
+                }
+                ShellView::QuickSettings => {
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                    }
+                }
+                _ => {}
+            }
+        }
+        InputEvent::TouchUp { event } => {
+            let slot_id: u32 = event.slot().map(|s| s.into()).unwrap_or(0);
+
+            // Get last known position
+            let last_pos = state.last_touch_pos.get(&slot_id).copied()
+                .unwrap_or_else(|| Point::from((0.0, 0.0)));
+
+            // Process gesture
+            if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {
+                debug!("Gesture touch_up: {:?}", gesture_event);
+                state.shell.handle_gesture(gesture_event);
+            }
+
+            // Handle shell-specific touch up
+            let shell_view = state.shell.view;
+            match shell_view {
+                ShellView::App => {
+                    // Forward to Wayland client
+                    if let Some(touch) = state.seat.get_touch() {
+                        touch.up(
+                            state,
+                            &smithay::input::touch::UpEvent {
+                                slot: slot_id.into(),
+                            },
+                            event.time_msec(),
+                        );
+                        touch.frame(state);
+                    }
+                }
+                ShellView::Home => {
+                    state.shell.end_category_touch(last_pos);
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_released(last_pos.x as f32, last_pos.y as f32);
+                    }
+                }
+                ShellView::QuickSettings => {
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_released(last_pos.x as f32, last_pos.y as f32);
+                    }
+                }
+                ShellView::LockScreen => {
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        slint_ui.dispatch_pointer_released(last_pos.x as f32, last_pos.y as f32);
+                    }
+                }
+                _ => {}
+            }
+
+            // Clean up
+            state.last_touch_pos.remove(&slot_id);
+        }
+        InputEvent::TouchCancel { .. } => {
+            debug!("Touch cancel");
+            state.gesture_recognizer.reset();
+            state.last_touch_pos.clear();
+        }
+        InputEvent::TouchFrame { .. } => {
+            // Frame marker - no action needed
+        }
+        _ => {
+            // Other events (keyboard, pointer) - handle if needed
+        }
     }
 }
 
