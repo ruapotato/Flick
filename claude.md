@@ -131,3 +131,86 @@ Buffer/fence must be set BEFORE validate, not after!
 - HWC2 callbacks must be registered before layer creation works
 - Duplicate fences when passing to multiple HWC2 calls (HWC2 takes ownership)
 - Call glFinish() before eglSwapBuffers for proper GPU sync
+
+---
+
+## drm-hwcomposer-shim - UNIVERSAL Compositor Abstraction Layer
+
+### CRITICAL: This is NOT Flick-specific!
+
+**Goal**: Build a universal compositing layer that abstracts hwcomposer so that **ANY Linux compositor** (Flick, Phosh, Plasma Mobile, Sway, Weston, etc.) can run on Android-based Linux phones (Droidian, postmarketOS with libhybris).
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│          ANY Wayland Compositor                             │
+│     (Flick, Phosh, Plasma Mobile, Sway, Weston, etc.)      │
+└─────────────────────────────────────────────────────────────┘
+                          │
+                Standard DRM/KMS/GBM APIs
+                          │
+┌─────────────────────────────────────────────────────────────┐
+│              drm-hwcomposer-shim                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │ DRM Device  │  │ GBM Device  │  │ EGL Integration     │ │
+│  │ (KMS ioctl) │  │ (gralloc)   │  │ (buffer sharing)    │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                          │
+                    libhybris
+                          │
+┌─────────────────────────────────────────────────────────────┐
+│          Android HAL (hwcomposer, gralloc)                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Key Files
+
+- `drm-hwcomposer-shim/src/c_api.rs` - C API drop-in replacement for libdrm/libgbm
+- `drm-hwcomposer-shim/src/drm_device.rs` - DRM device abstraction over hwcomposer
+- `drm-hwcomposer-shim/src/gbm_device.rs` - GBM device using Android gralloc
+- `drm-hwcomposer-shim/src/hwcomposer.rs` - Direct hwcomposer HAL interface
+- `drm-hwcomposer-shim/src/egl.rs` - EGL integration
+- `drm-hwcomposer-shim/src/ffi.rs` - FFI bindings to libhybris
+
+### Current Implementation Status (Dec 2024)
+
+**Working:**
+- DRM device with connector/CRTC/plane abstractions
+- GBM device with real gralloc buffer allocation
+- EGL integration (context, surface, swap buffers)
+- C API for libdrm/libgbm drop-in replacement
+- DMA-BUF export for buffer sharing
+- Display power management
+- Buffer map/unmap for CPU access
+- DRM ioctl interceptor (handling VERSION, GET_CAP, MODE_GETRESOURCES, etc.)
+
+**In Progress:**
+- Full ioctl interception for transparent compositor support
+- Testing with standard compositors (Weston, Sway)
+
+### Test Workflow
+
+```bash
+# On local machine - commit and push
+git add -A && git commit -m "message" && git push
+
+# On phone via SSH
+ssh phone "cd ~/Flick && git pull"
+
+# Build on phone
+ssh phone "cd ~/Flick/drm-hwcomposer-shim && source ~/.cargo/env && cargo build --release"
+
+# Run test
+ssh phone "cd ~/Flick/drm-hwcomposer-shim && ./test_shim.sh"
+```
+
+### Why Crashes Happen
+
+The shim intercepts DRM/KMS ioctls to translate them to hwcomposer calls. If a compositor uses an ioctl that isn't implemented, it will fail/crash. The `c_api.rs` file is being expanded to handle all standard DRM ioctls.
+
+### Phone Details
+- Device: Google Pixel 3a (sargo)
+- OS: Droidian
+- SSH alias: `phone`

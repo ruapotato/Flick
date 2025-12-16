@@ -1501,15 +1501,662 @@ pub unsafe extern "C" fn drmIsMaster(fd: c_int) -> c_int {
 }
 
 // =============================================================================
-// DRM ioctl wrapper (for low-level access)
+// DRM ioctl definitions and interceptor
 // =============================================================================
 
-/// Handle DRM ioctls - we don't actually use ioctls, but need to handle them
+// DRM ioctl command numbers (from drm.h and drm_mode.h)
+const DRM_IOCTL_BASE: libc::c_ulong = 0x64; // 'd'
+
+// Helper to build DRM ioctl numbers
+const fn drm_iowr(nr: libc::c_ulong, size: libc::c_ulong) -> libc::c_ulong {
+    // _IOWR('d', nr, size) = _IOC(_IOC_READ|_IOC_WRITE, 'd', nr, size)
+    // On Linux: (3 << 30) | ('d' << 8) | nr | (size << 16)
+    (3 << 30) | (DRM_IOCTL_BASE << 8) | nr | (size << 16)
+}
+
+const fn drm_ior(nr: libc::c_ulong, size: libc::c_ulong) -> libc::c_ulong {
+    // _IOR('d', nr, size) = _IOC(_IOC_READ, 'd', nr, size)
+    (2 << 30) | (DRM_IOCTL_BASE << 8) | nr | (size << 16)
+}
+
+const fn drm_iow(nr: libc::c_ulong, size: libc::c_ulong) -> libc::c_ulong {
+    // _IOW('d', nr, size) = _IOC(_IOC_WRITE, 'd', nr, size)
+    (1 << 30) | (DRM_IOCTL_BASE << 8) | nr | (size << 16)
+}
+
+const fn drm_io(nr: libc::c_ulong) -> libc::c_ulong {
+    // _IO('d', nr) = _IOC(_IOC_NONE, 'd', nr, 0)
+    (DRM_IOCTL_BASE << 8) | nr
+}
+
+// DRM ioctl numbers
+const DRM_IOCTL_VERSION: libc::c_ulong = drm_iowr(0x00, 36); // struct drm_version
+const DRM_IOCTL_GET_CAP: libc::c_ulong = drm_iowr(0x0c, 16);
+const DRM_IOCTL_SET_CLIENT_CAP: libc::c_ulong = drm_iow(0x0d, 16);
+const DRM_IOCTL_SET_MASTER: libc::c_ulong = drm_io(0x1e);
+const DRM_IOCTL_DROP_MASTER: libc::c_ulong = drm_io(0x1f);
+
+// Mode setting ioctls (0xA0+)
+const DRM_IOCTL_MODE_GETRESOURCES: libc::c_ulong = drm_iowr(0xa0, 64);
+const DRM_IOCTL_MODE_GETCRTC: libc::c_ulong = drm_iowr(0xa1, 80);
+const DRM_IOCTL_MODE_SETCRTC: libc::c_ulong = drm_iowr(0xa2, 80);
+const DRM_IOCTL_MODE_CURSOR: libc::c_ulong = drm_iowr(0xa3, 24);
+const DRM_IOCTL_MODE_GETGAMMA: libc::c_ulong = drm_iowr(0xa4, 32);
+const DRM_IOCTL_MODE_SETGAMMA: libc::c_ulong = drm_iowr(0xa5, 32);
+const DRM_IOCTL_MODE_GETENCODER: libc::c_ulong = drm_iowr(0xa6, 20);
+const DRM_IOCTL_MODE_GETCONNECTOR: libc::c_ulong = drm_iowr(0xa7, 80);
+const DRM_IOCTL_MODE_ADDFB: libc::c_ulong = drm_iowr(0xae, 28);
+const DRM_IOCTL_MODE_RMFB: libc::c_ulong = drm_iowr(0xaf, 4);
+const DRM_IOCTL_MODE_PAGE_FLIP: libc::c_ulong = drm_iowr(0xb0, 20);
+const DRM_IOCTL_MODE_ADDFB2: libc::c_ulong = drm_iowr(0xb8, 72);
+const DRM_IOCTL_MODE_OBJ_GETPROPERTIES: libc::c_ulong = drm_iowr(0xb9, 24);
+const DRM_IOCTL_MODE_OBJ_SETPROPERTY: libc::c_ulong = drm_iowr(0xba, 16);
+const DRM_IOCTL_MODE_CURSOR2: libc::c_ulong = drm_iowr(0xbb, 32);
+const DRM_IOCTL_MODE_ATOMIC: libc::c_ulong = drm_iowr(0xbc, 56);
+const DRM_IOCTL_MODE_GETPLANE: libc::c_ulong = drm_iowr(0xb6, 40);
+const DRM_IOCTL_MODE_GETPLANERESOURCES: libc::c_ulong = drm_iowr(0xb5, 16);
+
+// drm_version struct (for DRM_IOCTL_VERSION)
+#[repr(C)]
+struct DrmVersionIoctl {
+    version_major: c_int,
+    version_minor: c_int,
+    version_patchlevel: c_int,
+    name_len: libc::size_t,
+    name: *mut c_char,
+    date_len: libc::size_t,
+    date: *mut c_char,
+    desc_len: libc::size_t,
+    desc: *mut c_char,
+}
+
+// drm_get_cap struct
+#[repr(C)]
+struct DrmGetCap {
+    capability: u64,
+    value: u64,
+}
+
+// drm_set_client_cap struct
+#[repr(C)]
+struct DrmSetClientCap {
+    capability: u64,
+    value: u64,
+}
+
+// drm_mode_card_res struct (for DRM_IOCTL_MODE_GETRESOURCES)
+#[repr(C)]
+struct DrmModeCardRes {
+    fb_id_ptr: u64,
+    crtc_id_ptr: u64,
+    connector_id_ptr: u64,
+    encoder_id_ptr: u64,
+    count_fbs: u32,
+    count_crtcs: u32,
+    count_connectors: u32,
+    count_encoders: u32,
+    min_width: u32,
+    max_width: u32,
+    min_height: u32,
+    max_height: u32,
+}
+
+// drm_mode_get_connector struct
+#[repr(C)]
+struct DrmModeGetConnector {
+    encoders_ptr: u64,
+    modes_ptr: u64,
+    props_ptr: u64,
+    prop_values_ptr: u64,
+    count_modes: u32,
+    count_props: u32,
+    count_encoders: u32,
+    encoder_id: u32,
+    connector_id: u32,
+    connector_type: u32,
+    connector_type_id: u32,
+    connection: u32,
+    mm_width: u32,
+    mm_height: u32,
+    subpixel: u32,
+    pad: u32,
+}
+
+// drm_mode_crtc struct
+#[repr(C)]
+struct DrmModeCrtc {
+    set_connectors_ptr: u64,
+    count_connectors: u32,
+    crtc_id: u32,
+    fb_id: u32,
+    x: u32,
+    y: u32,
+    gamma_size: u32,
+    mode_valid: u32,
+    mode: DrmModeModeinfo,
+}
+
+// drm_mode_modeinfo struct
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct DrmModeModeinfo {
+    clock: u32,
+    hdisplay: u16,
+    hsync_start: u16,
+    hsync_end: u16,
+    htotal: u16,
+    hskew: u16,
+    vdisplay: u16,
+    vsync_start: u16,
+    vsync_end: u16,
+    vtotal: u16,
+    vscan: u16,
+    vrefresh: u32,
+    flags: u32,
+    type_: u32,
+    name: [c_char; 32],
+}
+
+// drm_mode_get_encoder struct
+#[repr(C)]
+struct DrmModeGetEncoder {
+    encoder_id: u32,
+    encoder_type: u32,
+    crtc_id: u32,
+    possible_crtcs: u32,
+    possible_clones: u32,
+}
+
+// drm_mode_get_plane_res struct
+#[repr(C)]
+struct DrmModeGetPlaneRes {
+    plane_id_ptr: u64,
+    count_planes: u32,
+}
+
+// drm_mode_get_plane struct
+#[repr(C)]
+struct DrmModeGetPlane {
+    plane_id: u32,
+    crtc_id: u32,
+    fb_id: u32,
+    possible_crtcs: u32,
+    gamma_size: u32,
+    count_format_types: u32,
+    format_type_ptr: u64,
+}
+
+// drm_mode_fb_cmd2 struct (for ADDFB2)
+#[repr(C)]
+struct DrmModeFbCmd2 {
+    fb_id: u32,
+    width: u32,
+    height: u32,
+    pixel_format: u32,
+    flags: u32,
+    handles: [u32; 4],
+    pitches: [u32; 4],
+    offsets: [u32; 4],
+    modifier: [u64; 4],
+}
+
+// drm_mode_obj_get_properties struct
+#[repr(C)]
+struct DrmModeObjGetProperties {
+    props_ptr: u64,
+    prop_values_ptr: u64,
+    count_props: u32,
+    obj_id: u32,
+    obj_type: u32,
+}
+
+// drm_mode_atomic struct
+#[repr(C)]
+struct DrmModeAtomic {
+    flags: u32,
+    count_objs: u32,
+    objs_ptr: u64,
+    count_props_ptr: u64,
+    props_ptr: u64,
+    prop_values_ptr: u64,
+    reserved: u64,
+    user_data: u64,
+}
+
+/// Handle DRM ioctls - wraps libdrm's drmIoctl
 #[no_mangle]
 pub unsafe extern "C" fn drmIoctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) -> c_int {
-    // Log but don't actually perform ioctl
+    // Log but delegate to our ioctl handler
     debug!("drmIoctl(fd={}, request=0x{:x})", fd, request);
-    0
+    handle_drm_ioctl(fd, request, arg)
+}
+
+/// Intercept ioctl() syscall for DRM operations
+#[no_mangle]
+pub unsafe extern "C" fn ioctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) -> c_int {
+    // Check if this is our fake DRM fd
+    if fd == FAKE_DRM_FD {
+        return handle_drm_ioctl(fd, request, arg);
+    }
+
+    // For other file descriptors, call the real ioctl
+    let libc_ioctl: unsafe extern "C" fn(c_int, libc::c_ulong, *mut c_void) -> c_int = {
+        let handle = libc::dlopen(b"libc.so.6\0".as_ptr() as *const c_char, libc::RTLD_LAZY);
+        if handle.is_null() {
+            error!("Failed to dlopen libc for ioctl");
+            return -1;
+        }
+        std::mem::transmute(libc::dlsym(handle, b"ioctl\0".as_ptr() as *const c_char))
+    };
+
+    libc_ioctl(fd, request, arg)
+}
+
+/// Handle DRM-specific ioctls
+unsafe fn handle_drm_ioctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) -> c_int {
+    // Extract the ioctl number for matching (mask out size/direction bits for easier matching)
+    let nr = (request >> 8) & 0xFF;
+
+    match request {
+        DRM_IOCTL_VERSION => {
+            debug!("ioctl: DRM_IOCTL_VERSION");
+            let ver = arg as *mut DrmVersionIoctl;
+            if !ver.is_null() {
+                (*ver).version_major = 1;
+                (*ver).version_minor = 0;
+                (*ver).version_patchlevel = 0;
+
+                // Copy name if buffer provided
+                if !(*ver).name.is_null() && (*ver).name_len > 0 {
+                    let name = b"hwcomposer\0";
+                    let copy_len = std::cmp::min((*ver).name_len, name.len());
+                    std::ptr::copy_nonoverlapping(name.as_ptr(), (*ver).name as *mut u8, copy_len);
+                }
+                (*ver).name_len = 10;
+
+                if !(*ver).date.is_null() && (*ver).date_len > 0 {
+                    let date = b"20250101\0";
+                    let copy_len = std::cmp::min((*ver).date_len, date.len());
+                    std::ptr::copy_nonoverlapping(date.as_ptr(), (*ver).date as *mut u8, copy_len);
+                }
+                (*ver).date_len = 8;
+
+                if !(*ver).desc.is_null() && (*ver).desc_len > 0 {
+                    let desc = b"DRM shim over hwcomposer\0";
+                    let copy_len = std::cmp::min((*ver).desc_len, desc.len());
+                    std::ptr::copy_nonoverlapping(desc.as_ptr(), (*ver).desc as *mut u8, copy_len);
+                }
+                (*ver).desc_len = 24;
+            }
+            0
+        }
+
+        DRM_IOCTL_GET_CAP => {
+            let cap = arg as *mut DrmGetCap;
+            if !cap.is_null() {
+                debug!("ioctl: DRM_IOCTL_GET_CAP capability={}", (*cap).capability);
+                // Common capabilities
+                const DRM_CAP_DUMB_BUFFER: u64 = 0x1;
+                const DRM_CAP_VBLANK_HIGH_CRTC: u64 = 0x2;
+                const DRM_CAP_DUMB_PREFERRED_DEPTH: u64 = 0x3;
+                const DRM_CAP_DUMB_PREFER_SHADOW: u64 = 0x4;
+                const DRM_CAP_PRIME: u64 = 0x5;
+                const DRM_CAP_TIMESTAMP_MONOTONIC: u64 = 0x6;
+                const DRM_CAP_ASYNC_PAGE_FLIP: u64 = 0x7;
+                const DRM_CAP_CURSOR_WIDTH: u64 = 0x8;
+                const DRM_CAP_CURSOR_HEIGHT: u64 = 0x9;
+                const DRM_CAP_ADDFB2_MODIFIERS: u64 = 0x10;
+                const DRM_CAP_CRTC_IN_VBLANK_EVENT: u64 = 0x12;
+
+                (*cap).value = match (*cap).capability {
+                    DRM_CAP_DUMB_BUFFER => 1,
+                    DRM_CAP_VBLANK_HIGH_CRTC => 1,
+                    DRM_CAP_DUMB_PREFERRED_DEPTH => 24,
+                    DRM_CAP_DUMB_PREFER_SHADOW => 0,
+                    DRM_CAP_PRIME => 3, // IMPORT | EXPORT
+                    DRM_CAP_TIMESTAMP_MONOTONIC => 1,
+                    DRM_CAP_ASYNC_PAGE_FLIP => 0, // Don't support async flip
+                    DRM_CAP_CURSOR_WIDTH => 64,
+                    DRM_CAP_CURSOR_HEIGHT => 64,
+                    DRM_CAP_ADDFB2_MODIFIERS => 0, // No modifier support
+                    DRM_CAP_CRTC_IN_VBLANK_EVENT => 1,
+                    _ => 0,
+                };
+            }
+            0
+        }
+
+        DRM_IOCTL_SET_CLIENT_CAP => {
+            let cap = arg as *mut DrmSetClientCap;
+            if !cap.is_null() {
+                debug!("ioctl: DRM_IOCTL_SET_CLIENT_CAP capability={} value={}",
+                       (*cap).capability, (*cap).value);
+                // Accept all client capabilities
+                // DRM_CLIENT_CAP_STEREO_3D = 1
+                // DRM_CLIENT_CAP_UNIVERSAL_PLANES = 2
+                // DRM_CLIENT_CAP_ATOMIC = 3
+                // DRM_CLIENT_CAP_ASPECT_RATIO = 4
+                // DRM_CLIENT_CAP_WRITEBACK_CONNECTORS = 5
+            }
+            0
+        }
+
+        DRM_IOCTL_SET_MASTER => {
+            debug!("ioctl: DRM_IOCTL_SET_MASTER");
+            0 // Always succeed - we don't need real DRM master
+        }
+
+        DRM_IOCTL_DROP_MASTER => {
+            debug!("ioctl: DRM_IOCTL_DROP_MASTER");
+            0
+        }
+
+        DRM_IOCTL_MODE_GETRESOURCES => {
+            debug!("ioctl: DRM_IOCTL_MODE_GETRESOURCES");
+            let res = arg as *mut DrmModeCardRes;
+            if !res.is_null() {
+                let drm = match GLOBAL_DRM.lock().unwrap().clone() {
+                    Some(d) => d,
+                    None => return -1,
+                };
+
+                let resources = drm.get_resources();
+
+                // First call: return counts
+                // Second call: fill arrays
+                if (*res).count_crtcs == 0 && (*res).count_connectors == 0 {
+                    // First call - return counts
+                    (*res).count_fbs = resources.fbs.len() as u32;
+                    (*res).count_crtcs = 1;
+                    (*res).count_connectors = 1;
+                    (*res).count_encoders = 1;
+                } else {
+                    // Second call - fill arrays if provided
+                    if (*res).crtc_id_ptr != 0 && (*res).count_crtcs >= 1 {
+                        let crtcs = (*res).crtc_id_ptr as *mut u32;
+                        *crtcs = 10; // CRTC_ID
+                    }
+                    if (*res).connector_id_ptr != 0 && (*res).count_connectors >= 1 {
+                        let connectors = (*res).connector_id_ptr as *mut u32;
+                        *connectors = 1; // CONNECTOR_ID
+                    }
+                    if (*res).encoder_id_ptr != 0 && (*res).count_encoders >= 1 {
+                        let encoders = (*res).encoder_id_ptr as *mut u32;
+                        *encoders = 5; // ENCODER_ID
+                    }
+                }
+
+                (*res).min_width = resources.min_width;
+                (*res).max_width = resources.max_width;
+                (*res).min_height = resources.min_height;
+                (*res).max_height = resources.max_height;
+            }
+            0
+        }
+
+        DRM_IOCTL_MODE_GETCONNECTOR => {
+            debug!("ioctl: DRM_IOCTL_MODE_GETCONNECTOR");
+            let conn = arg as *mut DrmModeGetConnector;
+            if !conn.is_null() {
+                let drm = match GLOBAL_DRM.lock().unwrap().clone() {
+                    Some(d) => d,
+                    None => return -1,
+                };
+
+                let connector = drm.get_connector();
+                let mode_info = drm.get_mode_info();
+
+                (*conn).connector_id = connector.id;
+                (*conn).connector_type = DRM_MODE_CONNECTOR_DSI;
+                (*conn).connector_type_id = 1;
+                (*conn).connection = if connector.connected { DRM_MODE_CONNECTED } else { DRM_MODE_DISCONNECTED };
+                (*conn).mm_width = connector.width_mm;
+                (*conn).mm_height = connector.height_mm;
+                (*conn).encoder_id = 5; // ENCODER_ID
+                (*conn).subpixel = 0;
+
+                // First call returns counts, second fills arrays
+                if (*conn).count_modes == 0 {
+                    (*conn).count_modes = 1;
+                    (*conn).count_encoders = 1;
+                    (*conn).count_props = 0;
+                } else {
+                    // Fill mode info
+                    if (*conn).modes_ptr != 0 && (*conn).count_modes >= 1 {
+                        let modes = (*conn).modes_ptr as *mut DrmModeModeinfo;
+                        let mut m = DrmModeModeinfo::default();
+                        m.clock = mode_info.clock;
+                        m.hdisplay = mode_info.hdisplay;
+                        m.hsync_start = mode_info.hsync_start;
+                        m.hsync_end = mode_info.hsync_end;
+                        m.htotal = mode_info.htotal;
+                        m.vdisplay = mode_info.vdisplay;
+                        m.vsync_start = mode_info.vsync_start;
+                        m.vsync_end = mode_info.vsync_end;
+                        m.vtotal = mode_info.vtotal;
+                        m.vrefresh = mode_info.vrefresh;
+                        m.flags = mode_info.flags;
+
+                        // Copy mode name
+                        let name_bytes = mode_info.name.as_bytes();
+                        for (i, &b) in name_bytes.iter().take(31).enumerate() {
+                            m.name[i] = b as c_char;
+                        }
+
+                        *modes = m;
+                    }
+
+                    // Fill encoder
+                    if (*conn).encoders_ptr != 0 && (*conn).count_encoders >= 1 {
+                        let encoders = (*conn).encoders_ptr as *mut u32;
+                        *encoders = 5; // ENCODER_ID
+                    }
+                }
+            }
+            0
+        }
+
+        DRM_IOCTL_MODE_GETCRTC => {
+            debug!("ioctl: DRM_IOCTL_MODE_GETCRTC");
+            let crtc = arg as *mut DrmModeCrtc;
+            if !crtc.is_null() {
+                let drm = match GLOBAL_DRM.lock().unwrap().clone() {
+                    Some(d) => d,
+                    None => return -1,
+                };
+
+                let crtc_info = drm.get_crtc();
+                let mode_info = drm.get_mode_info();
+
+                (*crtc).crtc_id = crtc_info.id;
+                (*crtc).fb_id = 0;
+                (*crtc).x = crtc_info.x;
+                (*crtc).y = crtc_info.y;
+                (*crtc).gamma_size = 256;
+                (*crtc).mode_valid = if crtc_info.mode_valid { 1 } else { 0 };
+
+                // Fill mode
+                (*crtc).mode.clock = mode_info.clock;
+                (*crtc).mode.hdisplay = mode_info.hdisplay;
+                (*crtc).mode.hsync_start = mode_info.hsync_start;
+                (*crtc).mode.hsync_end = mode_info.hsync_end;
+                (*crtc).mode.htotal = mode_info.htotal;
+                (*crtc).mode.vdisplay = mode_info.vdisplay;
+                (*crtc).mode.vsync_start = mode_info.vsync_start;
+                (*crtc).mode.vsync_end = mode_info.vsync_end;
+                (*crtc).mode.vtotal = mode_info.vtotal;
+                (*crtc).mode.vrefresh = mode_info.vrefresh;
+                (*crtc).mode.flags = mode_info.flags;
+
+                let name_bytes = mode_info.name.as_bytes();
+                for (i, &b) in name_bytes.iter().take(31).enumerate() {
+                    (*crtc).mode.name[i] = b as c_char;
+                }
+            }
+            0
+        }
+
+        DRM_IOCTL_MODE_GETENCODER => {
+            debug!("ioctl: DRM_IOCTL_MODE_GETENCODER");
+            let enc = arg as *mut DrmModeGetEncoder;
+            if !enc.is_null() {
+                (*enc).encoder_type = 0; // DSI
+                (*enc).crtc_id = 10; // CRTC_ID
+                (*enc).possible_crtcs = 1;
+                (*enc).possible_clones = 0;
+            }
+            0
+        }
+
+        DRM_IOCTL_MODE_GETPLANERESOURCES => {
+            debug!("ioctl: DRM_IOCTL_MODE_GETPLANERESOURCES");
+            let res = arg as *mut DrmModeGetPlaneRes;
+            if !res.is_null() {
+                if (*res).count_planes == 0 {
+                    (*res).count_planes = 2; // Primary + cursor
+                } else if (*res).plane_id_ptr != 0 {
+                    let planes = (*res).plane_id_ptr as *mut u32;
+                    *planes = 20; // PRIMARY_PLANE_ID
+                    *planes.add(1) = 21; // CURSOR_PLANE_ID
+                }
+            }
+            0
+        }
+
+        DRM_IOCTL_MODE_GETPLANE => {
+            debug!("ioctl: DRM_IOCTL_MODE_GETPLANE");
+            let plane = arg as *mut DrmModeGetPlane;
+            if !plane.is_null() {
+                let drm = match GLOBAL_DRM.lock().unwrap().clone() {
+                    Some(d) => d,
+                    None => return -1,
+                };
+
+                if let Some(plane_info) = drm.get_plane((*plane).plane_id) {
+                    (*plane).crtc_id = plane_info.crtc_id;
+                    (*plane).fb_id = plane_info.fb_id;
+                    (*plane).possible_crtcs = plane_info.possible_crtcs;
+                    (*plane).gamma_size = 0;
+
+                    if (*plane).count_format_types == 0 {
+                        (*plane).count_format_types = plane_info.formats.len() as u32;
+                    } else if (*plane).format_type_ptr != 0 {
+                        let fmts = (*plane).format_type_ptr as *mut u32;
+                        for (i, &fmt) in plane_info.formats.iter().enumerate() {
+                            *fmts.add(i) = fmt;
+                        }
+                    }
+                } else {
+                    return -1;
+                }
+            }
+            0
+        }
+
+        DRM_IOCTL_MODE_OBJ_GETPROPERTIES => {
+            debug!("ioctl: DRM_IOCTL_MODE_OBJ_GETPROPERTIES");
+            let props = arg as *mut DrmModeObjGetProperties;
+            if !props.is_null() {
+                // Return minimal properties for now
+                if (*props).count_props == 0 {
+                    (*props).count_props = 1; // Just "type" property for planes
+                } else if (*props).props_ptr != 0 && (*props).prop_values_ptr != 0 {
+                    let prop_ids = (*props).props_ptr as *mut u32;
+                    let prop_vals = (*props).prop_values_ptr as *mut u64;
+                    *prop_ids = 1; // Property ID for "type"
+                    *prop_vals = DRM_PLANE_TYPE_PRIMARY;
+                }
+            }
+            0
+        }
+
+        DRM_IOCTL_MODE_ATOMIC => {
+            debug!("ioctl: DRM_IOCTL_MODE_ATOMIC (accepting)");
+            // Accept atomic commits - our display is managed by hwcomposer
+            // We don't actually do anything here since hwcomposer manages the display
+            0
+        }
+
+        DRM_IOCTL_MODE_ADDFB2 => {
+            debug!("ioctl: DRM_IOCTL_MODE_ADDFB2");
+            let fb = arg as *mut DrmModeFbCmd2;
+            if !fb.is_null() {
+                let drm = match GLOBAL_DRM.lock().unwrap().clone() {
+                    Some(d) => d,
+                    None => return -1,
+                };
+
+                let bpp = match (*fb).pixel_format {
+                    GBM_FORMAT_RGB565 => 16,
+                    _ => 32,
+                };
+                let depth = match (*fb).pixel_format {
+                    GBM_FORMAT_XRGB8888 | GBM_FORMAT_XBGR8888 => 24,
+                    _ => 32,
+                };
+
+                match drm.add_framebuffer(
+                    (*fb).width,
+                    (*fb).height,
+                    (*fb).pitches[0],
+                    bpp,
+                    depth,
+                    (*fb).pixel_format,
+                    (*fb).handles[0],
+                ) {
+                    Ok(fb_id) => {
+                        (*fb).fb_id = fb_id;
+                        0
+                    }
+                    Err(_) => -1,
+                }
+            } else {
+                -1
+            }
+        }
+
+        DRM_IOCTL_MODE_RMFB => {
+            debug!("ioctl: DRM_IOCTL_MODE_RMFB");
+            let fb_id = arg as *mut u32;
+            if !fb_id.is_null() {
+                let drm = match GLOBAL_DRM.lock().unwrap().clone() {
+                    Some(d) => d,
+                    None => return -1,
+                };
+
+                match drm.remove_framebuffer(*fb_id) {
+                    Ok(()) => 0,
+                    Err(_) => -1,
+                }
+            } else {
+                -1
+            }
+        }
+
+        DRM_IOCTL_MODE_PAGE_FLIP => {
+            debug!("ioctl: DRM_IOCTL_MODE_PAGE_FLIP");
+            // Accept page flip requests
+            0
+        }
+
+        DRM_IOCTL_MODE_SETCRTC => {
+            debug!("ioctl: DRM_IOCTL_MODE_SETCRTC");
+            // Accept CRTC configuration (mode is fixed by hwcomposer)
+            0
+        }
+
+        DRM_IOCTL_MODE_CURSOR | DRM_IOCTL_MODE_CURSOR2 => {
+            debug!("ioctl: DRM_IOCTL_MODE_CURSOR");
+            // Accept cursor operations (no-op for mobile)
+            0
+        }
+
+        _ => {
+            // Log unknown ioctls but return success to avoid breaking things
+            warn!("ioctl: Unknown DRM ioctl 0x{:x} (nr=0x{:x})", request, nr);
+            0
+        }
+    }
 }
 
 // =============================================================================
