@@ -35,16 +35,17 @@ export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 export LIBGL_ALWAYS_SOFTWARE=1
 # Try wayland-egl integration (shm not available as client)
 export QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=wayland-egl
-/usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | while IFS= read -r line; do
-    echo "$line" >> "$LOG_FILE"
-    # Check for unlock signal marker
-    if [[ "$line" == *"FLICK_UNLOCK_SIGNAL:"* ]]; then
-        # Extract the signal path and create the file
-        signal_path="${line#*FLICK_UNLOCK_SIGNAL:}"
-        echo "Creating unlock signal file: $signal_path" >> "$LOG_FILE"
-        mkdir -p "$(dirname "$signal_path")"
-        touch "$signal_path"
-    fi
-done
 
-echo "QML lockscreen exited" >> "$LOG_FILE"
+# Run qmlscene directly (pipe buffering issues prevent console.log detection)
+/usr/lib/qt5/bin/qmlscene "$QML_FILE" >> "$LOG_FILE" 2>&1
+EXIT_CODE=$?
+
+echo "QML lockscreen exited with code $EXIT_CODE" >> "$LOG_FILE"
+
+# If qmlscene exited normally (code 0), create unlock signal
+# Qt.quit() exits with 0, crashes/errors exit with non-zero
+if [ "$EXIT_CODE" -eq 0 ]; then
+    SIGNAL_FILE="$STATE_DIR/unlock_signal"
+    echo "Creating unlock signal: $SIGNAL_FILE" >> "$LOG_FILE"
+    touch "$SIGNAL_FILE"
+fi
