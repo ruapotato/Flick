@@ -148,16 +148,78 @@ extern "C" fn refresh_callback(
     debug!("Refresh callback: display_id={}", display_id);
 }
 
+/// Try to unblank/power on the display via various sysfs methods
+fn unblank_display() {
+    use std::fs::OpenOptions;
+    use std::os::unix::io::AsRawFd;
+
+    // Method 1: Try backlight bl_power sysfs (most reliable on Qualcomm devices)
+    // bl_power: 0 = FB_BLANK_UNBLANK (on), 4 = FB_BLANK_POWERDOWN (off)
+    if std::fs::write("/sys/class/backlight/panel0-backlight/bl_power", "0").is_ok() {
+        info!("Display powered on via backlight bl_power sysfs");
+    } else {
+        debug!("Could not write to panel0-backlight/bl_power");
+    }
+
+    // Method 2: Set brightness to max if it's at 0
+    if let Ok(brightness) = std::fs::read_to_string("/sys/class/backlight/panel0-backlight/brightness") {
+        if brightness.trim() == "0" {
+            if std::fs::write("/sys/class/backlight/panel0-backlight/brightness", "255").is_ok() {
+                info!("Backlight brightness set to max");
+            }
+        }
+    }
+
+    // Method 3: Try fbdev ioctl to unblank
+    const FBIOBLANK: libc::c_ulong = 0x4611;
+    const FB_BLANK_UNBLANK: libc::c_int = 0;
+
+    if let Ok(fb) = OpenOptions::new().write(true).open("/dev/fb0") {
+        let fd = fb.as_raw_fd();
+        let result = unsafe { libc::ioctl(fd, FBIOBLANK, FB_BLANK_UNBLANK) };
+        if result == 0 {
+            info!("Display unblanked via fbdev ioctl");
+        } else {
+            debug!("fbdev unblank ioctl failed");
+        }
+    } else {
+        debug!("Could not open /dev/fb0 to unblank display");
+    }
+
+    // Method 4: Try sysfs graphics blank
+    if std::fs::write("/sys/class/graphics/fb0/blank", "0").is_ok() {
+        info!("Display unblanked via graphics sysfs");
+    }
+}
+
 impl Hwcomposer {
     /// Create a new hwcomposer device
     pub fn new() -> Result<Self> {
         info!("Initializing hwcomposer via libhybris");
 
-        // Create HWC2 device
+        // Step 1: Try to unblank the display first via sysfs
+        unblank_display();
+
+        // Step 2: Set EGL platform environment variable
+        std::env::set_var("EGL_PLATFORM", "hwcomposer");
+
+        // Step 3: Initialize gralloc first (required for buffer allocation)
+        info!("Initializing hybris gralloc...");
+        ffi::gralloc_initialize();
+        info!("Gralloc initialized");
+
+        // Step 4: Initialize HWC2 subsystem BEFORE creating device
+        info!("Calling hybris_hwc2_initialize()...");
+        ffi::hwc2_initialize();
+        info!("HWC2 subsystem initialized");
+
+        // Step 5: Create HWC2 device
+        info!("Creating HWC2 device...");
         let device = unsafe { hwc2_compat_device_new(false) };
         if device.is_null() {
             return Err(Error::HwcInit("Failed to create HWC2 device".into()));
         }
+        info!("HWC2 device created successfully");
 
         // Create vsync callback data
         let vsync_data = Arc::new(Mutex::new(VsyncCallbackData {
@@ -177,9 +239,13 @@ impl Hwcomposer {
         }
 
         // Trigger hotplug for primary display
+        info!("Triggering hotplug for primary display...");
         unsafe {
             hwc2_compat_device_on_hotplug(device, 0, true);
         }
+
+        // Small delay to allow hotplug processing
+        std::thread::sleep(std::time::Duration::from_millis(100));
 
         // Get primary display
         let display = unsafe { hwc2_compat_device_get_display_by_id(device, 0) };
@@ -224,17 +290,19 @@ impl Hwcomposer {
         if layer.is_null() {
             warn!("Failed to create layer, will use client-only composition");
         } else {
+            info!("Created HWC2 layer, configuring for fullscreen client composition");
+            let w = mode.width as i32;
+            let h = mode.height as i32;
+
             // Configure the layer for client composition
             unsafe {
+                // Set composition type to CLIENT (we render, HWC just displays)
                 hwc2_compat_layer_set_composition_type(layer, HWC2_COMPOSITION_CLIENT);
-                hwc2_compat_layer_set_blend_mode(layer, HWC2_BLEND_MODE_PREMULTIPLIED);
-                hwc2_compat_layer_set_display_frame(
-                    layer,
-                    0,
-                    0,
-                    mode.width as i32,
-                    mode.height as i32,
-                );
+                // Set blend mode to NONE (opaque)
+                hwc2_compat_layer_set_blend_mode(layer, HWC2_BLEND_MODE_NONE);
+                // Set display frame (where on screen)
+                hwc2_compat_layer_set_display_frame(layer, 0, 0, w, h);
+                // Set source crop (portion of buffer)
                 hwc2_compat_layer_set_source_crop(
                     layer,
                     0.0,
@@ -242,6 +310,9 @@ impl Hwcomposer {
                     mode.width as f32,
                     mode.height as f32,
                 );
+                // Set visible region
+                hwc2_compat_layer_set_visible_region(layer, 0, 0, w, h);
+                // Set plane alpha to fully opaque
                 hwc2_compat_layer_set_plane_alpha(layer, 1.0);
             }
         }

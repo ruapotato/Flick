@@ -165,10 +165,30 @@ pub type HWCPresentCallback = extern "C" fn(
     buffer: *mut ANativeWindowBuffer,
 );
 
+// Gralloc initialization - MUST be called before HWC2
+#[link(name = "gralloc")]
+extern "C" {
+    /// Initialize hybris gralloc - needed for buffer allocation
+    pub fn hybris_gralloc_initialize(framebuffer: c_int);
+}
+
+/// Initialize gralloc subsystem - call this first!
+pub fn gralloc_initialize() {
+    unsafe { hybris_gralloc_initialize(0) };
+}
+
+/// Initialize HWC2 subsystem - call this after gralloc_initialize() and before creating devices
+pub fn hwc2_initialize() {
+    unsafe { hybris_hwc2_initialize() };
+}
+
 // Link against libhybris libraries
 #[link(name = "hybris-hwcomposerwindow")]
 #[link(name = "hwc2")]
 extern "C" {
+    /// Initialize HWC2 subsystem - MUST be called before hwc2_compat_device_new
+    pub fn hybris_hwc2_initialize();
+
     // === HWC2 Compatibility Layer Functions ===
 
     /// Create a new HWC2 device
