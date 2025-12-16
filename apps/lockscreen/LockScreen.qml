@@ -77,7 +77,6 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 font.pixelSize: 96
                 font.weight: Font.Light
-                font.family: "Inter, Roboto, sans-serif"
                 color: "#ffffff"
                 text: Qt.formatTime(new Date(), "hh:mm")
 

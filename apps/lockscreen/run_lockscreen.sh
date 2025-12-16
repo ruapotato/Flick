@@ -3,9 +3,8 @@
 
 STATE_DIR="${FLICK_STATE_DIR:-$HOME/.local/state/flick}"
 LOG_FILE="$STATE_DIR/qml_lockscreen.log"
-# Use test.qml for debugging, main.qml for production
-QML_FILE="$(dirname "$0")/test.qml"
-#QML_FILE="$(dirname "$0")/main.qml"
+# Use main.qml for production
+QML_FILE="$(dirname "$0")/main.qml"
 
 # Ensure state directory exists
 mkdir -p "$STATE_DIR"
