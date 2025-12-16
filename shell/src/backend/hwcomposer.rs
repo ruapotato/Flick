@@ -1271,9 +1271,9 @@ fn render_frame(
                             ShellView::LockScreen => {
                                 // QML lockscreen not connected yet - show debug info
                                 slint_ui.set_view("lock");
-                                slint_ui.set_lock_time("DEBUG");
-                                slint_ui.set_lock_date("Waiting for QML lockscreen...");
-                                slint_ui.set_lock_error("If stuck here: check ~/.local/state/flick/qml_lockscreen.log");
+                                slint_ui.set_lock_time("WAITING");
+                                slint_ui.set_lock_date("QML lockscreen loading...");
+                                slint_ui.set_lock_error("elements=0, QML not connected yet");
                                 if log_frame {
                                     warn!("LockScreen view but no QML app connected - showing debug fallback");
                                 }
