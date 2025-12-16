@@ -1205,9 +1205,8 @@ fn render_frame(
         }
     }
 
-    // For first 120 frames, render alternating bright colors to test basic rendering
-    // After that, normal rendering takes over
-    let test_mode = frame_num <= 120;
+    // Test mode disabled - QML lockscreen confirmed working
+    let test_mode = false;
 
     if test_mode {
         // Cycle through bright colors: red, green, blue every 40 frames
