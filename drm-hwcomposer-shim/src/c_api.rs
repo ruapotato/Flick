@@ -1360,6 +1360,414 @@ pub unsafe extern "C" fn drmFreeVersion(version: *mut DrmVersion) {
 }
 
 // =============================================================================
+// DRM Device Open/Close Functions
+// =============================================================================
+
+/// Fake DRM file descriptor - we use a magic number to identify our shim
+const FAKE_DRM_FD: c_int = 0x7F7F;
+
+/// Open a DRM device by name
+#[no_mangle]
+pub unsafe extern "C" fn drmOpen(name: *const c_char, busid: *const c_char) -> c_int {
+    let name_str = if name.is_null() {
+        "null"
+    } else {
+        CStr::from_ptr(name).to_str().unwrap_or("invalid")
+    };
+    info!("drmOpen(name={}, busid=...)", name_str);
+
+    // Initialize shim and return fake fd
+    if drm_hwcomposer_shim_init() == 0 {
+        FAKE_DRM_FD
+    } else {
+        -1
+    }
+}
+
+/// Open a DRM device with type
+#[no_mangle]
+pub unsafe extern "C" fn drmOpenWithType(
+    name: *const c_char,
+    busid: *const c_char,
+    type_: c_int,
+) -> c_int {
+    drmOpen(name, busid)
+}
+
+/// Open the DRM control device
+#[no_mangle]
+pub unsafe extern "C" fn drmOpenControl(minor: c_int) -> c_int {
+    info!("drmOpenControl(minor={})", minor);
+    if drm_hwcomposer_shim_init() == 0 {
+        FAKE_DRM_FD
+    } else {
+        -1
+    }
+}
+
+/// Open a DRM render node
+#[no_mangle]
+pub unsafe extern "C" fn drmOpenRender(minor: c_int) -> c_int {
+    info!("drmOpenRender(minor={})", minor);
+    if drm_hwcomposer_shim_init() == 0 {
+        FAKE_DRM_FD
+    } else {
+        -1
+    }
+}
+
+/// Close a DRM device
+#[no_mangle]
+pub unsafe extern "C" fn drmClose(fd: c_int) -> c_int {
+    debug!("drmClose(fd={})", fd);
+    // Don't actually close anything - our device is managed internally
+    0
+}
+
+/// Check if fd is a DRM device (ours is always valid)
+#[no_mangle]
+pub unsafe extern "C" fn drmAvailable() -> c_int {
+    debug!("drmAvailable()");
+    1
+}
+
+/// Get the bus ID
+#[no_mangle]
+pub unsafe extern "C" fn drmGetBusid(fd: c_int) -> *mut c_char {
+    static BUSID: &[u8] = b"hwcomposer:0\0";
+    // Return a static string - caller should use drmFreeBusid
+    BUSID.as_ptr() as *mut c_char
+}
+
+/// Free bus ID (no-op for our static string)
+#[no_mangle]
+pub unsafe extern "C" fn drmFreeBusid(busid: *const c_char) {
+    // No-op - we return a static string
+}
+
+/// Get magic token for authentication
+#[no_mangle]
+pub unsafe extern "C" fn drmGetMagic(fd: c_int, magic: *mut u32) -> c_int {
+    if !magic.is_null() {
+        *magic = 0x12345678;
+    }
+    0
+}
+
+/// Authenticate with magic token
+#[no_mangle]
+pub unsafe extern "C" fn drmAuthMagic(fd: c_int, magic: u32) -> c_int {
+    0 // Always succeed
+}
+
+/// Get device node name
+#[no_mangle]
+pub unsafe extern "C" fn drmGetDeviceNameFromFd(fd: c_int) -> *mut c_char {
+    static NAME: &[u8] = b"/dev/dri/card0\0";
+    NAME.as_ptr() as *mut c_char
+}
+
+/// Get device node name (version 2)
+#[no_mangle]
+pub unsafe extern "C" fn drmGetDeviceNameFromFd2(fd: c_int) -> *mut c_char {
+    drmGetDeviceNameFromFd(fd)
+}
+
+/// Get render device node name
+#[no_mangle]
+pub unsafe extern "C" fn drmGetRenderDeviceNameFromFd(fd: c_int) -> *mut c_char {
+    static NAME: &[u8] = b"/dev/dri/renderD128\0";
+    NAME.as_ptr() as *mut c_char
+}
+
+/// Drop master
+#[no_mangle]
+pub unsafe extern "C" fn drmDropMaster(fd: c_int) -> c_int {
+    debug!("drmDropMaster(fd={})", fd);
+    0
+}
+
+/// Set master
+#[no_mangle]
+pub unsafe extern "C" fn drmSetMaster(fd: c_int) -> c_int {
+    debug!("drmSetMaster(fd={})", fd);
+    0
+}
+
+/// Check if we're the master
+#[no_mangle]
+pub unsafe extern "C" fn drmIsMaster(fd: c_int) -> c_int {
+    1 // Always master
+}
+
+// =============================================================================
+// DRM ioctl wrapper (for low-level access)
+// =============================================================================
+
+/// Handle DRM ioctls - we don't actually use ioctls, but need to handle them
+#[no_mangle]
+pub unsafe extern "C" fn drmIoctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) -> c_int {
+    // Log but don't actually perform ioctl
+    debug!("drmIoctl(fd={}, request=0x{:x})", fd, request);
+    0
+}
+
+// =============================================================================
+// open() intercept for /dev/dri/*
+// =============================================================================
+
+// Store the original open function pointer
+static mut REAL_OPEN: Option<unsafe extern "C" fn(*const c_char, c_int, ...) -> c_int> = None;
+
+/// Intercept open() calls to /dev/dri/*
+#[no_mangle]
+pub unsafe extern "C" fn open(path: *const c_char, flags: c_int) -> c_int {
+    if !path.is_null() {
+        let path_str = CStr::from_ptr(path).to_str().unwrap_or("");
+
+        // Intercept DRM device opens
+        if path_str.starts_with("/dev/dri/") {
+            info!("open() intercepted: {} -> returning fake DRM fd", path_str);
+
+            // Initialize the shim
+            if drm_hwcomposer_shim_init() == 0 {
+                return FAKE_DRM_FD;
+            } else {
+                return -1;
+            }
+        }
+    }
+
+    // For all other files, call the real open
+    // Use dlsym to get the real open function
+    let libc_open: unsafe extern "C" fn(*const c_char, c_int, libc::mode_t) -> c_int = {
+        let handle = libc::dlopen(b"libc.so.6\0".as_ptr() as *const c_char, libc::RTLD_LAZY);
+        if handle.is_null() {
+            // Try another name
+            let handle = libc::dlopen(b"libc.so\0".as_ptr() as *const c_char, libc::RTLD_LAZY);
+            if handle.is_null() {
+                error!("Failed to dlopen libc");
+                return -1;
+            }
+            std::mem::transmute(libc::dlsym(handle, b"open\0".as_ptr() as *const c_char))
+        } else {
+            std::mem::transmute(libc::dlsym(handle, b"open\0".as_ptr() as *const c_char))
+        }
+    };
+
+    libc_open(path, flags, 0)
+}
+
+/// Intercept open64() as well
+#[no_mangle]
+pub unsafe extern "C" fn open64(path: *const c_char, flags: c_int) -> c_int {
+    open(path, flags)
+}
+
+/// Intercept openat() for /dev/dri/*
+#[no_mangle]
+pub unsafe extern "C" fn openat(dirfd: c_int, path: *const c_char, flags: c_int) -> c_int {
+    if !path.is_null() {
+        let path_str = CStr::from_ptr(path).to_str().unwrap_or("");
+
+        // Intercept DRM device opens
+        if path_str.starts_with("/dev/dri/") || path_str.contains("dri/card") {
+            info!("openat() intercepted: {} -> returning fake DRM fd", path_str);
+
+            if drm_hwcomposer_shim_init() == 0 {
+                return FAKE_DRM_FD;
+            } else {
+                return -1;
+            }
+        }
+    }
+
+    // Call real openat
+    libc::openat(dirfd, path, flags)
+}
+
+// =============================================================================
+// Cursor functions
+// =============================================================================
+
+/// Set cursor (no-op for now - mobile doesn't use cursors)
+#[no_mangle]
+pub unsafe extern "C" fn drmModeSetCursor(
+    fd: c_int,
+    crtc_id: u32,
+    bo_handle: u32,
+    width: u32,
+    height: u32,
+) -> c_int {
+    debug!("drmModeSetCursor(crtc={}, handle={})", crtc_id, bo_handle);
+    0 // Success, but we don't display a cursor
+}
+
+/// Set cursor with hotspot
+#[no_mangle]
+pub unsafe extern "C" fn drmModeSetCursor2(
+    fd: c_int,
+    crtc_id: u32,
+    bo_handle: u32,
+    width: u32,
+    height: u32,
+    hot_x: i32,
+    hot_y: i32,
+) -> c_int {
+    debug!("drmModeSetCursor2(crtc={}, handle={})", crtc_id, bo_handle);
+    0
+}
+
+/// Move cursor
+#[no_mangle]
+pub unsafe extern "C" fn drmModeMoveCursor(fd: c_int, crtc_id: u32, x: c_int, y: c_int) -> c_int {
+    0
+}
+
+// =============================================================================
+// Encoder functions
+// =============================================================================
+
+/// DRM encoder structure
+#[repr(C)]
+pub struct drmModeEncoder {
+    pub encoder_id: u32,
+    pub encoder_type: u32,
+    pub crtc_id: u32,
+    pub possible_crtcs: u32,
+    pub possible_clones: u32,
+}
+
+/// Get encoder info
+#[no_mangle]
+pub unsafe extern "C" fn drmModeGetEncoder(fd: c_int, encoder_id: u32) -> *mut drmModeEncoder {
+    debug!("drmModeGetEncoder(fd={}, id={})", fd, encoder_id);
+
+    let encoder = Box::new(drmModeEncoder {
+        encoder_id,
+        encoder_type: 0, // DRM_MODE_ENCODER_DSI
+        crtc_id: 10, // CRTC_ID
+        possible_crtcs: 1,
+        possible_clones: 0,
+    });
+
+    Box::into_raw(encoder)
+}
+
+/// Free encoder
+#[no_mangle]
+pub unsafe extern "C" fn drmModeFreeEncoder(encoder: *mut drmModeEncoder) {
+    if encoder.is_null() {
+        return;
+    }
+    let _ = Box::from_raw(encoder);
+}
+
+// =============================================================================
+// Property functions
+// =============================================================================
+
+/// DRM property structure
+#[repr(C)]
+pub struct drmModePropertyRes {
+    pub prop_id: u32,
+    pub flags: u32,
+    pub name: [c_char; 32],
+    pub count_values: c_int,
+    pub values: *mut u64,
+    pub count_enums: c_int,
+    pub enums: *mut drmModePropertyEnum,
+    pub count_blobs: c_int,
+    pub blob_ids: *mut u32,
+}
+
+#[repr(C)]
+pub struct drmModePropertyEnum {
+    pub value: u64,
+    pub name: [c_char; 32],
+}
+
+/// Get property
+#[no_mangle]
+pub unsafe extern "C" fn drmModeGetProperty(fd: c_int, prop_id: u32) -> *mut drmModePropertyRes {
+    debug!("drmModeGetProperty(fd={}, id={})", fd, prop_id);
+
+    // Return a basic property for "type" (used for plane type)
+    let mut prop = Box::new(drmModePropertyRes {
+        prop_id,
+        flags: 0,
+        name: [0; 32],
+        count_values: 0,
+        values: ptr::null_mut(),
+        count_enums: 3,
+        enums: ptr::null_mut(),
+        count_blobs: 0,
+        blob_ids: ptr::null_mut(),
+    });
+
+    // Set name based on prop_id
+    let name: &[u8] = match prop_id {
+        1 => b"type\0",
+        _ => b"unknown\0",
+    };
+    for (i, &b) in name.iter().take(31).enumerate() {
+        prop.name[i] = b as c_char;
+    }
+
+    Box::into_raw(prop)
+}
+
+/// Free property
+#[no_mangle]
+pub unsafe extern "C" fn drmModeFreeProperty(prop: *mut drmModePropertyRes) {
+    if prop.is_null() {
+        return;
+    }
+    let _ = Box::from_raw(prop);
+}
+
+/// Get object properties
+#[repr(C)]
+pub struct drmModeObjectProperties {
+    pub count_props: u32,
+    pub props: *mut u32,
+    pub prop_values: *mut u64,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn drmModeObjectGetProperties(
+    fd: c_int,
+    object_id: u32,
+    object_type: u32,
+) -> *mut drmModeObjectProperties {
+    debug!("drmModeObjectGetProperties(fd={}, obj={}, type={})", fd, object_id, object_type);
+
+    // For planes, return the type property
+    let props = Box::new(drmModeObjectProperties {
+        count_props: 1,
+        props: Box::into_raw(vec![1u32].into_boxed_slice()) as *mut u32, // prop_id 1 = "type"
+        prop_values: Box::into_raw(vec![DRM_PLANE_TYPE_PRIMARY].into_boxed_slice()) as *mut u64,
+    });
+
+    Box::into_raw(props)
+}
+
+/// Free object properties
+#[no_mangle]
+pub unsafe extern "C" fn drmModeFreeObjectProperties(props: *mut drmModeObjectProperties) {
+    if props.is_null() {
+        return;
+    }
+    let p = Box::from_raw(props);
+    if !p.props.is_null() {
+        let _ = Vec::from_raw_parts(p.props, p.count_props as usize, p.count_props as usize);
+    }
+    if !p.prop_values.is_null() {
+        let _ = Vec::from_raw_parts(p.prop_values, p.count_props as usize, p.count_props as usize);
+    }
+}
+
+// =============================================================================
 // Initialization
 // =============================================================================
 

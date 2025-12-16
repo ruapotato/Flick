@@ -1,10 +1,11 @@
 #!/bin/bash
-# Test script for running Flick with the DRM shim backend
+# Test script for running Flick with the DRM shim (LD_PRELOAD approach)
 # This uses the drm-hwcomposer-shim to provide DRM/GBM interface over hwcomposer
+# The shim is loaded via LD_PRELOAD and intercepts libdrm/libgbm calls
 
 set -e
 
-echo "=== Flick DRM Shim Backend Test ==="
+echo "=== Flick DRM Shim Backend Test (Universal LD_PRELOAD) ==="
 echo ""
 
 # Stop any existing compositor
@@ -66,11 +67,23 @@ fi
 echo "Cleaning up stale sockets..."
 rm -f "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null || true
 
+# Path to the shim library
+SHIM_LIB="$HOME/Flick/drm-hwcomposer-shim/target/release/libdrm_hwcomposer_shim.so"
+
+if [ ! -f "$SHIM_LIB" ]; then
+    echo "ERROR: Shim library not found at $SHIM_LIB"
+    echo "Building shim..."
+    cd ~/Flick/drm-hwcomposer-shim
+    cargo build --release
+fi
+
 echo ""
-echo "Starting Flick with DRM shim backend..."
+echo "Starting Flick with DRM shim via LD_PRELOAD..."
+echo "Shim library: $SHIM_LIB"
 echo "Press Ctrl+C to stop"
 echo ""
 
-# Run Flick with sudo (needed for hwcomposer access)
+# Run Flick with the shim preloaded
+# The udev backend will try to use standard DRM/GBM, but our shim intercepts those calls
 cd ~/Flick/shell
-sudo -E ./target/release/flick --drm-shim
+sudo -E LD_PRELOAD="$SHIM_LIB" ./target/release/flick
