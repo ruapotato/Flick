@@ -8,8 +8,28 @@ use std::fs;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
-/// Path to Flick's built-in Settings app (Python/Kivy)
-pub const FLICK_SETTINGS_EXEC: &str = "/home/david/Flick/apps/flick_settings/flick_settings.py";
+/// Get the path to Flick's built-in Settings app (QML)
+/// Searches in common locations based on the running user
+pub fn get_flick_settings_exec() -> String {
+    // Try to find the settings app in common locations
+    let possible_paths = [
+        // Check relative to user's home
+        format!("{}/Flick/apps/settings/run_settings.sh", std::env::var("HOME").unwrap_or_default()),
+        // Droidian phone
+        "/home/droidian/Flick/apps/settings/run_settings.sh".to_string(),
+        // Development machine
+        "/home/david/Flick/apps/settings/run_settings.sh".to_string(),
+    ];
+
+    for path in &possible_paths {
+        if std::path::Path::new(path).exists() {
+            return path.clone();
+        }
+    }
+
+    // Fallback - try GNOME Settings as last resort
+    "gnome-control-center".to_string()
+}
 
 /// Predefined app categories that appear on the home screen
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -433,7 +453,7 @@ impl AppManager {
     pub fn get_exec(&self, category: AppCategory) -> Option<String> {
         // Settings always uses Flick's built-in Settings app
         if category == AppCategory::Settings {
-            return Some(FLICK_SETTINGS_EXEC.to_string());
+            return Some(get_flick_settings_exec());
         }
         // First try user selection
         if let Some(exec) = self.config.get_selected(category) {

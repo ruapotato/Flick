@@ -1080,11 +1080,24 @@ fn handle_input_event(
                                 .arg("-c")
                                 .arg(&exec)
                                 .env("WAYLAND_DISPLAY", socket_name)
-                                // Force software rendering so apps use SHM buffers (hwcomposer can't handle EGL buffers from apps)
+                                // Force software rendering so apps use SHM buffers
+                                // hwcomposer can't handle EGL/DMA-BUF buffers from apps
                                 .env("LIBGL_ALWAYS_SOFTWARE", "1")
                                 .env("GDK_BACKEND", "wayland")
+                                // GTK4 specific - force Cairo rendering instead of GPU
+                                .env("GSK_RENDERER", "cairo")
+                                .env("GDK_RENDERING", "image")
+                                // Disable hardware acceleration hints
+                                .env("GALLIUM_DRIVER", "llvmpipe")
+                                .env("__EGL_VENDOR_LIBRARY_FILENAMES", "")
+                                // Also set for Qt apps
+                                .env("QT_QUICK_BACKEND", "software")
+                                .env("QT_OPENGL", "software")
                                 .spawn()
                                 .ok();
+
+                            // Switch to App view to show the window
+                            state.shell.view = crate::shell::ShellView::App;
                         }
                     }
                     crate::shell::ShellView::LockScreen => {

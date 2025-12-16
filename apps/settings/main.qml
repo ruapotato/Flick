@@ -5,8 +5,7 @@ import QtQuick.Controls 2.15
 Window {
     id: root
     visible: true
-    width: 400
-    height: 800
+    visibility: Window.FullScreen
     title: "Settings"
     color: "#0a0a0f"
 
