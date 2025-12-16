@@ -10,26 +10,20 @@ authors = ["David Hamner"]
 name = "drm_hwcomposer_shim"
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "test_hwc"
+path = "src/bin/test_hwc.rs"
+
 [dependencies]
-# For DRM/GBM interfaces
-drm = "0.12"
-drm-ffi = "0.8"
-gbm = "0.15"
-
-# EGL bindings
-khronos-egl = { version = "6.0", features = ["dynamic"] }
-
 # Logging
 tracing = "0.1"
+tracing-subscriber = "0.3"
 
 # FFI utilities
 libc = "0.2"
 
 # Error handling
 thiserror = "1.0"
-
-[build-dependencies]
-pkg-config = "0.3"
 
 [features]
 default = ["hwcomposer2"]

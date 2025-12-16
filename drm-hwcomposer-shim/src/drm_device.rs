@@ -107,11 +107,25 @@ impl HwcDrmDevice {
 
     /// Get connector info
     pub fn get_connector(&self) -> ConnectorInfo {
+        // Calculate physical size from DPI if available
+        let (width_mm, height_mm) = if self.mode.dpi_x > 0.0 && self.mode.dpi_y > 0.0 {
+            (
+                (self.mode.width as f32 * 25.4 / self.mode.dpi_x) as u32,
+                (self.mode.height as f32 * 25.4 / self.mode.dpi_y) as u32,
+            )
+        } else {
+            // Approximate for typical phone (assume ~400 DPI)
+            (
+                (self.mode.width as f32 * 25.4 / 400.0) as u32,
+                (self.mode.height as f32 * 25.4 / 400.0) as u32,
+            )
+        };
+
         ConnectorInfo {
             id: 1,
             connected: true,
-            width_mm: (self.mode.width as f32 * 0.1) as u32, // Approximate
-            height_mm: (self.mode.height as f32 * 0.1) as u32,
+            width_mm,
+            height_mm,
         }
     }
 
@@ -137,13 +151,24 @@ impl HwcDrmDevice {
         self.mode.refresh_rate
     }
 
+    /// Get the DPI
+    pub fn get_dpi(&self) -> (f32, f32) {
+        (self.mode.dpi_x, self.mode.dpi_y)
+    }
+
     /// Initialize EGL context for this device
     pub fn init_egl(&self) -> Result<()> {
         let mut hwc = self.hwc.lock().map_err(|e| Error::HwcInit(e.to_string()))?;
         hwc.init_egl()
     }
 
-    /// Present a buffer to the display
+    /// Swap EGL buffers (present to display)
+    pub fn swap_buffers(&self) -> Result<()> {
+        let hwc = self.hwc.lock().map_err(|e| Error::HwcInit(e.to_string()))?;
+        hwc.swap_buffers()
+    }
+
+    /// Present a buffer to the display (legacy)
     pub fn present(&self, buffer: *mut std::ffi::c_void) -> Result<()> {
         let mut hwc = self.hwc.lock().map_err(|e| Error::HwcInit(e.to_string()))?;
         hwc.present(buffer)
@@ -158,6 +183,24 @@ impl HwcDrmDevice {
     /// Get the underlying hwcomposer device
     pub fn hwcomposer(&self) -> Arc<Mutex<Hwcomposer>> {
         Arc::clone(&self.hwc)
+    }
+
+    /// Get the EGL display handle
+    pub fn egl_display(&self) -> Result<*mut std::ffi::c_void> {
+        let hwc = self.hwc.lock().map_err(|e| Error::HwcInit(e.to_string()))?;
+        Ok(hwc.egl_display())
+    }
+
+    /// Get the EGL surface handle
+    pub fn egl_surface(&self) -> Result<*mut std::ffi::c_void> {
+        let hwc = self.hwc.lock().map_err(|e| Error::HwcInit(e.to_string()))?;
+        Ok(hwc.egl_surface())
+    }
+
+    /// Get the EGL context handle
+    pub fn egl_context(&self) -> Result<*mut std::ffi::c_void> {
+        let hwc = self.hwc.lock().map_err(|e| Error::HwcInit(e.to_string()))?;
+        Ok(hwc.egl_context())
     }
 }
 

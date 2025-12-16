@@ -3,6 +3,7 @@
 //! This provides GBM-compatible buffer allocation using Android's gralloc HAL.
 
 use crate::drm_device::HwcDrmDevice;
+use crate::ffi::*;
 use crate::{Error, Result};
 use std::os::raw::c_void;
 use std::sync::Arc;
@@ -19,6 +20,17 @@ pub enum GbmFormat {
     Abgr8888 = 0x34324241, // 'AB24'
 }
 
+impl GbmFormat {
+    /// Convert to HAL pixel format
+    pub fn to_hal_format(&self) -> i32 {
+        match self {
+            GbmFormat::Argb8888 | GbmFormat::Abgr8888 => HAL_PIXEL_FORMAT_RGBA_8888,
+            GbmFormat::Xrgb8888 | GbmFormat::Xbgr8888 => HAL_PIXEL_FORMAT_RGBX_8888,
+            GbmFormat::Rgb565 => HAL_PIXEL_FORMAT_RGB_565,
+        }
+    }
+}
+
 /// GBM buffer usage flags
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]
@@ -32,12 +44,12 @@ pub enum GbmUsage {
 
 /// A buffer object allocated via gralloc
 pub struct HwcGbmBo {
-    handle: *mut c_void,  // gralloc buffer handle
+    handle: *mut c_void, // gralloc buffer handle
     width: u32,
     height: u32,
     stride: u32,
     format: GbmFormat,
-    fd: i32,  // DMA-BUF fd if available
+    fd: i32, // DMA-BUF fd if available
 }
 
 /// GBM surface for rendering
@@ -54,12 +66,6 @@ pub struct HwcGbmSurface {
 pub struct HwcGbmDevice {
     drm_device: Arc<HwcDrmDevice>,
     gralloc_device: *mut c_void,
-}
-
-// FFI declarations for gralloc
-#[repr(C)]
-struct GrallocModule {
-    _data: [u8; 0],
 }
 
 impl HwcGbmDevice {
@@ -84,7 +90,7 @@ impl HwcGbmDevice {
         width: u32,
         height: u32,
         format: GbmFormat,
-        usage: u32,
+        _usage: u32,
     ) -> Result<HwcGbmBo> {
         info!("Allocating buffer {}x{} format {:?}", width, height, format);
 

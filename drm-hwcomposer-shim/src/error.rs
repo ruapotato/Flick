@@ -7,6 +7,9 @@ pub enum Error {
     #[error("hwcomposer initialization failed: {0}")]
     HwcInit(String),
 
+    #[error("hwcomposer present failed: {0}")]
+    HwcPresent(String),
+
     #[error("hwcomposer display not found")]
     NoDisplay,
 

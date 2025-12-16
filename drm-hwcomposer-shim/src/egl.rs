@@ -3,6 +3,7 @@
 //! This module provides EGL context creation and buffer sharing between
 //! hwcomposer and OpenGL ES rendering.
 
+use crate::ffi::{self, *};
 use crate::gbm_device::{HwcGbmBo, HwcGbmDevice};
 use crate::{Error, Result};
 use std::os::raw::c_void;
@@ -37,10 +38,10 @@ impl Default for EglConfig {
 
 /// EGL context wrapper for hwcomposer
 pub struct HwcEglContext {
-    display: *mut c_void,
-    context: *mut c_void,
-    surface: *mut c_void,
-    config: *mut c_void,
+    display: ffi::EGLDisplay,
+    context: ffi::EGLContext,
+    surface: ffi::EGLSurface,
+    config: ffi::EGLConfig,
     gbm_device: Arc<HwcGbmDevice>,
 }
 
@@ -51,49 +52,81 @@ pub struct HwcEglImage {
     height: u32,
 }
 
-// EGL constants (from EGL headers)
-const EGL_NO_DISPLAY: *mut c_void = std::ptr::null_mut();
-const EGL_NO_CONTEXT: *mut c_void = std::ptr::null_mut();
-const EGL_NO_SURFACE: *mut c_void = std::ptr::null_mut();
-
 impl HwcEglContext {
     /// Create a new EGL context from a GBM device
-    pub fn new(gbm_device: Arc<HwcGbmDevice>, config: EglConfig) -> Result<Self> {
+    pub fn new(gbm_device: Arc<HwcGbmDevice>, _config: EglConfig) -> Result<Self> {
         info!("Creating EGL context for hwcomposer");
 
-        // In a full implementation:
-        // 1. Get EGL display from hwcomposer's native display
-        // 2. Initialize EGL
-        // 3. Choose config
-        // 4. Create context
-        // 5. Create window surface
+        // The EGL context is managed by the hwcomposer/drm_device
+        // This wrapper provides access to the underlying EGL resources
 
         Ok(Self {
-            display: EGL_NO_DISPLAY,
-            context: EGL_NO_CONTEXT,
-            surface: EGL_NO_SURFACE,
+            display: ffi::EGL_NO_DISPLAY,
+            context: ffi::EGL_NO_CONTEXT,
+            surface: ffi::EGL_NO_SURFACE,
             config: std::ptr::null_mut(),
             gbm_device,
         })
     }
 
+    /// Initialize from existing EGL handles (from hwcomposer)
+    pub fn from_handles(
+        gbm_device: Arc<HwcGbmDevice>,
+        display: ffi::EGLDisplay,
+        context: ffi::EGLContext,
+        surface: ffi::EGLSurface,
+        config: ffi::EGLConfig,
+    ) -> Self {
+        Self {
+            display,
+            context,
+            surface,
+            config,
+            gbm_device,
+        }
+    }
+
     /// Make this context current
     pub fn make_current(&self) -> Result<()> {
         debug!("Making EGL context current");
-        // eglMakeCurrent(display, surface, surface, context)
+
+        if self.display == ffi::EGL_NO_DISPLAY {
+            return Err(Error::Egl("No EGL display".into()));
+        }
+
+        if unsafe { eglMakeCurrent(self.display, self.surface, self.surface, self.context) }
+            == ffi::EGL_FALSE
+        {
+            let err = unsafe { eglGetError() };
+            return Err(Error::Egl(format!("eglMakeCurrent failed: 0x{:X}", err)));
+        }
+
         Ok(())
     }
 
     /// Swap buffers (present to display)
     pub fn swap_buffers(&self) -> Result<()> {
         debug!("Swapping EGL buffers");
-        // eglSwapBuffers(display, surface)
+
+        if self.display == ffi::EGL_NO_DISPLAY {
+            return Err(Error::Egl("No EGL display".into()));
+        }
+
+        if unsafe { eglSwapBuffers(self.display, self.surface) } == ffi::EGL_FALSE {
+            let err = unsafe { eglGetError() };
+            return Err(Error::Egl(format!("eglSwapBuffers failed: 0x{:X}", err)));
+        }
+
         Ok(())
     }
 
     /// Create an EGL image from a GBM buffer object
     pub fn create_image(&self, bo: &HwcGbmBo) -> Result<HwcEglImage> {
-        debug!("Creating EGL image from buffer {}x{}", bo.width(), bo.height());
+        debug!(
+            "Creating EGL image from buffer {}x{}",
+            bo.width(),
+            bo.height()
+        );
 
         // In a full implementation:
         // 1. Get DMA-BUF fd from the bo
@@ -112,8 +145,8 @@ impl HwcEglContext {
         fd: i32,
         width: u32,
         height: u32,
-        format: u32,
-        modifier: u64,
+        _format: u32,
+        _modifier: u64,
     ) -> Result<HwcEglImage> {
         debug!("Importing DMA-BUF fd={} as EGL image", fd);
 
@@ -134,17 +167,17 @@ impl HwcEglContext {
     }
 
     /// Get the EGL display handle
-    pub fn display(&self) -> *mut c_void {
+    pub fn display(&self) -> ffi::EGLDisplay {
         self.display
     }
 
     /// Get the EGL context handle
-    pub fn context(&self) -> *mut c_void {
+    pub fn context(&self) -> ffi::EGLContext {
         self.context
     }
 
     /// Get the EGL surface handle
-    pub fn surface(&self) -> *mut c_void {
+    pub fn surface(&self) -> ffi::EGLSurface {
         self.surface
     }
 
@@ -174,7 +207,7 @@ impl HwcEglImage {
     }
 
     /// Bind this image as a texture (via glEGLImageTargetTexture2DOES)
-    pub fn bind_as_texture(&self, target: u32) -> Result<()> {
+    pub fn bind_as_texture(&self, _target: u32) -> Result<()> {
         debug!("Binding EGL image as texture");
         // glEGLImageTargetTexture2DOES(target, self.image)
         Ok(())
@@ -184,9 +217,7 @@ impl HwcEglImage {
 impl Drop for HwcEglContext {
     fn drop(&mut self) {
         debug!("Destroying EGL context");
-        // eglDestroyContext
-        // eglDestroySurface
-        // eglTerminate
+        // Note: The context is owned by hwcomposer, we don't destroy it here
     }
 }
 

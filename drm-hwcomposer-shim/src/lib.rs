@@ -48,10 +48,11 @@
 //! ```
 
 pub mod drm_device;
-pub mod gbm_device;
-pub mod hwcomposer;
 pub mod egl;
 pub mod error;
+pub mod ffi;
+pub mod gbm_device;
+pub mod hwcomposer;
 
 pub use drm_device::HwcDrmDevice;
 pub use gbm_device::HwcGbmDevice;
