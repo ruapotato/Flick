@@ -302,6 +302,18 @@ pub fn run() -> Result<()> {
         slint_ui.set_size(state.screen_size);
     }
 
+    // Set WAYLAND_DISPLAY for clients
+    std::env::set_var("WAYLAND_DISPLAY", &state.socket_name);
+    info!("Wayland socket available: {:?}", state.socket_name);
+
+    // Launch lock screen app if lock is configured on startup
+    if state.shell.lock_screen_active {
+        info!("Lock screen configured - launching external lock screen app on startup");
+        if let Some(socket) = state.socket_name.to_str() {
+            state.shell.launch_lock_screen_app(socket);
+        }
+    }
+
     // Track session state
     let session_active = Rc::new(RefCell::new(true));
     let session_active_for_notifier = session_active.clone();
