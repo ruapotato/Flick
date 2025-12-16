@@ -601,7 +601,7 @@ impl Drop for Hwcomposer {
     fn drop(&mut self) {
         debug!("Cleaning up hwcomposer device");
 
-        // Destroy EGL resources
+        // Make EGL context not current before destroying
         if self.egl_context != ffi::EGL_NO_CONTEXT {
             unsafe {
                 eglMakeCurrent(
@@ -610,44 +610,52 @@ impl Drop for Hwcomposer {
                     ffi::EGL_NO_SURFACE,
                     ffi::EGL_NO_CONTEXT,
                 );
-                eglDestroyContext(self.egl_display, self.egl_context);
             }
         }
 
+        // Destroy EGL surface (this also destroys the native window automatically)
         if self.egl_surface != ffi::EGL_NO_SURFACE {
             unsafe {
                 eglDestroySurface(self.egl_display, self.egl_surface);
             }
         }
 
+        // Destroy EGL context
+        if self.egl_context != ffi::EGL_NO_CONTEXT {
+            unsafe {
+                eglDestroyContext(self.egl_display, self.egl_context);
+            }
+        }
+
+        // Terminate EGL display
         if self.egl_display != ffi::EGL_NO_DISPLAY {
             unsafe {
                 eglTerminate(self.egl_display);
             }
         }
 
-        // Destroy native window
-        if !self.native_window.is_null() {
-            unsafe {
-                HWCNativeWindowDestroy(self.native_window);
-            }
-        }
+        // Note: Do NOT call HWCNativeWindowDestroy - the window is destroyed
+        // automatically when eglDestroySurface is called with an EGLSurface
+        // backing a valid ANativeWindow.
 
-        // Destroy layer
-        if !self.layer.is_null() {
+        // Destroy HWC2 layer before display
+        if !self.layer.is_null() && !self.display.is_null() {
             unsafe {
                 hwc2_compat_display_destroy_layer(self.display, self.layer);
             }
+            debug!("HWC2 layer destroyed");
         }
 
-        // Destroy display
+        // Power off the display
         if !self.display.is_null() {
             unsafe {
-                hwc2_compat_device_destroy_display(self.device, self.display);
+                hwc2_compat_display_set_power_mode(self.display, HWC2_POWER_MODE_OFF);
             }
+            debug!("HWC2 display powered off");
         }
 
-        // Note: device cleanup is handled by libhybris
+        // Note: Do NOT destroy the display or device - cleanup is handled by libhybris
+        debug!("Cleanup complete");
     }
 }
 
