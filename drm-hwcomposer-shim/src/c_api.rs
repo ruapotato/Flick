@@ -7,8 +7,16 @@ use crate::drm_device::{HwcDrmDevice, drm_fourcc, PlaneType};
 use crate::gbm_device::{GbmFormat, HwcGbmBo, HwcGbmDevice, HwcGbmSurface, gbm_usage};
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr};
 use std::ptr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Once};
 use tracing::{debug, error, info, warn};
+
+// RTLD_NEXT for getting the next symbol in the lookup chain (for LD_PRELOAD)
+const RTLD_NEXT: *mut c_void = -1isize as *mut c_void;
+
+// Cached function pointers for real libc functions
+static mut REAL_IOCTL: Option<unsafe extern "C" fn(c_int, libc::c_ulong, ...) -> c_int> = None;
+static mut REAL_OPEN_FN: Option<unsafe extern "C" fn(*const c_char, c_int, libc::mode_t) -> c_int> = None;
+static INIT_REAL_FUNCS: Once = Once::new();
 
 // =============================================================================
 // GBM Types (matching libgbm)
@@ -1731,25 +1739,57 @@ pub unsafe extern "C" fn drmIoctl(fd: c_int, request: libc::c_ulong, arg: *mut c
     handle_drm_ioctl(fd, request, arg)
 }
 
+/// Check if an ioctl request is a DRM ioctl (magic 'd' = 0x64)
+fn is_drm_ioctl(request: libc::c_ulong) -> bool {
+    // DRM ioctls have magic number 'd' (0x64) in bits 8-15
+    let magic = (request >> 8) & 0xFF;
+    magic == DRM_IOCTL_BASE
+}
+
+/// Initialize real libc function pointers using RTLD_NEXT
+unsafe fn init_real_funcs() {
+    INIT_REAL_FUNCS.call_once(|| {
+        // Get the real ioctl from libc using RTLD_NEXT
+        let ioctl_ptr = libc::dlsym(RTLD_NEXT, b"ioctl\0".as_ptr() as *const c_char);
+        if !ioctl_ptr.is_null() {
+            REAL_IOCTL = Some(std::mem::transmute(ioctl_ptr));
+        }
+
+        // Get the real open from libc
+        let open_ptr = libc::dlsym(RTLD_NEXT, b"open\0".as_ptr() as *const c_char);
+        if !open_ptr.is_null() {
+            REAL_OPEN_FN = Some(std::mem::transmute(open_ptr));
+        }
+
+        info!("drm-hwcomposer-shim: Real function pointers initialized (ioctl={}, open={})",
+              !ioctl_ptr.is_null(), !open_ptr.is_null());
+    });
+}
+
 /// Intercept ioctl() syscall for DRM operations
 #[no_mangle]
 pub unsafe extern "C" fn ioctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) -> c_int {
-    // Check if this is our fake DRM fd
-    if fd == FAKE_DRM_FD {
+    // Initialize real function pointers on first call
+    init_real_funcs();
+
+    // Check if this is a DRM ioctl - intercept ALL DRM ioctls regardless of fd
+    // This is critical because compositors may open the real /dev/dri/card0
+    // but we want to handle all DRM operations through hwcomposer
+    if is_drm_ioctl(request) {
+        debug!("ioctl: intercepted DRM ioctl 0x{:x} on fd {}", request, fd);
+        // Initialize our shim if not already done
+        let _ = drm_hwcomposer_shim_init();
         return handle_drm_ioctl(fd, request, arg);
     }
 
-    // For other file descriptors, call the real ioctl
-    let libc_ioctl: unsafe extern "C" fn(c_int, libc::c_ulong, *mut c_void) -> c_int = {
-        let handle = libc::dlopen(b"libc.so.6\0".as_ptr() as *const c_char, libc::RTLD_LAZY);
-        if handle.is_null() {
-            error!("Failed to dlopen libc for ioctl");
-            return -1;
-        }
-        std::mem::transmute(libc::dlsym(handle, b"ioctl\0".as_ptr() as *const c_char))
-    };
-
-    libc_ioctl(fd, request, arg)
+    // For non-DRM ioctls, call the real ioctl
+    if let Some(real_ioctl) = REAL_IOCTL {
+        real_ioctl(fd, request, arg)
+    } else {
+        error!("Real ioctl function not available!");
+        *libc::__errno_location() = libc::ENOSYS;
+        -1
+    }
 }
 
 /// Handle DRM-specific ioctls
@@ -2163,12 +2203,19 @@ unsafe fn handle_drm_ioctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) 
 // open() intercept for /dev/dri/*
 // =============================================================================
 
-// Store the original open function pointer
-static mut REAL_OPEN: Option<unsafe extern "C" fn(*const c_char, c_int, ...) -> c_int> = None;
-
 /// Intercept open() calls to /dev/dri/*
 #[no_mangle]
-pub unsafe extern "C" fn open(path: *const c_char, flags: c_int) -> c_int {
+pub unsafe extern "C" fn open(path: *const c_char, flags: c_int, mut args: ...) -> c_int {
+    // Initialize real function pointers
+    init_real_funcs();
+
+    // Get mode argument if O_CREAT is set
+    let mode: libc::mode_t = if (flags & libc::O_CREAT) != 0 {
+        args.arg::<libc::mode_t>()
+    } else {
+        0
+    };
+
     if !path.is_null() {
         let path_str = CStr::from_ptr(path).to_str().unwrap_or("");
 
@@ -2186,34 +2233,68 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int) -> c_int {
     }
 
     // For all other files, call the real open
-    // Use dlsym to get the real open function
-    let libc_open: unsafe extern "C" fn(*const c_char, c_int, libc::mode_t) -> c_int = {
-        let handle = libc::dlopen(b"libc.so.6\0".as_ptr() as *const c_char, libc::RTLD_LAZY);
-        if handle.is_null() {
-            // Try another name
-            let handle = libc::dlopen(b"libc.so\0".as_ptr() as *const c_char, libc::RTLD_LAZY);
-            if handle.is_null() {
-                error!("Failed to dlopen libc");
-                return -1;
-            }
-            std::mem::transmute(libc::dlsym(handle, b"open\0".as_ptr() as *const c_char))
-        } else {
-            std::mem::transmute(libc::dlsym(handle, b"open\0".as_ptr() as *const c_char))
-        }
+    if let Some(real_open) = REAL_OPEN_FN {
+        real_open(path, flags, mode)
+    } else {
+        error!("Real open function not available!");
+        *libc::__errno_location() = libc::ENOSYS;
+        -1
+    }
+}
+
+/// Intercept open64() as well (same as open on 64-bit systems)
+#[no_mangle]
+pub unsafe extern "C" fn open64(path: *const c_char, flags: c_int, mut args: ...) -> c_int {
+    // Initialize real function pointers
+    init_real_funcs();
+
+    // Get mode argument if O_CREAT is set
+    let mode: libc::mode_t = if (flags & libc::O_CREAT) != 0 {
+        args.arg::<libc::mode_t>()
+    } else {
+        0
     };
 
-    libc_open(path, flags, 0)
+    if !path.is_null() {
+        let path_str = CStr::from_ptr(path).to_str().unwrap_or("");
+        if path_str.starts_with("/dev/dri/") {
+            info!("open64() intercepted: {} -> returning fake DRM fd", path_str);
+            if drm_hwcomposer_shim_init() == 0 {
+                return FAKE_DRM_FD;
+            }
+            return -1;
+        }
+    }
+
+    if let Some(real_open) = REAL_OPEN_FN {
+        real_open(path, flags, mode)
+    } else {
+        *libc::__errno_location() = libc::ENOSYS;
+        -1
+    }
 }
 
-/// Intercept open64() as well
-#[no_mangle]
-pub unsafe extern "C" fn open64(path: *const c_char, flags: c_int) -> c_int {
-    open(path, flags)
-}
+// Cached openat function pointer
+static mut REAL_OPENAT_FN: Option<unsafe extern "C" fn(c_int, *const c_char, c_int, libc::mode_t) -> c_int> = None;
 
 /// Intercept openat() for /dev/dri/*
 #[no_mangle]
-pub unsafe extern "C" fn openat(dirfd: c_int, path: *const c_char, flags: c_int) -> c_int {
+pub unsafe extern "C" fn openat(dirfd: c_int, path: *const c_char, flags: c_int, mut args: ...) -> c_int {
+    // Initialize real function pointers
+    INIT_REAL_FUNCS.call_once(|| {
+        let openat_ptr = libc::dlsym(RTLD_NEXT, b"openat\0".as_ptr() as *const c_char);
+        if !openat_ptr.is_null() {
+            REAL_OPENAT_FN = Some(std::mem::transmute(openat_ptr));
+        }
+    });
+
+    // Get mode argument if O_CREAT is set
+    let mode: libc::mode_t = if (flags & libc::O_CREAT) != 0 {
+        args.arg::<libc::mode_t>()
+    } else {
+        0
+    };
+
     if !path.is_null() {
         let path_str = CStr::from_ptr(path).to_str().unwrap_or("");
 
@@ -2230,7 +2311,12 @@ pub unsafe extern "C" fn openat(dirfd: c_int, path: *const c_char, flags: c_int)
     }
 
     // Call real openat
-    libc::openat(dirfd, path, flags)
+    if let Some(real_openat) = REAL_OPENAT_FN {
+        real_openat(dirfd, path, flags, mode)
+    } else {
+        // Fallback to libc's openat
+        libc::openat(dirfd, path, flags)
+    }
 }
 
 // =============================================================================
