@@ -539,6 +539,11 @@ impl SlintShell {
 
     /// Set switcher window cards (id, title, app_class)
     pub fn set_switcher_windows(&self, windows: Vec<(i32, String, String)>) {
+        tracing::info!("set_switcher_windows called with {} windows", windows.len());
+        for (i, (id, title, app_class)) in windows.iter().enumerate() {
+            tracing::info!("  Window {}: id={}, title='{}', class='{}'", i, id, title, app_class);
+        }
+
         let model: Vec<WindowCard> = windows
             .into_iter()
             .map(|(id, title, app_class)| WindowCard {
@@ -548,8 +553,10 @@ impl SlintShell {
             })
             .collect();
 
+        let model_len = model.len();
         let model_rc = std::rc::Rc::new(slint::VecModel::from(model));
         self.shell.set_switcher_windows(model_rc.into());
+        tracing::info!("set_switcher_windows completed, model has {} items", model_len);
     }
 
     /// Set switcher horizontal scroll offset
