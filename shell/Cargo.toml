@@ -79,11 +79,15 @@ wayland-backend = { version = "0.3", features = ["server_system"] }
 # EGL for hwcomposer backend (used when feature enabled)
 khronos-egl = { version = "6.0", features = ["dynamic"], optional = true }
 
+# DRM/GBM shim over hwcomposer (for libhybris devices)
+drm-hwcomposer-shim = { path = "../drm-hwcomposer-shim", optional = true }
+
 [features]
 default = ["udev"]
 udev = []
 winit = []
 hwcomposer = ["khronos-egl"]
+drm-shim = ["drm-hwcomposer-shim", "khronos-egl"]
 
 [[bin]]
 name = "flick"

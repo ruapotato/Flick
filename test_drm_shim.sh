@@ -1,0 +1,41 @@
+#!/bin/bash
+# Test script for running Flick with the DRM shim backend
+# This uses the drm-hwcomposer-shim to provide DRM/GBM interface over hwcomposer
+
+set -e
+
+echo "=== Flick DRM Shim Backend Test ==="
+echo ""
+
+# Stop any existing compositor
+echo "Stopping phosh/existing compositor..."
+sudo systemctl stop phosh 2>/dev/null || true
+sleep 1
+
+# Kill any lingering hwcomposer processes
+echo "Resetting hwcomposer..."
+sudo pkill -9 -f 'graphics.composer' 2>/dev/null || true
+sleep 1
+
+# Restart hwcomposer service properly
+echo "Starting hwcomposer service..."
+sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
+    /usr/lib/halium-wrappers/android-service.sh hwcomposer start
+sleep 3
+
+# Set up environment
+export EGL_PLATFORM=hwcomposer
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export WAYLAND_DISPLAY=wayland-0
+
+# Ensure runtime dir exists
+mkdir -p "$XDG_RUNTIME_DIR"
+
+echo ""
+echo "Starting Flick with DRM shim backend..."
+echo "Press Ctrl+C to stop"
+echo ""
+
+# Run Flick with the drm-shim backend
+cd ~/Flick/shell
+sudo -E ./target/release/flick --drm-shim

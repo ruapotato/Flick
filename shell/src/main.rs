@@ -34,10 +34,15 @@ struct Args {
     #[arg(short, long)]
     windowed: bool,
 
-    /// Use hwcomposer backend (for Droidian/libhybris devices)
+    /// Use hwcomposer backend (for Droidian/libhybris devices) - legacy
     #[cfg(feature = "hwcomposer")]
     #[arg(long)]
     hwcomposer: bool,
+
+    /// Use DRM shim backend (hwcomposer via DRM/GBM interface)
+    #[cfg(feature = "drm-shim")]
+    #[arg(long)]
+    drm_shim: bool,
 }
 
 fn main() -> Result<()> {
@@ -89,9 +94,15 @@ fn main() -> Result<()> {
         info!("Running in windowed mode (winit backend)");
         backend::winit::run()
     } else {
+        #[cfg(feature = "drm-shim")]
+        if args.drm_shim {
+            info!("Running on hardware (DRM shim backend for Droidian)");
+            return backend::drm_shim::run();
+        }
+
         #[cfg(feature = "hwcomposer")]
         if args.hwcomposer {
-            info!("Running on hardware (hwcomposer backend for Droidian)");
+            info!("Running on hardware (hwcomposer backend for Droidian) - legacy");
             return backend::hwcomposer::run();
         }
 
