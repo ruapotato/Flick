@@ -19,7 +19,11 @@ echo "QML_FILE=$QML_FILE" >> "$LOG_FILE"
 export FLICK_STATE_DIR="$STATE_DIR"
 # Force software rendering so text renders into shm buffer
 export QT_QUICK_BACKEND=software
+export QMLSCENE_DEVICE=softwarecontext
 export QT_QPA_PLATFORM=wayland
+export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+# Disable hardware acceleration completely
+export LIBGL_ALWAYS_SOFTWARE=1
 /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | while IFS= read -r line; do
     echo "$line" >> "$LOG_FILE"
     # Check for unlock signal marker
