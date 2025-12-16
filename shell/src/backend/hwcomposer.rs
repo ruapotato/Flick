@@ -1371,10 +1371,20 @@ fn render_frame(
 
                     // Render outside of with_states to avoid holding locks
                     if let Some((width, height, pixels)) = buffer_info {
-                        // Log periodically to reduce spam
+                        // Log periodically - check center pixel (where time should be)
                         if log_frame && pixels.len() >= 4 {
-                            info!("QML RENDER frame {}: {}x{} first_pixel=RGBA({},{},{},{})",
-                                frame_num, width, height, pixels[0], pixels[1], pixels[2], pixels[3]);
+                            let center_x = width / 2;
+                            let center_y = height / 3; // Upper third where time is
+                            let center_idx = ((center_y * width + center_x) * 4) as usize;
+                            let (cr, cg, cb, ca) = if center_idx + 3 < pixels.len() {
+                                (pixels[center_idx], pixels[center_idx+1], pixels[center_idx+2], pixels[center_idx+3])
+                            } else {
+                                (0, 0, 0, 0)
+                            };
+                            info!("QML RENDER frame {}: {}x{} corner=RGBA({},{},{},{}) center=RGBA({},{},{},{})",
+                                frame_num, width, height,
+                                pixels[0], pixels[1], pixels[2], pixels[3],
+                                cr, cg, cb, ca);
                         }
                         unsafe {
                             gl::render_texture(width, height, &pixels, display.width, display.height);
