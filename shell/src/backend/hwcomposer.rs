@@ -1021,9 +1021,30 @@ fn handle_input_event(
                     // Right edge = App Switcher
                     if *edge == crate::input::Edge::Right {
                         if *completed && state.switcher_gesture_active {
-                            // Open App Switcher
-                            state.shell.view = crate::shell::ShellView::Switcher;
-                            info!("App Switcher OPENED via gesture");
+                            // Open App Switcher with proper initialization
+                            let num_windows = state.space.elements().count();
+                            let screen_w = state.screen_size.w as f64;
+                            let card_width = screen_w * 0.80;
+                            let card_spacing = card_width * 0.35;
+                            state.shell.open_switcher(num_windows, card_spacing);
+                            info!("App Switcher OPENED via gesture, {} windows", num_windows);
+
+                            // Update Slint UI with window list
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                let windows: Vec<_> = state.space.elements()
+                                    .enumerate()
+                                    .map(|(i, window)| {
+                                        let title = window.toplevel()
+                                            .map(|t| t.title().unwrap_or_default())
+                                            .unwrap_or_default();
+                                        let app_class = window.toplevel()
+                                            .map(|t| t.app_id().unwrap_or_default())
+                                            .unwrap_or_default();
+                                        (i as i32, title, app_class)
+                                    })
+                                    .collect();
+                                slint_ui.set_switcher_windows(windows);
+                            }
                         }
                         state.switcher_gesture_active = false;
                         state.switcher_gesture_progress = 0.0;
@@ -1523,6 +1544,23 @@ fn render_frame(
                             ShellView::Switcher => {
                                 slint_ui.set_view("switcher");
                                 slint_ui.set_switcher_scroll(state.shell.switcher_scroll as f32);
+                                // Update window list for Slint Switcher
+                                let windows: Vec<_> = state.space.elements()
+                                    .enumerate()
+                                    .map(|(i, window)| {
+                                        let title = window.toplevel()
+                                            .map(|t| t.title().unwrap_or_else(|| "Untitled".to_string()))
+                                            .unwrap_or_else(|| "Window".to_string());
+                                        let app_class = window.toplevel()
+                                            .map(|t| t.app_id().unwrap_or_else(|| "unknown".to_string()))
+                                            .unwrap_or_else(|| "app".to_string());
+                                        (i as i32, title, app_class)
+                                    })
+                                    .collect();
+                                if log_frame {
+                                    info!("Switcher: {} windows in space", windows.len());
+                                }
+                                slint_ui.set_switcher_windows(windows);
                             }
                             ShellView::PickDefault => {
                                 slint_ui.set_view("pick-default");
