@@ -15,9 +15,9 @@ Item {
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#ff00ff" }  // MAGENTA for visibility test
-            GradientStop { position: 0.5; color: "#ff00ff" }
-            GradientStop { position: 1.0; color: "#ff00ff" }
+            GradientStop { position: 0.0; color: "#0a0a0f" }
+            GradientStop { position: 0.5; color: "#12121a" }
+            GradientStop { position: 1.0; color: "#1a1a2e" }
         }
     }
 
