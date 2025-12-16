@@ -1268,16 +1268,22 @@ fn render_frame(
                 info!("Rendering QML lockscreen window");
             }
 
-            // DEBUG: Clear to magenta to verify we're reaching this code path
+            // DEBUG: Clear to magenta and SKIP window render to test
             unsafe {
                 gl::ClearColor(1.0, 0.0, 1.0, 1.0); // Magenta
                 gl::Clear(gl::COLOR_BUFFER_BIT);
+                gl::Flush();
             }
+            info!("DEBUG: Cleared to MAGENTA - should see pink screen!");
 
-            // Render Wayland client surfaces (windows)
+            // SKIP window rendering for now to isolate the issue
             let windows: Vec<_> = state.space.elements().cloned().collect();
-            debug!("Rendering {} Wayland windows", windows.len());
+            debug!("Rendering {} Wayland windows (SKIPPED)", windows.len());
 
+            for (i, _window) in windows.iter().enumerate() {
+                debug!("SKIPPING window {} render", i);
+            }
+            /* DISABLED FOR DEBUG
             for (i, window) in windows.iter().enumerate() {
                 debug!("Processing window {}", i);
                 // Get the surface from the window
@@ -1324,6 +1330,7 @@ fn render_frame(
                 }
             }
             debug!("Finished rendering windows");
+            */ // END DISABLED FOR DEBUG
         }
     }
 
