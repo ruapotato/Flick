@@ -18,6 +18,22 @@ static mut REAL_IOCTL: Option<unsafe extern "C" fn(c_int, libc::c_ulong, ...) ->
 static mut REAL_OPEN_FN: Option<unsafe extern "C" fn(*const c_char, c_int, libc::mode_t) -> c_int> = None;
 static INIT_REAL_FUNCS: Once = Once::new();
 
+/// Library constructor - runs when the library is loaded via LD_PRELOAD
+#[no_mangle]
+#[used]
+#[link_section = ".init_array"]
+static LIBRARY_INIT: unsafe extern "C" fn() = library_init;
+
+unsafe extern "C" fn library_init() {
+    // Initialize tracing early
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("debug")
+        .try_init();
+
+    eprintln!("=== drm-hwcomposer-shim LOADED via LD_PRELOAD ===");
+    info!("drm-hwcomposer-shim: Library loaded, intercepting DRM/GBM calls");
+}
+
 // =============================================================================
 // GBM Types (matching libgbm)
 // =============================================================================

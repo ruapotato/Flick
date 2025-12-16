@@ -89,5 +89,7 @@ echo ""
 
 # Run Flick with the shim preloaded
 # The udev backend will try to use standard DRM/GBM, but our shim intercepts those calls
+# NOTE: We use 'sudo env' because plain sudo strips LD_PRELOAD for security
 cd "$REAL_HOME/Flick/shell"
-sudo -E LD_PRELOAD="$SHIM_LIB" ./target/release/flick
+echo "Running: sudo env LD_PRELOAD=$SHIM_LIB ./target/release/flick"
+sudo env LD_PRELOAD="$SHIM_LIB" ./target/release/flick
