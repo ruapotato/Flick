@@ -2,7 +2,7 @@
 
 A mobile-first Wayland compositor and shell for Linux phones, designed to replace Phosh and Plasma Mobile as the go-to Linux mobile desktop environment.
 
-**Why Flick?** Phosh (GNOME/GTK) and Plasma Mobile (KDE/Qt) are desktop environments squeezed onto phones. Flick is built from the ground up for mobile - gestures are the primary input, not an afterthought. Rust + Smithay + Slint means it's lean, fast, and doesn't carry decades of desktop baggage.
+**Why Flick?** Phosh (GNOME/GTK) and Plasma Mobile (KDE/Qt) are desktop environments squeezed onto phones. Flick is built from the ground up for mobile - gestures are the primary input, not an afterthought. Rust + Smithay + Qt/QML means it's lean, fast, and doesn't carry decades of desktop baggage.
 
 **Target devices:** PinePhone, PinePhone Pro, Librem 5, FuriPhone FLXS1/FLXS1s, and any Linux phone running postmarketOS, Mobian, or Droidian.
 
@@ -13,25 +13,15 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 | **Native Linux** (PinePhone, Librem 5) | ✅ Works | Standard DRM/KMS, full support |
 | **PostmarketOS** (mainline kernel) | ✅ Works | Uses freedreno/panfrost DRM drivers |
 | **Mobian** | ✅ Works | Standard Linux graphics stack |
-| **Droidian** (Android phones) | 🚧 In Progress | Requires hwcomposer backend (see below) |
+| **Droidian** (Android phones) | ✅ Works | Uses libhybris + android_wlegl for GPU |
 
 ### Droidian / libhybris Support
 
-Droidian and similar Android-based Linux distributions use **libhybris** to run Android's hardware abstraction layer (HAL) for graphics. This means:
+Droidian and similar Android-based Linux distributions use **libhybris** to run Android's hardware abstraction layer (HAL) for graphics. Flick supports this via:
 
-- **Display**: Controlled by Android's hwcomposer, not standard Linux DRM/KMS
-- **GPU**: Accessed through Android's graphics stack, not Mesa DRM
-- **Current limitation**: Flick's DRM backend cannot acquire display control on these devices
-
-**What we found testing on Pixel 3a (Droidian):**
-```
-GL Renderer: "llvmpipe (LLVM 19.1.7, 128 bits)"  # Software rendering only
-Mode-setting failed: DRM access error (Invalid argument)
-```
-
-The DRM device exists but is meant to be controlled by hwcomposer, not directly by applications. Phosh works on Droidian because wlroots has a hwcomposer backend - we're working on adding one to Flick.
-
-**Workaround (temporary)**: None currently. Native Linux devices work fully.
+- **EGL binding**: `eglBindWaylandDisplayWL` for buffer sharing
+- **android_wlegl protocol**: Native buffer handle exchange with Android GPU drivers
+- **Hardware acceleration**: Full OpenGL ES via libhybris
 
 ## Current Status
 
@@ -41,30 +31,30 @@ The DRM device exists but is meant to be controlled by hwcomposer, not directly 
 - Home screen with categorized app grid
 - App switcher with Android-style stacked cards
 - Quick Settings panel (WiFi, Bluetooth, brightness, flashlight, airplane mode, rotation lock)
-- Lock screen with PIN authentication (Python/Kivy app)
 - On-screen keyboard (Slint-based, integrated into shell)
 - XWayland support for X11 apps
 - Smooth animated transitions throughout
+- Droidian/libhybris GPU acceleration
 
 **In Progress:**
-- Keyboard input routing to lock screen
-- PAM integration for lock screen (system password auth)
-- Settings app
+- Lock screen (QML app)
+- Settings app (QML app)
+- PAM integration for lock screen
 
 ## Architecture
 
-Flick uses a **layered architecture** that separates the core compositor from UI components. This enables security (shell controls what apps can do), flexibility (swap UI implementations), and rapid development (iterate on apps without touching the compositor).
+Flick uses a **layered architecture** that separates the core compositor from UI components. This enables security (shell controls what apps can do), flexibility (swap UI implementations), and rapid development.
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│              App Layer (Python/Kivy)                │
+│                App Layer (Qt/QML)                   │
 │  ┌───────────────┐  ┌───────────────────────────┐  │
 │  │  Lock Screen  │  │   Settings, Phone, SMS,   │  │
-│  │  (Python/Kivy)│  │   Contacts (planned)      │  │
+│  │    (QML)      │  │   Contacts (planned)      │  │
 │  │  Fullscreen   │  │   Regular windowed apps   │  │
 │  │  Wayland app  │  │                           │  │
 │  └───────────────┘  └───────────────────────────┘  │
-│   Beautiful animated visuals, PAM authentication    │
+│   SailfishOS-style fluid UI, hardware accelerated   │
 └─────────────────────────────────────────────────────┘
                         │ Wayland protocol
 ┌─────────────────────────────────────────────────────┐
@@ -89,6 +79,25 @@ Flick uses a **layered architecture** that separates the core compositor from UI
 └─────────────────────────────────────────────────────┘
 ```
 
+### Technology Stack
+
+| Component | Technology | Why |
+|-----------|------------|-----|
+| **Compositor** | Rust + Smithay | Memory safe, fast, modern Wayland |
+| **Shell UI** | Slint | GPU-accelerated, embedded-friendly |
+| **Apps** | Qt5/QML + JavaScript | Hardware accelerated on libhybris, SailfishOS-style fluid UIs |
+| **IPC** | File-based + Wayland | Simple, secure, reliable |
+
+### Why QML for Apps?
+
+We chose **Qt/QML** over Python/Kivy because:
+
+1. **Hardware acceleration on libhybris** - Qt5 GLES works natively with Android GPU drivers
+2. **SailfishOS proven** - Same stack powers Jolla phones for 10+ years
+3. **Declarative UI** - QML is like HTML/CSS for native apps
+4. **Efficient** - JavaScript only runs on events, rendering is native C++
+5. **No dependency conflicts** - Uses system Qt libraries directly
+
 ### Design Philosophy
 
 **Shell Layer (Rust + Slint)** - The compositor handles:
@@ -98,16 +107,10 @@ Flick uses a **layered architecture** that separates the core compositor from UI
 - Zero-latency gesture response via direct rendering
 - **Security policy**: blocks all navigation gestures while lock screen is active
 
-**App Layer (Python/Kivy)** - Regular Wayland clients:
-- **Lock Screen** (Python/Kivy) - Full-screen app with beautiful animations, PIN entry, PAM authentication. Runs as a special Wayland client that the shell recognizes.
-- **Settings** (planned) - WiFi, Bluetooth, display, lock screen config, etc.
+**App Layer (Qt/QML)** - Regular Wayland clients:
+- **Lock Screen** - Full-screen app with fluid animations, PIN entry, PAM authentication
+- **Settings** - WiFi, Bluetooth, display, sound, about device
 - **Phone/Messages/Contacts** (planned) - System apps
-
-This separation enables:
-- **Security**: Shell enforces lock screen - even if the Python app crashed, gestures still blocked
-- **Flexibility**: Swap lock screen implementation without touching compositor
-- **Rapid iteration**: Use Python/Kivy for quick prototyping with rich visuals
-- **Beautiful UIs**: Python/Kivy enables stunning visual effects that would be complex in Slint
 
 Apps communicate with the shell via:
 - **File-based IPC**: `~/.local/state/flick/unlock_signal` (lock screen writes, shell reads)
@@ -129,12 +132,18 @@ All gestures track 1:1 with your finger for responsive, natural feel.
 
 ## Building
 
-### Dependencies (Debian/Ubuntu/Mobian)
+### Dependencies (Debian/Ubuntu/Mobian/Droidian)
 
 ```bash
+# Compositor dependencies
 sudo apt install libseat-dev libinput-dev libudev-dev libgbm-dev \
                  libegl-dev libdrm-dev libxkbcommon-dev pkg-config \
-                 libpam0g-dev python3-kivy
+                 libpam0g-dev
+
+# QML app dependencies
+sudo apt install qmlscene qml-module-qtquick2 qml-module-qtquick-window2 \
+                 qml-module-qtquick-controls2 qml-module-qtquick-layouts \
+                 qml-module-qtgraphicaleffects
 ```
 
 ### Build & Run
@@ -163,19 +172,18 @@ Press `Ctrl+Alt+F1` through `Ctrl+Alt+F12` to switch between virtual terminals.
 - [x] Home screen with app grid
 - [x] App switcher with card stack
 - [x] Quick Settings panel
-- [x] Lock screen (PIN)
 - [x] On-screen keyboard (Slint-based)
 - [x] XWayland support
 - [x] Animated transitions
+- [x] Droidian/libhybris GPU support
 
 ### Phase 2: Daily Driver Basics (Current)
-- [ ] Hwcomposer backend for Droidian/libhybris devices
-- [ ] Keyboard input routing to all apps
-- [ ] PAM authentication for lock screen (Linux password)
+- [ ] Lock screen (QML app with PIN + PAM)
+- [ ] Settings app (QML)
 - [ ] Notifications (freedesktop notification daemon)
-- [ ] Settings app: WiFi network picker
-- [ ] Settings app: Bluetooth pairing
-- [ ] Settings app: Sound controls
+- [ ] WiFi network picker
+- [ ] Bluetooth pairing
+- [ ] Sound controls
 
 ### Phase 3: Phone Features
 - [ ] Telephony (ModemManager integration)
@@ -209,18 +217,25 @@ flick/
 │   │   │   └── apps.rs        # .desktop file parsing
 │   │   ├── backend/
 │   │   │   └── udev.rs        # DRM/KMS backend + gesture security
+│   │   ├── android_wlegl.rs   # libhybris buffer sharing protocol
 │   │   └── system.rs          # Hardware integration
 │   └── ui/
 │       └── shell.slint        # Slint UI definitions (keyboard, home, etc.)
-├── apps/                       # App layer - Python/Kivy apps
-│   └── flick_lockscreen/      # Lock screen (Python/Kivy)
-│       └── flick_lockscreen.py # Animated PIN entry + PAM auth
+├── apps/                       # App layer - Qt/QML apps
+│   ├── lockscreen/            # Lock screen (QML)
+│   │   ├── main.qml           # Entry point
+│   │   ├── LockScreen.qml     # Main lock screen UI
+│   │   └── PinEntry.qml       # PIN input component
+│   └── settings/              # Settings app (QML)
+│       ├── main.qml           # Entry point
+│       └── pages/             # Settings pages
 └── start.sh                   # Launch script
 ```
 
 ## Contributing
 
 Flick aims to be the best Linux phone DE. Contributions welcome - especially for:
+- QML app development (lock screen, settings)
 - Keyboard improvements (swipe typing, predictions)
 - Phone hardware support (ModemManager, ofono)
 - Accessibility features
