@@ -52,9 +52,9 @@ This shim bridges the gap by:
 
 ## Status
 
-✅ **Display Output Working!** ✅
+✅ **Display Output Working with Full Compositor!** ✅
 
-The shim can now render to the display via hwcomposer. Color cycling test shows RED→GREEN→BLUE→YELLOW→MAGENTA→CYAN.
+The shim successfully runs the **Flick compositor** with full Slint UI rendering at native resolution (1080x2220 @ 60Hz on tested device). The lock screen, home screen, and all shell views render correctly through the hwcomposer pipeline.
 
 ### Completed
 - [x] Basic library structure
@@ -71,12 +71,14 @@ The shim can now render to the display via hwcomposer. Color cycling test shows 
 - [x] Plane state tracking
 - [x] **C API for libdrm/libgbm drop-in replacement**
 - [x] **DMA-BUF export for buffer sharing**
+- [x] **Flick compositor integration (drm_shim backend)**
+- [x] **Full Slint UI rendering through shim**
 
 ### In Progress
+- [ ] Touch input handling for drm_shim backend
 - [ ] Testing with Weston/Sway
 
 ### Planned
-- [ ] Smithay backend integration
 - [ ] Atomic modesetting
 
 ## Building
@@ -168,6 +170,21 @@ loop {
     drm.swap_buffers()?;
 }
 ```
+
+### Running Flick Compositor with Shim
+
+```bash
+# On the phone - run Flick with the drm_shim backend
+cd ~/Flick
+./test_drm_shim.sh
+```
+
+The test script will:
+1. Stop phosh
+2. Restart hwcomposer service properly
+3. Run Flick with `--drm-shim` flag
+
+**You should see the Flick lock screen UI rendered at full resolution!**
 
 ### Test Scripts
 
