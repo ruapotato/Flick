@@ -78,6 +78,8 @@ struct HwcDisplay {
     // HWC2 for display presentation
     hwc2_device: Option<Hwc2Device>,
     hwc2_display: Option<Hwc2Display>,
+    // HWC2 layer (stored for cleanup)
+    hwc2_layer: Option<hwcomposer_ffi::Hwc2Layer>,
 }
 
 impl Drop for HwcDisplay {
@@ -107,8 +109,18 @@ impl Drop for HwcDisplay {
             warn!("Failed to terminate EGL display: {:?}", e);
         }
 
-        // HWC2 cleanup happens automatically when Hwc2Display/Hwc2Device are dropped
-        // But we should power off the display first
+        // Destroy HWC2 layer before display
+        if let (Some(ref hwc2_display), Some(ref hwc2_layer)) = (&self.hwc2_display, &self.hwc2_layer) {
+            unsafe {
+                hwcomposer_ffi::hwc2_compat_display_destroy_layer(
+                    hwc2_display.as_ptr(),
+                    hwc2_layer.as_ptr(),
+                );
+            }
+            info!("HWC2 layer destroyed");
+        }
+
+        // Power off the display
         if let Some(ref hwc2_display) = self.hwc2_display {
             if let Err(e) = hwc2_display.set_power_mode(false) {
                 warn!("Failed to power off HWC2 display: {}", e);
@@ -665,6 +677,7 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
         height,
         hwc2_device,
         hwc2_display,
+        hwc2_layer,
     })
 }
 
