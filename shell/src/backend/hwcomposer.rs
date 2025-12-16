@@ -799,6 +799,23 @@ fn handle_input_event(
             // Forward to gesture recognizer
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
                 debug!("Gesture touch_down: {:?}", gesture_event);
+
+                // Handle edge swipe start for quick settings and app switcher
+                if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
+                    let shell_view = state.shell.view;
+                    // Left edge = Quick Settings (blocked on lock screen)
+                    if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
+                        state.qs_gesture_active = true;
+                        state.qs_gesture_progress = 0.0;
+                        info!("QS gesture STARTED");
+                    }
+                    // Right edge = App Switcher (blocked on lock screen)
+                    if *edge == crate::input::Edge::Right && shell_view != crate::shell::ShellView::LockScreen {
+                        state.switcher_gesture_active = true;
+                        state.switcher_gesture_progress = 0.0;
+                        info!("Switcher gesture STARTED");
+                    }
+                }
             }
 
             // Check if QML lockscreen is connected (has windows in space)
@@ -886,6 +903,21 @@ fn handle_input_event(
             // Forward to gesture recognizer
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
                 debug!("Gesture touch_motion: {:?}", gesture_event);
+
+                // Handle edge swipe progress updates
+                if let crate::input::GestureEvent::EdgeSwipeUpdate { edge, progress, .. } = &gesture_event {
+                    let shell_view = state.shell.view;
+                    // Left edge = Quick Settings
+                    if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
+                        state.qs_gesture_active = true;
+                        state.qs_gesture_progress = progress.clamp(0.0, 1.5);
+                    }
+                    // Right edge = App Switcher
+                    if *edge == crate::input::Edge::Right && shell_view != crate::shell::ShellView::LockScreen {
+                        state.switcher_gesture_active = true;
+                        state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
+                    }
+                }
             }
 
             // Check if QML lockscreen is connected
@@ -953,6 +985,32 @@ fn handle_input_event(
             // Forward to gesture recognizer
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {
                 debug!("Gesture touch_up: {:?}", gesture_event);
+
+                // Handle edge swipe completion
+                if let crate::input::GestureEvent::EdgeSwipeEnd { edge, completed, .. } = &gesture_event {
+                    // Left edge = Quick Settings
+                    if *edge == crate::input::Edge::Left {
+                        if *completed && state.qs_gesture_active {
+                            // Open Quick Settings
+                            state.shell.view = crate::shell::ShellView::QuickSettings;
+                            state.system.refresh();
+                            state.shell.sync_quick_settings(&state.system);
+                            info!("Quick Settings OPENED via gesture");
+                        }
+                        state.qs_gesture_active = false;
+                        state.qs_gesture_progress = 0.0;
+                    }
+                    // Right edge = App Switcher
+                    if *edge == crate::input::Edge::Right {
+                        if *completed && state.switcher_gesture_active {
+                            // Open App Switcher
+                            state.shell.view = crate::shell::ShellView::Switcher;
+                            info!("App Switcher OPENED via gesture");
+                        }
+                        state.switcher_gesture_active = false;
+                        state.switcher_gesture_progress = 0.0;
+                    }
+                }
             }
 
             // Check if QML lockscreen is connected
