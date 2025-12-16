@@ -639,6 +639,9 @@ fn handle_input_event(
     };
     use smithay::input::keyboard::FilterResult;
 
+    // Log ALL input events for debugging
+    info!("INPUT EVENT: {:?}", std::mem::discriminant(&event));
+
     match event {
         InputEvent::Keyboard { event } => {
             use smithay::backend::input::KeyState;
