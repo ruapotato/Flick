@@ -1339,16 +1339,14 @@ fn render_frame(
         }
     }
 
-    // DEBUG: Force orange clear right before swap to test if ANYTHING shows
-    if !test_mode {
-        unsafe {
-            gl::ClearColor(1.0, 0.5, 0.0, 1.0); // Orange
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-            gl::Flush();
-        }
-        if log_frame {
-            info!("DEBUG: Forced ORANGE clear before swap_buffers");
-        }
+    // DEBUG: ALWAYS force orange clear right before swap
+    unsafe {
+        gl::ClearColor(1.0, 0.5, 0.0, 1.0); // Orange
+        gl::Clear(gl::COLOR_BUFFER_BIT);
+        gl::Flush();
+    }
+    if log_frame {
+        info!("DEBUG: Forced ORANGE clear before swap_buffers (test_mode={})", test_mode);
     }
 
     debug!("render_frame: before swap_buffers");
