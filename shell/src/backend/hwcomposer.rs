@@ -988,9 +988,15 @@ fn handle_input_event(
                         // End home touch tracking - returns pending app if it was a tap (not scroll)
                         if let Some(exec) = state.shell.end_home_touch() {
                             info!("Launching app from home touch: {}", exec);
+                            // Get socket name for WAYLAND_DISPLAY
+                            let socket_name = state.socket_name.clone().unwrap_or_else(|| "wayland-1".to_string());
                             std::process::Command::new("sh")
                                 .arg("-c")
                                 .arg(&exec)
+                                .env("WAYLAND_DISPLAY", &socket_name)
+                                // Force software rendering so apps use SHM buffers (hwcomposer can't handle EGL buffers from apps)
+                                .env("LIBGL_ALWAYS_SOFTWARE", "1")
+                                .env("GDK_BACKEND", "wayland")
                                 .spawn()
                                 .ok();
                         }
