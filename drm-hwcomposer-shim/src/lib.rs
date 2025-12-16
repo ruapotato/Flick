@@ -47,6 +47,7 @@
 //! // Pass fd to your compositor...
 //! ```
 
+pub mod c_api;
 pub mod drm_device;
 pub mod egl;
 pub mod error;

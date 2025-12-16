@@ -52,19 +52,32 @@ This shim bridges the gap by:
 
 ## Status
 
-🚧 **Work in Progress** 🚧
+✅ **Display Output Working!** ✅
 
+The shim can now render to the display via hwcomposer. Color cycling test shows RED→GREEN→BLUE→YELLOW→MAGENTA→CYAN.
+
+### Completed
 - [x] Basic library structure
 - [x] hwcomposer HAL interface (hwc2_compat_layer)
 - [x] HWCNativeWindow integration
-- [x] DRM device abstraction
-- [x] GBM device abstraction
-- [x] EGL integration framework
+- [x] DRM device with connector/CRTC/plane abstractions
+- [x] GBM device with real gralloc buffer allocation
+- [x] EGL integration (context, surface, swap buffers)
 - [x] Real FFI bindings to libhybris
-- [ ] Full gralloc buffer allocation
-- [ ] DMA-BUF sharing
-- [ ] Testing with real compositors
+- [x] gralloc_initialize() / hwc2_initialize() calls
+- [x] Display power management (unblank, power on)
+- [x] Buffer map/unmap for CPU access
+- [x] Framebuffer management
+- [x] Plane state tracking
+
+### In Progress
+- [ ] C API for libdrm/libgbm drop-in replacement
+- [ ] DMA-BUF export/import for buffer sharing
+
+### Planned
+- [ ] Testing with Weston/Sway
 - [ ] Smithay backend integration
+- [ ] Atomic modesetting
 
 ## Building
 
@@ -156,31 +169,46 @@ loop {
 }
 ```
 
-### Test Binary
+### Test Scripts
 
 ```bash
-# On the phone
-source ~/.cargo/env
+# On the phone - use the test script (handles hwcomposer restart)
 cd ~/Flick/drm-hwcomposer-shim
-cargo run --release --bin test_hwc
+./test_shim.sh
 ```
 
-Expected output:
+The test script will:
+1. Stop phosh
+2. Restart hwcomposer service properly
+3. Run the color cycling test
+
+**You should see colors cycling on the display: RED → GREEN → BLUE → YELLOW → MAGENTA → CYAN**
+
+### Test Binaries
+
+```bash
+# Color cycling display test
+./target/release/test_hwc
+
+# GBM/gralloc buffer allocation test
+./target/release/test_gbm
 ```
-Creating HwcDrmDevice...
+
+Expected output for test_hwc:
+```
+=== DRM-HWComposer Shim Test ===
 Display initialized successfully!
-  Resolution: 1080x2340
+  Resolution: 1080x2220
   Refresh rate: 60 Hz
-  DPI: 400.0x400.0
-  Mode: 1080x2340@60
-  Physical size: 68mm x 148mm
+  DPI: 442.5x444.0
 
-Initializing EGL...
 EGL initialized!
+OpenGL ES functions loaded
 
-Rendering frames...
-Frame 0 presented
-Frame 10 presented
+Rendering colored frames...
+Frame 0: Showing RED
+Frame 30: Showing GREEN
+Frame 60: Showing BLUE
 ...
 Test complete!
 ```

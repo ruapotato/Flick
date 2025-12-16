@@ -18,6 +18,10 @@ path = "src/bin/test_hwc.rs"
 name = "test_gbm"
 path = "src/bin/test_gbm.rs"
 
+[[bin]]
+name = "test_c_api"
+path = "src/bin/test_c_api.rs"
+
 [dependencies]
 # Logging
 tracing = "0.1"
