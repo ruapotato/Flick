@@ -80,6 +80,46 @@ struct HwcDisplay {
     hwc2_display: Option<Hwc2Display>,
 }
 
+impl Drop for HwcDisplay {
+    fn drop(&mut self) {
+        info!("HwcDisplay cleanup: destroying EGL and HWC2 resources");
+
+        // Make EGL context not current before destroying
+        let _ = self.egl_instance.make_current(
+            self.egl_display,
+            None, // No draw surface
+            None, // No read surface
+            None, // No context
+        );
+
+        // Destroy EGL surface
+        if let Err(e) = self.egl_instance.destroy_surface(self.egl_display, self.egl_surface) {
+            warn!("Failed to destroy EGL surface: {:?}", e);
+        }
+
+        // Destroy EGL context
+        if let Err(e) = self.egl_instance.destroy_context(self.egl_display, self.egl_context) {
+            warn!("Failed to destroy EGL context: {:?}", e);
+        }
+
+        // Terminate EGL display
+        if let Err(e) = self.egl_instance.terminate(self.egl_display) {
+            warn!("Failed to terminate EGL display: {:?}", e);
+        }
+
+        // HWC2 cleanup happens automatically when Hwc2Display/Hwc2Device are dropped
+        // But we should power off the display
+        if let Some(ref hwc2_display) = self.hwc2_display {
+            unsafe {
+                hwcomposer_ffi::hwc2_display_set_power_mode(hwc2_display.0, 0); // HWC2_POWER_MODE_OFF
+            }
+            info!("HWC2 display powered off");
+        }
+
+        info!("HwcDisplay cleanup complete");
+    }
+}
+
 /// Present callback data
 struct PresentCallbackData {
     frame_ready: Rc<AtomicBool>,
