@@ -2,12 +2,9 @@
 //!
 //! This backend provides display and rendering via hwcomposer, using
 //! the drm-hwcomposer-shim crate to abstract Android's hwcomposer.
-//! Touch input comes from libinput (same as the udev backend).
 
 use std::{
     cell::RefCell,
-    os::unix::io::OwnedFd,
-    path::Path,
     rc::Rc,
     sync::Arc,
     time::Duration,
@@ -17,16 +14,9 @@ use anyhow::Result;
 use tracing::{debug, error, info, warn};
 
 use smithay::{
-    backend::{
-        input::InputEvent,
-        libinput::{LibinputInputBackend, LibinputSessionInterface},
-        session::{libseat::LibSeatSession, Session, Event as SessionEvent},
-    },
-    desktop::utils::surface_primary_scanout_output,
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
-        calloop::{EventLoop, LoopHandle, timer::{Timer, TimeoutAction}, generic::Generic, Interest, PostAction},
-        input::Libinput,
+        calloop::{EventLoop, LoopHandle, timer::{Timer, TimeoutAction}},
         wayland_server::Display,
     },
     utils::Transform,
@@ -39,7 +29,6 @@ use khronos_egl as egl;
 
 use crate::state::Flick;
 use crate::shell::ShellView;
-use crate::input;
 
 /// DRM Shim display state
 pub struct ShimDisplay {
@@ -200,22 +189,16 @@ pub fn run() -> Result<()> {
     );
     state.space.map_output(&output, (0, 0));
 
-    // Initialize libinput for touch/input
-    info!("Initializing libinput for touch input...");
-    if let Err(e) = init_libinput(&loop_handle, &mut state, width, height) {
-        warn!("Failed to initialize libinput: {:?}. Touch will not work.", e);
-    } else {
-        info!("libinput initialized successfully");
-    }
+    // TODO: Add input handling (touch events) similar to hwcomposer backend
+    info!("Input handling not yet implemented for drm_shim backend");
 
     // Frame timer for rendering at 60fps
     let frame_timer = Timer::from_duration(Duration::from_millis(16));
     let shim_display_clone = shim_display.clone();
-    let output_clone = output.clone();
 
     loop_handle.insert_source(frame_timer, move |_, _, state| {
         // Render frame
-        render_frame(&shim_display_clone, state, &output_clone);
+        render_frame(&shim_display_clone, state);
 
         // Schedule next frame
         TimeoutAction::ToDuration(Duration::from_millis(16))
@@ -235,95 +218,6 @@ pub fn run() -> Result<()> {
     }
 }
 
-/// Initialize libinput for touch/input handling
-fn init_libinput(
-    loop_handle: &LoopHandle<'static, Flick>,
-    state: &mut Flick,
-    screen_width: u32,
-    screen_height: u32,
-) -> Result<()> {
-    // Create a minimal session interface for libinput
-    // We don't need full session management for hwcomposer devices
-    let mut libinput_context = Libinput::new_with_udev(NullSession);
-    libinput_context.udev_assign_seat("seat0")
-        .map_err(|_| anyhow::anyhow!("Failed to assign seat to libinput"))?;
-
-    let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
-
-    // Store screen size for coordinate transformation
-    state.screen_size = smithay::utils::Size::from((screen_width as i32, screen_height as i32));
-
-    // Insert libinput source into event loop
-    loop_handle.insert_source(libinput_backend, move |event, _, state| {
-        handle_input_event(state, event);
-    }).map_err(|e| anyhow::anyhow!("Failed to insert libinput source: {:?}", e))?;
-
-    Ok(())
-}
-
-/// Null session for libinput (we manage device access ourselves on hwcomposer devices)
-struct NullSession;
-
-impl LibinputSessionInterface for NullSession {
-    fn open(&mut self, path: &Path, _flags: i32) -> std::result::Result<OwnedFd, i32> {
-        use std::os::unix::fs::OpenOptionsExt;
-        use std::os::unix::io::IntoRawFd;
-
-        std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .custom_flags(libc::O_NONBLOCK)
-            .open(path)
-            .map(|f| unsafe { OwnedFd::from_raw_fd(f.into_raw_fd()) })
-            .map_err(|e| e.raw_os_error().unwrap_or(-1))
-    }
-
-    fn close(&mut self, _fd: OwnedFd) {
-        // fd will be closed when dropped
-    }
-}
-
-use std::os::unix::io::FromRawFd;
-
-/// Handle input events from libinput
-fn handle_input_event(state: &mut Flick, event: InputEvent<LibinputInputBackend>) {
-    match event {
-        InputEvent::DeviceAdded { device } => {
-            info!("Input device added: {}", device.name());
-        }
-        InputEvent::DeviceRemoved { device } => {
-            info!("Input device removed: {}", device.name());
-        }
-        InputEvent::TouchDown { event, .. } => {
-            let slot = event.slot().map(|s| s.into()).unwrap_or(0);
-            let pos = event.position_transformed(state.screen_size);
-            debug!("Touch down: slot={}, pos=({:.1}, {:.1})", slot, pos.x, pos.y);
-            input::handle_touch_down(state, slot, pos.x, pos.y);
-        }
-        InputEvent::TouchUp { event, .. } => {
-            let slot = event.slot().map(|s| s.into()).unwrap_or(0);
-            debug!("Touch up: slot={}", slot);
-            input::handle_touch_up(state, slot);
-        }
-        InputEvent::TouchMotion { event, .. } => {
-            let slot = event.slot().map(|s| s.into()).unwrap_or(0);
-            let pos = event.position_transformed(state.screen_size);
-            input::handle_touch_motion(state, slot, pos.x, pos.y);
-        }
-        InputEvent::TouchCancel { .. } => {
-            debug!("Touch cancel");
-            // Cancel all active touches
-            state.gesture_recognizer.reset();
-        }
-        InputEvent::TouchFrame { .. } => {
-            // Frame marker, usually no action needed
-        }
-        _ => {
-            // Handle other events (keyboard, etc.) if needed
-        }
-    }
-}
-
 /// Frame counter for render_frame logging
 static mut FRAME_COUNT: u64 = 0;
 
@@ -331,7 +225,6 @@ static mut FRAME_COUNT: u64 = 0;
 fn render_frame(
     display: &Rc<RefCell<ShimDisplay>>,
     state: &Flick,
-    output: &Output,
 ) {
     let display = display.borrow();
 
