@@ -1267,6 +1267,13 @@ fn render_frame(
             if qml_lockscreen_connected && log_frame {
                 info!("Rendering QML lockscreen window");
             }
+
+            // DEBUG: Clear to magenta to verify we're reaching this code path
+            unsafe {
+                gl::ClearColor(1.0, 0.0, 1.0, 1.0); // Magenta
+                gl::Clear(gl::COLOR_BUFFER_BIT);
+            }
+
             // Render Wayland client surfaces (windows)
             let windows: Vec<_> = state.space.elements().cloned().collect();
             debug!("Rendering {} Wayland windows", windows.len());
