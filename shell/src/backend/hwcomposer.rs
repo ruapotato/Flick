@@ -1271,15 +1271,8 @@ fn render_frame(
 
         // Render Wayland windows for App view OR QML lockscreen
         if shell_view == ShellView::App || qml_lockscreen_connected {
-            if qml_lockscreen_connected {
-                // DEBUG: Clear to cyan before rendering QML window
-                unsafe {
-                    gl::ClearColor(0.0, 1.0, 1.0, 1.0); // Cyan
-                    gl::Clear(gl::COLOR_BUFFER_BIT);
-                }
-                if log_frame {
-                    info!("Cleared to CYAN, now rendering QML lockscreen window");
-                }
+            if qml_lockscreen_connected && log_frame {
+                info!("Rendering QML lockscreen window");
             }
             // Render Wayland client surfaces (windows)
             let windows: Vec<_> = state.space.elements().cloned().collect();
@@ -1337,16 +1330,6 @@ fn render_frame(
             }
             debug!("Finished rendering windows");
         }
-    }
-
-    // DEBUG: ALWAYS force orange clear right before swap
-    unsafe {
-        gl::ClearColor(1.0, 0.5, 0.0, 1.0); // Orange
-        gl::Clear(gl::COLOR_BUFFER_BIT);
-        gl::Flush();
-    }
-    if log_frame {
-        info!("DEBUG: Forced ORANGE clear before swap_buffers (test_mode={})", test_mode);
     }
 
     debug!("render_frame: before swap_buffers");
