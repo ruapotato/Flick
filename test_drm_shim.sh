@@ -91,5 +91,11 @@ echo ""
 # The udev backend will try to use standard DRM/GBM, but our shim intercepts those calls
 # NOTE: We use 'sudo env' because plain sudo strips LD_PRELOAD for security
 cd "$REAL_HOME/Flick/shell"
-echo "Running: sudo env LD_PRELOAD=$SHIM_LIB ./target/release/flick"
-sudo env LD_PRELOAD="$SHIM_LIB" ./target/release/flick
+
+# For sudo, we need to explicitly pass XDG_RUNTIME_DIR and HOME
+# Create /run/user/0 for root if needed
+sudo mkdir -p /run/user/0
+sudo chmod 700 /run/user/0
+
+echo "Running: sudo env LD_PRELOAD=$SHIM_LIB XDG_RUNTIME_DIR=/run/user/0 HOME=/root ./target/release/flick"
+sudo env LD_PRELOAD="$SHIM_LIB" XDG_RUNTIME_DIR=/run/user/0 HOME=/root ./target/release/flick
