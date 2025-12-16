@@ -73,7 +73,18 @@ pub fn get_lockscreen_command() -> (String, Vec<String>) {
 
 /// Path to unlock signal file (written by lock screen app on successful auth)
 pub fn unlock_signal_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    // Use FLICK_STATE_DIR if set (same as QML lockscreen uses)
+    // Otherwise try SUDO_USER's home (when running via sudo), then HOME
+    if let Ok(state_dir) = std::env::var("FLICK_STATE_DIR") {
+        return PathBuf::from(state_dir).join("unlock_signal");
+    }
+
+    // When running via sudo, HOME is /root but we need the real user's home
+    let home = if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+        format!("/home/{}", sudo_user)
+    } else {
+        std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
+    };
     PathBuf::from(home).join(".local/state/flick/unlock_signal")
 }
 
