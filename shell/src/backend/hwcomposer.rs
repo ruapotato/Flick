@@ -108,12 +108,13 @@ impl Drop for HwcDisplay {
         }
 
         // HWC2 cleanup happens automatically when Hwc2Display/Hwc2Device are dropped
-        // But we should power off the display
+        // But we should power off the display first
         if let Some(ref hwc2_display) = self.hwc2_display {
-            unsafe {
-                hwcomposer_ffi::hwc2_display_set_power_mode(hwc2_display.0, 0); // HWC2_POWER_MODE_OFF
+            if let Err(e) = hwc2_display.set_power_mode(false) {
+                warn!("Failed to power off HWC2 display: {}", e);
+            } else {
+                info!("HWC2 display powered off");
             }
-            info!("HWC2 display powered off");
         }
 
         info!("HwcDisplay cleanup complete");
