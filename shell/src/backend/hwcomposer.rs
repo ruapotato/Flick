@@ -1194,9 +1194,15 @@ fn render_frame(
         }
 
         // Check if QML lockscreen app is connected
+        let element_count = state.space.elements().count();
         let qml_lockscreen_connected = shell_view == ShellView::LockScreen
             && state.shell.lock_screen_active
-            && state.space.elements().count() > 0;
+            && element_count > 0;
+
+        if log_frame {
+            info!("RENDER: view={:?}, lock_active={}, elements={}, qml_connected={}",
+                shell_view, state.shell.lock_screen_active, element_count, qml_lockscreen_connected);
+        }
 
         // Render Slint UI for shell views (but not when QML lockscreen is connected)
         if !qml_lockscreen_connected {
@@ -1246,6 +1252,10 @@ fn render_frame(
                     // Get Slint rendered pixels
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         if let Some((width, height, pixels)) = slint_ui.render() {
+                            if log_frame {
+                                info!("SLINT RENDERING: {}x{} (qml_connected={}, elements={})",
+                                    width, height, qml_lockscreen_connected, element_count);
+                            }
                             unsafe {
                                 gl::render_texture(width, height, &pixels, display.width, display.height);
                             }
