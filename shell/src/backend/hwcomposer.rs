@@ -639,9 +639,6 @@ fn handle_input_event(
     };
     use smithay::input::keyboard::FilterResult;
 
-    // Log ALL input events for debugging
-    info!("INPUT EVENT: {:?}", std::mem::discriminant(&event));
-
     match event {
         InputEvent::Keyboard { event } => {
             use smithay::backend::input::KeyState;
@@ -1197,15 +1194,9 @@ fn render_frame(
         }
 
         // Check if QML lockscreen app is connected
-        let element_count = state.space.elements().count();
         let qml_lockscreen_connected = shell_view == ShellView::LockScreen
             && state.shell.lock_screen_active
-            && element_count > 0;
-
-        if log_frame {
-            info!("RENDER DECISION: view={:?}, lock_active={}, elements={}, qml_connected={}",
-                shell_view, state.shell.lock_screen_active, element_count, qml_lockscreen_connected);
-        }
+            && state.space.elements().count() > 0;
 
         // Render Slint UI for shell views (but not when QML lockscreen is connected)
         if !qml_lockscreen_connected {
@@ -1273,23 +1264,10 @@ fn render_frame(
             if qml_lockscreen_connected && log_frame {
                 info!("Rendering QML lockscreen window");
             }
-
-            // DEBUG: Clear to magenta and SKIP window render to test
-            unsafe {
-                gl::ClearColor(1.0, 0.0, 1.0, 1.0); // Magenta
-                gl::Clear(gl::COLOR_BUFFER_BIT);
-                gl::Flush();
-            }
-            info!("DEBUG: Cleared to MAGENTA - should see pink screen!");
-
-            // SKIP window rendering for now to isolate the issue
+            // Render Wayland client surfaces (windows)
             let windows: Vec<_> = state.space.elements().cloned().collect();
-            debug!("Rendering {} Wayland windows (SKIPPED)", windows.len());
+            debug!("Rendering {} Wayland windows", windows.len());
 
-            for (i, _window) in windows.iter().enumerate() {
-                debug!("SKIPPING window {} render", i);
-            }
-            /* DISABLED FOR DEBUG
             for (i, window) in windows.iter().enumerate() {
                 debug!("Processing window {}", i);
                 // Get the surface from the window
@@ -1336,7 +1314,6 @@ fn render_frame(
                 }
             }
             debug!("Finished rendering windows");
-            */ // END DISABLED FOR DEBUG
         }
     }
 

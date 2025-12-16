@@ -6,7 +6,7 @@ Window {
     visible: true
     visibility: Window.FullScreen
     title: "Flick Lock Screen"
-    color: "#ff0000"  // TEMP: Bright red for debugging
+    color: "#0a0a0f"
 
     // Config
     property string correctPin: "1234"  // TODO: Load from config file

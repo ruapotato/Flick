@@ -11,13 +11,13 @@ Item {
 
     signal unlocked()
 
-    // Background gradient - TEMP: Bright for debugging
+    // Background gradient
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#00ff00" }
-            GradientStop { position: 0.5; color: "#00ff00" }
-            GradientStop { position: 1.0; color: "#00ff00" }
+            GradientStop { position: 0.0; color: "#0a0a0f" }
+            GradientStop { position: 0.5; color: "#12121a" }
+            GradientStop { position: 1.0; color: "#1a1a2e" }
         }
     }
 
