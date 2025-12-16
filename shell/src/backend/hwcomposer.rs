@@ -1034,12 +1034,16 @@ fn handle_input_event(
                                 let windows: Vec<_> = state.space.elements()
                                     .enumerate()
                                     .map(|(i, window)| {
-                                        let title = window.toplevel()
-                                            .map(|t| t.title().unwrap_or_default())
-                                            .unwrap_or_default();
-                                        let app_class = window.toplevel()
-                                            .map(|t| t.app_id().unwrap_or_default())
-                                            .unwrap_or_default();
+                                        // Try X11 surface first, fall back to generic name
+                                        let title = window.x11_surface()
+                                            .map(|x11| {
+                                                let t = x11.title();
+                                                if !t.is_empty() { t } else { x11.class() }
+                                            })
+                                            .unwrap_or_else(|| format!("Window {}", i + 1));
+                                        let app_class = window.x11_surface()
+                                            .map(|x11| x11.class())
+                                            .unwrap_or_else(|| "app".to_string());
                                         (i as i32, title, app_class)
                                     })
                                     .collect();
@@ -1548,11 +1552,15 @@ fn render_frame(
                                 let windows: Vec<_> = state.space.elements()
                                     .enumerate()
                                     .map(|(i, window)| {
-                                        let title = window.toplevel()
-                                            .map(|t| t.title().unwrap_or_else(|| "Untitled".to_string()))
-                                            .unwrap_or_else(|| "Window".to_string());
-                                        let app_class = window.toplevel()
-                                            .map(|t| t.app_id().unwrap_or_else(|| "unknown".to_string()))
+                                        // Try X11 surface first, fall back to generic name
+                                        let title = window.x11_surface()
+                                            .map(|x11| {
+                                                let t = x11.title();
+                                                if !t.is_empty() { t } else { x11.class() }
+                                            })
+                                            .unwrap_or_else(|| format!("Window {}", i + 1));
+                                        let app_class = window.x11_surface()
+                                            .map(|x11| x11.class())
                                             .unwrap_or_else(|| "app".to_string());
                                         (i as i32, title, app_class)
                                     })
