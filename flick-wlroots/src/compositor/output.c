@@ -29,10 +29,17 @@ static bool is_hwcomposer_output(struct wlr_output *output) {
 static void render_hwcomposer_frame(struct flick_output *output) {
     struct wlr_output *wlr_output = output->wlr_output;
     struct flick_server *server = output->server;
+    static int frame_num = 0;
+    frame_num++;
 
     // Get current background color from shell
     float r, g, b;
     flick_shell_get_color(&server->shell, &r, &g, &b);
+
+    if (frame_num <= 5 || frame_num % 60 == 0) {
+        wlr_log(WLR_INFO, "render_hwcomposer_frame %d: color=(%.2f,%.2f,%.2f)",
+                frame_num, r, g, b);
+    }
 
     // Configure and acquire swapchain buffer
     struct wlr_output_state pending;
@@ -85,6 +92,8 @@ static void render_hwcomposer_frame(struct flick_output *output) {
 
     if (!wlr_output_commit_state(wlr_output, &pending)) {
         wlr_log(WLR_ERROR, "Failed to commit output state");
+    } else if (frame_num <= 5) {
+        wlr_log(WLR_INFO, "render_hwcomposer_frame %d: committed successfully", frame_num);
     }
 
     wlr_output_state_finish(&pending);
