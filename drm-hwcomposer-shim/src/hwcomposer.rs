@@ -402,6 +402,11 @@ impl Hwcomposer {
         self.egl_context
     }
 
+    /// Get the EGL config handle
+    pub fn egl_config(&self) -> *mut c_void {
+        self.egl_config
+    }
+
     /// Get the native window handle
     pub fn native_window(&self) -> *mut ANativeWindow {
         self.native_window

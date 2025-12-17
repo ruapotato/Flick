@@ -2771,3 +2771,166 @@ pub unsafe extern "C" fn eglSwapBuffers(dpy: EGLDisplay, surface: EGLSurface) ->
         EGL_FALSE
     }
 }
+
+// Real EGL function pointer for GetProcAddress
+static mut REAL_EGL_GET_PROC_ADDRESS: Option<unsafe extern "C" fn(*const c_char) -> *mut c_void> = None;
+static EGL_PROC_INIT: Once = Once::new();
+
+unsafe fn init_egl_proc_funcs() {
+    EGL_PROC_INIT.call_once(|| {
+        let get_proc = libc::dlsym(RTLD_NEXT, b"eglGetProcAddress\0".as_ptr() as *const c_char);
+        if !get_proc.is_null() {
+            REAL_EGL_GET_PROC_ADDRESS = Some(std::mem::transmute(get_proc));
+        }
+    });
+}
+
+/// Intercept eglGetProcAddress - return our intercepted functions
+#[no_mangle]
+pub unsafe extern "C" fn eglGetProcAddress(procname: *const c_char) -> *mut c_void {
+    init_egl_funcs();
+    init_egl_proc_funcs();
+
+    if procname.is_null() {
+        return ptr::null_mut();
+    }
+
+    let name = CStr::from_ptr(procname).to_str().unwrap_or("");
+    debug!("eglGetProcAddress(\"{}\")", name);
+
+    // Return our intercepted functions for key EGL calls
+    match name {
+        "eglGetDisplay" => eglGetDisplay as *mut c_void,
+        "eglGetPlatformDisplay" => eglGetPlatformDisplay as *mut c_void,
+        "eglGetPlatformDisplayEXT" => eglGetPlatformDisplay as *mut c_void,
+        "eglInitialize" => eglInitialize as *mut c_void,
+        "eglCreateWindowSurface" => eglCreateWindowSurface as *mut c_void,
+        "eglSwapBuffers" => eglSwapBuffers as *mut c_void,
+        _ => {
+            // For other functions, use real eglGetProcAddress
+            if let Some(real_fn) = REAL_EGL_GET_PROC_ADDRESS {
+                real_fn(procname)
+            } else {
+                ptr::null_mut()
+            }
+        }
+    }
+}
+
+/// Intercept eglChooseConfig - use hwcomposer's config
+#[no_mangle]
+pub unsafe extern "C" fn eglChooseConfig(
+    dpy: EGLDisplay,
+    attrib_list: *const EGLint,
+    configs: *mut EGLConfig,
+    config_size: EGLint,
+    num_config: *mut EGLint,
+) -> u32 {
+    debug!("eglChooseConfig intercepted (dpy={:?})", dpy);
+
+    // Check if this is our hwcomposer display
+    let our_display = drm_hwcomposer_shim_get_egl_display();
+    if dpy == our_display {
+        // Return our pre-chosen config
+        let global = GLOBAL_DRM.lock().unwrap();
+        if let Some(ref drm) = *global {
+            if let Ok(config) = drm.egl_config() {
+                if !configs.is_null() && config_size >= 1 {
+                    *configs = config;
+                }
+                if !num_config.is_null() {
+                    *num_config = 1;
+                }
+                info!("eglChooseConfig: returning hwcomposer EGL config {:?}", config);
+                return EGL_TRUE;
+            }
+        }
+    }
+
+    // Call real eglChooseConfig via dlsym
+    let real_fn: Option<unsafe extern "C" fn(EGLDisplay, *const EGLint, *mut EGLConfig, EGLint, *mut EGLint) -> u32> = {
+        let sym = libc::dlsym(RTLD_NEXT, b"eglChooseConfig\0".as_ptr() as *const c_char);
+        if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+    };
+
+    if let Some(f) = real_fn {
+        f(dpy, attrib_list, configs, config_size, num_config)
+    } else {
+        error!("Real eglChooseConfig not available");
+        EGL_FALSE
+    }
+}
+
+/// Intercept eglCreateContext
+#[no_mangle]
+pub unsafe extern "C" fn eglCreateContext(
+    dpy: EGLDisplay,
+    config: EGLConfig,
+    share_context: EGLContext,
+    attrib_list: *const EGLint,
+) -> EGLContext {
+    debug!("eglCreateContext intercepted (dpy={:?})", dpy);
+
+    // Check if this is our hwcomposer display
+    let our_display = drm_hwcomposer_shim_get_egl_display();
+    if dpy == our_display {
+        // Return our pre-created context
+        let global = GLOBAL_DRM.lock().unwrap();
+        if let Some(ref drm) = *global {
+            if let Ok(ctx) = drm.egl_context() {
+                info!("eglCreateContext: returning hwcomposer EGL context {:?}", ctx);
+                return ctx;
+            }
+        }
+    }
+
+    // Call real eglCreateContext via dlsym
+    type EGLContext = *mut c_void;
+    let real_fn: Option<unsafe extern "C" fn(EGLDisplay, EGLConfig, EGLContext, *const EGLint) -> EGLContext> = {
+        let sym = libc::dlsym(RTLD_NEXT, b"eglCreateContext\0".as_ptr() as *const c_char);
+        if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+    };
+
+    if let Some(f) = real_fn {
+        f(dpy, config, share_context, attrib_list)
+    } else {
+        error!("Real eglCreateContext not available");
+        ptr::null_mut()
+    }
+}
+
+/// Intercept eglMakeCurrent
+#[no_mangle]
+pub unsafe extern "C" fn eglMakeCurrent(
+    dpy: EGLDisplay,
+    draw: EGLSurface,
+    read: EGLSurface,
+    ctx: EGLContext,
+) -> u32 {
+    debug!("eglMakeCurrent intercepted (dpy={:?})", dpy);
+
+    // Check if this is our hwcomposer display
+    let our_display = drm_hwcomposer_shim_get_egl_display();
+    if dpy == our_display {
+        // Already made current during init, just return success
+        info!("eglMakeCurrent: hwcomposer context already current");
+        return EGL_TRUE;
+    }
+
+    // Call real eglMakeCurrent via dlsym
+    type EGLContext = *mut c_void;
+    let real_fn: Option<unsafe extern "C" fn(EGLDisplay, EGLSurface, EGLSurface, EGLContext) -> u32> = {
+        let sym = libc::dlsym(RTLD_NEXT, b"eglMakeCurrent\0".as_ptr() as *const c_char);
+        if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+    };
+
+    if let Some(f) = real_fn {
+        f(dpy, draw, read, ctx)
+    } else {
+        error!("Real eglMakeCurrent not available");
+        EGL_FALSE
+    }
+}
+
+// Additional type for EGLContext
+type EGLContext = *mut c_void;

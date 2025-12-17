@@ -439,6 +439,12 @@ impl HwcDrmDevice {
         let hwc = self.hwc.lock().map_err(|e| Error::HwcInit(e.to_string()))?;
         Ok(hwc.egl_context())
     }
+
+    /// Get the EGL config handle
+    pub fn egl_config(&self) -> Result<*mut std::ffi::c_void> {
+        let hwc = self.hwc.lock().map_err(|e| Error::HwcInit(e.to_string()))?;
+        Ok(hwc.egl_config())
+    }
 }
 
 impl AsRawFd for HwcDrmDevice {
