@@ -3075,6 +3075,48 @@ pub unsafe extern "C" fn eglSwapBuffers(dpy: EGLDisplay, surface: EGLSurface) ->
     }
 }
 
+// EGL attribute constants
+const EGL_NATIVE_VISUAL_ID: EGLint = 0x302E;
+
+// GBM/DRM fourcc format codes (for visual ID mapping)
+const DRM_FORMAT_XRGB8888: EGLint = 0x34325258; // 'XR24'
+const DRM_FORMAT_ARGB8888: EGLint = 0x34325241; // 'AR24'
+
+/// Intercept eglGetConfigAttrib - fake visual ID for GBM compatibility
+#[no_mangle]
+pub unsafe extern "C" fn eglGetConfigAttrib(
+    dpy: EGLDisplay,
+    config: EGLConfig,
+    attribute: EGLint,
+    value: *mut EGLint,
+) -> u32 {
+    // Check for recursion to avoid deadlock
+    let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
+
+    // For EGL_NATIVE_VISUAL_ID on our hwcomposer display, return GBM fourcc
+    if attribute == EGL_NATIVE_VISUAL_ID && !in_intercept {
+        let our_display = drm_hwcomposer_shim_get_egl_display();
+        if dpy == our_display && !value.is_null() {
+            // Return ARGB8888 fourcc for GBM compatibility
+            *value = DRM_FORMAT_ARGB8888;
+            info!("eglGetConfigAttrib: faking EGL_NATIVE_VISUAL_ID to DRM_FORMAT_ARGB8888");
+            return EGL_TRUE;
+        }
+    }
+
+    // Call real eglGetConfigAttrib
+    let real_fn: Option<unsafe extern "C" fn(EGLDisplay, EGLConfig, EGLint, *mut EGLint) -> u32> = {
+        let sym = libc::dlsym(RTLD_NEXT, b"eglGetConfigAttrib\0".as_ptr() as *const c_char);
+        if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+    };
+
+    if let Some(f) = real_fn {
+        f(dpy, config, attribute, value)
+    } else {
+        EGL_FALSE
+    }
+}
+
 // Real EGL function pointer for GetProcAddress
 static mut REAL_EGL_GET_PROC_ADDRESS: Option<unsafe extern "C" fn(*const c_char) -> *mut c_void> = None;
 static EGL_PROC_INIT: Once = Once::new();
@@ -3109,6 +3151,10 @@ pub unsafe extern "C" fn eglGetProcAddress(procname: *const c_char) -> *mut c_vo
         "eglInitialize" => eglInitialize as *mut c_void,
         "eglCreateWindowSurface" => eglCreateWindowSurface as *mut c_void,
         "eglSwapBuffers" => eglSwapBuffers as *mut c_void,
+        "eglGetConfigAttrib" => eglGetConfigAttrib as *mut c_void,
+        "eglChooseConfig" => eglChooseConfig as *mut c_void,
+        "eglCreateContext" => eglCreateContext as *mut c_void,
+        "eglMakeCurrent" => eglMakeCurrent as *mut c_void,
         _ => {
             // For other functions, use real eglGetProcAddress
             if let Some(real_fn) = REAL_EGL_GET_PROC_ADDRESS {
