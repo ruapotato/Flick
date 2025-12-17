@@ -2540,10 +2540,38 @@ pub unsafe extern "C" fn drmModeFreeObjectProperties(props: *mut drmModeObjectPr
 static INIT_RESULT: Mutex<Option<c_int>> = Mutex::new(None);
 static SHIM_INIT_ONCE: Once = Once::new();
 
+// System-wide lock file to prevent multiple processes from initializing hwcomposer
+const LOCK_FILE: &str = "/tmp/drm-hwcomposer-shim.lock";
+
+fn try_acquire_system_lock() -> Option<std::fs::File> {
+    use std::fs::OpenOptions;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    match OpenOptions::new()
+        .write(true)
+        .create(true)
+        .mode(0o666)
+        .open(LOCK_FILE)
+    {
+        Ok(file) => {
+            // Try to get exclusive lock (non-blocking)
+            let fd = std::os::unix::io::AsRawFd::as_raw_fd(&file);
+            let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
+            if result == 0 {
+                Some(file)
+            } else {
+                // Another process has the lock
+                None
+            }
+        }
+        Err(_) => None,
+    }
+}
+
 /// Initialize the shim (call this before using any other functions)
 #[no_mangle]
 pub extern "C" fn drm_hwcomposer_shim_init() -> c_int {
-    // Check if already initialized
+    // Check if already initialized in this process
     if let Ok(guard) = INIT_RESULT.lock() {
         if let Some(result) = *guard {
             return result;
@@ -2553,12 +2581,22 @@ pub extern "C" fn drm_hwcomposer_shim_init() -> c_int {
     let mut result = -1;
 
     SHIM_INIT_ONCE.call_once(|| {
-        info!("drm_hwcomposer_shim_init: first-time initialization");
-
         // Initialize tracing
         let _ = tracing_subscriber::fmt()
             .with_max_level(tracing::Level::INFO)
             .try_init();
+
+        // Try to acquire system-wide lock
+        let lock_file = try_acquire_system_lock();
+        if lock_file.is_none() {
+            // Another process is initializing hwcomposer, we're probably a child process
+            // Just return success and rely on the parent's hwcomposer
+            warn!("drm_hwcomposer_shim_init: Another process has hwcomposer lock, skipping init");
+            result = 0;
+            return;
+        }
+
+        info!("drm_hwcomposer_shim_init: first-time initialization (holding lock)");
 
         // Create global DRM device
         let mut global = GLOBAL_DRM.lock().unwrap();
@@ -2578,6 +2616,9 @@ pub extern "C" fn drm_hwcomposer_shim_init() -> c_int {
             info!("GLOBAL_DRM already set");
             result = 0;
         }
+
+        // Keep lock file open (will be released when process exits)
+        std::mem::forget(lock_file);
     });
 
     // Store result for subsequent calls
