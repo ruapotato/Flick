@@ -19,6 +19,8 @@ static void output_frame_notify(struct wl_listener *listener, void *data) {
         output->frame_count++;
         wlr_log(WLR_DEBUG, "Skipping early frame %d for hwcomposer init",
                 output->frame_count);
+        // Must schedule next frame or we won't get another frame event
+        wlr_output_schedule_frame(output->wlr_output);
         return;
     }
 
