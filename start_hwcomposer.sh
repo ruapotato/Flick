@@ -44,21 +44,29 @@ echo "Stopping phosh..."
 systemctl stop phosh || true
 sleep 1
 
-echo "Resetting hwcomposer..."
+echo "Stopping hwcomposer completely..."
+# Kill all hwcomposer-related processes aggressively
 pkill -9 -f 'graphics.composer' || true
 pkill -9 -f 'hwcomposer' || true
-sleep 1
+killall -9 android.hardware.graphics.composer 2>/dev/null || true
+killall -9 composer 2>/dev/null || true
 
+# Stop the service if running
 if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
     ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
         /usr/lib/halium-wrappers/android-service.sh hwcomposer stop || true
-    sleep 1
+fi
+sleep 2
+
+echo "Restarting hwcomposer..."
+if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
     ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
         /usr/lib/halium-wrappers/android-service.sh hwcomposer start
+else
+    systemctl restart hwcomposer 2>/dev/null || true
 fi
-
-echo "Waiting for hwcomposer..."
 sleep 3
+echo "hwcomposer restarted"
 
 # Match phosh's environment setup exactly
 export XDG_RUNTIME_DIR="/run/user/32011"
