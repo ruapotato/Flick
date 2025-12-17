@@ -2592,6 +2592,11 @@ static EGL_INIT: Once = Once::new();
 // Track if we've initialized hwcomposer EGL
 static EGL_INITIALIZED: Mutex<bool> = Mutex::new(false);
 
+// Thread-local recursion guard to prevent infinite loops
+std::thread_local! {
+    static IN_EGL_INTERCEPT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 unsafe fn init_egl_funcs() {
     EGL_INIT.call_once(|| {
         // Load real EGL functions via RTLD_NEXT
@@ -2627,21 +2632,40 @@ unsafe fn init_egl_funcs() {
 /// Intercept eglGetDisplay - return hwcomposer's EGL display
 #[no_mangle]
 pub unsafe extern "C" fn eglGetDisplay(display_id: EGLNativeDisplayType) -> EGLDisplay {
+    // Check for recursion - if we're already in an intercept, pass through to real function
+    let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
+    if in_intercept {
+        // Recursion detected - call real function
+        init_egl_funcs();
+        if let Some(real_fn) = REAL_EGL_GET_DISPLAY {
+            return real_fn(display_id);
+        }
+        return EGL_NO_DISPLAY;
+    }
+
+    // Set recursion guard
+    IN_EGL_INTERCEPT.with(|flag| flag.set(true));
+
     init_egl_funcs();
     info!("eglGetDisplay intercepted (display_id={:?})", display_id);
 
     // Initialize the shim and its EGL
     if drm_hwcomposer_shim_init() != 0 {
         error!("Failed to initialize shim for EGL");
+        IN_EGL_INTERCEPT.with(|flag| flag.set(false));
         return EGL_NO_DISPLAY;
     }
 
     if drm_hwcomposer_shim_init_egl() != 0 {
         error!("Failed to initialize hwcomposer EGL");
+        IN_EGL_INTERCEPT.with(|flag| flag.set(false));
         return EGL_NO_DISPLAY;
     }
 
     *EGL_INITIALIZED.lock().unwrap() = true;
+
+    // Clear recursion guard
+    IN_EGL_INTERCEPT.with(|flag| flag.set(false));
 
     // Return our hwcomposer EGL display
     drm_hwcomposer_shim_get_egl_display()
@@ -2654,6 +2678,19 @@ pub unsafe extern "C" fn eglGetPlatformDisplay(
     native_display: *mut c_void,
     attrib_list: *const EGLint,
 ) -> EGLDisplay {
+    // Check for recursion
+    let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
+    if in_intercept {
+        init_egl_funcs();
+        if let Some(real_fn) = REAL_EGL_GET_PLATFORM_DISPLAY {
+            return real_fn(platform, native_display, attrib_list);
+        }
+        return EGL_NO_DISPLAY;
+    }
+
+    // Set recursion guard
+    IN_EGL_INTERCEPT.with(|flag| flag.set(true));
+
     init_egl_funcs();
     info!("eglGetPlatformDisplay intercepted (platform=0x{:x}, native_display={:?})", platform, native_display);
 
@@ -2664,19 +2701,24 @@ pub unsafe extern "C" fn eglGetPlatformDisplay(
         // Initialize the shim and its EGL
         if drm_hwcomposer_shim_init() != 0 {
             error!("Failed to initialize shim for EGL");
+            IN_EGL_INTERCEPT.with(|flag| flag.set(false));
             return EGL_NO_DISPLAY;
         }
 
         if drm_hwcomposer_shim_init_egl() != 0 {
             error!("Failed to initialize hwcomposer EGL");
+            IN_EGL_INTERCEPT.with(|flag| flag.set(false));
             return EGL_NO_DISPLAY;
         }
 
         *EGL_INITIALIZED.lock().unwrap() = true;
+        IN_EGL_INTERCEPT.with(|flag| flag.set(false));
 
         // Return our hwcomposer EGL display
         return drm_hwcomposer_shim_get_egl_display();
     }
+
+    IN_EGL_INTERCEPT.with(|flag| flag.set(false));
 
     // For other platforms, use the real function
     if let Some(real_fn) = REAL_EGL_GET_PLATFORM_DISPLAY {
