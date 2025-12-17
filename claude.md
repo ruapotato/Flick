@@ -260,7 +260,30 @@ ssh phone "cd ~/Flick/drm-hwcomposer-shim && ./test_shim.sh"
 
 The shim intercepts DRM/KMS ioctls to translate them to hwcomposer calls. If a compositor uses an ioctl that isn't implemented, it will fail/crash. The `c_api.rs` file is being expanded to handle all standard DRM ioctls.
 
+**Common crash points when testing with Weston:**
+1. `eglCreateWindowSurface` - EGL expects specific GBM visual IDs
+2. Missing DRM property handling (needs proper enum values)
+3. GBM buffer objects need cached metadata for borrowed buffers
+4. EGL config attribute queries need to return correct GBM visual format
+
+**DEBUGGING WORKFLOW when crashes happen:**
+1. Check logs for which function/ioctl was called last
+2. Look at c_api.rs for unimplemented paths
+3. Check if GBM buffer metadata is being returned correctly
+4. Verify EGL config is reporting correct visual IDs (GBM_FORMAT_XRGB8888 = 0x34325258)
+
+### Current Testing Target
+- **Compositor**: Weston (reference Wayland compositor)
+- **Goal**: Get Weston running with the shim to prove universal compatibility
+- **Once Weston works**: Other compositors (Phosh, Plasma Mobile, Sway, Flick) should work too
+
 ### Phone Details
 - Device: Google Pixel 3a (sargo)
 - OS: Droidian
 - SSH alias: `phone`
+
+### IMPORTANT DESIGN PRINCIPLES
+1. **NOT Flick-specific** - This must work with ANY compositor
+2. **Standard APIs only** - Implement DRM/KMS/GBM/EGL exactly as Linux expects
+3. **No compositor modifications** - Compositors should work unmodified
+4. **Transparent abstraction** - Compositors shouldn't know they're running on hwcomposer

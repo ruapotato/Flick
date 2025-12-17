@@ -48,6 +48,12 @@ pub struct gbm_bo {
     device: *mut gbm_device,
     user_data: *mut c_void,
     destroy_fn: Option<extern "C" fn(*mut gbm_bo, *mut c_void)>,
+    // Cached info for borrowed buffers (when inner is None)
+    cached_format: u32,
+    cached_width: u32,
+    cached_height: u32,
+    cached_stride: u32,
+    cached_fd: c_int, // DMA-BUF fd, -1 if not set
 }
 
 /// Opaque GBM surface handle
@@ -223,11 +229,18 @@ pub unsafe extern "C" fn gbm_bo_create(
     let dev = &*device;
     match dev.inner.create_bo(width, height, gbm_format, flags) {
         Ok(bo) => {
+            let format_u32 = bo.format() as u32;
+            let stride_u32 = bo.stride();
             let bo_ptr = Box::new(gbm_bo {
                 inner: Some(bo),
                 device,
                 user_data: ptr::null_mut(),
                 destroy_fn: None,
+                cached_format: format_u32,
+                cached_width: width,
+                cached_height: height,
+                cached_stride: stride_u32,
+                cached_fd: -1, // Will get fd on demand from inner
             });
             Box::into_raw(bo_ptr)
         }
@@ -293,7 +306,8 @@ pub unsafe extern "C" fn gbm_bo_get_width(bo: *mut gbm_bo) -> u32 {
     if bo.is_null() {
         return 0;
     }
-    (*bo).inner.as_ref().map(|b| b.width()).unwrap_or(0)
+    let bo_ref = &*bo;
+    bo_ref.inner.as_ref().map(|b| b.width()).unwrap_or(bo_ref.cached_width)
 }
 
 /// Get buffer height
@@ -302,7 +316,8 @@ pub unsafe extern "C" fn gbm_bo_get_height(bo: *mut gbm_bo) -> u32 {
     if bo.is_null() {
         return 0;
     }
-    (*bo).inner.as_ref().map(|b| b.height()).unwrap_or(0)
+    let bo_ref = &*bo;
+    bo_ref.inner.as_ref().map(|b| b.height()).unwrap_or(bo_ref.cached_height)
 }
 
 /// Get buffer stride
@@ -311,7 +326,8 @@ pub unsafe extern "C" fn gbm_bo_get_stride(bo: *mut gbm_bo) -> u32 {
     if bo.is_null() {
         return 0;
     }
-    (*bo).inner.as_ref().map(|b| b.stride()).unwrap_or(0)
+    let bo_ref = &*bo;
+    bo_ref.inner.as_ref().map(|b| b.stride()).unwrap_or(bo_ref.cached_stride)
 }
 
 /// Get stride for a specific plane
@@ -330,7 +346,8 @@ pub unsafe extern "C" fn gbm_bo_get_format(bo: *mut gbm_bo) -> u32 {
     if bo.is_null() {
         return 0;
     }
-    (*bo).inner.as_ref().map(|b| b.format() as u32).unwrap_or(0)
+    let bo_ref = &*bo;
+    bo_ref.inner.as_ref().map(|b| b.format() as u32).unwrap_or(bo_ref.cached_format)
 }
 
 /// Get buffer bits per pixel
@@ -339,7 +356,18 @@ pub unsafe extern "C" fn gbm_bo_get_bpp(bo: *mut gbm_bo) -> u32 {
     if bo.is_null() {
         return 0;
     }
-    (*bo).inner.as_ref().map(|b| b.format().bpp() * 8).unwrap_or(0)
+    let bo_ref = &*bo;
+    if let Some(ref b) = bo_ref.inner {
+        b.format().bpp() * 8
+    } else {
+        // Calculate BPP from cached format (DRM fourcc)
+        match bo_ref.cached_format {
+            0x34325258 | 0x34325241 => 32, // XRGB8888, ARGB8888
+            0x34324258 | 0x34324241 => 32, // XBGR8888, ABGR8888
+            0x36314752 => 16, // RGB565
+            _ => 32, // Default to 32 bpp
+        }
+    }
 }
 
 /// Get offset for a specific plane
@@ -407,20 +435,30 @@ pub unsafe extern "C" fn gbm_bo_get_plane_count(bo: *mut gbm_bo) -> c_int {
 /// Returns a duplicated fd - caller is responsible for closing it
 #[no_mangle]
 pub unsafe extern "C" fn gbm_bo_get_fd(bo: *mut gbm_bo) -> c_int {
+    info!("gbm_bo_get_fd ENTER (bo={:?})", bo);
+
     if bo.is_null() {
+        error!("gbm_bo_get_fd: bo is NULL");
         return -1;
     }
 
     let bo_ref = &*bo;
     if let Some(ref inner) = bo_ref.inner {
         match inner.get_dmabuf_fd() {
-            Ok(fd) => fd,
+            Ok(fd) => {
+                info!("gbm_bo_get_fd: returning fd={} from inner", fd);
+                fd
+            }
             Err(e) => {
-                debug!("gbm_bo_get_fd failed: {}", e);
+                error!("gbm_bo_get_fd failed: {}", e);
                 -1
             }
         }
+    } else if bo_ref.cached_fd >= 0 {
+        info!("gbm_bo_get_fd: returning cached fd={}", bo_ref.cached_fd);
+        bo_ref.cached_fd
     } else {
+        error!("gbm_bo_get_fd: no fd available (inner=None, cached_fd={})", bo_ref.cached_fd);
         -1
     }
 }
@@ -629,30 +667,52 @@ pub unsafe extern "C" fn gbm_surface_destroy(surface: *mut gbm_surface) {
 /// Returns a borrowed reference - caller must NOT destroy it
 #[no_mangle]
 pub unsafe extern "C" fn gbm_surface_lock_front_buffer(surface: *mut gbm_surface) -> *mut gbm_bo {
+    info!("gbm_surface_lock_front_buffer ENTER (surface={:?})", surface);
+
     if surface.is_null() {
+        error!("gbm_surface_lock_front_buffer: surface is NULL");
         return ptr::null_mut();
     }
 
     let surface_ref = &mut *surface;
+    info!("gbm_surface_lock_front_buffer: inner.is_some={}", surface_ref.inner.is_some());
+
     if let Some(ref mut inner) = surface_ref.inner {
+        info!("gbm_surface_lock_front_buffer: calling inner.lock_front_buffer()");
         match inner.lock_front_buffer() {
-            Ok(bo) => {
-                // Create a wrapper that doesn't own the buffer
-                // Note: This is a simplification - proper impl would manage buffer lifecycle
+            Ok(locked_bo) => {
+                info!("gbm_surface_lock_front_buffer: lock succeeded");
+                // Create a wrapper with cached info from the locked buffer
+                let format = locked_bo.format() as u32;
+                let width = locked_bo.width();
+                let height = locked_bo.height();
+                let stride = locked_bo.stride();
+                // Get the DMA-BUF fd for this buffer
+                let fd = locked_bo.get_dmabuf_fd().unwrap_or(-1);
+                info!("gbm_surface_lock_front_buffer: format=0x{:x}, {}x{}, stride={}, fd={}",
+                      format, width, height, stride, fd);
                 let bo_ptr = Box::new(gbm_bo {
                     inner: None, // Don't transfer ownership
                     device: surface_ref.device,
                     user_data: ptr::null_mut(),
                     destroy_fn: None,
+                    cached_format: format,
+                    cached_width: width,
+                    cached_height: height,
+                    cached_stride: stride,
+                    cached_fd: fd,
                 });
-                Box::into_raw(bo_ptr)
+                let result = Box::into_raw(bo_ptr);
+                info!("gbm_surface_lock_front_buffer: returning {:?}", result);
+                result
             }
             Err(e) => {
-                error!("Failed to lock front buffer: {}", e);
+                error!("gbm_surface_lock_front_buffer: Failed: {}", e);
                 ptr::null_mut()
             }
         }
     } else {
+        error!("gbm_surface_lock_front_buffer: inner is None");
         ptr::null_mut()
     }
 }
@@ -1649,6 +1709,11 @@ const DRM_IOCTL_MODE_ATOMIC: libc::c_ulong = drm_iowr(0xbc, 56);
 const DRM_IOCTL_MODE_GETPLANE: libc::c_ulong = drm_iowr(0xb6, 40);
 const DRM_IOCTL_MODE_GETPLANERESOURCES: libc::c_ulong = drm_iowr(0xb5, 16);
 
+// Dumb buffer ioctls (used by Weston for cursor etc)
+const DRM_IOCTL_MODE_CREATE_DUMB: libc::c_ulong = drm_iowr(0xb2, 32);
+const DRM_IOCTL_MODE_MAP_DUMB: libc::c_ulong = drm_iowr(0xb3, 16);
+const DRM_IOCTL_MODE_DESTROY_DUMB: libc::c_ulong = drm_iowr(0xb4, 4);
+
 // drm_version struct (for DRM_IOCTL_VERSION)
 #[repr(C)]
 struct DrmVersionIoctl {
@@ -1814,6 +1879,33 @@ struct DrmModeAtomic {
     prop_values_ptr: u64,
     reserved: u64,
     user_data: u64,
+}
+
+// drm_mode_create_dumb - for creating dumb (CPU-accessible) buffers
+#[repr(C)]
+struct DrmModeCreateDumb {
+    height: u32,
+    width: u32,
+    bpp: u32,
+    flags: u32,
+    // Output fields
+    handle: u32,
+    pitch: u32,
+    size: u64,
+}
+
+// drm_mode_map_dumb - for mapping dumb buffer to user space
+#[repr(C)]
+struct DrmModeMapDumb {
+    handle: u32,
+    pad: u32,
+    offset: u64,
+}
+
+// drm_mode_destroy_dumb - for destroying dumb buffer
+#[repr(C)]
+struct DrmModeDestroyDumb {
+    handle: u32,
 }
 
 /// Handle DRM ioctls - wraps libdrm's drmIoctl
@@ -2286,9 +2378,70 @@ unsafe fn handle_drm_ioctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) 
             0
         }
 
+        DRM_IOCTL_MODE_CREATE_DUMB => {
+            info!("ioctl: DRM_IOCTL_MODE_CREATE_DUMB");
+            if arg.is_null() {
+                *libc::__errno_location() = libc::EINVAL;
+                return -1;
+            }
+            let dumb = arg as *mut DrmModeCreateDumb;
+            let width = (*dumb).width;
+            let height = (*dumb).height;
+            let bpp = (*dumb).bpp;
+
+            info!("  CREATE_DUMB: {}x{} @ {} bpp", width, height, bpp);
+
+            // Calculate pitch and size
+            let pitch = width * (bpp / 8);
+            // Align pitch to 64 bytes (common requirement)
+            let aligned_pitch = (pitch + 63) & !63;
+            let size = (aligned_pitch * height) as u64;
+
+            // Generate a fake handle (we don't actually need the buffer for cursor on mobile)
+            static DUMB_HANDLE_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(100);
+            let handle = DUMB_HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+            (*dumb).handle = handle;
+            (*dumb).pitch = aligned_pitch;
+            (*dumb).size = size;
+
+            info!("  CREATE_DUMB result: handle={}, pitch={}, size={}", handle, aligned_pitch, size);
+            0
+        }
+
+        DRM_IOCTL_MODE_MAP_DUMB => {
+            info!("ioctl: DRM_IOCTL_MODE_MAP_DUMB");
+            if arg.is_null() {
+                *libc::__errno_location() = libc::EINVAL;
+                return -1;
+            }
+            let map = arg as *mut DrmModeMapDumb;
+            let handle = (*map).handle;
+
+            // Return a fake offset that can be used with mmap
+            // The actual mmap will be handled by our intercept
+            (*map).offset = (handle as u64) << 12; // Page-aligned offset
+
+            info!("  MAP_DUMB: handle={}, offset=0x{:x}", handle, (*map).offset);
+            0
+        }
+
+        DRM_IOCTL_MODE_DESTROY_DUMB => {
+            info!("ioctl: DRM_IOCTL_MODE_DESTROY_DUMB");
+            if arg.is_null() {
+                *libc::__errno_location() = libc::EINVAL;
+                return -1;
+            }
+            let destroy = arg as *mut DrmModeDestroyDumb;
+            info!("  DESTROY_DUMB: handle={}", (*destroy).handle);
+            // Just accept the destroy (we don't actually manage the memory)
+            0
+        }
+
         _ => {
-            // Log unknown ioctls but return success to avoid breaking things
-            warn!("ioctl: Unknown DRM ioctl 0x{:x} (nr=0x{:x})", request, nr);
+            // Return success for unknown ioctls to avoid breaking things
+            // Some ioctls are not critical and failing them causes crashes
+            warn!("ioctl: Unknown DRM ioctl 0x{:x} (nr=0x{:x}) - returning success", request, nr);
             0
         }
     }
@@ -3045,12 +3198,121 @@ pub unsafe extern "C" fn eglCreateWindowSurface(
     }
 }
 
-/// Intercept eglSwapBuffers - present via hwcomposer
+/// Intercept eglCreatePlatformWindowSurface - Weston uses this for output surfaces
 #[no_mangle]
-pub unsafe extern "C" fn eglSwapBuffers(dpy: EGLDisplay, surface: EGLSurface) -> u32 {
+pub unsafe extern "C" fn eglCreatePlatformWindowSurface(
+    dpy: EGLDisplay,
+    config: EGLConfig,
+    native_window: *mut c_void,
+    attrib_list: *const isize,  // EGLAttrib is intptr_t
+) -> EGLSurface {
+    info!("eglCreatePlatformWindowSurface ENTER (dpy={:?}, config={:?}, native_window={:?})", dpy, config, native_window);
+
     // Check for recursion to avoid deadlock
     let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
     if in_intercept {
+        info!("eglCreatePlatformWindowSurface: recursion detected, passing through");
+        // Get real function and call it
+        let real_fn: Option<unsafe extern "C" fn(EGLDisplay, EGLConfig, *mut c_void, *const isize) -> EGLSurface> = {
+            let sym = libc::dlsym(RTLD_NEXT, b"eglCreatePlatformWindowSurface\0".as_ptr() as *const c_char);
+            if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+        };
+        if let Some(f) = real_fn {
+            return f(dpy, config, native_window, attrib_list);
+        }
+        return EGL_NO_SURFACE;
+    }
+
+    info!("eglCreatePlatformWindowSurface intercepted");
+
+    // Check if this is our hwcomposer display
+    let our_display = drm_hwcomposer_shim_get_egl_display();
+    if dpy == our_display {
+        // The surface was already created during init_egl
+        // Return our existing surface
+        let global = GLOBAL_DRM.lock().unwrap();
+        if let Some(ref drm) = *global {
+            let surface = drm.egl_surface().unwrap_or(EGL_NO_SURFACE);
+            info!("eglCreatePlatformWindowSurface: returning hwcomposer EGL surface {:?}", surface);
+            return surface;
+        }
+    }
+
+    // Otherwise use real function
+    let real_fn: Option<unsafe extern "C" fn(EGLDisplay, EGLConfig, *mut c_void, *const isize) -> EGLSurface> = {
+        let sym = libc::dlsym(RTLD_NEXT, b"eglCreatePlatformWindowSurface\0".as_ptr() as *const c_char);
+        if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+    };
+    if let Some(f) = real_fn {
+        f(dpy, config, native_window, attrib_list)
+    } else {
+        error!("Real eglCreatePlatformWindowSurface not available");
+        EGL_NO_SURFACE
+    }
+}
+
+/// Intercept eglCreatePlatformWindowSurfaceEXT - EXT version used by Weston
+#[no_mangle]
+pub unsafe extern "C" fn eglCreatePlatformWindowSurfaceEXT(
+    dpy: EGLDisplay,
+    config: EGLConfig,
+    native_window: *mut c_void,
+    attrib_list: *const EGLint,
+) -> EGLSurface {
+    info!("eglCreatePlatformWindowSurfaceEXT ENTER (dpy={:?}, config={:?}, native_window={:?})", dpy, config, native_window);
+
+    // Check for recursion to avoid deadlock
+    let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
+    if in_intercept {
+        info!("eglCreatePlatformWindowSurfaceEXT: recursion detected, passing through");
+        // Get real function and call it
+        let real_fn: Option<unsafe extern "C" fn(EGLDisplay, EGLConfig, *mut c_void, *const EGLint) -> EGLSurface> = {
+            let sym = libc::dlsym(RTLD_NEXT, b"eglCreatePlatformWindowSurfaceEXT\0".as_ptr() as *const c_char);
+            if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+        };
+        if let Some(f) = real_fn {
+            return f(dpy, config, native_window, attrib_list);
+        }
+        return EGL_NO_SURFACE;
+    }
+
+    info!("eglCreatePlatformWindowSurfaceEXT intercepted");
+
+    // Check if this is our hwcomposer display
+    let our_display = drm_hwcomposer_shim_get_egl_display();
+    if dpy == our_display {
+        // The surface was already created during init_egl
+        // Return our existing surface
+        let global = GLOBAL_DRM.lock().unwrap();
+        if let Some(ref drm) = *global {
+            let surface = drm.egl_surface().unwrap_or(EGL_NO_SURFACE);
+            info!("eglCreatePlatformWindowSurfaceEXT: returning hwcomposer EGL surface {:?}", surface);
+            return surface;
+        }
+    }
+
+    // Otherwise use real function
+    let real_fn: Option<unsafe extern "C" fn(EGLDisplay, EGLConfig, *mut c_void, *const EGLint) -> EGLSurface> = {
+        let sym = libc::dlsym(RTLD_NEXT, b"eglCreatePlatformWindowSurfaceEXT\0".as_ptr() as *const c_char);
+        if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+    };
+    if let Some(f) = real_fn {
+        f(dpy, config, native_window, attrib_list)
+    } else {
+        error!("Real eglCreatePlatformWindowSurfaceEXT not available");
+        EGL_NO_SURFACE
+    }
+}
+
+/// Intercept eglSwapBuffers - present via hwcomposer
+#[no_mangle]
+pub unsafe extern "C" fn eglSwapBuffers(dpy: EGLDisplay, surface: EGLSurface) -> u32 {
+    info!("eglSwapBuffers called: dpy={:?}, surface={:?}", dpy, surface);
+
+    // Check for recursion to avoid deadlock
+    let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
+    if in_intercept {
+        info!("eglSwapBuffers: recursion detected, passing through");
         init_egl_funcs();
         if let Some(real_fn) = REAL_EGL_SWAP_BUFFERS {
             return real_fn(dpy, surface);
@@ -3060,14 +3322,20 @@ pub unsafe extern "C" fn eglSwapBuffers(dpy: EGLDisplay, surface: EGLSurface) ->
 
     // Check if this is our hwcomposer display
     let our_display = drm_hwcomposer_shim_get_egl_display();
+    info!("eglSwapBuffers: our_display={:?}, match={}", our_display, dpy == our_display);
     if dpy == our_display {
-        if drm_hwcomposer_shim_swap_buffers() == 0 {
+        info!("eglSwapBuffers: presenting via hwcomposer");
+        let result = drm_hwcomposer_shim_swap_buffers();
+        if result == 0 {
+            info!("eglSwapBuffers: hwcomposer present succeeded");
             return EGL_TRUE;
         } else {
+            error!("eglSwapBuffers: hwcomposer present failed with {}", result);
             return EGL_FALSE;
         }
     }
 
+    info!("eglSwapBuffers: not our display, passing through to real function");
     // Otherwise use real function
     init_egl_funcs();
     if let Some(real_fn) = REAL_EGL_SWAP_BUFFERS {
@@ -3153,6 +3421,8 @@ pub unsafe extern "C" fn eglGetProcAddress(procname: *const c_char) -> *mut c_vo
         "eglGetPlatformDisplayEXT" => eglGetPlatformDisplay as *mut c_void,
         "eglInitialize" => eglInitialize as *mut c_void,
         "eglCreateWindowSurface" => eglCreateWindowSurface as *mut c_void,
+        "eglCreatePlatformWindowSurface" => eglCreatePlatformWindowSurface as *mut c_void,
+        "eglCreatePlatformWindowSurfaceEXT" => eglCreatePlatformWindowSurfaceEXT as *mut c_void,
         "eglSwapBuffers" => eglSwapBuffers as *mut c_void,
         "eglGetConfigAttrib" => eglGetConfigAttrib as *mut c_void,
         "eglChooseConfig" => eglChooseConfig as *mut c_void,
@@ -3327,3 +3597,84 @@ pub unsafe extern "C" fn eglMakeCurrent(
 
 // Additional type for EGLContext
 type EGLContext = *mut c_void;
+
+// =============================================================================
+// mmap intercept for DRM fd
+// =============================================================================
+
+// We don't need to track dumb buffer mmaps since we don't really use them
+// Just provide memory when requested
+
+/// Intercept mmap to handle dumb buffer mappings on our shim fd
+#[no_mangle]
+pub unsafe extern "C" fn mmap(
+    addr: *mut c_void,
+    length: libc::size_t,
+    prot: c_int,
+    flags: c_int,
+    fd: c_int,
+    offset: libc::off_t,
+) -> *mut c_void {
+    // Check if this is our shim fd
+    let is_shim = {
+        if let Ok(guard) = SHIM_DRM_FD.lock() {
+            guard.map(|shim_fd| fd == shim_fd).unwrap_or(false)
+        } else {
+            false
+        }
+    };
+
+    if is_shim && offset >= 0x64000 {
+        // This is likely a dumb buffer mmap (offset from MAP_DUMB)
+        info!("mmap intercepted on shim fd: length={}, offset=0x{:x}", length, offset);
+
+        // Handle length=0 specially (capability test)
+        let alloc_length = if length == 0 { 4096 } else { length };
+
+        // Allocate anonymous memory instead
+        let ptr = libc::mmap(
+            addr,
+            alloc_length,
+            prot,
+            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+            -1,
+            0,
+        );
+
+        if ptr != libc::MAP_FAILED {
+            info!("mmap: allocated {} bytes at {:?} for dumb buffer", alloc_length, ptr);
+            return ptr;
+        } else {
+            error!("mmap: anonymous allocation failed");
+            return libc::MAP_FAILED;
+        }
+    }
+
+    // Call real mmap for other cases
+    type MmapFn = unsafe extern "C" fn(*mut c_void, libc::size_t, c_int, c_int, c_int, libc::off_t) -> *mut c_void;
+    let real_mmap: Option<MmapFn> = {
+        let sym = libc::dlsym(RTLD_NEXT, b"mmap\0".as_ptr() as *const c_char);
+        if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+    };
+
+    if let Some(f) = real_mmap {
+        f(addr, length, prot, flags, fd, offset)
+    } else {
+        *libc::__errno_location() = libc::ENOSYS;
+        libc::MAP_FAILED
+    }
+}
+
+/// Also intercept mmap64 for good measure
+#[no_mangle]
+pub unsafe extern "C" fn mmap64(
+    addr: *mut c_void,
+    length: libc::size_t,
+    prot: c_int,
+    flags: c_int,
+    fd: c_int,
+    offset: libc::off64_t,
+) -> *mut c_void {
+    // Just call our mmap implementation
+    mmap(addr, length, prot, flags, fd, offset as libc::off_t)
+}
