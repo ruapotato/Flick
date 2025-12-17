@@ -81,9 +81,7 @@ sudo -u droidian -E timeout --signal=TERM $TIMEOUT "$FLICK_BIN" -v || true
 echo ""
 echo "Flick exited at \$(date)"
 
-# Restart phosh so user doesn't lose their display
-echo "Restarting phosh..."
-systemctl start phosh || true
+# Note: phosh stays stopped - manually run 'systemctl start phosh' to restore it
 EOF
 
 chmod +x "$RUNNER"
