@@ -55,7 +55,10 @@ fi
 echo "Waiting for hwcomposer..."
 sleep 3
 
-export XDG_RUNTIME_DIR="/run/user/\$(id -u)"
+# Use droidian user's runtime dir (UID 32011), create if needed for root
+export XDG_RUNTIME_DIR="/run/user/32011"
+mkdir -p "\$XDG_RUNTIME_DIR" 2>/dev/null || true
+chmod 700 "\$XDG_RUNTIME_DIR" 2>/dev/null || true
 export EGL_PLATFORM=hwcomposer
 export WLR_BACKENDS=hwcomposer
 
