@@ -99,8 +99,16 @@ fn format_to_gbm(format: u32) -> Option<GbmFormat> {
 pub unsafe extern "C" fn gbm_create_device(fd: c_int) -> *mut gbm_device {
     info!("gbm_create_device(fd={})", fd);
 
-    // Ensure shim is initialized via the proper path
-    if drm_hwcomposer_shim_init() != 0 {
+    // Try to initialize - this determines if we're the main process
+    let init_result = drm_hwcomposer_shim_init();
+
+    // If we're not the main shim process, return null (let real libgbm handle it)
+    if !is_main_shim_process() {
+        debug!("gbm_create_device: not main shim process, returning null");
+        return ptr::null_mut();
+    }
+
+    if init_result != 0 {
         error!("Failed to initialize shim for GBM device");
         return ptr::null_mut();
     }
@@ -799,8 +807,16 @@ pub const DRM_PLANE_TYPE_CURSOR: u64 = 2;
 pub unsafe extern "C" fn drmModeGetResources(fd: c_int) -> *mut drmModeRes {
     debug!("drmModeGetResources(fd={})", fd);
 
-    // Ensure shim is initialized
-    if drm_hwcomposer_shim_init() != 0 {
+    // Try to initialize - this determines if we're the main process
+    let init_result = drm_hwcomposer_shim_init();
+
+    // If we're not the main shim process, return null
+    if !is_main_shim_process() {
+        debug!("drmModeGetResources: not main shim process, returning null");
+        return ptr::null_mut();
+    }
+
+    if init_result != 0 {
         error!("Failed to initialize shim for drmModeGetResources");
         return ptr::null_mut();
     }
