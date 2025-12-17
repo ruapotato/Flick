@@ -68,6 +68,18 @@ fi
 sleep 3
 echo "hwcomposer restarted"
 
+# Unblank display - try multiple methods like the old Rust code did
+echo "Unblanking display..."
+# Method 1: backlight power
+echo 0 > /sys/class/backlight/panel0-backlight/bl_power 2>/dev/null || true
+# Method 2: Set brightness if it's 0
+BRIGHTNESS=\$(cat /sys/class/backlight/panel0-backlight/brightness 2>/dev/null || echo "0")
+if [ "\$BRIGHTNESS" = "0" ]; then
+    echo 255 > /sys/class/backlight/panel0-backlight/brightness 2>/dev/null || true
+fi
+# Method 3: fbdev unblank
+echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
+
 # Match phosh's environment setup exactly
 export XDG_RUNTIME_DIR="/run/user/32011"
 export EGL_PLATFORM=hwcomposer
