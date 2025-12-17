@@ -99,21 +99,22 @@ fn format_to_gbm(format: u32) -> Option<GbmFormat> {
 pub unsafe extern "C" fn gbm_create_device(fd: c_int) -> *mut gbm_device {
     info!("gbm_create_device(fd={})", fd);
 
-    // Get or create global DRM device
+    // Ensure shim is initialized via the proper path
+    if drm_hwcomposer_shim_init() != 0 {
+        error!("Failed to initialize shim for GBM device");
+        return ptr::null_mut();
+    }
+
+    // Get global DRM device (should be initialized now)
     let drm = {
-        let mut global = GLOBAL_DRM.lock().unwrap();
-        if global.is_none() {
-            match HwcDrmDevice::new() {
-                Ok(d) => {
-                    *global = Some(Arc::new(d));
-                }
-                Err(e) => {
-                    error!("Failed to create DRM device: {}", e);
-                    return ptr::null_mut();
-                }
+        let global = GLOBAL_DRM.lock().unwrap();
+        match global.clone() {
+            Some(d) => d,
+            None => {
+                error!("GLOBAL_DRM not set after init");
+                return ptr::null_mut();
             }
         }
-        global.clone().unwrap()
     };
 
     // Create GBM device
