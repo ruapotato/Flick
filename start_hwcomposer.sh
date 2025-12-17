@@ -3,8 +3,6 @@
 # Usage: ./start_hwcomposer.sh [--timeout N]
 # Ctrl+C to stop
 
-set -e
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FLICK_BIN="$SCRIPT_DIR/flick-wlroots/build/flick"
 TIMEOUT="${2:-0}"
