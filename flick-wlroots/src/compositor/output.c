@@ -70,10 +70,18 @@ static void render_hwcomposer_frame(struct flick_output *output) {
         return;
     }
 
+    // Full screen damage region
+    pixman_region32_t damage;
+    pixman_region32_init_rect(&damage, 0, 0, wlr_output->width, wlr_output->height);
+
+    // Inform output about damage (required by phoc)
+    wlr_output_handle_damage(wlr_output, &damage);
+
     // Clear to background color
     wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
         .box = { .width = wlr_output->width, .height = wlr_output->height },
         .color = { .r = r, .g = g, .b = b, .a = 1.0f },
+        .clip = &damage,  // Use damage as clip region
     });
 
     // TODO: Render views/surfaces here when not at home screen
@@ -83,17 +91,14 @@ static void render_hwcomposer_frame(struct flick_output *output) {
     if (!wlr_render_pass_submit(pass)) {
         wlr_log(WLR_ERROR, "Failed to submit render pass");
         wlr_buffer_unlock(buffer);
+        pixman_region32_fini(&damage);
         wlr_output_state_finish(&pending);
         return;
     }
 
-    // Attach buffer and set damage (full screen)
+    // Attach buffer and set damage
     wlr_output_state_set_buffer(&pending, buffer);
     wlr_buffer_unlock(buffer);
-
-    // Mark entire screen as damaged (required for hwcomposer to present)
-    pixman_region32_t damage;
-    pixman_region32_init_rect(&damage, 0, 0, wlr_output->width, wlr_output->height);
     wlr_output_state_set_damage(&pending, &damage);
     pixman_region32_fini(&damage);
 
