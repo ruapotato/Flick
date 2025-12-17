@@ -160,6 +160,21 @@ flick-wlroots/
 | `FLICK_TERMINAL` | Terminal to auto-launch (default: foot) |
 | `XDG_RUNTIME_DIR` | Wayland socket directory |
 
+## Current Status
+
+**Desktop (wlroots 0.18):** Fully working - touch gestures, color transitions, terminal launch.
+
+**Droidian/Phone (wlroots 0.17 + hwcomposer):**
+- ✅ hwcomposer backend initializes correctly
+- ✅ Display detected (1080x2220 on Pixel 3a)
+- ✅ hwcomposer 2.0.1 connected
+- ✅ vsync working
+- ✅ Terminal launched
+- ❌ Rendering issue: `framebuffer object not complete`
+
+The rendering issue is related to wlr_scene compatibility with the android/hwcomposer renderer.
+Investigation needed into droidian wlroots `render/android/renderer.c`.
+
 ## Troubleshooting
 
 ### "Failed to create DRM backend" on phone
@@ -167,6 +182,9 @@ You're not using hwcomposer. Set `WLR_BACKENDS=hwcomposer`.
 
 ### "DRM_CRTC_IN_VBLANK_EVENT unsupported"
 Android devices don't support standard DRM. Use hwcomposer backend.
+
+### "No native window set" / "framebuffer object not complete"
+Known issue with wlr_scene + android renderer. Under investigation.
 
 ### SSH disconnects when running
 Normal when stopping phosh. Use `start_hwcomposer.sh` which runs in background.
