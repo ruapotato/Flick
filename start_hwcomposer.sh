@@ -25,31 +25,10 @@ if [ ! -f "$FLICK_BIN" ]; then
     exit 1
 fi
 
-echo "Stopping phosh..."
+echo "Stopping phosh (keeping hwcomposer running)..."
 sudo systemctl stop phosh || true
-sleep 1
-
-echo "Stopping hwcomposer completely..."
-sudo pkill -9 -f 'graphics.composer' || true
-sudo pkill -9 -f 'hwcomposer' || true
-sudo killall -9 android.hardware.graphics.composer 2>/dev/null || true
-sudo killall -9 composer 2>/dev/null || true
-
-if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
-    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
-        /usr/lib/halium-wrappers/android-service.sh hwcomposer stop || true
-fi
 sleep 2
-
-echo "Restarting hwcomposer..."
-if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
-    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
-        /usr/lib/halium-wrappers/android-service.sh hwcomposer start
-else
-    sudo systemctl restart hwcomposer 2>/dev/null || true
-fi
-sleep 3
-echo "hwcomposer restarted"
+echo "phosh stopped"
 
 # Unblank display
 echo "Unblanking display..."
