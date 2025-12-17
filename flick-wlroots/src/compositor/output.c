@@ -107,10 +107,13 @@ static void render_hwcomposer_frame(struct flick_output *output) {
         wlr_log(WLR_INFO, "render_hwcomposer_frame %d: swap_buffers successful", frame_num);
     }
 
-    // Clean up - don't commit buffer state, swap_buffers already did it
+    // Clean up
     wlr_buffer_unlock(buffer);
     pixman_region32_fini(&damage);
     wlr_output_state_finish(&pending);
+
+    // Schedule next frame (required since we skipped commit_state)
+    wlr_output_schedule_frame(wlr_output);
 }
 #endif // WLR_VERSION_MINOR < 18
 
