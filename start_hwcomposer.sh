@@ -55,22 +55,23 @@ fi
 echo "Waiting for hwcomposer..."
 sleep 3
 
-# Use droidian user's runtime dir (UID 32011), create if needed for root
+# Match phosh's environment setup exactly
 export XDG_RUNTIME_DIR="/run/user/32011"
-mkdir -p "\$XDG_RUNTIME_DIR" 2>/dev/null || true
-chmod 700 "\$XDG_RUNTIME_DIR" 2>/dev/null || true
 export EGL_PLATFORM=hwcomposer
-export WLR_BACKENDS=hwcomposer
+export WLR_BACKENDS='hwcomposer,libinput'
+export WLR_HWC_SKIP_VERSION_CHECK=1
 
 echo "Environment:"
 echo "  XDG_RUNTIME_DIR=\$XDG_RUNTIME_DIR"
 echo "  EGL_PLATFORM=\$EGL_PLATFORM"
 echo "  WLR_BACKENDS=\$WLR_BACKENDS"
+echo "  WLR_HWC_SKIP_VERSION_CHECK=\$WLR_HWC_SKIP_VERSION_CHECK"
 echo ""
-echo "Running flick for ${TIMEOUT}s..."
+echo "Running flick as droidian user for ${TIMEOUT}s..."
 echo ""
 
-timeout --signal=TERM $TIMEOUT "$FLICK_BIN" -v || true
+# Run as droidian user (like phosh does) instead of root
+sudo -u droidian -E timeout --signal=TERM $TIMEOUT "$FLICK_BIN" -v || true
 
 echo ""
 echo "Flick exited at \$(date)"
