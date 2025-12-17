@@ -2,17 +2,20 @@
 # Start Flick compositor on Droidian with hwcomposer backend
 # Usage: ./start_hwcomposer.sh [--timeout N]
 
-set -e
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FLICK_BIN="$SCRIPT_DIR/flick-wlroots/build/flick"
-TIMEOUT="${1:-0}"
+LOG_FILE="$SCRIPT_DIR/logs/flick-hwc-$(date +%Y%m%d-%H%M%S).log"
+TIMEOUT=30
 
 if [[ "$1" == "--timeout" ]]; then
     TIMEOUT="${2:-30}"
 fi
 
+mkdir -p "$SCRIPT_DIR/logs"
+
 echo "=== Flick HWComposer Launcher ==="
+echo "Log: $LOG_FILE"
+echo "Timeout: ${TIMEOUT}s"
 
 # Build if needed
 cd "$SCRIPT_DIR/flick-wlroots"
@@ -26,43 +29,58 @@ if [ ! -f "$FLICK_BIN" ]; then
     exit 1
 fi
 
+# Create runner script that will execute detached
+RUNNER="/tmp/flick_runner_$$.sh"
+cat > "$RUNNER" << EOF
+#!/bin/bash
+exec > "$LOG_FILE" 2>&1
+
+echo "=== Flick HWComposer Test ==="
+echo "Started: \$(date)"
+echo ""
+
 echo "Resetting hwcomposer..."
-sudo pkill -9 -f 'graphics.composer' 2>/dev/null || true
-sudo pkill -9 -f 'hwcomposer' 2>/dev/null || true
+pkill -9 -f 'graphics.composer' || true
+pkill -9 -f 'hwcomposer' || true
 sleep 1
 
-# Restart hwcomposer
 if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
-    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
-        /usr/lib/halium-wrappers/android-service.sh hwcomposer stop 2>/dev/null || true
+    ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
+        /usr/lib/halium-wrappers/android-service.sh hwcomposer stop || true
     sleep 1
-    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
+    ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
         /usr/lib/halium-wrappers/android-service.sh hwcomposer start
-else
-    sudo systemctl restart hwcomposer 2>/dev/null || true
 fi
 
 echo "Waiting for hwcomposer..."
 sleep 3
 
-# Environment for hwcomposer
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export XDG_RUNTIME_DIR="/run/user/\$(id -u)"
 export EGL_PLATFORM=hwcomposer
 export WLR_BACKENDS=hwcomposer
 
-echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
-echo "EGL_PLATFORM=$EGL_PLATFORM"
-echo "WLR_BACKENDS=$WLR_BACKENDS"
+echo "Environment:"
+echo "  XDG_RUNTIME_DIR=\$XDG_RUNTIME_DIR"
+echo "  EGL_PLATFORM=\$EGL_PLATFORM"
+echo "  WLR_BACKENDS=\$WLR_BACKENDS"
+echo ""
+echo "Running flick for ${TIMEOUT}s..."
 echo ""
 
-# Run flick
-if [ "$TIMEOUT" -gt 0 ] 2>/dev/null; then
-    echo "Running flick for ${TIMEOUT}s..."
-    sudo -E timeout --signal=TERM "$TIMEOUT" "$FLICK_BIN" -v || true
-else
-    echo "Running flick (Ctrl+C to stop)..."
-    sudo -E "$FLICK_BIN" -v || true
-fi
+timeout --signal=TERM $TIMEOUT "$FLICK_BIN" -v || true
 
 echo ""
-echo "Flick exited."
+echo "Flick exited at \$(date)"
+EOF
+
+chmod +x "$RUNNER"
+
+echo ""
+echo "Launching detached (SSH may disconnect)..."
+echo "Check log after ~${TIMEOUT}s: cat $LOG_FILE"
+echo ""
+
+# Run as root, fully detached
+sudo nohup "$RUNNER" &>/dev/null &
+
+echo "Started. Wait ${TIMEOUT}s then check: cat $LOG_FILE"
