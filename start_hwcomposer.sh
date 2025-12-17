@@ -82,9 +82,10 @@ fi
 sleep 3
 echo "hwcomposer ready"
 
-# Set up environment
+# Set up environment - CRITICAL for hwcomposer
 export XDG_RUNTIME_DIR="/run/user/\$REAL_UID"
 export EGL_PLATFORM=hwcomposer
+export WLR_BACKENDS=hwcomposer
 
 # Ensure runtime dir exists
 mkdir -p "\$XDG_RUNTIME_DIR" 2>/dev/null || true
