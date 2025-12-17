@@ -2557,3 +2557,217 @@ pub unsafe extern "C" fn drm_hwcomposer_shim_swap_buffers() -> c_int {
         -1
     }
 }
+
+// =============================================================================
+// EGL Interception for Universal Compositor Support
+// =============================================================================
+//
+// When compositors like Weston use GBM + EGL, they expect Mesa's EGL to work
+// with GBM devices. On hwcomposer systems, we need to intercept EGL calls
+// and redirect them to hwcomposer's EGL implementation.
+
+// EGL types
+type EGLDisplay = *mut c_void;
+type EGLSurface = *mut c_void;
+type EGLConfig = *mut c_void;
+type EGLNativeDisplayType = *mut c_void;
+type EGLNativeWindowType = *mut c_void;
+type EGLint = i32;
+
+const EGL_NO_DISPLAY: EGLDisplay = std::ptr::null_mut();
+const EGL_NO_SURFACE: EGLSurface = std::ptr::null_mut();
+const EGL_FALSE: u32 = 0;
+const EGL_TRUE: u32 = 1;
+const EGL_PLATFORM_GBM_KHR: u32 = 0x31D7;
+const EGL_PLATFORM_GBM_MESA: u32 = 0x31D7;
+
+// Cached real EGL function pointers
+static mut REAL_EGL_GET_DISPLAY: Option<unsafe extern "C" fn(EGLNativeDisplayType) -> EGLDisplay> = None;
+static mut REAL_EGL_GET_PLATFORM_DISPLAY: Option<unsafe extern "C" fn(u32, *mut c_void, *const EGLint) -> EGLDisplay> = None;
+static mut REAL_EGL_INITIALIZE: Option<unsafe extern "C" fn(EGLDisplay, *mut EGLint, *mut EGLint) -> u32> = None;
+static mut REAL_EGL_CREATE_WINDOW_SURFACE: Option<unsafe extern "C" fn(EGLDisplay, EGLConfig, EGLNativeWindowType, *const EGLint) -> EGLSurface> = None;
+static mut REAL_EGL_SWAP_BUFFERS: Option<unsafe extern "C" fn(EGLDisplay, EGLSurface) -> u32> = None;
+static EGL_INIT: Once = Once::new();
+
+// Track if we've initialized hwcomposer EGL
+static EGL_INITIALIZED: Mutex<bool> = Mutex::new(false);
+
+unsafe fn init_egl_funcs() {
+    EGL_INIT.call_once(|| {
+        // Load real EGL functions via RTLD_NEXT
+        let get_display = libc::dlsym(RTLD_NEXT, b"eglGetDisplay\0".as_ptr() as *const c_char);
+        if !get_display.is_null() {
+            REAL_EGL_GET_DISPLAY = Some(std::mem::transmute(get_display));
+        }
+
+        let get_platform_display = libc::dlsym(RTLD_NEXT, b"eglGetPlatformDisplay\0".as_ptr() as *const c_char);
+        if !get_platform_display.is_null() {
+            REAL_EGL_GET_PLATFORM_DISPLAY = Some(std::mem::transmute(get_platform_display));
+        }
+
+        let initialize = libc::dlsym(RTLD_NEXT, b"eglInitialize\0".as_ptr() as *const c_char);
+        if !initialize.is_null() {
+            REAL_EGL_INITIALIZE = Some(std::mem::transmute(initialize));
+        }
+
+        let create_window_surface = libc::dlsym(RTLD_NEXT, b"eglCreateWindowSurface\0".as_ptr() as *const c_char);
+        if !create_window_surface.is_null() {
+            REAL_EGL_CREATE_WINDOW_SURFACE = Some(std::mem::transmute(create_window_surface));
+        }
+
+        let swap_buffers = libc::dlsym(RTLD_NEXT, b"eglSwapBuffers\0".as_ptr() as *const c_char);
+        if !swap_buffers.is_null() {
+            REAL_EGL_SWAP_BUFFERS = Some(std::mem::transmute(swap_buffers));
+        }
+
+        info!("EGL function pointers initialized for interception");
+    });
+}
+
+/// Intercept eglGetDisplay - return hwcomposer's EGL display
+#[no_mangle]
+pub unsafe extern "C" fn eglGetDisplay(display_id: EGLNativeDisplayType) -> EGLDisplay {
+    init_egl_funcs();
+    info!("eglGetDisplay intercepted (display_id={:?})", display_id);
+
+    // Initialize the shim and its EGL
+    if drm_hwcomposer_shim_init() != 0 {
+        error!("Failed to initialize shim for EGL");
+        return EGL_NO_DISPLAY;
+    }
+
+    if drm_hwcomposer_shim_init_egl() != 0 {
+        error!("Failed to initialize hwcomposer EGL");
+        return EGL_NO_DISPLAY;
+    }
+
+    *EGL_INITIALIZED.lock().unwrap() = true;
+
+    // Return our hwcomposer EGL display
+    drm_hwcomposer_shim_get_egl_display()
+}
+
+/// Intercept eglGetPlatformDisplay - handle GBM platform requests
+#[no_mangle]
+pub unsafe extern "C" fn eglGetPlatformDisplay(
+    platform: u32,
+    native_display: *mut c_void,
+    attrib_list: *const EGLint,
+) -> EGLDisplay {
+    init_egl_funcs();
+    info!("eglGetPlatformDisplay intercepted (platform=0x{:x}, native_display={:?})", platform, native_display);
+
+    // Intercept GBM platform requests
+    if platform == EGL_PLATFORM_GBM_KHR || platform == EGL_PLATFORM_GBM_MESA {
+        info!("GBM platform requested - redirecting to hwcomposer EGL");
+
+        // Initialize the shim and its EGL
+        if drm_hwcomposer_shim_init() != 0 {
+            error!("Failed to initialize shim for EGL");
+            return EGL_NO_DISPLAY;
+        }
+
+        if drm_hwcomposer_shim_init_egl() != 0 {
+            error!("Failed to initialize hwcomposer EGL");
+            return EGL_NO_DISPLAY;
+        }
+
+        *EGL_INITIALIZED.lock().unwrap() = true;
+
+        // Return our hwcomposer EGL display
+        return drm_hwcomposer_shim_get_egl_display();
+    }
+
+    // For other platforms, use the real function
+    if let Some(real_fn) = REAL_EGL_GET_PLATFORM_DISPLAY {
+        real_fn(platform, native_display, attrib_list)
+    } else {
+        error!("Real eglGetPlatformDisplay not available");
+        EGL_NO_DISPLAY
+    }
+}
+
+/// Intercept eglInitialize - we may have already initialized
+#[no_mangle]
+pub unsafe extern "C" fn eglInitialize(dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> u32 {
+    init_egl_funcs();
+    debug!("eglInitialize intercepted (dpy={:?})", dpy);
+
+    // Check if this is our hwcomposer display (already initialized)
+    let our_display = drm_hwcomposer_shim_get_egl_display();
+    if dpy == our_display && *EGL_INITIALIZED.lock().unwrap() {
+        // Already initialized - just return version
+        if !major.is_null() {
+            *major = 1;
+        }
+        if !minor.is_null() {
+            *minor = 4;
+        }
+        info!("eglInitialize: hwcomposer EGL already initialized, returning 1.4");
+        return EGL_TRUE;
+    }
+
+    // Otherwise use real function
+    if let Some(real_fn) = REAL_EGL_INITIALIZE {
+        real_fn(dpy, major, minor)
+    } else {
+        error!("Real eglInitialize not available");
+        EGL_FALSE
+    }
+}
+
+/// Intercept eglCreateWindowSurface - use our native window
+#[no_mangle]
+pub unsafe extern "C" fn eglCreateWindowSurface(
+    dpy: EGLDisplay,
+    config: EGLConfig,
+    win: EGLNativeWindowType,
+    attrib_list: *const EGLint,
+) -> EGLSurface {
+    init_egl_funcs();
+    debug!("eglCreateWindowSurface intercepted (dpy={:?}, win={:?})", dpy, win);
+
+    // Check if this is our hwcomposer display
+    let our_display = drm_hwcomposer_shim_get_egl_display();
+    if dpy == our_display {
+        // The surface was already created during init_egl
+        // Return our existing surface
+        let global = GLOBAL_DRM.lock().unwrap();
+        if let Some(ref drm) = *global {
+            let surface = drm.egl_surface().unwrap_or(EGL_NO_SURFACE);
+            info!("eglCreateWindowSurface: returning hwcomposer EGL surface {:?}", surface);
+            return surface;
+        }
+    }
+
+    // Otherwise use real function
+    if let Some(real_fn) = REAL_EGL_CREATE_WINDOW_SURFACE {
+        real_fn(dpy, config, win, attrib_list)
+    } else {
+        error!("Real eglCreateWindowSurface not available");
+        EGL_NO_SURFACE
+    }
+}
+
+/// Intercept eglSwapBuffers - present via hwcomposer
+#[no_mangle]
+pub unsafe extern "C" fn eglSwapBuffers(dpy: EGLDisplay, surface: EGLSurface) -> u32 {
+    // Check if this is our hwcomposer display
+    let our_display = drm_hwcomposer_shim_get_egl_display();
+    if dpy == our_display {
+        if drm_hwcomposer_shim_swap_buffers() == 0 {
+            return EGL_TRUE;
+        } else {
+            return EGL_FALSE;
+        }
+    }
+
+    // Otherwise use real function
+    init_egl_funcs();
+    if let Some(real_fn) = REAL_EGL_SWAP_BUFFERS {
+        real_fn(dpy, surface)
+    } else {
+        error!("Real eglSwapBuffers not available");
+        EGL_FALSE
+    }
+}
