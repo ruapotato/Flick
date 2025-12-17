@@ -64,9 +64,9 @@ echo ""
 # Run Weston with the shim
 # --backend=drm-backend.so tells Weston to use DRM/KMS which we intercept
 # Use LIBSEAT_BACKEND=noop to avoid libseat child process issues
+# Don't set EGL_PLATFORM - let our shim handle platform selection via interception
 sudo -E LD_PRELOAD="$SHIM_LIB" \
     XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-    EGL_PLATFORM=hwcomposer \
     LIBSEAT_BACKEND=noop \
     weston --backend=drm-backend.so --tty=1 2>&1
 
