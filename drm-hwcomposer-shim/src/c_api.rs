@@ -83,6 +83,8 @@ pub const GBM_BO_TRANSFER_READ_WRITE: u32 = GBM_BO_TRANSFER_READ | GBM_BO_TRANSF
 
 // Global device storage (since we have a single hwcomposer instance)
 static GLOBAL_DRM: Mutex<Option<Arc<HwcDrmDevice>>> = Mutex::new(None);
+// Track if device was registered externally (caller handles EGL init)
+static EXTERNALLY_REGISTERED: Mutex<bool> = Mutex::new(false);
 
 fn format_to_gbm(format: u32) -> Option<GbmFormat> {
     match format {
@@ -2903,6 +2905,10 @@ pub fn drm_hwcomposer_shim_register_device(device: Arc<HwcDrmDevice>) {
     if global.is_none() {
         info!("Registering external HwcDrmDevice with shim");
         *global = Some(device);
+        // Mark as externally registered - caller handles EGL init
+        if let Ok(mut guard) = EXTERNALLY_REGISTERED.lock() {
+            *guard = true;
+        }
         // Mark as initialized
         if let Ok(mut guard) = INIT_RESULT.lock() {
             *guard = Some(0);
@@ -3048,13 +3054,26 @@ pub unsafe extern "C" fn eglGetDisplay(display_id: EGLNativeDisplayType) -> EGLD
     init_egl_funcs();
     info!("eglGetDisplay intercepted (display_id={:?})", display_id);
 
-    // Initialize the shim and its EGL
+    // Initialize the shim
     if drm_hwcomposer_shim_init() != 0 {
         error!("Failed to initialize shim for EGL");
         IN_EGL_INTERCEPT.with(|flag| flag.set(false));
         return EGL_NO_DISPLAY;
     }
 
+    // Check if externally registered - if so, caller handles EGL init
+    // We just pass through to the real eglGetDisplay in this case
+    let externally_registered = *EXTERNALLY_REGISTERED.lock().unwrap();
+    if externally_registered {
+        info!("Device externally registered, passing through to real eglGetDisplay");
+        IN_EGL_INTERCEPT.with(|flag| flag.set(false));
+        if let Some(real_fn) = REAL_EGL_GET_DISPLAY {
+            return real_fn(display_id);
+        }
+        return EGL_NO_DISPLAY;
+    }
+
+    // Not externally registered - we need to init EGL ourselves
     if drm_hwcomposer_shim_init_egl() != 0 {
         error!("Failed to initialize hwcomposer EGL");
         IN_EGL_INTERCEPT.with(|flag| flag.set(false));
