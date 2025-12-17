@@ -58,6 +58,7 @@ pub mod hwcomposer;
 pub use drm_device::HwcDrmDevice;
 pub use gbm_device::HwcGbmDevice;
 pub use error::Error;
+pub use c_api::drm_hwcomposer_shim_register_device;
 
 /// Result type for this crate
 pub type Result<T> = std::result::Result<T, Error>;

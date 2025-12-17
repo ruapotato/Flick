@@ -2896,6 +2896,22 @@ pub extern "C" fn drm_hwcomposer_shim_init() -> c_int {
     result
 }
 
+/// Register an externally-created HwcDrmDevice with the shim
+/// This prevents the shim from creating a duplicate device when EGL functions are called
+pub fn drm_hwcomposer_shim_register_device(device: Arc<HwcDrmDevice>) {
+    let mut global = GLOBAL_DRM.lock().unwrap();
+    if global.is_none() {
+        info!("Registering external HwcDrmDevice with shim");
+        *global = Some(device);
+        // Mark as initialized
+        if let Ok(mut guard) = INIT_RESULT.lock() {
+            *guard = Some(0);
+        }
+    } else {
+        info!("GLOBAL_DRM already set, not registering external device");
+    }
+}
+
 /// Get the EGL display from the shim (for EGL integration)
 #[no_mangle]
 pub unsafe extern "C" fn drm_hwcomposer_shim_get_egl_display() -> *mut c_void {

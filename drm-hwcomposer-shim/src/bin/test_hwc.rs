@@ -1,8 +1,8 @@
 //! Simple test binary for the hwcomposer shim
 //! Renders alternating colors to prove the display is working
 
-use drm_hwcomposer_shim::HwcDrmDevice;
-use std::ffi::c_void;
+use drm_hwcomposer_shim::{HwcDrmDevice, drm_hwcomposer_shim_register_device};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -88,6 +88,11 @@ fn main() {
 
     match HwcDrmDevice::new() {
         Ok(device) => {
+            // Wrap in Arc and register with the shim BEFORE calling init_egl
+            // This prevents the shim from creating a duplicate HWC2 device
+            let device = Arc::new(device);
+            drm_hwcomposer_shim_register_device(device.clone());
+
             let (width, height) = device.get_dimensions();
             let refresh = device.get_refresh_rate();
             let (dpi_x, dpi_y) = device.get_dpi();
