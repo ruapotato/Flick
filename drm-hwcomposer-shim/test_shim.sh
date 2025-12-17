@@ -49,8 +49,15 @@ echo ""
 echo "Running test... You should see colors cycling on the display!"
 echo ""
 
+# Use the real user's runtime directory, not root's
+REAL_UID=$(id -u "${SUDO_USER:-$USER}")
+export XDG_RUNTIME_DIR="/run/user/$REAL_UID"
 export EGL_PLATFORM=hwcomposer
-sudo -E "$TEST_BIN"
+
+echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+echo "EGL_PLATFORM=$EGL_PLATFORM"
+
+sudo -E XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" EGL_PLATFORM=hwcomposer "$TEST_BIN"
 
 echo ""
 echo "Test complete!"
