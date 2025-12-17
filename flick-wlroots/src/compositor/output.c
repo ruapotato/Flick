@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <pixman.h>
 #include <wlr/util/log.h>
 #include <wlr/version.h>
 #include <wlr/render/wlr_renderer.h>
@@ -86,9 +87,15 @@ static void render_hwcomposer_frame(struct flick_output *output) {
         return;
     }
 
-    // Attach buffer and commit
+    // Attach buffer and set damage (full screen)
     wlr_output_state_set_buffer(&pending, buffer);
     wlr_buffer_unlock(buffer);
+
+    // Mark entire screen as damaged (required for hwcomposer to present)
+    pixman_region32_t damage;
+    pixman_region32_init_rect(&damage, 0, 0, wlr_output->width, wlr_output->height);
+    wlr_output_state_set_damage(&pending, &damage);
+    pixman_region32_fini(&damage);
 
     if (!wlr_output_commit_state(wlr_output, &pending)) {
         wlr_log(WLR_ERROR, "Failed to commit output state");
