@@ -100,25 +100,16 @@ static void render_hwcomposer_frame(struct flick_output *output) {
         return;
     }
 
-    // Explicitly swap buffers (required for android renderer)
+    // Explicitly swap buffers (required for android renderer to present)
     if (!wlr_renderer_swap_buffers(wlr_output->renderer, &damage, wlr_output)) {
         wlr_log(WLR_ERROR, "Failed to swap buffers");
     } else if (frame_num <= 5) {
         wlr_log(WLR_INFO, "render_hwcomposer_frame %d: swap_buffers successful", frame_num);
     }
 
-    // Attach buffer and set damage
-    wlr_output_state_set_buffer(&pending, buffer);
+    // Clean up - don't commit buffer state, swap_buffers already did it
     wlr_buffer_unlock(buffer);
-    wlr_output_state_set_damage(&pending, &damage);
     pixman_region32_fini(&damage);
-
-    if (!wlr_output_commit_state(wlr_output, &pending)) {
-        wlr_log(WLR_ERROR, "Failed to commit output state");
-    } else if (frame_num <= 5) {
-        wlr_log(WLR_INFO, "render_hwcomposer_frame %d: committed successfully", frame_num);
-    }
-
     wlr_output_state_finish(&pending);
 }
 #endif // WLR_VERSION_MINOR < 18
