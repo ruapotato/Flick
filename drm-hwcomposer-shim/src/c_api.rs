@@ -799,21 +799,22 @@ pub const DRM_PLANE_TYPE_CURSOR: u64 = 2;
 pub unsafe extern "C" fn drmModeGetResources(fd: c_int) -> *mut drmModeRes {
     debug!("drmModeGetResources(fd={})", fd);
 
-    // Get or create global DRM device
+    // Ensure shim is initialized
+    if drm_hwcomposer_shim_init() != 0 {
+        error!("Failed to initialize shim for drmModeGetResources");
+        return ptr::null_mut();
+    }
+
+    // Get global DRM device
     let drm = {
-        let mut global = GLOBAL_DRM.lock().unwrap();
-        if global.is_none() {
-            match HwcDrmDevice::new() {
-                Ok(d) => {
-                    *global = Some(Arc::new(d));
-                }
-                Err(e) => {
-                    error!("Failed to create DRM device: {}", e);
-                    return ptr::null_mut();
-                }
+        let global = GLOBAL_DRM.lock().unwrap();
+        match global.clone() {
+            Some(d) => d,
+            None => {
+                error!("GLOBAL_DRM not set");
+                return ptr::null_mut();
             }
         }
-        global.clone().unwrap()
     };
 
     let resources = drm.get_resources();
