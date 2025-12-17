@@ -26,11 +26,6 @@ static bool is_hwcomposer_output(struct wlr_output *output) {
 // Only available on droidian wlroots 0.17 which has the android renderer extension
 #if WLR_VERSION_MINOR < 18
 
-// Declaration for droidian's extended function (not in standard headers)
-struct wlr_render_pass *wlr_renderer_begin_buffer_pass_for_output(
-    struct wlr_renderer *renderer, struct wlr_buffer *buffer,
-    const struct wlr_buffer_pass_options *options, void *output);
-
 static void render_hwcomposer_frame(struct flick_output *output) {
     struct wlr_output *wlr_output = output->wlr_output;
     struct flick_server *server = output->server;
@@ -59,7 +54,7 @@ static void render_hwcomposer_frame(struct flick_output *output) {
 
     // Begin render pass with output (droidian extension for android renderer)
     struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass_for_output(
-        wlr_output->renderer, buffer, NULL, (void*)wlr_output);
+        wlr_output->renderer, buffer, NULL, wlr_output);
     if (!pass) {
         wlr_log(WLR_ERROR, "Failed to begin render pass");
         wlr_buffer_unlock(buffer);
