@@ -1,27 +1,18 @@
 #!/bin/bash
-# Start Flick compositor on Droidian phone with hwcomposer backend
+# Start Flick compositor on Droidian with hwcomposer backend
 # Usage: ./start_hwcomposer.sh [--timeout N]
-#
-# This script can survive SSH disconnection - check logs after
+
+set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FLICK_BIN="$SCRIPT_DIR/flick-wlroots/build/flick"
-TIMEOUT=30
+TIMEOUT="${1:-0}"
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --timeout)
-            TIMEOUT="$2"
-            shift 2
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Usage: $0 [--timeout N]"
-            exit 1
-            ;;
-    esac
-done
+if [[ "$1" == "--timeout" ]]; then
+    TIMEOUT="${2:-30}"
+fi
+
+echo "=== Flick HWComposer Launcher ==="
 
 # Build if needed
 cd "$SCRIPT_DIR/flick-wlroots"
@@ -29,97 +20,49 @@ if [ ! -f build/flick ] || [ Makefile -nt build/flick ]; then
     echo "Building flick..."
     make || exit 1
 fi
-cd "$SCRIPT_DIR"
 
 if [ ! -f "$FLICK_BIN" ]; then
-    echo "Error: flick binary not found at $FLICK_BIN"
+    echo "Error: $FLICK_BIN not found"
     exit 1
 fi
 
-# Get the real user's UID
-REAL_UID=$(id -u "${SUDO_USER:-$USER}")
-
-# Create logs directory
-mkdir -p "$SCRIPT_DIR/logs"
-LOG_FILE="$SCRIPT_DIR/logs/flick-hwc-$(date +%Y%m%d-%H%M%S).log"
-
-echo "=== Flick HWComposer Test ===" | tee "$LOG_FILE"
-echo "Timeout: ${TIMEOUT}s" | tee -a "$LOG_FILE"
-echo "Log: $LOG_FILE" | tee -a "$LOG_FILE"
-echo "" | tee -a "$LOG_FILE"
-
-# Create a wrapper script that will run in the background
-WRAPPER="/tmp/flick_wrapper_$$.sh"
-cat > "$WRAPPER" << EOFWRAPPER
-#!/bin/bash
-LOG_FILE="$LOG_FILE"
-FLICK_BIN="$FLICK_BIN"
-TIMEOUT="$TIMEOUT"
-REAL_UID="$REAL_UID"
-
-exec >> "\$LOG_FILE" 2>&1
-
-echo "Stopping phosh..."
-systemctl stop phosh || true
-sleep 2
-
 echo "Resetting hwcomposer..."
-pkill -9 -f 'graphics.composer' || true
-pkill -9 -f 'hwcomposer' || true
+sudo pkill -9 -f 'graphics.composer' 2>/dev/null || true
+sudo pkill -9 -f 'hwcomposer' 2>/dev/null || true
 sleep 1
 
-# Restart hwcomposer service
+# Restart hwcomposer
 if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
-    echo "Using halium wrapper to restart hwcomposer..."
-    ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
-        /usr/lib/halium-wrappers/android-service.sh hwcomposer stop || true
+    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
+        /usr/lib/halium-wrappers/android-service.sh hwcomposer stop 2>/dev/null || true
     sleep 1
-    ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
-        /usr/lib/halium-wrappers/android-service.sh hwcomposer start || true
+    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
+        /usr/lib/halium-wrappers/android-service.sh hwcomposer start
 else
-    systemctl restart hwcomposer || true
+    sudo systemctl restart hwcomposer 2>/dev/null || true
 fi
-sleep 3
-echo "hwcomposer ready"
 
-# Set up environment - CRITICAL for hwcomposer
-export XDG_RUNTIME_DIR="/run/user/\$REAL_UID"
+echo "Waiting for hwcomposer..."
+sleep 3
+
+# Environment for hwcomposer
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 export EGL_PLATFORM=hwcomposer
 export WLR_BACKENDS=hwcomposer
 
-# Ensure runtime dir exists
-mkdir -p "\$XDG_RUNTIME_DIR" 2>/dev/null || true
-
-echo ""
-echo "Starting Flick compositor..."
+echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+echo "EGL_PLATFORM=$EGL_PLATFORM"
+echo "WLR_BACKENDS=$WLR_BACKENDS"
 echo ""
 
-# Run flick with timeout
-timeout --signal=TERM "\$TIMEOUT" "\$FLICK_BIN" -v || true
+# Run flick
+if [ "$TIMEOUT" -gt 0 ] 2>/dev/null; then
+    echo "Running flick for ${TIMEOUT}s..."
+    sudo -E timeout --signal=TERM "$TIMEOUT" "$FLICK_BIN" -v || true
+else
+    echo "Running flick (Ctrl+C to stop)..."
+    sudo -E "$FLICK_BIN" -v || true
+fi
 
 echo ""
-echo "Flick exited, restarting phosh..."
-systemctl start phosh || true
-echo "Done at \$(date)"
-EOFWRAPPER
-
-chmod +x "$WRAPPER"
-
-echo "Starting background process..." | tee -a "$LOG_FILE"
-echo "SSH may disconnect - check $LOG_FILE for results" | tee -a "$LOG_FILE"
-echo "" | tee -a "$LOG_FILE"
-
-# Run as root in background, detached from terminal
-sudo nohup bash "$WRAPPER" &
-WRAPPER_PID=$!
-
-echo "Wrapper started (PID: $WRAPPER_PID)"
-echo "Waiting 5 seconds for initial output..."
-sleep 5
-
-# Show what's in the log so far
-echo ""
-echo "=== Log so far ==="
-cat "$LOG_FILE"
-echo ""
-echo "=== Check full log later with: cat $LOG_FILE ==="
+echo "Flick exited."
