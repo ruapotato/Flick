@@ -1,72 +1,78 @@
 #!/bin/bash
-# Flick - Mobile-first Wayland compositor with integrated shell
-#
-# Usage:
-#   ./start.sh              - Run compositor
-#   ./start.sh --timeout 10 - Run for 10 seconds then exit
+# Start script for Flick compositor testing
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SHELL_DIR="$SCRIPT_DIR/shell"
+SCRIPT_DIR="$(dirname "$0")"
+LOG_DIR="$SCRIPT_DIR/logs"
+LOG_FILE="$LOG_DIR/flick-$(date +%Y%m%d-%H%M%S).log"
+TIMEOUT=0
+VERBOSE=""
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-# Defaults
-TIMEOUT=""
+usage() {
+    echo "Usage: $0 [options]"
+    echo ""
+    echo "Options:"
+    echo "  --timeout N    Kill compositor after N seconds"
+    echo "  -v, --verbose  Enable verbose logging"
+    echo "  -h, --help     Show this help"
+    echo ""
+    echo "Logs are saved to: $LOG_DIR/"
+}
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --timeout|-t)
+        --timeout)
             TIMEOUT="$2"
             shift 2
             ;;
-        --help|-h)
-            echo "Usage: $0 [OPTIONS]"
-            echo ""
-            echo "Options:"
-            echo "  --timeout, -t SECONDS  Exit after SECONDS (useful for testing)"
-            echo "  --help, -h             Show this help"
-            echo ""
-            echo "The shell UI is integrated into the compositor."
-            echo ""
-            echo "Gestures:"
-            echo "  Swipe up from bottom    - Go home (app grid)"
-            echo "  Swipe down from top     - Close current app"
-            echo "  Swipe left from right   - App switcher"
-            echo "  Swipe right from left   - Back"
+        -v|--verbose)
+            VERBOSE="-v"
+            shift
+            ;;
+        -h|--help)
+            usage
             exit 0
             ;;
         *)
-            echo -e "${RED}Unknown option: $1${NC}"
+            echo "Unknown option: $1"
+            usage
             exit 1
             ;;
     esac
 done
 
-# Build shell if needed
-cd "$SHELL_DIR"
-if [ ! -f target/release/flick ] || [ Cargo.toml -nt target/release/flick ] || [ -n "$(find src -newer target/release/flick 2>/dev/null)" ]; then
-    echo -e "${YELLOW}Building shell (release)...${NC}"
-    cargo build --release
+cd "$SCRIPT_DIR/flick-wlroots"
+
+# Build if needed
+if [ ! -f build/flick ] || [ Makefile -nt build/flick ]; then
+    echo "Building flick..."
+    make
 fi
 
-echo -e "${GREEN}Starting Flick shell...${NC}"
-[ -n "$TIMEOUT" ] && echo -e "  Timeout: ${TIMEOUT}s"
-echo -e "  Logs: ~/.local/state/flick/flick.log.*"
-echo ""
+# Create log directory
+mkdir -p "$LOG_DIR"
 
-# Run shell
-if [ -n "$TIMEOUT" ]; then
-    timeout "$TIMEOUT" ./target/release/flick || EXIT_CODE=$?
-    if [ "$EXIT_CODE" = "124" ]; then
-        echo -e "\n${YELLOW}Timeout reached (${TIMEOUT}s)${NC}"
+echo "Starting Flick compositor..."
+echo "Log file: $LOG_FILE"
+if [ "$TIMEOUT" -gt 0 ] 2>/dev/null; then
+    echo "Timeout: ${TIMEOUT}s"
+fi
+
+# Run the compositor with logging
+if [ "$TIMEOUT" -gt 0 ] 2>/dev/null; then
+    # Run with timeout
+    timeout --signal=TERM "$TIMEOUT" ./build/flick $VERBOSE 2>&1 | tee "$LOG_FILE"
+    EXIT_CODE=${PIPESTATUS[0]}
+    if [ $EXIT_CODE -eq 124 ]; then
+        echo ""
+        echo "=== Compositor terminated after ${TIMEOUT}s timeout ==="
     fi
 else
-    ./target/release/flick
+    # Run without timeout
+    ./build/flick $VERBOSE 2>&1 | tee "$LOG_FILE"
 fi
+
+echo ""
+echo "Log saved to: $LOG_FILE"
