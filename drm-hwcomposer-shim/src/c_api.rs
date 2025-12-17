@@ -1716,6 +1716,10 @@ const DRM_IOCTL_MODE_CREATE_DUMB: libc::c_ulong = drm_iowr(0xb2, 32);
 const DRM_IOCTL_MODE_MAP_DUMB: libc::c_ulong = drm_iowr(0xb3, 16);
 const DRM_IOCTL_MODE_DESTROY_DUMB: libc::c_ulong = drm_iowr(0xb4, 4);
 
+// PRIME ioctls (DMA-BUF)
+const DRM_IOCTL_PRIME_HANDLE_TO_FD: libc::c_ulong = drm_iowr(0x2d, 12);
+const DRM_IOCTL_PRIME_FD_TO_HANDLE: libc::c_ulong = drm_iowr(0x2e, 12);
+
 // drm_version struct (for DRM_IOCTL_VERSION)
 #[repr(C)]
 struct DrmVersionIoctl {
@@ -1910,6 +1914,14 @@ struct DrmModeDestroyDumb {
     handle: u32,
 }
 
+// drm_prime_handle - for PRIME_HANDLE_TO_FD / PRIME_FD_TO_HANDLE
+#[repr(C)]
+struct DrmPrimeHandle {
+    handle: u32,
+    flags: u32,
+    fd: i32,
+}
+
 /// Handle DRM ioctls - wraps libdrm's drmIoctl
 #[no_mangle]
 pub unsafe extern "C" fn drmIoctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) -> c_int {
@@ -1973,8 +1985,8 @@ pub unsafe extern "C" fn ioctl(fd: c_int, request: libc::c_ulong, arg: *mut c_vo
 
 /// Handle DRM-specific ioctls
 unsafe fn handle_drm_ioctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) -> c_int {
-    // Extract the ioctl number for matching (mask out size/direction bits for easier matching)
-    let nr = (request >> 8) & 0xFF;
+    // Extract the ioctl number for debugging (lowest byte in DRM ioctls)
+    let nr = request & 0xFF;
 
     match request {
         DRM_IOCTL_VERSION => {
@@ -2437,6 +2449,54 @@ unsafe fn handle_drm_ioctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) 
             let destroy = arg as *mut DrmModeDestroyDumb;
             info!("  DESTROY_DUMB: handle={}", (*destroy).handle);
             // Just accept the destroy (we don't actually manage the memory)
+            0
+        }
+
+        DRM_IOCTL_PRIME_HANDLE_TO_FD => {
+            info!("ioctl: DRM_IOCTL_PRIME_HANDLE_TO_FD");
+            if arg.is_null() {
+                *libc::__errno_location() = libc::EINVAL;
+                return -1;
+            }
+            let prime = arg as *mut DrmPrimeHandle;
+            let handle = (*prime).handle;
+            // For handles 100+, these are our fake dumb buffer handles - create a memfd
+            // For other handles, assume they're GBM buffer handles with associated fds
+            if handle >= 100 {
+                // Create a memfd for fake dumb buffers
+                let name = b"drm-shim-prime\0";
+                let fd = libc::syscall(libc::SYS_memfd_create, name.as_ptr(), 0) as i32;
+                if fd >= 0 {
+                    (*prime).fd = fd;
+                    info!("  PRIME_HANDLE_TO_FD: handle={} -> fd={} (memfd)", handle, fd);
+                } else {
+                    (*prime).fd = -1;
+                    error!("  PRIME_HANDLE_TO_FD: failed to create memfd");
+                    return -1;
+                }
+            } else {
+                // For GBM buffer handles, we need to look up the fd
+                // Just use the handle as fd for now (hacky but works for our gbm_bo)
+                (*prime).fd = handle as i32;
+                info!("  PRIME_HANDLE_TO_FD: handle={} -> fd={}", handle, (*prime).fd);
+            }
+            0
+        }
+
+        DRM_IOCTL_PRIME_FD_TO_HANDLE => {
+            info!("ioctl: DRM_IOCTL_PRIME_FD_TO_HANDLE");
+            if arg.is_null() {
+                *libc::__errno_location() = libc::EINVAL;
+                return -1;
+            }
+            let prime = arg as *mut DrmPrimeHandle;
+            let fd = (*prime).fd;
+            // Generate a GEM handle from the fd
+            // Use the fd as the handle for simplicity
+            static GEM_HANDLE_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+            let handle = GEM_HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            (*prime).handle = handle;
+            info!("  PRIME_FD_TO_HANDLE: fd={} -> handle={}", fd, handle);
             0
         }
 
