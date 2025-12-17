@@ -102,14 +102,6 @@ void flick_new_output_notify(struct wl_listener *listener, void *data) {
     flick_gesture_set_screen_size(&server->gesture,
         server->output_width, server->output_height);
 
-    // Update status bar size to match output width
-    if (server->status_bar) {
-        wlr_scene_rect_set_size(server->status_bar,
-            server->output_width, 32);
-        // Raise status bar above other content
-        wlr_scene_node_raise_to_top(&server->status_bar->node);
-    }
-
     // Update background size
     if (server->background) {
         wlr_scene_rect_set_size(server->background,

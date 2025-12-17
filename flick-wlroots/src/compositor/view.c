@@ -92,16 +92,14 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 
     wl_list_insert(&server->views, &view->link);
 
-    // For mobile: maximize windows by default
-    struct wlr_box output_box = {0};
+    // For mobile: fullscreen all windows
     if (server->output_width > 0 && server->output_height > 0) {
-        output_box.width = server->output_width;
-        output_box.height = server->output_height;
-
-        // Set maximized state
         wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-            output_box.width, output_box.height);
-        wlr_xdg_toplevel_set_maximized(view->xdg_toplevel, true);
+            server->output_width, server->output_height);
+        wlr_xdg_toplevel_set_fullscreen(view->xdg_toplevel, true);
+
+        // Position at 0,0
+        wlr_scene_node_set_position(&view->scene_tree->node, 0, 0);
     }
 
     // Focus the new view

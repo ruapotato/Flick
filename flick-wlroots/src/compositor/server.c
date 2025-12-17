@@ -11,6 +11,8 @@
 #include "output.h"
 #include "input.h"
 #include "view.h"
+#include "../shell/shell.h"
+#include "../shell/gesture.h"
 
 // Forward declarations
 static struct flick_view *view_at(struct flick_server *server,
@@ -60,6 +62,16 @@ static struct flick_view *view_at(struct flick_server *server,
 
 // Process cursor motion
 static void process_cursor_motion(struct flick_server *server, uint32_t time) {
+    // If dragging, feed to gesture recognizer (for testing edge swipes with mouse)
+    if (server->pointer_dragging) {
+        struct flick_gesture_event gesture_event = {0};
+        if (flick_gesture_touch_motion(&server->gesture, 0,
+                server->cursor->x, server->cursor->y, &gesture_event)) {
+            flick_shell_handle_gesture(&server->shell, &gesture_event);
+        }
+        return;  // Don't send to clients while gesturing
+    }
+
     double sx, sy;
     struct wlr_surface *surface = NULL;
     struct flick_view *view = view_at(server,
@@ -104,10 +116,44 @@ static void cursor_button_notify(struct wl_listener *listener, void *data) {
     struct flick_server *server = wl_container_of(listener, server, cursor_button);
     struct wlr_pointer_button_event *event = data;
 
+    // Left button for gestures (edge swipes with mouse)
+    if (event->button == BTN_LEFT) {
+        if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+            // Start tracking drag for gesture
+            server->pointer_dragging = true;
+            server->pointer_drag_start_x = server->cursor->x;
+            server->pointer_drag_start_y = server->cursor->y;
+
+            // Feed to gesture recognizer
+            struct flick_gesture_event gesture_event = {0};
+            if (flick_gesture_touch_down(&server->gesture, 0,
+                    server->cursor->x, server->cursor->y, &gesture_event)) {
+                flick_shell_handle_gesture(&server->shell, &gesture_event);
+            }
+        } else {
+            // End drag
+            if (server->pointer_dragging) {
+                server->pointer_dragging = false;
+
+                struct flick_gesture_event gesture_event = {0};
+                if (flick_gesture_touch_up(&server->gesture, 0, &gesture_event)) {
+                    flick_shell_handle_gesture(&server->shell, &gesture_event);
+
+                    // Handle the action from completed gesture
+                    enum flick_gesture_action action = flick_gesture_to_action(&gesture_event);
+                    if (action != FLICK_ACTION_NONE) {
+                        flick_shell_handle_action(&server->shell, action);
+                    }
+                }
+            }
+        }
+        return;
+    }
+
     wlr_seat_pointer_notify_button(server->seat,
         event->time_msec, event->button, event->state);
 
-    // Focus the view under cursor on click
+    // Focus the view under cursor on click (non-left buttons)
     if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
         double sx, sy;
         struct wlr_surface *surface = NULL;
@@ -236,16 +282,6 @@ bool flick_server_init(struct flick_server *server) {
         wlr_log(WLR_INFO, "Created background rect");
     } else {
         wlr_log(WLR_ERROR, "Failed to create background rect");
-    }
-
-    // Create status bar at top (will be positioned when output is configured)
-    float bar_color[4] = {0.0f, 0.0f, 0.0f, 0.7f};  // Semi-transparent black
-    server->status_bar = wlr_scene_rect_create(
-        &server->scene->tree, 4096, 32, bar_color);  // 32px tall
-    if (server->status_bar) {
-        wlr_log(WLR_INFO, "Created status bar");
-    } else {
-        wlr_log(WLR_ERROR, "Failed to create status bar");
     }
 
     // Create compositor (wl_compositor and wl_subcompositor protocols)

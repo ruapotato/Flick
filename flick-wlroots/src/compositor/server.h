@@ -36,7 +36,6 @@ struct flick_server {
     struct wlr_output_layout *output_layout;
     struct wlr_scene_output_layout *scene_layout;
     struct wlr_scene_rect *background;  // Shell background color
-    struct wlr_scene_rect *status_bar;  // Status bar at top
 
     // Wayland protocols
     struct wlr_compositor *compositor;
@@ -57,6 +56,11 @@ struct flick_server {
     // Seat request listeners
     struct wl_listener request_cursor;
     struct wl_listener request_set_selection;
+
+    // Pointer gesture tracking (for testing without touchscreen)
+    bool pointer_dragging;
+    double pointer_drag_start_x;
+    double pointer_drag_start_y;
 
     struct wl_list outputs;  // flick_output.link
     struct wl_list inputs;   // flick_input.link
