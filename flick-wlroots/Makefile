@@ -2,10 +2,14 @@
 # For development/testing - use meson for full build
 
 CC = gcc
+
+# Detect wlroots package name (0.18+ uses wlroots-0.18, 0.17 uses wlroots)
+WLROOTS_PKG := $(shell pkg-config --exists wlroots-0.18 && echo wlroots-0.18 || echo wlroots)
+
 CFLAGS = -Wall -Wextra -std=c11 -g -DWLR_USE_UNSTABLE
-CFLAGS += $(shell pkg-config --cflags wlroots-0.18 wayland-server xkbcommon pixman-1)
+CFLAGS += $(shell pkg-config --cflags $(WLROOTS_PKG) wayland-server xkbcommon pixman-1)
 CFLAGS += -I$(BUILDDIR)/protocols -Isrc
-LDFLAGS = $(shell pkg-config --libs wlroots-0.18 wayland-server xkbcommon pixman-1) -lm
+LDFLAGS = $(shell pkg-config --libs $(WLROOTS_PKG) wayland-server xkbcommon pixman-1) -lm
 
 WAYLAND_SCANNER = wayland-scanner
 WAYLAND_PROTOCOLS_DIR = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
