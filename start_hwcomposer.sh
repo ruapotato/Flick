@@ -39,6 +39,11 @@ echo "=== Flick HWComposer Test ==="
 echo "Started: \$(date)"
 echo ""
 
+# Stop phosh first - it holds the hwcomposer display
+echo "Stopping phosh..."
+systemctl stop phosh || true
+sleep 1
+
 echo "Resetting hwcomposer..."
 pkill -9 -f 'graphics.composer' || true
 pkill -9 -f 'hwcomposer' || true
@@ -75,6 +80,10 @@ sudo -u droidian -E timeout --signal=TERM $TIMEOUT "$FLICK_BIN" -v || true
 
 echo ""
 echo "Flick exited at \$(date)"
+
+# Restart phosh so user doesn't lose their display
+echo "Restarting phosh..."
+systemctl start phosh || true
 EOF
 
 chmod +x "$RUNNER"
