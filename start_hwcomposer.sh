@@ -1,21 +1,19 @@
 #!/bin/bash
 # Start Flick compositor on Droidian with hwcomposer backend
 # Usage: ./start_hwcomposer.sh [--timeout N]
+# Ctrl+C to stop
+
+set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FLICK_BIN="$SCRIPT_DIR/flick-wlroots/build/flick"
-LOG_FILE="$SCRIPT_DIR/logs/flick-hwc-$(date +%Y%m%d-%H%M%S).log"
-TIMEOUT=30
+TIMEOUT="${2:-0}"
 
 if [[ "$1" == "--timeout" ]]; then
     TIMEOUT="${2:-30}"
 fi
 
-mkdir -p "$SCRIPT_DIR/logs"
-
 echo "=== Flick HWComposer Launcher ==="
-echo "Log: $LOG_FILE"
-echo "Timeout: ${TIMEOUT}s"
 
 # Build if needed
 cd "$SCRIPT_DIR/flick-wlroots"
@@ -29,89 +27,62 @@ if [ ! -f "$FLICK_BIN" ]; then
     exit 1
 fi
 
-# Create runner script that will execute detached
-RUNNER="/tmp/flick_runner_$$.sh"
-cat > "$RUNNER" << EOF
-#!/bin/bash
-exec > "$LOG_FILE" 2>&1
-
-echo "=== Flick HWComposer Test ==="
-echo "Started: \$(date)"
-echo ""
-
-# Stop phosh first - it holds the hwcomposer display
 echo "Stopping phosh..."
-systemctl stop phosh || true
+sudo systemctl stop phosh || true
 sleep 1
 
 echo "Stopping hwcomposer completely..."
-# Kill all hwcomposer-related processes aggressively
-pkill -9 -f 'graphics.composer' || true
-pkill -9 -f 'hwcomposer' || true
-killall -9 android.hardware.graphics.composer 2>/dev/null || true
-killall -9 composer 2>/dev/null || true
+sudo pkill -9 -f 'graphics.composer' || true
+sudo pkill -9 -f 'hwcomposer' || true
+sudo killall -9 android.hardware.graphics.composer 2>/dev/null || true
+sudo killall -9 composer 2>/dev/null || true
 
-# Stop the service if running
 if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
-    ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
+    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
         /usr/lib/halium-wrappers/android-service.sh hwcomposer stop || true
 fi
 sleep 2
 
 echo "Restarting hwcomposer..."
 if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
-    ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
+    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
         /usr/lib/halium-wrappers/android-service.sh hwcomposer start
 else
-    systemctl restart hwcomposer 2>/dev/null || true
+    sudo systemctl restart hwcomposer 2>/dev/null || true
 fi
 sleep 3
 echo "hwcomposer restarted"
 
-# Unblank display - try multiple methods like the old Rust code did
+# Unblank display
 echo "Unblanking display..."
-# Method 1: backlight power
-echo 0 > /sys/class/backlight/panel0-backlight/bl_power 2>/dev/null || true
-# Method 2: Set brightness if it's 0
-BRIGHTNESS=\$(cat /sys/class/backlight/panel0-backlight/brightness 2>/dev/null || echo "0")
-if [ "\$BRIGHTNESS" = "0" ]; then
-    echo 255 > /sys/class/backlight/panel0-backlight/brightness 2>/dev/null || true
+sudo sh -c 'echo 0 > /sys/class/backlight/panel0-backlight/bl_power' 2>/dev/null || true
+BRIGHTNESS=$(cat /sys/class/backlight/panel0-backlight/brightness 2>/dev/null || echo "0")
+if [ "$BRIGHTNESS" = "0" ]; then
+    sudo sh -c 'echo 255 > /sys/class/backlight/panel0-backlight/brightness' 2>/dev/null || true
 fi
-# Method 3: fbdev unblank
-echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
+sudo sh -c 'echo 0 > /sys/class/graphics/fb0/blank' 2>/dev/null || true
 
-# Match phosh's environment setup exactly
+# Environment
 export XDG_RUNTIME_DIR="/run/user/32011"
 export EGL_PLATFORM=hwcomposer
 export WLR_BACKENDS='hwcomposer,libinput'
 export WLR_HWC_SKIP_VERSION_CHECK=1
 
+echo ""
 echo "Environment:"
-echo "  XDG_RUNTIME_DIR=\$XDG_RUNTIME_DIR"
-echo "  EGL_PLATFORM=\$EGL_PLATFORM"
-echo "  WLR_BACKENDS=\$WLR_BACKENDS"
-echo "  WLR_HWC_SKIP_VERSION_CHECK=\$WLR_HWC_SKIP_VERSION_CHECK"
+echo "  XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+echo "  EGL_PLATFORM=$EGL_PLATFORM"
+echo "  WLR_BACKENDS=$WLR_BACKENDS"
 echo ""
-echo "Running flick as droidian user for ${TIMEOUT}s..."
-echo ""
-
-# Run as droidian user (like phosh does) instead of root
-sudo -u droidian -E timeout --signal=TERM $TIMEOUT "$FLICK_BIN" -v || true
-
-echo ""
-echo "Flick exited at \$(date)"
-
-# Note: phosh stays stopped - manually run 'systemctl start phosh' to restore it
-EOF
-
-chmod +x "$RUNNER"
-
-echo ""
-echo "Launching detached (SSH may disconnect)..."
-echo "Check log after ~${TIMEOUT}s: cat $LOG_FILE"
+echo "Starting flick (Ctrl+C to stop)..."
 echo ""
 
-# Run as root, fully detached
-sudo nohup "$RUNNER" &>/dev/null &
+# Run flick - with or without timeout
+if [ "$TIMEOUT" -gt 0 ]; then
+    sudo -u droidian -E timeout --signal=TERM "$TIMEOUT" "$FLICK_BIN" -v
+else
+    sudo -u droidian -E "$FLICK_BIN" -v
+fi
 
-echo "Started. Wait ${TIMEOUT}s then check: cat $LOG_FILE"
+echo ""
+echo "Flick exited. Run 'sudo systemctl start phosh' to restore UI."
