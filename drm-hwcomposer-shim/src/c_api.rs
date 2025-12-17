@@ -3375,6 +3375,16 @@ pub unsafe extern "C" fn eglSwapBuffers(dpy: EGLDisplay, surface: EGLSurface) ->
         return EGL_FALSE;
     }
 
+    // If externally registered, pass through - caller handles EGL
+    let externally_registered = *EXTERNALLY_REGISTERED.lock().unwrap();
+    if externally_registered {
+        init_egl_funcs();
+        if let Some(real_fn) = REAL_EGL_SWAP_BUFFERS {
+            return real_fn(dpy, surface);
+        }
+        return EGL_FALSE;
+    }
+
     // Check if this is our hwcomposer display
     let our_display = drm_hwcomposer_shim_get_egl_display();
     info!("eglSwapBuffers: our_display={:?}, match={}", our_display, dpy == our_display);
