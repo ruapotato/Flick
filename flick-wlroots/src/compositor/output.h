@@ -13,6 +13,8 @@ struct flick_output {
     struct wlr_scene_output *scene_output;
     struct wl_list link;  // flick_server.outputs
 
+    int frame_count;  // For hwcomposer init delay
+
     struct wl_listener frame;
     struct wl_listener destroy;
 };

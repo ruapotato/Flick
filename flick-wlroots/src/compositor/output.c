@@ -13,6 +13,15 @@ static void output_frame_notify(struct wl_listener *listener, void *data) {
     struct flick_output *output = wl_container_of(listener, output, frame);
     struct wlr_scene_output *scene_output = output->scene_output;
 
+    // Skip first few frames to let hwcomposer fully initialize
+    // (native window may not be ready immediately)
+    if (output->frame_count < 3) {
+        output->frame_count++;
+        wlr_log(WLR_DEBUG, "Skipping early frame %d for hwcomposer init",
+                output->frame_count);
+        return;
+    }
+
     // Let the scene graph render everything
     wlr_scene_output_commit(scene_output, NULL);
 
