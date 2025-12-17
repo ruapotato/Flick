@@ -417,6 +417,8 @@ impl Hwcomposer {
         info!("Initializing EGL for hwcomposer display");
 
         // Create native window for rendering
+        info!("Creating HWCNativeWindow ({}x{}, format={})",
+              self.mode.width, self.mode.height, HAL_PIXEL_FORMAT_RGBA_8888);
         let hwc_ptr = self as *mut Hwcomposer as *mut c_void;
         self.native_window = unsafe {
             HWCNativeWindowCreate(
@@ -427,16 +429,21 @@ impl Hwcomposer {
                 hwc_ptr,
             )
         };
+        info!("HWCNativeWindowCreate returned: {:?}", self.native_window);
 
         if self.native_window.is_null() {
             return Err(Error::HwcInit("Failed to create native window".into()));
         }
 
         // Set triple buffering
+        info!("Setting buffer count to 3");
         unsafe { HWCNativeWindowSetBufferCount(self.native_window, 3) };
+        info!("Buffer count set");
 
         // Get EGL display
+        info!("Calling eglGetDisplay(EGL_DEFAULT_DISPLAY)");
         self.egl_display = unsafe { eglGetDisplay(ffi::EGL_DEFAULT_DISPLAY) };
+        info!("eglGetDisplay returned: {:?}", self.egl_display);
         if self.egl_display == ffi::EGL_NO_DISPLAY {
             return Err(Error::HwcInit("Failed to get EGL display".into()));
         }
