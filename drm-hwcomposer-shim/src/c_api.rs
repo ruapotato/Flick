@@ -3007,9 +3007,12 @@ pub unsafe extern "C" fn eglCreateWindowSurface(
     win: EGLNativeWindowType,
     attrib_list: *const EGLint,
 ) -> EGLSurface {
+    info!("eglCreateWindowSurface ENTER (dpy={:?}, config={:?}, win={:?})", dpy, config, win);
+
     // Check for recursion to avoid deadlock
     let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
     if in_intercept {
+        info!("eglCreateWindowSurface: recursion detected, passing through");
         init_egl_funcs();
         if let Some(real_fn) = REAL_EGL_CREATE_WINDOW_SURFACE {
             return real_fn(dpy, config, win, attrib_list);
@@ -3018,7 +3021,7 @@ pub unsafe extern "C" fn eglCreateWindowSurface(
     }
 
     init_egl_funcs();
-    debug!("eglCreateWindowSurface intercepted (dpy={:?}, win={:?})", dpy, win);
+    info!("eglCreateWindowSurface intercepted (dpy={:?}, win={:?})", dpy, win);
 
     // Check if this is our hwcomposer display
     let our_display = drm_hwcomposer_shim_get_egl_display();
