@@ -2175,9 +2175,19 @@ unsafe fn handle_drm_ioctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) 
         }
 
         DRM_IOCTL_MODE_OBJ_GETPROPERTIES => {
-            debug!("ioctl: DRM_IOCTL_MODE_OBJ_GETPROPERTIES");
             let props = arg as *mut DrmModeObjGetProperties;
             if !props.is_null() {
+                let obj_id = (*props).obj_id;
+                debug!("ioctl: DRM_IOCTL_MODE_OBJ_GETPROPERTIES (obj_id={})", obj_id);
+
+                // Determine plane type based on object_id
+                // PRIMARY_PLANE_ID = 20, CURSOR_PLANE_ID = 21
+                let plane_type = match obj_id {
+                    20 => DRM_PLANE_TYPE_PRIMARY,
+                    21 => DRM_PLANE_TYPE_CURSOR,
+                    _ => DRM_PLANE_TYPE_OVERLAY,
+                };
+
                 // Return minimal properties for now
                 if (*props).count_props == 0 {
                     (*props).count_props = 1; // Just "type" property for planes
@@ -2185,7 +2195,7 @@ unsafe fn handle_drm_ioctl(fd: c_int, request: libc::c_ulong, arg: *mut c_void) 
                     let prop_ids = (*props).props_ptr as *mut u32;
                     let prop_vals = (*props).prop_values_ptr as *mut u64;
                     *prop_ids = 1; // Property ID for "type"
-                    *prop_vals = DRM_PLANE_TYPE_PRIMARY;
+                    *prop_vals = plane_type;
                 }
             }
             0
@@ -2551,11 +2561,21 @@ pub unsafe extern "C" fn drmModeObjectGetProperties(
 ) -> *mut drmModeObjectProperties {
     debug!("drmModeObjectGetProperties(fd={}, obj={}, type={})", fd, object_id, object_type);
 
+    // Determine plane type based on object_id
+    // PRIMARY_PLANE_ID = 20, CURSOR_PLANE_ID = 21
+    let plane_type = match object_id {
+        20 => DRM_PLANE_TYPE_PRIMARY,
+        21 => DRM_PLANE_TYPE_CURSOR,
+        _ => DRM_PLANE_TYPE_OVERLAY, // Default for unknown planes
+    };
+
+    info!("drmModeObjectGetProperties: obj={} returning plane type {}", object_id, plane_type);
+
     // For planes, return the type property
     let props = Box::new(drmModeObjectProperties {
         count_props: 1,
         props: Box::into_raw(vec![1u32].into_boxed_slice()) as *mut u32, // prop_id 1 = "type"
-        prop_values: Box::into_raw(vec![DRM_PLANE_TYPE_PRIMARY].into_boxed_slice()) as *mut u64,
+        prop_values: Box::into_raw(vec![plane_type].into_boxed_slice()) as *mut u64,
     });
 
     Box::into_raw(props)
