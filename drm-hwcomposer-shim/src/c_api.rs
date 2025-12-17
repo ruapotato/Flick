@@ -1385,8 +1385,57 @@ pub unsafe extern "C" fn drmFreeVersion(version: *mut DrmVersion) {
 // DRM Device Open/Close Functions
 // =============================================================================
 
-/// Fake DRM file descriptor - we use a magic number to identify our shim
-const FAKE_DRM_FD: c_int = 0x7F7F;
+/// Real file descriptor used as our DRM "device"
+/// We use memfd_create to get a real fd that can be dup'd
+static SHIM_DRM_FD: Mutex<Option<c_int>> = Mutex::new(None);
+
+/// Get or create the shim DRM fd
+fn get_or_create_shim_fd() -> c_int {
+    let mut fd_guard = SHIM_DRM_FD.lock().unwrap();
+    if let Some(fd) = *fd_guard {
+        return fd;
+    }
+
+    // Create a real fd using memfd_create (anonymous file in memory)
+    let fd = unsafe {
+        libc::memfd_create(
+            b"drm-hwcomposer-shim\0".as_ptr() as *const c_char,
+            0, // No special flags
+        )
+    };
+
+    if fd >= 0 {
+        info!("Created shim DRM fd: {}", fd);
+        *fd_guard = Some(fd);
+        fd
+    } else {
+        // Fallback: open /dev/null
+        let fd = unsafe {
+            libc::open(b"/dev/null\0".as_ptr() as *const c_char, libc::O_RDWR)
+        };
+        if fd >= 0 {
+            info!("Created shim DRM fd from /dev/null: {}", fd);
+            *fd_guard = Some(fd);
+            fd
+        } else {
+            error!("Failed to create shim DRM fd");
+            -1
+        }
+    }
+}
+
+/// Check if an fd is our shim fd
+fn is_shim_fd(fd: c_int) -> bool {
+    if fd < 0 {
+        return false;
+    }
+    if let Ok(guard) = SHIM_DRM_FD.lock() {
+        if let Some(shim_fd) = *guard {
+            return fd == shim_fd;
+        }
+    }
+    false
+}
 
 /// Open a DRM device by name
 #[no_mangle]
@@ -1398,9 +1447,9 @@ pub unsafe extern "C" fn drmOpen(name: *const c_char, busid: *const c_char) -> c
     };
     info!("drmOpen(name={}, busid=...)", name_str);
 
-    // Initialize shim and return fake fd
+    // Initialize shim and return real fd
     if drm_hwcomposer_shim_init() == 0 {
-        FAKE_DRM_FD
+        get_or_create_shim_fd()
     } else {
         -1
     }
@@ -1421,7 +1470,7 @@ pub unsafe extern "C" fn drmOpenWithType(
 pub unsafe extern "C" fn drmOpenControl(minor: c_int) -> c_int {
     info!("drmOpenControl(minor={})", minor);
     if drm_hwcomposer_shim_init() == 0 {
-        FAKE_DRM_FD
+        get_or_create_shim_fd()
     } else {
         -1
     }
@@ -1432,7 +1481,7 @@ pub unsafe extern "C" fn drmOpenControl(minor: c_int) -> c_int {
 pub unsafe extern "C" fn drmOpenRender(minor: c_int) -> c_int {
     info!("drmOpenRender(minor={})", minor);
     if drm_hwcomposer_shim_init() == 0 {
-        FAKE_DRM_FD
+        get_or_create_shim_fd()
     } else {
         -1
     }
@@ -2229,11 +2278,11 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int) -> c_int {
 
         // Intercept DRM device opens
         if path_str.starts_with("/dev/dri/") {
-            info!("open() intercepted: {} -> returning fake DRM fd", path_str);
+            info!("open() intercepted: {} -> returning shim DRM fd", path_str);
 
             // Initialize the shim
             if drm_hwcomposer_shim_init() == 0 {
-                return FAKE_DRM_FD;
+                return get_or_create_shim_fd();
             } else {
                 return -1;
             }
@@ -2259,9 +2308,9 @@ pub unsafe extern "C" fn open64(path: *const c_char, flags: c_int) -> c_int {
     if !path.is_null() {
         let path_str = CStr::from_ptr(path).to_str().unwrap_or("");
         if path_str.starts_with("/dev/dri/") {
-            info!("open64() intercepted: {} -> returning fake DRM fd", path_str);
+            info!("open64() intercepted: {} -> returning shim DRM fd", path_str);
             if drm_hwcomposer_shim_init() == 0 {
-                return FAKE_DRM_FD;
+                return get_or_create_shim_fd();
             }
             return -1;
         }
@@ -2286,10 +2335,10 @@ pub unsafe extern "C" fn openat(dirfd: c_int, path: *const c_char, flags: c_int)
 
         // Intercept DRM device opens
         if path_str.starts_with("/dev/dri/") || path_str.contains("dri/card") {
-            info!("openat() intercepted: {} -> returning fake DRM fd", path_str);
+            info!("openat() intercepted: {} -> returning shim DRM fd", path_str);
 
             if drm_hwcomposer_shim_init() == 0 {
-                return FAKE_DRM_FD;
+                return get_or_create_shim_fd();
             } else {
                 return -1;
             }
