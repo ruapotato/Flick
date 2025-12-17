@@ -27,6 +27,10 @@ static bool is_hwcomposer_output(struct wlr_output *output) {
 // Only available on droidian wlroots 0.17 which has the android renderer extension
 #if WLR_VERSION_MINOR < 18
 
+// Declaration for swap_buffers (might not be in standard headers)
+bool wlr_renderer_swap_buffers(struct wlr_renderer *renderer, pixman_region32_t *damage,
+    struct wlr_output *output);
+
 static void render_hwcomposer_frame(struct flick_output *output) {
     struct wlr_output *wlr_output = output->wlr_output;
     struct flick_server *server = output->server;
@@ -94,6 +98,13 @@ static void render_hwcomposer_frame(struct flick_output *output) {
         pixman_region32_fini(&damage);
         wlr_output_state_finish(&pending);
         return;
+    }
+
+    // Explicitly swap buffers (required for android renderer)
+    if (!wlr_renderer_swap_buffers(wlr_output->renderer, &damage, wlr_output)) {
+        wlr_log(WLR_ERROR, "Failed to swap buffers");
+    } else if (frame_num <= 5) {
+        wlr_log(WLR_INFO, "render_hwcomposer_frame %d: swap_buffers successful", frame_num);
     }
 
     // Attach buffer and set damage
