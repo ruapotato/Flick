@@ -798,6 +798,10 @@ pub const DRM_PLANE_TYPE_OVERLAY: u64 = 0;
 pub const DRM_PLANE_TYPE_PRIMARY: u64 = 1;
 pub const DRM_PLANE_TYPE_CURSOR: u64 = 2;
 
+// DRM property flags
+pub const DRM_MODE_PROP_ENUM: u32 = 1 << 3;  // 8
+pub const DRM_MODE_PROP_IMMUTABLE: u32 = 1 << 1;  // 2
+
 // =============================================================================
 // DRM Device Functions
 // =============================================================================
@@ -2511,24 +2515,54 @@ pub struct drmModePropertyEnum {
 pub unsafe extern "C" fn drmModeGetProperty(fd: c_int, prop_id: u32) -> *mut drmModePropertyRes {
     debug!("drmModeGetProperty(fd={}, id={})", fd, prop_id);
 
-    // Return a basic property for "type" (used for plane type)
+    // For the "type" property (prop_id 1), create enum values
+    let (flags, name, enums_ptr, count_enums) = if prop_id == 1 {
+        // Create the enum values: Overlay=0, Primary=1, Cursor=2
+        let enums = vec![
+            drmModePropertyEnum {
+                value: 0,
+                name: {
+                    let mut n = [0i8; 32];
+                    for (i, &c) in b"Overlay\0".iter().enumerate() { n[i] = c as i8; }
+                    n
+                },
+            },
+            drmModePropertyEnum {
+                value: 1,
+                name: {
+                    let mut n = [0i8; 32];
+                    for (i, &c) in b"Primary\0".iter().enumerate() { n[i] = c as i8; }
+                    n
+                },
+            },
+            drmModePropertyEnum {
+                value: 2,
+                name: {
+                    let mut n = [0i8; 32];
+                    for (i, &c) in b"Cursor\0".iter().enumerate() { n[i] = c as i8; }
+                    n
+                },
+            },
+        ];
+        let enums_ptr = Box::into_raw(enums.into_boxed_slice()) as *mut drmModePropertyEnum;
+        (DRM_MODE_PROP_ENUM | DRM_MODE_PROP_IMMUTABLE, b"type\0", enums_ptr, 3u32)
+    } else {
+        (0, b"unknown\0" as &[u8], ptr::null_mut(), 0u32)
+    };
+
     let mut prop = Box::new(drmModePropertyRes {
         prop_id,
-        flags: 0,
+        flags,
         name: [0; 32],
         count_values: 0,
         values: ptr::null_mut(),
-        count_enums: 3,
-        enums: ptr::null_mut(),
+        count_enums,
+        enums: enums_ptr,
         count_blobs: 0,
         blob_ids: ptr::null_mut(),
     });
 
-    // Set name based on prop_id
-    let name: &[u8] = match prop_id {
-        1 => b"type\0",
-        _ => b"unknown\0",
-    };
+    // Set name
     for (i, &b) in name.iter().take(31).enumerate() {
         prop.name[i] = b as c_char;
     }
