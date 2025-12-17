@@ -3676,13 +3676,24 @@ pub unsafe extern "C" fn eglMakeCurrent(
         return EGL_FALSE;
     }
 
-    debug!("eglMakeCurrent intercepted (dpy={:?})", dpy);
+    info!("eglMakeCurrent intercepted (dpy={:?}, draw={:?}, read={:?}, ctx={:?})", dpy, draw, read, ctx);
 
     // Check if this is our hwcomposer display
     let our_display = drm_hwcomposer_shim_get_egl_display();
+    info!("eglMakeCurrent: our_display={:?}, match={}", our_display, dpy == our_display);
     if dpy == our_display {
-        // Already made current during init, just return success
-        info!("eglMakeCurrent: hwcomposer context already current");
+        // Actually call real eglMakeCurrent to ensure correct context is bound
+        // (we can't just return success without doing anything)
+        type EGLCtx = *mut c_void;
+        let real_fn: Option<unsafe extern "C" fn(EGLDisplay, EGLSurface, EGLSurface, EGLCtx) -> u32> = {
+            let sym = libc::dlsym(RTLD_NEXT, b"eglMakeCurrent\0".as_ptr() as *const c_char);
+            if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+        };
+        if let Some(f) = real_fn {
+            info!("eglMakeCurrent: calling real function");
+            return f(dpy, draw, read, ctx);
+        }
+        info!("eglMakeCurrent: no real function, returning success");
         return EGL_TRUE;
     }
 
