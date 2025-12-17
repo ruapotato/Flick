@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <wlr/util/log.h>
+#include <wlr/version.h>
 #include <xkbcommon/xkbcommon.h>
 #include "input.h"
 #include "server.h"
@@ -416,7 +417,12 @@ void flick_new_input_notify(struct wl_listener *listener, void *data) {
     case WLR_INPUT_DEVICE_POINTER:
         handle_new_pointer(server, device);
         break;
-    case WLR_INPUT_DEVICE_TABLET:
+    // Handle tablet - wlroots 0.18 renamed TABLET_TOOL to TABLET
+#if WLR_VERSION_MINOR >= 18
+    case WLR_INPUT_DEVICE_TABLET:  // wlroots 0.18+
+#else
+    case WLR_INPUT_DEVICE_TABLET_TOOL:  // wlroots 0.17
+#endif
     case WLR_INPUT_DEVICE_TABLET_PAD:
         wlr_log(WLR_INFO, "Tablet device (not yet handled)");
         break;
