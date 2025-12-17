@@ -1,145 +1,114 @@
 #!/bin/bash
-# Start Flick compositor on Droidian phone
-# Usage: ./start_flick.sh [--bg|--log]
-#   --bg   Run in background, log to /tmp/flick.log
-#   --log  Run with output sanitized (recommended), Ctrl+C to stop
-#   (none) Run directly (may corrupt terminal, use reset if needed)
+# Start Flick compositor on Droidian phone with hwcomposer backend
+# Usage: ./start_hwcomposer.sh [--timeout N]
 
 set -e
 
-# Function to restore terminal on exit
+SCRIPT_DIR="$(dirname "$0")"
+FLICK_BIN="$SCRIPT_DIR/flick-wlroots/build/flick"
+TIMEOUT=0
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --timeout)
+            TIMEOUT="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--timeout N]"
+            exit 1
+            ;;
+    esac
+done
+
+# Function to restore terminal and restart phosh on exit
 cleanup() {
-    # Reset terminal to sane state
-    stty sane 2>/dev/null || true
-    # Clear any partial escape sequences
-    printf '\033[0m\033[?25h\033c' 2>/dev/null || true
     echo ""
-    echo "Flick stopped."
+    echo "Cleaning up..."
+    stty sane 2>/dev/null || true
+    printf '\033[0m\033[?25h\033c' 2>/dev/null || true
+
+    echo "Restarting phosh..."
+    sudo systemctl start phosh 2>/dev/null || true
+    echo "Done."
 }
 
-# Trap signals for cleanup
 trap cleanup EXIT INT TERM
 
-# Get the actual user's home, even if running via sudo
-REAL_HOME="${SUDO_USER:+$(eval echo ~$SUDO_USER)}"
-REAL_HOME="${REAL_HOME:-$HOME}"
-
-FLICK_BIN="$REAL_HOME/Flick/shell/target/release/flick"
+# Build if needed
+cd "$SCRIPT_DIR/flick-wlroots"
+if [ ! -f build/flick ] || [ Makefile -nt build/flick ]; then
+    echo "Building flick..."
+    make
+fi
+cd "$SCRIPT_DIR"
 
 if [ ! -f "$FLICK_BIN" ]; then
     echo "Error: flick binary not found at $FLICK_BIN"
-    echo "Build it first: cd ~/Flick/shell && cargo build --release --features hwcomposer"
     exit 1
 fi
 
-echo "Stopping existing processes..."
-# Use killall with exact name to avoid killing this script
-sudo killall -9 flick 2>/dev/null || true
-sleep 1
+# Get the real user's UID (works with sudo)
+REAL_UID=$(id -u "${SUDO_USER:-$USER}")
 
-echo "Stopping hwcomposer completely..."
-# Kill all hwcomposer-related processes
-sudo pkill -9 -f 'graphics.composer' 2>/dev/null || true
-sudo pkill -9 -f 'hwcomposer' 2>/dev/null || true
-sudo killall -9 android.hardware.graphics.composer 2>/dev/null || true
-sudo killall -9 composer 2>/dev/null || true
+echo "=== Flick HWComposer Test ==="
+echo ""
 
-# Stop the service if running
-if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
-    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
-        /usr/lib/halium-wrappers/android-service.sh hwcomposer stop 2>/dev/null || true
-fi
+echo "Stopping phosh..."
+sudo systemctl stop phosh 2>/dev/null || true
 sleep 2
 
-echo "Restarting hwcomposer..."
+echo "Resetting hwcomposer..."
+# Kill hwcomposer-related processes
+sudo pkill -9 -f 'graphics.composer' 2>/dev/null || true
+sudo pkill -9 -f 'hwcomposer' 2>/dev/null || true
+sleep 1
+
+# Restart hwcomposer service
 if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
+    echo "Using halium wrapper to restart hwcomposer..."
     sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
-        /usr/lib/halium-wrappers/android-service.sh hwcomposer start
+        /usr/lib/halium-wrappers/android-service.sh hwcomposer stop 2>/dev/null || true
+    sleep 1
+    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
+        /usr/lib/halium-wrappers/android-service.sh hwcomposer start 2>/dev/null || true
 else
     sudo systemctl restart hwcomposer 2>/dev/null || true
 fi
 sleep 3
-echo "hwcomposer started"
+echo "hwcomposer ready"
 
-# Use the real user's runtime directory, not root's
-REAL_UID=$(id -u "${SUDO_USER:-$USER}")
+# Set up environment
 export XDG_RUNTIME_DIR="/run/user/$REAL_UID"
 export EGL_PLATFORM=hwcomposer
 
-# Ensure the runtime dir exists and is accessible
+# Ensure runtime dir exists
 if [ ! -d "$XDG_RUNTIME_DIR" ]; then
-    echo "Warning: XDG_RUNTIME_DIR $XDG_RUNTIME_DIR does not exist, creating..."
-    mkdir -p "$XDG_RUNTIME_DIR"
-    chown "$REAL_UID:$REAL_UID" "$XDG_RUNTIME_DIR"
+    echo "Creating XDG_RUNTIME_DIR..."
+    sudo mkdir -p "$XDG_RUNTIME_DIR"
+    sudo chown "$REAL_UID:$REAL_UID" "$XDG_RUNTIME_DIR"
 fi
 
-echo "Starting Flick..."
+# Create logs directory
+mkdir -p "$SCRIPT_DIR/logs"
+LOG_FILE="$SCRIPT_DIR/logs/flick-hwc-$(date +%Y%m%d-%H%M%S).log"
 
-if [ "$1" = "--bg" ]; then
-    sudo -E "$FLICK_BIN" --hwcomposer > /tmp/flick.log 2>&1 &
-    sleep 2
+echo ""
+echo "Starting Flick compositor..."
+echo "Log: $LOG_FILE"
+if [ "$TIMEOUT" -gt 0 ]; then
+    echo "Timeout: ${TIMEOUT}s"
+fi
+echo ""
 
-    # Fix Wayland socket permissions so non-root clients can connect
-    SOCKET_PATH="$XDG_RUNTIME_DIR/wayland-"
-    for sock in ${SOCKET_PATH}*; do
-        if [ -S "$sock" ]; then
-            sudo chmod 0777 "$sock"
-            echo "Fixed permissions on $sock"
-        fi
-    done
-
-    echo "Flick running in background. Logs: /tmp/flick.log"
-elif [ "$1" = "--log" ]; then
-    # Run with logging to file but show tail in terminal
-    LOG_FILE="/tmp/flick.log"
-    echo "Starting Flick with logging to $LOG_FILE"
-    echo "Press Ctrl+C to stop..."
-
-    # Start flick with output to log file
-    sudo -E "$FLICK_BIN" --hwcomposer > "$LOG_FILE" 2>&1 &
-    SUDO_PID=$!
-
-    # Get the actual flick process PID (child of sudo)
-    sleep 1
-    FLICK_PID=$(pgrep -P "$SUDO_PID" 2>/dev/null || echo "$SUDO_PID")
-
-    # Tail the log file with sanitization
-    tail -f "$LOG_FILE" 2>/dev/null | tr -cd '[:print:]\n\t' &
-    TAIL_PID=$!
-
-    # Wait for flick to exit
-    stop_all() {
-        kill "$TAIL_PID" 2>/dev/null || true
-        sudo kill -TERM "$FLICK_PID" 2>/dev/null || true
-        sleep 1
-        sudo kill -KILL "$FLICK_PID" 2>/dev/null || true
-        sudo killall -9 flick 2>/dev/null || true
-    }
-    trap stop_all INT TERM
-
-    wait "$SUDO_PID" 2>/dev/null || true
-    kill "$TAIL_PID" 2>/dev/null || true
+# Run flick
+if [ "$TIMEOUT" -gt 0 ]; then
+    timeout --signal=TERM "$TIMEOUT" sudo -E "$FLICK_BIN" -v 2>&1 | tee "$LOG_FILE" || true
 else
-    # Run directly - output may corrupt terminal, use --log for cleaner output
-    # Save terminal state
-    TERM_STATE=$(stty -g 2>/dev/null || echo "")
-
-    stop_flick() {
-        sudo killall -9 flick 2>/dev/null || true
-        # Restore terminal
-        if [ -n "$TERM_STATE" ]; then
-            stty "$TERM_STATE" 2>/dev/null || true
-        fi
-        stty sane 2>/dev/null || true
-        printf '\033[0m\033[?25h\033c' 2>/dev/null || true
-    }
-    trap stop_flick INT TERM
-
-    # Run directly
-    sudo -E "$FLICK_BIN" --hwcomposer || true
-
-    # Restore terminal state after exit
-    if [ -n "$TERM_STATE" ]; then
-        stty "$TERM_STATE" 2>/dev/null || true
-    fi
+    sudo -E "$FLICK_BIN" -v 2>&1 | tee "$LOG_FILE" || true
 fi
+
+echo ""
+echo "Log saved to: $LOG_FILE"
