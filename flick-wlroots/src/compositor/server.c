@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <linux/input-event-codes.h>
 #include <wlr/util/log.h>
+#include <wlr/version.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
 #include "server.h"
@@ -172,9 +173,16 @@ static void cursor_axis_notify(struct wl_listener *listener, void *data) {
     struct flick_server *server = wl_container_of(listener, server, cursor_axis);
     struct wlr_pointer_axis_event *event = data;
 
+    // wlroots 0.18 added relative_direction parameter
+#if WLR_VERSION_MINOR >= 18
     wlr_seat_pointer_notify_axis(server->seat,
         event->time_msec, event->orientation, event->delta,
         event->delta_discrete, event->source, event->relative_direction);
+#else
+    wlr_seat_pointer_notify_axis(server->seat,
+        event->time_msec, event->orientation, event->delta,
+        event->delta_discrete, event->source);
+#endif
 }
 
 // Cursor frame event (end of a set of events)
@@ -220,7 +228,12 @@ bool flick_server_init(struct flick_server *server) {
 
     // Create backend - automatically selects DRM, hwcomposer, Wayland, or X11
     // Can be overridden with WLR_BACKENDS environment variable
+    // wlroots 0.18 changed signature to take event_loop, 0.17 takes wl_display
+#if WLR_VERSION_MINOR >= 18
     server->backend = wlr_backend_autocreate(server->wl_event_loop, &server->session);
+#else
+    server->backend = wlr_backend_autocreate(server->wl_display, &server->session);
+#endif
     if (!server->backend) {
         wlr_log(WLR_ERROR, "Failed to create wlroots backend");
         wl_display_destroy(server->wl_display);

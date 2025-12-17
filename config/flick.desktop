@@ -1,6 +1,0 @@
-[Desktop Entry]
-Name=Flick
-Comment=Gesture-driven mobile Linux shell
-Exec=/opt/flick/config/flick-session
-Type=Application
-DesktopNames=Flick
