@@ -4,7 +4,7 @@
 
 set -e
 
-SCRIPT_DIR="$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FLICK_BIN="$SCRIPT_DIR/flick-wlroots/build/flick"
 TIMEOUT=0
 
