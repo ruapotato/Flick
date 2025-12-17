@@ -356,3 +356,26 @@ void flick_shell_update_visuals(struct flick_shell *shell) {
 
     wlr_scene_rect_set_color(shell->server->background, color);
 }
+
+void flick_shell_get_color(struct flick_shell *shell, float *r, float *g, float *b) {
+    float color[4];
+
+    // If we're in a transition, interpolate between from and to colors
+    if (shell->transition_state == FLICK_TRANSITION_STARTING ||
+        shell->transition_state == FLICK_TRANSITION_ANIMATING ||
+        shell->transition_state == FLICK_TRANSITION_CANCELING) {
+
+        float from_color[4], to_color[4];
+        get_view_color(shell->transition_from, from_color);
+        get_view_color(shell->transition_to, to_color);
+
+        lerp_color(from_color, to_color, shell->transition_progress, color);
+    } else {
+        // Not transitioning - use current view color
+        get_view_color(shell->current_view, color);
+    }
+
+    *r = color[0];
+    *g = color[1];
+    *b = color[2];
+}

@@ -69,4 +69,7 @@ void flick_shell_go_to_view(struct flick_shell *shell, enum flick_shell_view vie
 // Update shell visuals (background color, etc.)
 void flick_shell_update_visuals(struct flick_shell *shell);
 
+// Get current background color (for manual rendering)
+void flick_shell_get_color(struct flick_shell *shell, float *r, float *g, float *b);
+
 #endif // FLICK_SHELL_H

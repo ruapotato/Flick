@@ -1,38 +1,138 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <wlr/util/log.h>
+#include <wlr/version.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/render/pass.h>
+#include <wlr/render/swapchain.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
 #include "output.h"
 #include "server.h"
+#include "../shell/shell.h"
+
+// Check if this is a hwcomposer output (needs manual rendering)
+// Only used on droidian wlroots 0.17
+#if WLR_VERSION_MINOR < 18
+static bool is_hwcomposer_output(struct wlr_output *output) {
+    return output->name && strncmp(output->name, "HWCOMPOSER", 10) == 0;
+}
+#endif
+
+// Manual rendering for hwcomposer backend (bypasses wlr_scene)
+// Only available on droidian wlroots 0.17 which has the android renderer extension
+#if WLR_VERSION_MINOR < 18
+
+// Declaration for droidian's extended function (not in standard headers)
+struct wlr_render_pass *wlr_renderer_begin_buffer_pass_for_output(
+    struct wlr_renderer *renderer, struct wlr_buffer *buffer,
+    const struct wlr_buffer_pass_options *options, void *output);
+
+static void render_hwcomposer_frame(struct flick_output *output) {
+    struct wlr_output *wlr_output = output->wlr_output;
+    struct flick_server *server = output->server;
+
+    // Get current background color from shell
+    float r, g, b;
+    flick_shell_get_color(&server->shell, &r, &g, &b);
+
+    // Configure and acquire swapchain buffer
+    struct wlr_output_state pending;
+    wlr_output_state_init(&pending);
+    wlr_output_state_set_enabled(&pending, true);
+
+    if (!wlr_output_configure_primary_swapchain(wlr_output, &pending, &wlr_output->swapchain)) {
+        wlr_log(WLR_ERROR, "Failed to configure swapchain");
+        wlr_output_state_finish(&pending);
+        return;
+    }
+
+    struct wlr_buffer *buffer = wlr_swapchain_acquire(wlr_output->swapchain, NULL);
+    if (!buffer) {
+        wlr_log(WLR_ERROR, "Failed to acquire swapchain buffer");
+        wlr_output_state_finish(&pending);
+        return;
+    }
+
+    // Begin render pass with output (droidian extension for android renderer)
+    struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass_for_output(
+        wlr_output->renderer, buffer, NULL, (void*)wlr_output);
+    if (!pass) {
+        wlr_log(WLR_ERROR, "Failed to begin render pass");
+        wlr_buffer_unlock(buffer);
+        wlr_output_state_finish(&pending);
+        return;
+    }
+
+    // Clear to background color
+    wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
+        .box = { .width = wlr_output->width, .height = wlr_output->height },
+        .color = { .r = r, .g = g, .b = b, .a = 1.0f },
+    });
+
+    // TODO: Render views/surfaces here when not at home screen
+    // For now just show background color
+
+    // Submit render pass
+    if (!wlr_render_pass_submit(pass)) {
+        wlr_log(WLR_ERROR, "Failed to submit render pass");
+        wlr_buffer_unlock(buffer);
+        wlr_output_state_finish(&pending);
+        return;
+    }
+
+    // Attach buffer and commit
+    wlr_output_state_set_buffer(&pending, buffer);
+    wlr_buffer_unlock(buffer);
+
+    if (!wlr_output_commit_state(wlr_output, &pending)) {
+        wlr_log(WLR_ERROR, "Failed to commit output state");
+    }
+
+    wlr_output_state_finish(&pending);
+}
+#endif // WLR_VERSION_MINOR < 18
 
 static void output_frame_notify(struct wl_listener *listener, void *data) {
+    (void)data;  // unused
     struct flick_output *output = wl_container_of(listener, output, frame);
-    struct wlr_scene_output *scene_output = output->scene_output;
 
     // Skip first few frames to let hwcomposer fully initialize
-    // (native window may not be ready immediately)
     if (output->frame_count < 3) {
         output->frame_count++;
         wlr_log(WLR_DEBUG, "Skipping early frame %d for hwcomposer init",
                 output->frame_count);
-        // Must schedule next frame or we won't get another frame event
         wlr_output_schedule_frame(output->wlr_output);
         return;
     }
 
-    // Let the scene graph render everything
-    wlr_scene_output_commit(scene_output, NULL);
+    // Use different rendering paths based on backend
+#if WLR_VERSION_MINOR < 18
+    if (is_hwcomposer_output(output->wlr_output)) {
+        // Manual rendering for hwcomposer (android renderer needs output context)
+        render_hwcomposer_frame(output);
+    } else
+#endif
+    {
+        // Standard wlr_scene rendering for other backends
+        struct wlr_scene_output *scene_output = output->scene_output;
+        wlr_scene_output_commit(scene_output, NULL);
+    }
 
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
-    wlr_scene_output_send_frame_done(scene_output, &now);
+
+    // Send frame done to surfaces
+    if (output->scene_output) {
+        wlr_scene_output_send_frame_done(output->scene_output, &now);
+    }
 }
 
 static void output_destroy_notify(struct wl_listener *listener, void *data) {
+    (void)data;  // unused
     struct flick_output *output = wl_container_of(listener, output, destroy);
 
     wlr_log(WLR_INFO, "Output '%s' destroyed", output->wlr_output->name);
@@ -102,7 +202,7 @@ void flick_new_output_notify(struct wl_listener *listener, void *data) {
     wlr_output_commit_state(wlr_output, &state);
     wlr_output_state_finish(&state);
 
-    // Create scene output and add to layout
+    // Create scene output and add to layout (still useful for surface management)
     struct wlr_output_layout_output *lo = wlr_output_layout_add_auto(
         server->output_layout, wlr_output);
 
