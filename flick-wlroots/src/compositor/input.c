@@ -222,8 +222,8 @@ static void touch_down_notify(struct wl_listener *listener, void *data) {
     double x = event->x * server->output_width;
     double y = event->y * server->output_height;
 
-    wlr_log(WLR_DEBUG, "Touch down: id=%d pos=(%.0f, %.0f) server=%p shell.view=%d",
-            event->touch_id, x, y, (void*)server, server->shell.current_view);
+    wlr_log(WLR_INFO, "Touch DOWN: id=%d pos=(%.0f, %.0f) shell.view=%d",
+            event->touch_id, x, y, server->shell.current_view);
 
     // Process through gesture recognizer
     struct flick_gesture_event gesture_event = {0};
@@ -239,7 +239,7 @@ static void touch_up_notify(struct wl_listener *listener, void *data) {
     struct flick_server *server = touch->base.server;
     struct wlr_touch_up_event *event = data;
 
-    wlr_log(WLR_DEBUG, "Touch up: id=%d", event->touch_id);
+    wlr_log(WLR_INFO, "Touch UP: id=%d", event->touch_id);
 
     // Process through gesture recognizer
     struct flick_gesture_event gesture_event = {0};
@@ -337,7 +337,20 @@ static void handle_new_touch(struct flick_server *server,
 
     wl_list_insert(&server->inputs, &touch->base.link);
 
-    wlr_log(WLR_INFO, "Touch device configured");
+    // Update seat capabilities to include touch
+    uint32_t caps = WL_SEAT_CAPABILITY_TOUCH;
+    struct flick_input *input;
+    wl_list_for_each(input, &server->inputs, link) {
+        if (input->wlr_device->type == WLR_INPUT_DEVICE_KEYBOARD) {
+            caps |= WL_SEAT_CAPABILITY_KEYBOARD;
+        }
+        if (input->wlr_device->type == WLR_INPUT_DEVICE_POINTER) {
+            caps |= WL_SEAT_CAPABILITY_POINTER;
+        }
+    }
+    wlr_seat_set_capabilities(server->seat, caps);
+
+    wlr_log(WLR_INFO, "Touch device configured (caps=0x%x)", caps);
 }
 
 // --- Pointer handling ---
