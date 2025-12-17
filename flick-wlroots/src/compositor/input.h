@@ -4,6 +4,7 @@
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
+#include <wlr/types/wlr_pointer.h>
 #include <wlr/types/wlr_touch.h>
 
 struct flick_server;
@@ -35,6 +36,12 @@ struct flick_touch {
     struct wl_listener up;
     struct wl_listener motion;
     struct wl_listener cancel;
+};
+
+// Pointer-specific wrapper
+struct flick_pointer {
+    struct flick_input base;
+    struct wlr_pointer *wlr_pointer;
 };
 
 // Called when a new input device is added

@@ -66,4 +66,7 @@ bool flick_shell_is_transitioning(struct flick_shell *shell);
 // Force transition to a specific view (for programmatic control)
 void flick_shell_go_to_view(struct flick_shell *shell, enum flick_shell_view view);
 
+// Update shell visuals (background color, etc.)
+void flick_shell_update_visuals(struct flick_shell *shell);
+
 #endif // FLICK_SHELL_H

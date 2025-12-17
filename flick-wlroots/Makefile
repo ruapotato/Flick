@@ -20,7 +20,8 @@ COMPOSITOR_SRCS = $(SRCDIR)/compositor/server.c \
                   $(SRCDIR)/compositor/view.c
 
 SHELL_SRCS = $(SRCDIR)/shell/gesture.c \
-             $(SRCDIR)/shell/shell.c
+             $(SRCDIR)/shell/shell.c \
+             $(SRCDIR)/shell/apps.c
 
 SOURCES = $(SRCDIR)/main.c \
           $(COMPOSITOR_SRCS) \
@@ -33,7 +34,8 @@ OBJECTS = $(BUILDDIR)/main.o \
           $(BUILDDIR)/input.o \
           $(BUILDDIR)/view.o \
           $(BUILDDIR)/gesture.o \
-          $(BUILDDIR)/shell.o
+          $(BUILDDIR)/shell.o \
+          $(BUILDDIR)/apps.o
 
 TARGET = $(BUILDDIR)/flick
 
@@ -77,6 +79,9 @@ $(BUILDDIR)/gesture.o: $(SRCDIR)/shell/gesture.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILDDIR)/shell.o: $(SRCDIR)/shell/shell.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILDDIR)/apps.o: $(SRCDIR)/shell/apps.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:

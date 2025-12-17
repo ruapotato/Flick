@@ -2,6 +2,7 @@
 
 #include <string.h>
 #include <wlr/util/log.h>
+#include <wlr/types/wlr_scene.h>
 #include "shell.h"
 #include "../compositor/server.h"
 
@@ -134,6 +135,7 @@ bool flick_shell_handle_gesture(struct flick_shell *shell,
 
                 wlr_log(WLR_INFO, "Shell: Now at %s",
                         flick_shell_view_name(shell->current_view));
+                flick_shell_update_visuals(shell);
             } else {
                 // Cancel the transition
                 shell->transition_state = FLICK_TRANSITION_CANCELING;
@@ -165,6 +167,8 @@ bool flick_shell_handle_gesture(struct flick_shell *shell,
 
 void flick_shell_handle_action(struct flick_shell *shell,
                                enum flick_gesture_action action) {
+    enum flick_shell_view old_view = shell->current_view;
+
     switch (action) {
     case FLICK_ACTION_GO_HOME:
         if (shell->current_view != FLICK_VIEW_HOME) {
@@ -197,6 +201,11 @@ void flick_shell_handle_action(struct flick_shell *shell,
 
     default:
         break;
+    }
+
+    // Update visuals if view changed
+    if (shell->current_view != old_view) {
+        flick_shell_update_visuals(shell);
     }
 }
 
@@ -250,5 +259,49 @@ void flick_shell_go_to_view(struct flick_shell *shell, enum flick_shell_view vie
                 flick_shell_view_name(shell->current_view),
                 flick_shell_view_name(view));
         shell->current_view = view;
+        flick_shell_update_visuals(shell);
     }
+}
+
+// Get background color for current shell view
+static void get_view_color(enum flick_shell_view view, float color[4]) {
+    switch (view) {
+    case FLICK_VIEW_LOCK:
+        // Dark gray for lock screen
+        color[0] = 0.15f; color[1] = 0.15f; color[2] = 0.15f; color[3] = 1.0f;
+        break;
+    case FLICK_VIEW_HOME:
+        // Dark blue for home
+        color[0] = 0.1f; color[1] = 0.1f; color[2] = 0.3f; color[3] = 1.0f;
+        break;
+    case FLICK_VIEW_APP:
+        // Transparent (show app)
+        color[0] = 0.0f; color[1] = 0.0f; color[2] = 0.0f; color[3] = 0.0f;
+        break;
+    case FLICK_VIEW_APP_SWITCHER:
+        // Dark teal for app switcher
+        color[0] = 0.1f; color[1] = 0.2f; color[2] = 0.25f; color[3] = 1.0f;
+        break;
+    case FLICK_VIEW_QUICK_SETTINGS:
+        // Dark purple for quick settings
+        color[0] = 0.2f; color[1] = 0.1f; color[2] = 0.25f; color[3] = 1.0f;
+        break;
+    default:
+        // Fallback dark
+        color[0] = 0.1f; color[1] = 0.1f; color[2] = 0.1f; color[3] = 1.0f;
+        break;
+    }
+}
+
+void flick_shell_update_visuals(struct flick_shell *shell) {
+    if (!shell->server || !shell->server->background) {
+        return;
+    }
+
+    float color[4];
+    get_view_color(shell->current_view, color);
+    wlr_scene_rect_set_color(shell->server->background, color);
+
+    wlr_log(WLR_DEBUG, "Shell background updated for %s",
+            flick_shell_view_name(shell->current_view));
 }

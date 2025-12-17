@@ -5,6 +5,8 @@
 #include <xkbcommon/xkbcommon.h>
 #include "input.h"
 #include "server.h"
+#include "view.h"
+#include "../shell/shell.h"
 
 // --- Keyboard handling ---
 
@@ -57,6 +59,60 @@ static void keyboard_key_notify(struct wl_listener *listener, void *data) {
                     handled = true;
                 } else {
                     wlr_log(WLR_INFO, "VT switch requested but no session available");
+                }
+            }
+
+            // Alt+Tab: cycle between views/apps
+            if (alt && sym == XKB_KEY_Tab) {
+                wlr_log(WLR_INFO, "Alt+Tab: cycling apps");
+                // Focus the next view in the list
+                if (!wl_list_empty(&server->views)) {
+                    struct flick_view *current = NULL;
+                    struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
+                    if (focused) {
+                        struct wlr_xdg_surface *xdg = wlr_xdg_surface_try_from_wlr_surface(focused);
+                        if (xdg && xdg->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
+                            // Find the view for this surface
+                            struct flick_view *v;
+                            wl_list_for_each(v, &server->views, link) {
+                                if (v->xdg_toplevel->base == xdg) {
+                                    current = v;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    // Get next view (or first if no current)
+                    struct flick_view *next = NULL;
+                    if (current && current->link.next != &server->views) {
+                        next = wl_container_of(current->link.next, next, link);
+                    } else {
+                        next = wl_container_of(server->views.next, next, link);
+                    }
+                    if (next) {
+                        flick_focus_view(next, next->xdg_toplevel->base->surface);
+                    }
+                }
+                handled = true;
+            }
+
+            // Super/Meta: go home
+            if (sym == XKB_KEY_Super_L || sym == XKB_KEY_Super_R) {
+                wlr_log(WLR_INFO, "Super key: going home");
+                flick_shell_go_to_view(&server->shell, FLICK_VIEW_HOME);
+                handled = true;
+            }
+
+            // Alt+F4: close focused window
+            if (alt && sym == XKB_KEY_F4) {
+                struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
+                if (focused) {
+                    struct wlr_xdg_surface *xdg = wlr_xdg_surface_try_from_wlr_surface(focused);
+                    if (xdg && xdg->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
+                        wlr_log(WLR_INFO, "Alt+F4: closing window");
+                        wlr_xdg_toplevel_send_close(xdg->toplevel);
+                        handled = true;
+                    }
                 }
             }
 
@@ -268,6 +324,58 @@ static void handle_new_touch(struct flick_server *server,
     wlr_log(WLR_INFO, "Touch device configured");
 }
 
+// --- Pointer handling ---
+
+static void pointer_destroy_notify(struct wl_listener *listener, void *data) {
+    struct flick_pointer *pointer = wl_container_of(listener, pointer, base.destroy);
+
+    wlr_log(WLR_INFO, "Pointer destroyed");
+
+    wl_list_remove(&pointer->base.destroy.link);
+    wl_list_remove(&pointer->base.link);
+
+    free(pointer);
+}
+
+static void handle_new_pointer(struct flick_server *server,
+                                struct wlr_input_device *device) {
+    struct flick_pointer *pointer = calloc(1, sizeof(*pointer));
+    if (!pointer) {
+        wlr_log(WLR_ERROR, "Failed to allocate pointer");
+        return;
+    }
+
+    pointer->base.server = server;
+    pointer->base.wlr_device = device;
+    pointer->wlr_pointer = wlr_pointer_from_input_device(device);
+
+    wlr_log(WLR_INFO, "Setting up pointer: %s", device->name);
+
+    // Attach pointer to cursor
+    wlr_cursor_attach_input_device(server->cursor, device);
+
+    pointer->base.destroy.notify = pointer_destroy_notify;
+    wl_signal_add(&device->events.destroy, &pointer->base.destroy);
+
+    wl_list_insert(&server->inputs, &pointer->base.link);
+
+    // Update seat capabilities
+    uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
+    if (!wl_list_empty(&server->inputs)) {
+        // Check if we have keyboards too
+        struct flick_input *input;
+        wl_list_for_each(input, &server->inputs, link) {
+            if (input->wlr_device->type == WLR_INPUT_DEVICE_KEYBOARD) {
+                caps |= WL_SEAT_CAPABILITY_KEYBOARD;
+                break;
+            }
+        }
+    }
+    wlr_seat_set_capabilities(server->seat, caps);
+
+    wlr_log(WLR_INFO, "Pointer configured");
+}
+
 // --- Input device enumeration ---
 
 void flick_new_input_notify(struct wl_listener *listener, void *data) {
@@ -285,7 +393,7 @@ void flick_new_input_notify(struct wl_listener *listener, void *data) {
         handle_new_touch(server, device);
         break;
     case WLR_INPUT_DEVICE_POINTER:
-        wlr_log(WLR_INFO, "Pointer device (not yet handled)");
+        handle_new_pointer(server, device);
         break;
     case WLR_INPUT_DEVICE_TABLET:
     case WLR_INPUT_DEVICE_TABLET_PAD:
