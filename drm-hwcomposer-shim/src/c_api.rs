@@ -2534,32 +2534,56 @@ pub unsafe extern "C" fn drmModeFreeObjectProperties(props: *mut drmModeObjectPr
 // Initialization
 // =============================================================================
 
+// Static initialization result
+static INIT_RESULT: Mutex<Option<c_int>> = Mutex::new(None);
+static SHIM_INIT_ONCE: Once = Once::new();
+
 /// Initialize the shim (call this before using any other functions)
 #[no_mangle]
 pub extern "C" fn drm_hwcomposer_shim_init() -> c_int {
-    info!("drm_hwcomposer_shim_init");
-
-    // Initialize tracing
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .try_init();
-
-    // Create global DRM device
-    let mut global = GLOBAL_DRM.lock().unwrap();
-    if global.is_none() {
-        match HwcDrmDevice::new() {
-            Ok(d) => {
-                *global = Some(Arc::new(d));
-                0
-            }
-            Err(e) => {
-                error!("Failed to initialize: {}", e);
-                -1
-            }
+    // Check if already initialized
+    if let Ok(guard) = INIT_RESULT.lock() {
+        if let Some(result) = *guard {
+            return result;
         }
-    } else {
-        0
     }
+
+    let mut result = -1;
+
+    SHIM_INIT_ONCE.call_once(|| {
+        info!("drm_hwcomposer_shim_init: first-time initialization");
+
+        // Initialize tracing
+        let _ = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .try_init();
+
+        // Create global DRM device
+        let mut global = GLOBAL_DRM.lock().unwrap();
+        if global.is_none() {
+            match HwcDrmDevice::new() {
+                Ok(d) => {
+                    info!("HwcDrmDevice created successfully");
+                    *global = Some(Arc::new(d));
+                    result = 0;
+                }
+                Err(e) => {
+                    error!("Failed to initialize: {}", e);
+                    result = -1;
+                }
+            }
+        } else {
+            info!("GLOBAL_DRM already set");
+            result = 0;
+        }
+    });
+
+    // Store result for subsequent calls
+    if let Ok(mut guard) = INIT_RESULT.lock() {
+        *guard = Some(result);
+    }
+
+    result
 }
 
 /// Get the EGL display from the shim (for EGL integration)
