@@ -3471,6 +3471,34 @@ pub unsafe extern "C" fn eglSwapBuffers(dpy: EGLDisplay, surface: EGLSurface) ->
     }
 }
 
+/// Intercept eglSwapBuffersWithDamageEXT - Weston uses this instead of eglSwapBuffers
+#[no_mangle]
+pub unsafe extern "C" fn eglSwapBuffersWithDamageEXT(
+    dpy: EGLDisplay,
+    surface: EGLSurface,
+    rects: *const EGLint,
+    n_rects: EGLint,
+) -> u32 {
+    info!("eglSwapBuffersWithDamageEXT called: dpy={:?}, surface={:?}, n_rects={}", dpy, surface, n_rects);
+
+    // Delegate to our eglSwapBuffers implementation
+    eglSwapBuffers(dpy, surface)
+}
+
+/// Intercept eglSwapBuffersWithDamageKHR - alias for EXT version
+#[no_mangle]
+pub unsafe extern "C" fn eglSwapBuffersWithDamageKHR(
+    dpy: EGLDisplay,
+    surface: EGLSurface,
+    rects: *const EGLint,
+    n_rects: EGLint,
+) -> u32 {
+    info!("eglSwapBuffersWithDamageKHR called: dpy={:?}, surface={:?}, n_rects={}", dpy, surface, n_rects);
+
+    // Delegate to our eglSwapBuffers implementation
+    eglSwapBuffers(dpy, surface)
+}
+
 // EGL attribute constants
 const EGL_NATIVE_VISUAL_ID: EGLint = 0x302E;
 
@@ -3549,6 +3577,8 @@ pub unsafe extern "C" fn eglGetProcAddress(procname: *const c_char) -> *mut c_vo
         "eglCreatePlatformWindowSurface" => eglCreatePlatformWindowSurface as *mut c_void,
         "eglCreatePlatformWindowSurfaceEXT" => eglCreatePlatformWindowSurfaceEXT as *mut c_void,
         "eglSwapBuffers" => eglSwapBuffers as *mut c_void,
+        "eglSwapBuffersWithDamageEXT" => eglSwapBuffersWithDamageEXT as *mut c_void,
+        "eglSwapBuffersWithDamageKHR" => eglSwapBuffersWithDamageKHR as *mut c_void,
         "eglGetConfigAttrib" => eglGetConfigAttrib as *mut c_void,
         "eglChooseConfig" => eglChooseConfig as *mut c_void,
         "eglCreateContext" => eglCreateContext as *mut c_void,
