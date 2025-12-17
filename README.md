@@ -13,15 +13,17 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 | **Native Linux** (PinePhone, Librem 5) | ✅ Works | Standard DRM/KMS, full support |
 | **PostmarketOS** (mainline kernel) | ✅ Works | Uses freedreno/panfrost DRM drivers |
 | **Mobian** | ✅ Works | Standard Linux graphics stack |
-| **Droidian** (Android phones) | ✅ Works | Uses libhybris + android_wlegl for GPU |
+| **Droidian** (Android phones) | ⚠️ WIP | Needs significant work - see below |
 
-### Droidian / libhybris Support
+### Droidian / HWComposer Support
 
-Droidian and similar Android-based Linux distributions use **libhybris** to run Android's hardware abstraction layer (HAL) for graphics. Flick supports this via:
+Droidian and similar Android-based Linux distributions require **HWComposer** integration to access the GPU. This is **experimental and incomplete**.
 
-- **EGL binding**: `eglBindWaylandDisplayWL` for buffer sharing
-- **android_wlegl protocol**: Native buffer handle exchange with Android GPU drivers
-- **Hardware acceleration**: Full OpenGL ES via libhybris
+The `wlroots-test` branch contains attempts at:
+- DRM/HWComposer shim layer for intercepting graphics calls
+- Direct HWComposer 2.x rendering
+
+**Current status:** The shim approach requires significantly more work to properly intercept and translate between Linux DRM/GBM and Android's HWComposer HAL. Native Linux support works well; Droidian support is a longer-term goal.
 
 ## Current Status
 
