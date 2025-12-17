@@ -78,10 +78,10 @@ unsafe fn gl_viewport(x: i32, y: i32, w: i32, h: i32) {
 }
 
 fn main() {
-    // Initialize tracing
-    tracing_subscriber::fmt()
+    // Initialize tracing (use try_init in case LD_PRELOAD already set it up)
+    let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
-        .init();
+        .try_init();
 
     println!("=== DRM-HWComposer Shim Test ===");
     println!("Creating HwcDrmDevice...");
