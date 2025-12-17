@@ -265,12 +265,32 @@ The shim intercepts DRM/KMS ioctls to translate them to hwcomposer calls. If a c
 2. Missing DRM property handling (needs proper enum values)
 3. GBM buffer objects need cached metadata for borrowed buffers
 4. EGL config attribute queries need to return correct GBM visual format
+5. **Mutex deadlocks** - EGL intercepts must check EXTERNALLY_REGISTERED flag
+
+**KEY FIX (Dec 2024): EXTERNALLY_REGISTERED Pattern**
+When using `drm_hwcomposer_shim_register_device()` to register an externally-created
+HwcDrmDevice, all EGL intercepts must pass through to real functions. Otherwise,
+the intercepts try to lock `hwc` mutex while `init_egl` already holds it → DEADLOCK.
+
+Affected functions that check `EXTERNALLY_REGISTERED`:
+- eglGetDisplay
+- eglInitialize
+- eglChooseConfig
+- eglCreateWindowSurface
+- eglCreateContext
+- eglMakeCurrent
+- eglSwapBuffers
 
 **DEBUGGING WORKFLOW when crashes happen:**
 1. Check logs for which function/ioctl was called last
 2. Look at c_api.rs for unimplemented paths
 3. Check if GBM buffer metadata is being returned correctly
 4. Verify EGL config is reporting correct visual IDs (GBM_FORMAT_XRGB8888 = 0x34325258)
+5. **If stuck/deadlock**: Check if EGL intercept is missing EXTERNALLY_REGISTERED check
+
+### Current Status (Dec 2024)
+- **test_hwc**: WORKING - Colors cycling on display via HWC2+EGL
+- **Weston**: Next target for testing
 
 ### Current Testing Target
 - **Compositor**: Weston (reference Wayland compositor)
