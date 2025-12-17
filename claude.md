@@ -1,5 +1,55 @@
 # Flick Compositor - Development Notes
 
+## CURRENT TASK: drm-hwcomposer-shim (Universal Compositor Abstraction)
+
+**CRITICAL CONTEXT FOR CLAUDE (READ THIS FIRST!):**
+
+You are building `drm-hwcomposer-shim` - a **UNIVERSAL** compositor abstraction layer that allows **ANY Linux compositor** (not just Flick!) to run on Android-based Linux phones by abstracting hwcomposer behind standard DRM/KMS/GBM APIs.
+
+### Target Compositors
+- Flick (this project's shell)
+- Phosh
+- Plasma Mobile
+- Sway
+- Weston
+- Any standard Wayland compositor using DRM/KMS
+
+### Phone Setup
+- **Device**: Google Pixel 3a (sargo)
+- **OS**: Droidian
+- **SSH**: `ssh droidian@10.15.19.82` (alias: `phone` may not be configured)
+- **Project path on phone**: `~/Flick`
+
+### What This Does
+The shim intercepts DRM/KMS ioctls and translates them to Android hwcomposer calls via libhybris. This means compositors that expect standard Linux DRM devices can run on phones that only have hwcomposer.
+
+### Why You Keep Crashing
+When testing, if a compositor uses a DRM ioctl that isn't implemented in `c_api.rs`, it fails. You need to:
+1. Check which ioctl is being called
+2. Implement the handler in `drm-hwcomposer-shim/src/c_api.rs`
+3. Rebuild and test
+
+### Key Files to Work On
+- `drm-hwcomposer-shim/src/c_api.rs` - C API / ioctl interception (MAIN WORK)
+- `drm-hwcomposer-shim/src/drm_device.rs` - DRM device abstraction
+- `drm-hwcomposer-shim/src/gbm_device.rs` - GBM device using gralloc
+- `drm-hwcomposer-shim/src/hwcomposer.rs` - hwcomposer HAL interface
+- `drm-hwcomposer-shim/src/ffi.rs` - FFI bindings
+
+### Build & Test Workflow
+```bash
+# Local: commit and push
+git add -A && git commit -m "message" && git push
+
+# Phone: pull and build
+ssh droidian@10.15.19.82 "cd ~/Flick && git pull && cd drm-hwcomposer-shim && source ~/.cargo/env && cargo build --release"
+
+# Test
+ssh droidian@10.15.19.82 "cd ~/Flick/drm-hwcomposer-shim && ./test_shim.sh"
+```
+
+---
+
 ## Smithay Render Element Draw Order
 
 **IMPORTANT**: Smithay renders elements in **FRONT-TO-BACK order**:
