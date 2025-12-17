@@ -69,7 +69,7 @@ sudo -E LD_PRELOAD="$SHIM_LIB" \
     XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
     EGL_PLATFORM=hwcomposer \
     LIBSEAT_BACKEND=noop \
-    weston --backend=drm-backend.so --tty=1 2>&1
+    weston --backend=drm-backend.so 2>&1
 
 echo ""
 echo "Weston exited"
