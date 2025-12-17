@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/wait.h>
 #include <linux/input-event-codes.h>
 #include <wlr/util/log.h>
@@ -274,8 +275,8 @@ bool flick_server_init(struct flick_server *server) {
     server->output_layout = wlr_output_layout_create(server->wl_display);
     server->scene_layout = wlr_scene_attach_output_layout(server->scene, server->output_layout);
 
-    // Create background rect for shell
-    float bg_color[4] = {0.1f, 0.1f, 0.3f, 1.0f};  // Dark blue (home)
+    // Create background rect for shell (initial color will be set by shell)
+    float bg_color[4] = {0.1f, 0.2f, 0.8f, 1.0f};  // Blue (home)
     server->background = wlr_scene_rect_create(
         &server->scene->tree, 4096, 4096, bg_color);
     if (server->background) {
@@ -377,21 +378,66 @@ bool flick_server_init(struct flick_server *server) {
     // Initialize shell state machine
     flick_shell_init(&server->shell, server);
 
+    // Set initial shell visuals
+    flick_shell_update_visuals(&server->shell);
+
     wlr_log(WLR_INFO, "Server initialized successfully");
     return true;
 }
 
-// Launch a command in the background
+// Launch a command in the background with proper detachment
 static void launch_command(const char *cmd) {
     pid_t pid = fork();
     if (pid == 0) {
-        // Child process
-        execl("/bin/sh", "/bin/sh", "-c", cmd, NULL);
-        _exit(EXIT_FAILURE);
+        // First child - create new session and fork again
+        setsid();
+
+        // Double-fork to fully detach from parent
+        pid_t pid2 = fork();
+        if (pid2 == 0) {
+            // Grandchild - this is the actual process
+            // Close inherited file descriptors
+            close(STDIN_FILENO);
+            close(STDOUT_FILENO);
+            close(STDERR_FILENO);
+
+            // Redirect to /dev/null
+            open("/dev/null", O_RDONLY);  // stdin
+            open("/dev/null", O_WRONLY);  // stdout
+            open("/dev/null", O_WRONLY);  // stderr
+
+            execl("/bin/sh", "/bin/sh", "-c", cmd, NULL);
+            _exit(EXIT_FAILURE);
+        }
+        // First child exits immediately
+        _exit(EXIT_SUCCESS);
     } else if (pid < 0) {
         wlr_log(WLR_ERROR, "Failed to fork for command: %s", cmd);
     } else {
-        wlr_log(WLR_INFO, "Launched: %s (pid %d)", cmd, pid);
+        // Parent waits for first child to exit
+        waitpid(pid, NULL, 0);
+        wlr_log(WLR_INFO, "Launched: %s", cmd);
+    }
+}
+
+// Idle callback to launch terminal after compositor is ready
+static void launch_terminal_idle(void *data) {
+    (void)data;
+
+    const char *terminal = getenv("FLICK_TERMINAL");
+    if (terminal) {
+        launch_command(terminal);
+    } else {
+        // Try common terminals in order of preference
+        if (access("/usr/bin/foot", X_OK) == 0) {
+            launch_command("foot");
+        } else if (access("/usr/bin/alacritty", X_OK) == 0) {
+            launch_command("alacritty");
+        } else if (access("/usr/bin/weston-terminal", X_OK) == 0) {
+            launch_command("weston-terminal");
+        } else {
+            wlr_log(WLR_INFO, "No terminal found to auto-launch");
+        }
     }
 }
 
@@ -416,22 +462,9 @@ bool flick_server_start(struct flick_server *server) {
 
     wlr_log(WLR_INFO, "Backend started successfully");
 
-    // Auto-launch a terminal for testing (try foot, then alacritty, then xterm)
-    const char *terminal = getenv("FLICK_TERMINAL");
-    if (terminal) {
-        launch_command(terminal);
-    } else {
-        // Try common terminals in order of preference
-        if (access("/usr/bin/foot", X_OK) == 0) {
-            launch_command("foot");
-        } else if (access("/usr/bin/alacritty", X_OK) == 0) {
-            launch_command("alacritty");
-        } else if (access("/usr/bin/weston-terminal", X_OK) == 0) {
-            launch_command("weston-terminal");
-        } else {
-            wlr_log(WLR_INFO, "No terminal found to auto-launch");
-        }
-    }
+    // Schedule terminal launch for after the event loop starts
+    // This ensures the compositor is fully ready to accept clients
+    wl_event_loop_add_idle(server->wl_event_loop, launch_terminal_idle, server);
 
     return true;
 }

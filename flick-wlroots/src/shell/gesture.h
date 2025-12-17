@@ -32,7 +32,8 @@ enum flick_gesture_type {
 // Gesture actions (what to do in response)
 enum flick_gesture_action {
     FLICK_ACTION_NONE = 0,
-    FLICK_ACTION_GO_HOME,           // Bottom edge swipe up
+    FLICK_ACTION_GO_HOME,           // Bottom edge long swipe up
+    FLICK_ACTION_SHOW_KEYBOARD,     // Bottom edge short swipe up
     FLICK_ACTION_CLOSE_APP,         // Top edge swipe down
     FLICK_ACTION_QUICK_SETTINGS,    // Left edge swipe right
     FLICK_ACTION_APP_SWITCHER,      // Right edge swipe left
@@ -82,7 +83,9 @@ struct flick_gesture_event {
     enum flick_edge edge;
     double progress;   // 0.0 to 1.0+
     double velocity;
+    double distance;   // Actual swipe distance in pixels
     bool completed;    // For swipe end: did it complete?
+    bool is_long;      // For swipe end: was it a long swipe?
     uint32_t fingers;
 
     // For pinch
@@ -101,8 +104,11 @@ struct flick_gesture_config {
     // Distance for swipe animation progress (larger = smoother)
     double swipe_threshold;
 
-    // Distance required to complete/trigger a swipe action
+    // Distance required to complete/trigger a swipe action (short swipe)
     double swipe_complete_threshold;
+
+    // Distance required for a "long" swipe (e.g., go home instead of keyboard)
+    double swipe_long_threshold;
 
     // Time threshold for long press (milliseconds)
     uint32_t long_press_ms;

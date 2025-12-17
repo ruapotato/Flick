@@ -12,8 +12,9 @@ void flick_shell_init(struct flick_shell *shell, struct flick_server *server) {
     shell->current_view = FLICK_VIEW_HOME;  // Start at home screen
     shell->transition_state = FLICK_TRANSITION_NONE;
 
-    wlr_log(WLR_INFO, "Shell initialized, starting at %s",
-            flick_shell_view_name(shell->current_view));
+    wlr_log(WLR_INFO, "Shell initialized at %p, current_view=%d (%s), server=%p",
+            (void*)shell, shell->current_view,
+            flick_shell_view_name(shell->current_view), (void*)server);
 }
 
 // Determine target view based on current view and gesture edge
@@ -78,6 +79,10 @@ bool flick_shell_handle_gesture(struct flick_shell *shell,
                                 const struct flick_gesture_event *event) {
     if (!event) return false;
 
+    wlr_log(WLR_DEBUG, "Shell(%p): handle_gesture type=%d current_view=%d (%s)",
+            (void*)shell, event->type, shell->current_view,
+            flick_shell_view_name(shell->current_view));
+
     switch (event->type) {
     case FLICK_GESTURE_EDGE_SWIPE_START: {
         // Determine where we might be going
@@ -111,6 +116,9 @@ bool flick_shell_handle_gesture(struct flick_shell *shell,
                 shell->transition_progress = 1.0;
             }
 
+            // Update visuals to track finger position
+            flick_shell_update_visuals(shell);
+
             wlr_log(WLR_DEBUG, "Shell: Transition progress %.2f",
                     shell->transition_progress);
             return true;
@@ -125,15 +133,17 @@ bool flick_shell_handle_gesture(struct flick_shell *shell,
             if (event->completed) {
                 // Complete the transition
                 shell->transition_state = FLICK_TRANSITION_ANIMATING;
-                wlr_log(WLR_INFO, "Shell: Completing transition to %s",
-                        flick_shell_view_name(shell->transition_to));
+                wlr_log(WLR_INFO, "Shell: Completing transition to %s (from %s)",
+                        flick_shell_view_name(shell->transition_to),
+                        flick_shell_view_name(shell->transition_from));
 
                 // For now, instant transition (animation would be added later)
                 shell->current_view = shell->transition_to;
                 shell->transition_state = FLICK_TRANSITION_NONE;
                 shell->transition_progress = 0.0;
 
-                wlr_log(WLR_INFO, "Shell: Now at %s",
+                wlr_log(WLR_INFO, "Shell: current_view now set to %d (%s)",
+                        shell->current_view,
                         flick_shell_view_name(shell->current_view));
                 flick_shell_update_visuals(shell);
             } else {
@@ -145,6 +155,9 @@ bool flick_shell_handle_gesture(struct flick_shell *shell,
                 // For now, instant cancel
                 shell->transition_state = FLICK_TRANSITION_NONE;
                 shell->transition_progress = 0.0;
+
+                // Reset visuals to original state
+                flick_shell_update_visuals(shell);
             }
             return true;
         }
@@ -169,12 +182,22 @@ void flick_shell_handle_action(struct flick_shell *shell,
                                enum flick_gesture_action action) {
     enum flick_shell_view old_view = shell->current_view;
 
+    wlr_log(WLR_DEBUG, "Shell(%p): handle_action(%s) current_view=%d (%s)",
+            (void*)shell, flick_gesture_action_name(action), old_view,
+            flick_shell_view_name(old_view));
+
     switch (action) {
     case FLICK_ACTION_GO_HOME:
         if (shell->current_view != FLICK_VIEW_HOME) {
             wlr_log(WLR_INFO, "Shell: Going home");
             shell->current_view = FLICK_VIEW_HOME;
         }
+        break;
+
+    case FLICK_ACTION_SHOW_KEYBOARD:
+        wlr_log(WLR_INFO, "Shell: Show keyboard requested");
+        // TODO: Launch on-screen keyboard (squeekboard, wvkbd, etc.)
+        // For now, just log the request
         break;
 
     case FLICK_ACTION_CLOSE_APP:
@@ -263,33 +286,44 @@ void flick_shell_go_to_view(struct flick_shell *shell, enum flick_shell_view vie
     }
 }
 
-// Get background color for current shell view
+// Get background color for a shell view - VERY DISTINCT colors for debugging
 static void get_view_color(enum flick_shell_view view, float color[4]) {
     switch (view) {
     case FLICK_VIEW_LOCK:
-        // Dark gray for lock screen
-        color[0] = 0.15f; color[1] = 0.15f; color[2] = 0.15f; color[3] = 1.0f;
+        // RED for lock screen
+        color[0] = 0.8f; color[1] = 0.1f; color[2] = 0.1f; color[3] = 1.0f;
         break;
     case FLICK_VIEW_HOME:
-        // Dark blue for home
-        color[0] = 0.1f; color[1] = 0.1f; color[2] = 0.3f; color[3] = 1.0f;
+        // BLUE for home
+        color[0] = 0.1f; color[1] = 0.2f; color[2] = 0.8f; color[3] = 1.0f;
         break;
     case FLICK_VIEW_APP:
-        // Transparent (show app)
-        color[0] = 0.0f; color[1] = 0.0f; color[2] = 0.0f; color[3] = 0.0f;
+        // BLACK (show app)
+        color[0] = 0.0f; color[1] = 0.0f; color[2] = 0.0f; color[3] = 1.0f;
         break;
     case FLICK_VIEW_APP_SWITCHER:
-        // Dark teal for app switcher
-        color[0] = 0.1f; color[1] = 0.2f; color[2] = 0.25f; color[3] = 1.0f;
+        // GREEN for app switcher
+        color[0] = 0.1f; color[1] = 0.7f; color[2] = 0.2f; color[3] = 1.0f;
         break;
     case FLICK_VIEW_QUICK_SETTINGS:
-        // Dark purple for quick settings
-        color[0] = 0.2f; color[1] = 0.1f; color[2] = 0.25f; color[3] = 1.0f;
+        // PURPLE/MAGENTA for quick settings
+        color[0] = 0.7f; color[1] = 0.1f; color[2] = 0.7f; color[3] = 1.0f;
         break;
     default:
-        // Fallback dark
-        color[0] = 0.1f; color[1] = 0.1f; color[2] = 0.1f; color[3] = 1.0f;
+        // YELLOW fallback (shouldn't happen)
+        color[0] = 0.9f; color[1] = 0.9f; color[2] = 0.1f; color[3] = 1.0f;
         break;
+    }
+}
+
+// Linearly interpolate between two colors based on progress (0.0 - 1.0)
+static void lerp_color(float from[4], float to[4], float progress, float out[4]) {
+    // Clamp progress to 0-1
+    if (progress < 0.0f) progress = 0.0f;
+    if (progress > 1.0f) progress = 1.0f;
+
+    for (int i = 0; i < 4; i++) {
+        out[i] = from[i] + (to[i] - from[i]) * progress;
     }
 }
 
@@ -299,9 +333,26 @@ void flick_shell_update_visuals(struct flick_shell *shell) {
     }
 
     float color[4];
-    get_view_color(shell->current_view, color);
-    wlr_scene_rect_set_color(shell->server->background, color);
 
-    wlr_log(WLR_DEBUG, "Shell background updated for %s",
-            flick_shell_view_name(shell->current_view));
+    // If we're in a transition, interpolate between from and to colors
+    if (shell->transition_state == FLICK_TRANSITION_STARTING ||
+        shell->transition_state == FLICK_TRANSITION_ANIMATING ||
+        shell->transition_state == FLICK_TRANSITION_CANCELING) {
+
+        float from_color[4], to_color[4];
+        get_view_color(shell->transition_from, from_color);
+        get_view_color(shell->transition_to, to_color);
+
+        lerp_color(from_color, to_color, shell->transition_progress, color);
+    } else {
+        // Not transitioning - use current view color
+        get_view_color(shell->current_view, color);
+    }
+
+    wlr_log(WLR_DEBUG, "Shell: update_visuals color=(%.2f,%.2f,%.2f) view=%s trans=%d",
+            color[0], color[1], color[2],
+            flick_shell_view_name(shell->current_view),
+            shell->transition_state);
+
+    wlr_scene_rect_set_color(shell->server->background, color);
 }

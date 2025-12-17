@@ -158,6 +158,12 @@ static void handle_new_keyboard(struct flick_server *server,
     keyboard->base.wlr_device = device;
     keyboard->wlr_keyboard = wlr_keyboard_from_input_device(device);
 
+    if (!keyboard->wlr_keyboard) {
+        wlr_log(WLR_ERROR, "Failed to get keyboard from device: %s", device->name);
+        free(keyboard);
+        return;
+    }
+
     wlr_log(WLR_INFO, "Setting up keyboard: %s", device->name);
 
     // Setup XKB keymap
@@ -215,8 +221,8 @@ static void touch_down_notify(struct wl_listener *listener, void *data) {
     double x = event->x * server->output_width;
     double y = event->y * server->output_height;
 
-    wlr_log(WLR_DEBUG, "Touch down: id=%d pos=(%.0f, %.0f)",
-            event->touch_id, x, y);
+    wlr_log(WLR_DEBUG, "Touch down: id=%d pos=(%.0f, %.0f) server=%p shell.view=%d",
+            event->touch_id, x, y, (void*)server, server->shell.current_view);
 
     // Process through gesture recognizer
     struct flick_gesture_event gesture_event = {0};
@@ -303,6 +309,15 @@ static void handle_new_touch(struct flick_server *server,
     touch->base.wlr_device = device;
     touch->wlr_touch = wlr_touch_from_input_device(device);
 
+    wlr_log(WLR_INFO, "Touch: server=%p shell=%p shell.current_view=%d",
+            (void*)server, (void*)&server->shell, server->shell.current_view);
+
+    if (!touch->wlr_touch) {
+        wlr_log(WLR_ERROR, "Failed to get touch from device: %s", device->name);
+        free(touch);
+        return;
+    }
+
     // Setup listeners
     touch->down.notify = touch_down_notify;
     wl_signal_add(&touch->wlr_touch->events.down, &touch->down);
@@ -348,6 +363,12 @@ static void handle_new_pointer(struct flick_server *server,
     pointer->base.server = server;
     pointer->base.wlr_device = device;
     pointer->wlr_pointer = wlr_pointer_from_input_device(device);
+
+    if (!pointer->wlr_pointer) {
+        wlr_log(WLR_ERROR, "Failed to get pointer from device: %s", device->name);
+        free(pointer);
+        return;
+    }
 
     wlr_log(WLR_INFO, "Setting up pointer: %s", device->name);
 

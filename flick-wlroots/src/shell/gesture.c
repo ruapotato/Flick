@@ -82,7 +82,8 @@ void flick_gesture_init(struct flick_gesture_recognizer *gesture,
     // Default configuration (matching Rust version)
     gesture->config.edge_threshold = 80.0;           // 80px edge zone
     gesture->config.swipe_threshold = 300.0;         // 300px for animation progress
-    gesture->config.swipe_complete_threshold = 100.0; // 100px to trigger action
+    gesture->config.swipe_complete_threshold = 100.0; // 100px to trigger short action
+    gesture->config.swipe_long_threshold = 200.0;    // 200px for long swipe (home)
     gesture->config.long_press_ms = 500;             // 500ms for long press
     gesture->config.tap_ms = 200;                    // 200ms max for tap
     gesture->config.tap_distance = 10.0;             // 10px max movement for tap
@@ -264,6 +265,7 @@ bool flick_gesture_touch_up(struct flick_gesture_recognizer *gesture,
     switch (point->state) {
     case FLICK_SLOT_EDGE_SWIPE: {
         bool completed = distance > gesture->config.swipe_complete_threshold;
+        bool is_long = distance > gesture->config.swipe_long_threshold;
 
         double velocity = 0.0;
         switch (point->edge) {
@@ -282,16 +284,20 @@ bool flick_gesture_touch_up(struct flick_gesture_recognizer *gesture,
         // Also complete if flick velocity is high enough
         if (velocity > gesture->config.flick_velocity) {
             completed = true;
+            // Fast flick counts as long swipe
+            is_long = true;
         }
 
-        wlr_log(WLR_INFO, "Edge swipe %s end: distance=%.0f, velocity=%.0f, completed=%s",
+        wlr_log(WLR_INFO, "Edge swipe %s end: distance=%.0f, velocity=%.0f, completed=%s, long=%s",
                 flick_edge_name(point->edge), distance, velocity,
-                completed ? "yes" : "no");
+                completed ? "yes" : "no", is_long ? "yes" : "no");
 
         if (event) {
             event->type = FLICK_GESTURE_EDGE_SWIPE_END;
             event->edge = point->edge;
             event->completed = completed;
+            event->is_long = is_long;
+            event->distance = distance;
             event->velocity = velocity;
             event->fingers = gesture->active_count;
         }
@@ -367,7 +373,12 @@ enum flick_gesture_action flick_gesture_to_action(
 
         switch (event->edge) {
         case FLICK_EDGE_BOTTOM:
-            return FLICK_ACTION_GO_HOME;
+            // Short swipe = keyboard, long swipe = go home
+            if (event->is_long) {
+                return FLICK_ACTION_GO_HOME;
+            } else {
+                return FLICK_ACTION_SHOW_KEYBOARD;
+            }
         case FLICK_EDGE_TOP:
             return FLICK_ACTION_CLOSE_APP;
         case FLICK_EDGE_LEFT:
@@ -393,6 +404,7 @@ const char *flick_gesture_action_name(enum flick_gesture_action action) {
     switch (action) {
     case FLICK_ACTION_NONE:           return "none";
     case FLICK_ACTION_GO_HOME:        return "go_home";
+    case FLICK_ACTION_SHOW_KEYBOARD:  return "show_keyboard";
     case FLICK_ACTION_CLOSE_APP:      return "close_app";
     case FLICK_ACTION_QUICK_SETTINGS: return "quick_settings";
     case FLICK_ACTION_APP_SWITCHER:   return "app_switcher";
