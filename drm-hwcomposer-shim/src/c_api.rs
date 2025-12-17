@@ -2911,6 +2911,17 @@ pub unsafe extern "C" fn eglGetPlatformDisplay(
 /// Intercept eglInitialize - we may have already initialized
 #[no_mangle]
 pub unsafe extern "C" fn eglInitialize(dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> u32 {
+    // Check for recursion - if we're already in an EGL intercept (e.g., during init_egl),
+    // pass through to real function to avoid deadlock on GLOBAL_DRM mutex
+    let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
+    if in_intercept {
+        init_egl_funcs();
+        if let Some(real_fn) = REAL_EGL_INITIALIZE {
+            return real_fn(dpy, major, minor);
+        }
+        return EGL_FALSE;
+    }
+
     init_egl_funcs();
     debug!("eglInitialize intercepted (dpy={:?})", dpy);
 
@@ -2945,6 +2956,16 @@ pub unsafe extern "C" fn eglCreateWindowSurface(
     win: EGLNativeWindowType,
     attrib_list: *const EGLint,
 ) -> EGLSurface {
+    // Check for recursion to avoid deadlock
+    let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
+    if in_intercept {
+        init_egl_funcs();
+        if let Some(real_fn) = REAL_EGL_CREATE_WINDOW_SURFACE {
+            return real_fn(dpy, config, win, attrib_list);
+        }
+        return EGL_NO_SURFACE;
+    }
+
     init_egl_funcs();
     debug!("eglCreateWindowSurface intercepted (dpy={:?}, win={:?})", dpy, win);
 
@@ -2973,6 +2994,16 @@ pub unsafe extern "C" fn eglCreateWindowSurface(
 /// Intercept eglSwapBuffers - present via hwcomposer
 #[no_mangle]
 pub unsafe extern "C" fn eglSwapBuffers(dpy: EGLDisplay, surface: EGLSurface) -> u32 {
+    // Check for recursion to avoid deadlock
+    let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
+    if in_intercept {
+        init_egl_funcs();
+        if let Some(real_fn) = REAL_EGL_SWAP_BUFFERS {
+            return real_fn(dpy, surface);
+        }
+        return EGL_FALSE;
+    }
+
     // Check if this is our hwcomposer display
     let our_display = drm_hwcomposer_shim_get_egl_display();
     if dpy == our_display {
@@ -3047,6 +3078,19 @@ pub unsafe extern "C" fn eglChooseConfig(
     config_size: EGLint,
     num_config: *mut EGLint,
 ) -> u32 {
+    // Check for recursion to avoid deadlock
+    let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
+    if in_intercept {
+        let real_fn: Option<unsafe extern "C" fn(EGLDisplay, *const EGLint, *mut EGLConfig, EGLint, *mut EGLint) -> u32> = {
+            let sym = libc::dlsym(RTLD_NEXT, b"eglChooseConfig\0".as_ptr() as *const c_char);
+            if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+        };
+        if let Some(f) = real_fn {
+            return f(dpy, attrib_list, configs, config_size, num_config);
+        }
+        return EGL_FALSE;
+    }
+
     debug!("eglChooseConfig intercepted (dpy={:?})", dpy);
 
     // Check if this is our hwcomposer display
@@ -3090,6 +3134,20 @@ pub unsafe extern "C" fn eglCreateContext(
     share_context: EGLContext,
     attrib_list: *const EGLint,
 ) -> EGLContext {
+    // Check for recursion to avoid deadlock
+    let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
+    if in_intercept {
+        type EGLCtx = *mut c_void;
+        let real_fn: Option<unsafe extern "C" fn(EGLDisplay, EGLConfig, EGLCtx, *const EGLint) -> EGLCtx> = {
+            let sym = libc::dlsym(RTLD_NEXT, b"eglCreateContext\0".as_ptr() as *const c_char);
+            if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+        };
+        if let Some(f) = real_fn {
+            return f(dpy, config, share_context, attrib_list);
+        }
+        return ptr::null_mut();
+    }
+
     debug!("eglCreateContext intercepted (dpy={:?})", dpy);
 
     // Check if this is our hwcomposer display
@@ -3128,6 +3186,20 @@ pub unsafe extern "C" fn eglMakeCurrent(
     read: EGLSurface,
     ctx: EGLContext,
 ) -> u32 {
+    // Check for recursion to avoid deadlock
+    let in_intercept = IN_EGL_INTERCEPT.with(|flag| flag.get());
+    if in_intercept {
+        type EGLCtx = *mut c_void;
+        let real_fn: Option<unsafe extern "C" fn(EGLDisplay, EGLSurface, EGLSurface, EGLCtx) -> u32> = {
+            let sym = libc::dlsym(RTLD_NEXT, b"eglMakeCurrent\0".as_ptr() as *const c_char);
+            if sym.is_null() { None } else { Some(std::mem::transmute(sym)) }
+        };
+        if let Some(f) = real_fn {
+            return f(dpy, draw, read, ctx);
+        }
+        return EGL_FALSE;
+    }
+
     debug!("eglMakeCurrent intercepted (dpy={:?})", dpy);
 
     // Check if this is our hwcomposer display
