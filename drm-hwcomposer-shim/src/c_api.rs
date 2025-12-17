@@ -2280,10 +2280,19 @@ pub unsafe extern "C" fn open(path: *const c_char, flags: c_int) -> c_int {
 
         // Intercept DRM device opens
         if path_str.starts_with("/dev/dri/") {
-            info!("open() intercepted: {} -> returning shim DRM fd", path_str);
+            // Try init first to determine if we're the main process
+            let init_result = drm_hwcomposer_shim_init();
 
-            // Initialize the shim
-            if drm_hwcomposer_shim_init() == 0 {
+            // If we're not the main shim process, pass through to real open
+            if !is_main_shim_process() {
+                debug!("open(): not main shim process, passing through");
+                if let Some(real_open) = REAL_OPEN_FN {
+                    return real_open(path, flags, 0);
+                }
+            }
+
+            if init_result == 0 {
+                info!("open() intercepted: {} -> returning shim DRM fd", path_str);
                 return get_or_create_shim_fd();
             } else {
                 return -1;
@@ -2310,8 +2319,19 @@ pub unsafe extern "C" fn open64(path: *const c_char, flags: c_int) -> c_int {
     if !path.is_null() {
         let path_str = CStr::from_ptr(path).to_str().unwrap_or("");
         if path_str.starts_with("/dev/dri/") {
-            info!("open64() intercepted: {} -> returning shim DRM fd", path_str);
-            if drm_hwcomposer_shim_init() == 0 {
+            // Try init first to determine if we're the main process
+            let init_result = drm_hwcomposer_shim_init();
+
+            // If we're not the main shim process, pass through to real open
+            if !is_main_shim_process() {
+                debug!("open64(): not main shim process, passing through");
+                if let Some(real_open) = REAL_OPEN_FN {
+                    return real_open(path, flags, 0);
+                }
+            }
+
+            if init_result == 0 {
+                info!("open64() intercepted: {} -> returning shim DRM fd", path_str);
                 return get_or_create_shim_fd();
             }
             return -1;
@@ -2337,9 +2357,17 @@ pub unsafe extern "C" fn openat(dirfd: c_int, path: *const c_char, flags: c_int)
 
         // Intercept DRM device opens
         if path_str.starts_with("/dev/dri/") || path_str.contains("dri/card") {
-            info!("openat() intercepted: {} -> returning shim DRM fd", path_str);
+            // Try init first to determine if we're the main process
+            let init_result = drm_hwcomposer_shim_init();
 
-            if drm_hwcomposer_shim_init() == 0 {
+            // If we're not the main shim process, pass through to real openat
+            if !is_main_shim_process() {
+                debug!("openat(): not main shim process, passing through");
+                return libc::openat(dirfd, path, flags);
+            }
+
+            if init_result == 0 {
+                info!("openat() intercepted: {} -> returning shim DRM fd", path_str);
                 return get_or_create_shim_fd();
             } else {
                 return -1;
@@ -2543,6 +2571,17 @@ static SHIM_INIT_ONCE: Once = Once::new();
 // System-wide lock file to prevent multiple processes from initializing hwcomposer
 const LOCK_FILE: &str = "/tmp/drm-hwcomposer-shim.lock";
 
+// Track if this process is the main shim process (holds the lock)
+static IS_MAIN_SHIM_PROCESS: Mutex<Option<bool>> = Mutex::new(None);
+
+fn is_main_shim_process() -> bool {
+    if let Ok(guard) = IS_MAIN_SHIM_PROCESS.lock() {
+        guard.unwrap_or(false)
+    } else {
+        false
+    }
+}
+
 fn try_acquire_system_lock() -> Option<std::fs::File> {
     use std::fs::OpenOptions;
     use std::os::unix::fs::OpenOptionsExt;
@@ -2590,10 +2629,18 @@ pub extern "C" fn drm_hwcomposer_shim_init() -> c_int {
         let lock_file = try_acquire_system_lock();
         if lock_file.is_none() {
             // Another process is initializing hwcomposer, we're probably a child process
-            // Just return success and rely on the parent's hwcomposer
-            warn!("drm_hwcomposer_shim_init: Another process has hwcomposer lock, skipping init");
+            // Mark ourselves as NOT the main shim process
+            if let Ok(mut guard) = IS_MAIN_SHIM_PROCESS.lock() {
+                *guard = Some(false);
+            }
+            warn!("drm_hwcomposer_shim_init: Another process has hwcomposer lock, passing through");
             result = 0;
             return;
+        }
+
+        // Mark ourselves as the main shim process
+        if let Ok(mut guard) = IS_MAIN_SHIM_PROCESS.lock() {
+            *guard = Some(true);
         }
 
         info!("drm_hwcomposer_shim_init: first-time initialization (holding lock)");
