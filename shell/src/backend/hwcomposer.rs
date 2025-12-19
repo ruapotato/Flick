@@ -609,9 +609,11 @@ fn handle_input_event(
             use smithay::backend::input::TouchEvent;
 
             let slot_id: i32 = event.slot().into();
+            info!("TouchUp event: slot_id={}", slot_id);
 
             // Get last touch position
             let last_pos = state.last_touch_pos.remove(&slot_id);
+            info!("TouchUp: last_pos={:?}", last_pos);
 
             // Forward to gesture recognizer
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {
