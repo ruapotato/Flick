@@ -465,6 +465,12 @@ fn handle_input_event(
                             slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
                         }
                     }
+                    crate::shell::ShellView::Switcher => {
+                        // Forward to Slint for app switcher window selection
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                        }
+                    }
                     _ => {}
                 }
             }
