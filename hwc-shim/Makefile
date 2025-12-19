@@ -29,9 +29,12 @@ HYBRIS_LIBS := $(shell $(PKG_CONFIG) --libs libhybris-hwcomposerwindow 2>/dev/nu
 HWC2_CFLAGS := $(shell $(PKG_CONFIG) --cflags libhwc2 2>/dev/null || echo "-I/usr/include/hybris/hwc2")
 HWC2_LIBS := $(shell $(PKG_CONFIG) --libs libhwc2 2>/dev/null || echo "-lhwc2")
 
+# Android headers (for hardware/hwcomposer2.h etc)
+ANDROID_CFLAGS := -I/usr/include/android
+
 GRALLOC_LIBS := -lgralloc
 
-CFLAGS += $(HYBRIS_CFLAGS) $(HWC2_CFLAGS)
+CFLAGS += $(HYBRIS_CFLAGS) $(HWC2_CFLAGS) $(ANDROID_CFLAGS)
 LDFLAGS += $(HYBRIS_LIBS) $(HWC2_LIBS) $(GRALLOC_LIBS)
 
 # Source files
