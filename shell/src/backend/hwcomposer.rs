@@ -653,7 +653,18 @@ fn handle_input_event(
                     }
                     // Bottom edge = Home gesture (swipe up)
                     if *edge == crate::input::Edge::Bottom {
-                        state.end_home_gesture(*completed);
+                        let shell_view = state.shell.view;
+                        // In Switcher or QuickSettings, just go directly home on swipe up
+                        if shell_view == crate::shell::ShellView::Switcher ||
+                           shell_view == crate::shell::ShellView::QuickSettings {
+                            if *completed {
+                                info!("Swipe up from {} - going home", if shell_view == crate::shell::ShellView::Switcher { "Switcher" } else { "QuickSettings" });
+                                state.shell.set_view(crate::shell::ShellView::Home);
+                            }
+                        } else {
+                            // In App view, use the home gesture with keyboard handling
+                            state.end_home_gesture(*completed);
+                        }
                         info!("Home gesture END, completed={}", completed);
                     }
                     // Top edge = Close gesture (swipe down)

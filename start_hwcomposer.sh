@@ -1,0 +1,55 @@
+#!/bin/bash
+# Start Flick compositor on Droidian (hwcomposer backend)
+# Usage: ./start_hwcomposer.sh [--bg]
+#   --bg  Run in background, log to /tmp/flick.log
+
+set -e
+
+# Get the real user's home, even if running via sudo
+REAL_HOME="${SUDO_USER:+$(eval echo ~$SUDO_USER)}"
+REAL_HOME="${REAL_HOME:-$HOME}"
+FLICK_BIN="$REAL_HOME/Flick/shell/target/release/flick"
+
+if [ ! -f "$FLICK_BIN" ]; then
+    echo "Error: flick binary not found at $FLICK_BIN"
+    echo "Build it first: cd ~/Flick/shell && cargo build --release"
+    exit 1
+fi
+
+echo "Stopping existing processes..."
+sudo killall -9 flick 2>/dev/null || true
+sudo systemctl stop phosh 2>/dev/null || true
+sleep 1
+
+echo "Restarting hwcomposer..."
+sudo pkill -9 -f 'graphics.composer' 2>/dev/null || true
+sudo pkill -9 -f 'hwcomposer' 2>/dev/null || true
+sleep 1
+
+if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
+    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
+        /usr/lib/halium-wrappers/android-service.sh hwcomposer start
+else
+    sudo systemctl restart hwcomposer 2>/dev/null || true
+fi
+sleep 2
+
+# Set up environment
+REAL_UID=$(id -u "${SUDO_USER:-$USER}")
+export XDG_RUNTIME_DIR="/run/user/$REAL_UID"
+export EGL_PLATFORM=hwcomposer
+
+mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
+
+echo "Starting Flick..."
+if [ "$1" = "--bg" ]; then
+    sudo -E "$FLICK_BIN" > /tmp/flick.log 2>&1 &
+    sleep 2
+    # Fix Wayland socket permissions
+    for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
+        [ -S "$sock" ] && sudo chmod 0777 "$sock"
+    done
+    echo "Flick running in background. Logs: /tmp/flick.log"
+else
+    sudo -E "$FLICK_BIN"
+fi
