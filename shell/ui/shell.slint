@@ -96,6 +96,7 @@ export struct WindowCard {
     id: int,
     title: string,
     app-class: string,
+    original-index: int,  // Original index for positioning (render order may differ)
 }
 
 // Status bar at top of screen
@@ -1753,14 +1754,15 @@ component AppSwitcherPanel inherits Rectangle {
             vertical-alignment: center;
         }
 
-        // Fan-out cards - each card positioned based on index and scroll
-        // Note: Cards render in order, so later cards are on top (visually reversed from desired)
-        // TODO: Sort by distance from center for proper z-order
+        // Fan-out cards - each card positioned based on original-index and scroll
+        // Cards are sorted by render order (furthest from center first, center last)
+        // so that the center card renders on top
         for window[idx] in windows: Rectangle {
-            // Calculate position based on scroll offset
-            // Each card is at: idx * card-spacing - scroll-offset + center
-            property <length> base-x: idx * card-spacing - scroll-offset * 1px + (parent.width - card-width) / 2;
-            property <float> normalized-pos: (idx * card-spacing / 1px - scroll-offset) / (card-spacing / 1px);
+            // Calculate position based on scroll offset using original-index
+            // Each card is at: original-index * card-spacing - scroll-offset + center
+            property <int> pos-idx: window.original-index;
+            property <length> base-x: pos-idx * card-spacing - scroll-offset * 1px + (parent.width - card-width) / 2;
+            property <float> normalized-pos: (pos-idx * card-spacing / 1px - scroll-offset) / (card-spacing / 1px);
             property <float> distance: abs(normalized-pos);
             property <float> scale: max(0.75, 1.0 - distance * 0.1);
 

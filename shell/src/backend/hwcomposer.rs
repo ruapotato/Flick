@@ -617,11 +617,12 @@ fn handle_input_event(
             use smithay::backend::input::TouchEvent;
 
             let slot_id: i32 = event.slot().into();
-            info!("TouchUp event: slot_id={}", slot_id);
 
             // Get last touch position
             let last_pos = state.last_touch_pos.remove(&slot_id);
-            info!("TouchUp: last_pos={:?}", last_pos);
+
+            // Track if switcher was just opened by gesture (to skip tap detection)
+            let mut switcher_opened_by_gesture = false;
 
             // Forward to gesture recognizer
             if let Some(gesture_event) = state.gesture_recognizer.touch_up(slot_id) {
@@ -650,6 +651,7 @@ fn handle_input_event(
                             let card_width = screen_w * 0.80;
                             let card_spacing = card_width * 0.35;
                             state.shell.open_switcher(num_windows, card_spacing);
+                            switcher_opened_by_gesture = true;
                             info!("App Switcher OPENED via gesture, {} windows", num_windows);
 
                             // Update Slint UI with window list
@@ -694,9 +696,22 @@ fn handle_input_event(
                                             "app".to_string()
                                         };
 
-                                        (i as i32, title, app_class)
+                                        (i as i32, title, app_class, i as i32)
                                     })
                                     .collect();
+
+                                // Sort by render order: furthest from center first, center last
+                                // This ensures center card renders on top
+                                let scroll = state.shell.switcher_scroll;
+                                let card_spacing = screen_w * 0.80 * 0.35;
+                                let mut windows = windows;
+                                windows.sort_by(|a, b| {
+                                    let dist_a = ((a.3 as f64) * card_spacing - scroll).abs();
+                                    let dist_b = ((b.3 as f64) * card_spacing - scroll).abs();
+                                    // Reverse order: larger distance first (renders behind)
+                                    dist_b.partial_cmp(&dist_a).unwrap_or(std::cmp::Ordering::Equal)
+                                });
+
                                 slint_ui.set_switcher_windows(windows);
                             }
                         }
@@ -834,7 +849,7 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::Switcher => {
-                        // Only handle tap if not scrolling
+                        // Only handle tap if not scrolling and not just opened by gesture
                         let was_scrolling = state.shell.is_scrolling;
                         let touch_pos = last_pos;
 
@@ -844,7 +859,8 @@ fn handle_input_event(
                         state.shell.is_scrolling = false;
 
                         // Calculate which card was tapped based on touch position
-                        if !was_scrolling {
+                        // Skip if switcher was just opened by gesture (the opening swipe shouldn't count as a tap)
+                        if !was_scrolling && !switcher_opened_by_gesture {
                             if let Some(pos) = touch_pos {
                                 let screen_w = state.screen_size.w as f64;
                                 let screen_h = state.screen_size.h as f64;
@@ -1351,9 +1367,23 @@ fn render_frame(
                                             "app".to_string()
                                         };
 
-                                        (i as i32, title, app_class)
+                                        (i as i32, title, app_class, i as i32)
                                     })
                                     .collect();
+
+                                // Sort by render order: furthest from center first, center last
+                                // This ensures center card renders on top
+                                let scroll = state.shell.switcher_scroll;
+                                let screen_w = state.screen_size.w as f64;
+                                let card_spacing = screen_w * 0.80 * 0.35;
+                                let mut windows = windows;
+                                windows.sort_by(|a, b| {
+                                    let dist_a = ((a.3 as f64) * card_spacing - scroll).abs();
+                                    let dist_b = ((b.3 as f64) * card_spacing - scroll).abs();
+                                    // Reverse order: larger distance first (renders behind)
+                                    dist_b.partial_cmp(&dist_a).unwrap_or(std::cmp::Ordering::Equal)
+                                });
+
                                 if log_frame {
                                     info!("Switcher: {} windows in space", windows.len());
                                 }

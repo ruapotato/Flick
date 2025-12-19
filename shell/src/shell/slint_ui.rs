@@ -537,19 +537,21 @@ impl SlintShell {
         self.shell.set_categories(model_rc.into());
     }
 
-    /// Set switcher window cards (id, title, app_class)
-    pub fn set_switcher_windows(&self, windows: Vec<(i32, String, String)>) {
+    /// Set switcher window cards (id, title, app_class, original_index)
+    /// Windows should be sorted by render order (furthest from center first, center last)
+    pub fn set_switcher_windows(&self, windows: Vec<(i32, String, String, i32)>) {
         tracing::info!("set_switcher_windows called with {} windows", windows.len());
-        for (i, (id, title, app_class)) in windows.iter().enumerate() {
-            tracing::info!("  Window {}: id={}, title='{}', class='{}'", i, id, title, app_class);
+        for (i, (id, title, app_class, orig_idx)) in windows.iter().enumerate() {
+            tracing::info!("  Window {}: id={}, title='{}', class='{}', orig_idx={}", i, id, title, app_class, orig_idx);
         }
 
         let model: Vec<WindowCard> = windows
             .into_iter()
-            .map(|(id, title, app_class)| WindowCard {
+            .map(|(id, title, app_class, original_index)| WindowCard {
                 id,
                 title: title.into(),
                 app_class: app_class.into(),
+                original_index,
             })
             .collect();
 
