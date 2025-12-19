@@ -2,7 +2,7 @@
 name = "flick-shell"
 version = "0.1.0"
 edition = "2021"
-description = "Flick mobile shell - a Wayland compositor with Slint UI for Linux phones"
+description = "Flick mobile shell for Droidian/libhybris devices (hwcomposer backend)"
 license = "GPL-3.0"
 
 [build-dependencies]
@@ -14,6 +14,7 @@ slint-build = "=1.7.2"
 slint = { version = "=1.7.2", default-features = false, features = ["compat-1-2", "std", "renderer-software"] }
 
 # Smithay - the Wayland compositor library (from git for latest features)
+# Note: On this branch we use hwcomposer backend, but keep DRM/udev for winit dev mode
 smithay = { git = "https://github.com/Smithay/smithay", features = [
     "backend_drm",
     "backend_libinput",
@@ -76,14 +77,8 @@ wayland-scanner = "0.31"
 wayland-sys = "0.31"
 wayland-backend = { version = "0.3", features = ["server_system"] }
 
-# EGL for hwcomposer backend (used when feature enabled)
-khronos-egl = { version = "6.0", features = ["dynamic"], optional = true }
-
-[features]
-default = ["udev"]
-udev = []
-winit = []
-hwcomposer = ["khronos-egl"]
+# EGL for hwcomposer backend (always needed on this branch)
+khronos-egl = { version = "6.0", features = ["dynamic"] }
 
 [[bin]]
 name = "flick"

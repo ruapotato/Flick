@@ -1,15 +1,20 @@
 //! Backend implementations for Flick compositor
 //!
-//! - `udev`: Real hardware (DRM + libinput) - for native Linux devices
-//!          On libhybris devices, use LD_PRELOAD with drm-hwcomposer-shim
+//! This branch targets hwcomposer/libhybris devices (Droidian).
+//!
 //! - `winit`: Windowed mode for development
-//! - `hwcomposer`: Android hwcomposer via libhybris - for Droidian devices (legacy)
+//! - `hwcomposer`: Android hwcomposer via libhybris + our C shim
+//!
+//! The DRM/udev backend is on the main branch for mainline devices (PinePhone).
 
-pub mod udev;
 pub mod winit;
 
-#[cfg(feature = "hwcomposer")]
-pub mod hwcomposer_ffi;
+// FFI bindings to our C shim (libflick_hwc)
+pub mod hwc_shim_ffi;
 
-#[cfg(feature = "hwcomposer")]
+// HWComposer backend implementation
 pub mod hwcomposer;
+
+// Keep old FFI for reference (will be removed)
+#[allow(dead_code)]
+pub mod hwcomposer_ffi;

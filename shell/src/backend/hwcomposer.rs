@@ -3,15 +3,19 @@
 //! This backend runs on Android-based Linux distributions (Droidian, UBports, etc.)
 //! that use libhybris to access Android's hwcomposer HAL for graphics.
 //!
+//! Uses our C shim library (libflick_hwc) which handles:
+//! - gralloc initialization
+//! - HWC2 device/display/layer setup
+//! - Native window creation
+//! - Frame presentation via hwcomposer
+//!
 //! Environment variables:
-//! - EGL_PLATFORM=hwcomposer (set automatically)
+//! - EGL_PLATFORM=hwcomposer (set automatically by shim)
 //! - FLICK_DISPLAY_WIDTH / FLICK_DISPLAY_HEIGHT (optional, override display size)
 
 use std::{
     cell::RefCell,
-    ffi::c_void,
     rc::Rc,
-    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
@@ -37,22 +41,14 @@ use smithay::{
     wayland::compositor,
 };
 
-// Note: ImportAll/ImportMem will be needed once we integrate proper Smithay rendering
-
 use crate::state::Flick;
 use crate::shell::ShellView;
 
-use super::hwcomposer_ffi::{
-    self, HwcNativeWindow, ANativeWindow, ANativeWindowBuffer, hal_format,
-    Hwc2Device, Hwc2Display, hwc2_initialize, gralloc_initialize,
-    HWC2EventListener, hwc2_compat_device_t, hwc2_display_t,
-};
+// Use our C shim FFI bindings
+use super::hwc_shim_ffi::{HwcContext, FlickDisplayInfo};
 
 // Re-use khronos-egl for raw EGL access
 use khronos_egl as egl;
-
-// Note: Render element macros would go here once we integrate proper Smithay rendering
-// For now, we use direct OpenGL rendering as a proof-of-concept
 
 /// Keyboard modifier state
 #[derive(Default)]
@@ -65,26 +61,30 @@ struct ModifierState {
 }
 
 /// Hwcomposer display state
+///
+/// Now uses our C shim which handles all HWC2 complexity internally.
+/// The shim's present_callback is invoked by eglSwapBuffers to submit
+/// frames to hwcomposer.
 struct HwcDisplay {
-    #[allow(dead_code)]
-    native_window: HwcNativeWindow,
+    /// C shim context (handles HWC2 device/display/layer internally)
+    hwc_ctx: HwcContext,
+    /// EGL instance
     egl_instance: egl::DynamicInstance<egl::EGL1_4>,
+    /// EGL display
     egl_display: egl::Display,
+    /// EGL surface (created from native window)
     egl_surface: egl::Surface,
-    #[allow(dead_code)]
+    /// EGL context
     egl_context: egl::Context,
+    /// Display width in pixels
     width: u32,
+    /// Display height in pixels
     height: u32,
-    // HWC2 for display presentation
-    hwc2_device: Option<Hwc2Device>,
-    hwc2_display: Option<Hwc2Display>,
-    // HWC2 layer (stored for cleanup)
-    hwc2_layer: Option<hwcomposer_ffi::Hwc2Layer>,
 }
 
 impl Drop for HwcDisplay {
     fn drop(&mut self) {
-        info!("HwcDisplay cleanup: destroying EGL and HWC2 resources");
+        info!("HwcDisplay cleanup: destroying EGL resources");
 
         // Make EGL context not current before destroying
         let _ = self.egl_instance.make_current(
@@ -109,223 +109,17 @@ impl Drop for HwcDisplay {
             warn!("Failed to terminate EGL display: {:?}", e);
         }
 
-        // Destroy HWC2 layer before display
-        if let (Some(ref hwc2_display), Some(ref hwc2_layer)) = (&self.hwc2_display, &self.hwc2_layer) {
-            unsafe {
-                hwcomposer_ffi::hwc2_compat_display_destroy_layer(
-                    hwc2_display.as_ptr(),
-                    hwc2_layer.as_ptr(),
-                );
-            }
-            info!("HWC2 layer destroyed");
-        }
-
-        // Power off the display
-        if let Some(ref hwc2_display) = self.hwc2_display {
-            if let Err(e) = hwc2_display.set_power_mode(false) {
-                warn!("Failed to power off HWC2 display: {}", e);
-            } else {
-                info!("HWC2 display powered off");
-            }
-        }
-
+        // HWC2 cleanup is handled by HwcContext Drop
+        // (which calls flick_hwc_destroy)
         info!("HwcDisplay cleanup complete");
     }
 }
 
-/// Present callback data
-struct PresentCallbackData {
-    frame_ready: Rc<AtomicBool>,
-    hwc2_display: *mut hwcomposer_ffi::hwc2_compat_display_t,
-    hwc2_layer: *mut hwcomposer_ffi::hwc2_compat_layer_t,
-    buffer_slot: std::sync::atomic::AtomicU32,
-    present_count: std::sync::atomic::AtomicU32,
-    present_errors: std::sync::atomic::AtomicU32,
-}
+// All HWC2 callbacks, present logic, and buffer management are now handled
+// by our C shim (libflick_hwc). The shim's present_callback is invoked
+// automatically by eglSwapBuffers.
 
-/// Present callback - called when hwcomposer has a buffer ready to display
-unsafe extern "C" fn present_callback(
-    user_data: *mut c_void,
-    _window: *mut ANativeWindow,
-    buffer: *mut ANativeWindowBuffer,
-) {
-    if user_data.is_null() {
-        return;
-    }
-
-    let data = &*(user_data as *const PresentCallbackData);
-    let count = data.present_count.fetch_add(1, Ordering::Relaxed);
-
-    // Get the acquire fence from the buffer
-    let acquire_fence = hwcomposer_ffi::get_buffer_fence(buffer);
-
-    // Present via HWC2 if we have a display
-    if !data.hwc2_display.is_null() && !buffer.is_null() {
-        // Get current slot and increment for next buffer
-        let slot = data.buffer_slot.fetch_add(1, Ordering::Relaxed) % 3;
-
-        // Set buffer on the layer (if we have one)
-        let layer_err = if !data.hwc2_layer.is_null() {
-            hwcomposer_ffi::hwc2_compat_layer_set_buffer(
-                data.hwc2_layer,
-                slot,
-                buffer,
-                acquire_fence,
-            )
-        } else {
-            0 // No layer, skip
-        };
-
-        // Set client target with the buffer
-        let target_err = hwcomposer_ffi::hwc2_compat_display_set_client_target(
-            data.hwc2_display,
-            slot,
-            buffer,
-            acquire_fence,
-            0, // HAL_DATASPACE_UNKNOWN
-        );
-
-        // Validate display
-        let mut num_types: u32 = 0;
-        let mut num_requests: u32 = 0;
-        let validate_err = hwcomposer_ffi::hwc2_compat_display_validate(
-            data.hwc2_display,
-            &mut num_types,
-            &mut num_requests,
-        );
-
-        // Accept changes if needed (validate_err == 3 means HAS_CHANGES)
-        if validate_err == 0 || validate_err == 3 {
-            if num_types > 0 || num_requests > 0 {
-                hwcomposer_ffi::hwc2_compat_display_accept_changes(data.hwc2_display);
-            }
-
-            // Present the frame
-            let mut present_fence: i32 = -1;
-            let present_err = hwcomposer_ffi::hwc2_compat_display_present(
-                data.hwc2_display,
-                &mut present_fence,
-            );
-
-            if present_err != 0 {
-                data.present_errors.fetch_add(1, Ordering::Relaxed);
-            }
-
-            // Set the present fence on the buffer for the next frame
-            if present_fence >= 0 {
-                hwcomposer_ffi::set_buffer_fence(buffer, present_fence);
-            }
-
-            // Log progress every 60 frames
-            if count % 60 == 0 {
-                eprintln!("HWC2 present #{}: layer={}, target={}, validate={}, present={}, errors={}",
-                    count, layer_err, target_err, validate_err, present_err,
-                    data.present_errors.load(Ordering::Relaxed));
-            }
-        } else {
-            data.present_errors.fetch_add(1, Ordering::Relaxed);
-            if count % 60 == 0 {
-                eprintln!("HWC2 validate failed: err={}", validate_err);
-            }
-        }
-    } else {
-        // No HWC2, just close the fence
-        if acquire_fence >= 0 {
-            libc::close(acquire_fence);
-        }
-    }
-
-    data.frame_ready.store(true, Ordering::Release);
-}
-
-// ============================================================================
-// HWC2 Event Callbacks
-// ============================================================================
-
-/// Global HWC2 device pointer for use in callbacks
-static mut HWC2_DEVICE_PTR: *mut hwc2_compat_device_t = std::ptr::null_mut();
-
-/// Vsync callback - called when display vsync occurs
-unsafe extern "C" fn hwc2_on_vsync(
-    _listener: *mut HWC2EventListener,
-    _sequence_id: i32,
-    _display: hwc2_display_t,
-    _timestamp: i64,
-) {
-    // We don't use vsync for now, but the callback must exist
-}
-
-/// Hotplug callback - called when display is connected/disconnected
-unsafe extern "C" fn hwc2_on_hotplug(
-    _listener: *mut HWC2EventListener,
-    _sequence_id: i32,
-    display: hwc2_display_t,
-    connected: bool,
-    primary_display: bool,
-) {
-    eprintln!("HWC2 hotplug: display={}, connected={}, primary={}",
-              display, connected, primary_display);
-
-    // Notify the HWC2 device about the hotplug event
-    if !HWC2_DEVICE_PTR.is_null() {
-        hwcomposer_ffi::hwc2_compat_device_on_hotplug(HWC2_DEVICE_PTR, display, connected);
-    }
-}
-
-/// Refresh callback - called when display needs refresh
-unsafe extern "C" fn hwc2_on_refresh(
-    _listener: *mut HWC2EventListener,
-    _sequence_id: i32,
-    _display: hwc2_display_t,
-) {
-    // We don't use refresh callbacks for now
-}
-
-/// Try to unblank/power on the display via various methods
-fn unblank_display() {
-    use std::fs::OpenOptions;
-    use std::os::unix::io::AsRawFd;
-
-    // Method 1: Try backlight bl_power sysfs (most reliable on Qualcomm devices)
-    // bl_power: 0 = FB_BLANK_UNBLANK (on), 4 = FB_BLANK_POWERDOWN (off)
-    if let Ok(()) = std::fs::write("/sys/class/backlight/panel0-backlight/bl_power", "0") {
-        info!("Display powered on via backlight bl_power sysfs");
-    } else {
-        debug!("Could not write to panel0-backlight/bl_power");
-    }
-
-    // Method 2: Set brightness to max if it's at 0
-    if let Ok(brightness) = std::fs::read_to_string("/sys/class/backlight/panel0-backlight/brightness") {
-        if brightness.trim() == "0" {
-            if let Ok(()) = std::fs::write("/sys/class/backlight/panel0-backlight/brightness", "255") {
-                info!("Backlight brightness set to max");
-            }
-        }
-    }
-
-    // Method 3: Try fbdev ioctl to unblank
-    const FBIOBLANK: libc::c_ulong = 0x4611;
-    const FB_BLANK_UNBLANK: libc::c_int = 0;
-
-    if let Ok(fb) = OpenOptions::new().write(true).open("/dev/fb0") {
-        let fd = fb.as_raw_fd();
-        let result = unsafe { libc::ioctl(fd, FBIOBLANK, FB_BLANK_UNBLANK) };
-        if result == 0 {
-            info!("Display unblanked via fbdev ioctl");
-        } else {
-            debug!("fbdev unblank ioctl failed: {}", std::io::Error::last_os_error());
-        }
-    } else {
-        debug!("Could not open /dev/fb0 to unblank display");
-    }
-
-    // Method 4: Try sysfs graphics blank
-    if let Ok(()) = std::fs::write("/sys/class/graphics/fb0/blank", "0") {
-        info!("Display unblanked via graphics sysfs");
-    }
-}
-
-/// Get display dimensions from environment or system
+/// Get display dimensions from environment or system (fallback before shim init)
 fn get_display_dimensions() -> (u32, u32) {
     // Try environment variables first
     if let (Ok(w), Ok(h)) = (
@@ -349,264 +143,49 @@ fn get_display_dimensions() -> (u32, u32) {
         }
     }
 
-    // Try Android properties
-    if let Ok(output) = std::process::Command::new("getprop")
-        .arg("ro.sf.lcd_width")
-        .output()
-    {
-        if let Ok(width) = String::from_utf8_lossy(&output.stdout).trim().parse::<u32>() {
-            if let Ok(output) = std::process::Command::new("getprop")
-                .arg("ro.sf.lcd_height")
-                .output()
-            {
-                if let Ok(height) = String::from_utf8_lossy(&output.stdout).trim().parse::<u32>() {
-                    info!("Display size from Android props: {}x{}", width, height);
-                    return (width, height);
-                }
-            }
-        }
-    }
-
     // Default
     info!("Using default display size: 1080x2340");
     (1080, 2340)
 }
 
-/// Initialize EGL and hwcomposer display
+/// Initialize EGL and hwcomposer display using the C shim
 fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
-    let (width, height) = get_display_dimensions();
-    info!("Initializing hwcomposer display: {}x{}", width, height);
+    info!("Initializing hwcomposer display via C shim");
 
-    // Try to unblank the display first via sysfs
-    unblank_display();
+    // Initialize hwcomposer via our C shim
+    // This handles: gralloc init, HWC2 device/display/layer, native window
+    let hwc_ctx = HwcContext::new()
+        .map_err(|e| anyhow::anyhow!("Failed to initialize hwcomposer shim: {}", e))?;
 
-    // Set EGL platform environment variable
-    std::env::set_var("EGL_PLATFORM", "hwcomposer");
+    // Get display info from the shim
+    let display_info = hwc_ctx.get_display_info()
+        .map_err(|e| anyhow::anyhow!("Failed to get display info: {}", e))?;
 
-    // Check if android hwcomposer is running
-    // Either the systemd service is active, OR the composer process is running directly
-    let systemd_active = std::process::Command::new("systemctl")
-        .args(["is-active", "--quiet", "android-service@hwcomposer.service"])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
+    let width = display_info.width as u32;
+    let height = display_info.height as u32;
+    info!("Display: {}x{} @ {:.1}Hz, DPI: {:.1}x{:.1}",
+          width, height, display_info.refresh_rate,
+          display_info.dpi_x, display_info.dpi_y);
 
-    // Also check if the composer process is running directly (in case started via script)
-    let composer_process_running = std::process::Command::new("pgrep")
-        .args(["-f", "android.hardware.graphics.composer"])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-
-    // Log detection results for debugging
-    info!("HWC service detection: systemd={}, pgrep={}", systemd_active, composer_process_running);
-
-    // Check if we should skip HWC2 device creation (use simpler EGL-only path)
-    // The HWC2 device creation crashes on some devices, so we provide a fallback
-    let skip_hwc2 = std::env::var("FLICK_SKIP_HWC2").is_ok();
-
-    let hwc_service_active = if skip_hwc2 {
-        info!("FLICK_SKIP_HWC2 set - skipping HWC2 device creation");
-        false
-    } else {
-        true
-    };
-
-    if composer_process_running && !systemd_active {
-        info!("Composer process running (started directly, not via systemd)");
-    } else if !systemd_active && !composer_process_running {
-        info!("Detection failed but trying HWC2 anyway (detection unreliable from within compositor)");
+    // Get native window from shim
+    let native_window = hwc_ctx.get_native_window();
+    if native_window.is_null() {
+        return Err(anyhow::anyhow!("Shim returned null native window"));
     }
-
-    let (hwc2_device, hwc2_display): (Option<Hwc2Device>, Option<Hwc2Display>) = if hwc_service_active {
-        info!("Android hwcomposer service is active");
-
-        // Initialize gralloc first (required for buffer allocation)
-        info!("Initializing hybris gralloc...");
-        gralloc_initialize();
-        info!("Gralloc initialized");
-
-        // Initialize HWC2 subsystem BEFORE creating device
-        info!("Calling hybris_hwc2_initialize()...");
-        hwc2_initialize();
-        info!("HWC2 subsystem initialized");
-
-        // Now try to create HWC2 device
-        info!("Creating HWC2 device...");
-        let hwc2_device = Hwc2Device::new();
-
-        match hwc2_device {
-            Some(device) => {
-                info!("HWC2 device created successfully");
-
-                // Store device pointer for callbacks
-                unsafe {
-                    HWC2_DEVICE_PTR = device.as_ptr();
-                }
-
-                // Create event listener with our callbacks
-                // Note: This must be leaked/static because HWC2 keeps a reference to it
-                let event_listener = Box::leak(Box::new(HWC2EventListener {
-                    on_vsync_received: Some(hwc2_on_vsync),
-                    on_hotplug_received: Some(hwc2_on_hotplug),
-                    on_refresh_received: Some(hwc2_on_refresh),
-                }));
-
-                // Register callbacks with the device
-                info!("Registering HWC2 callbacks...");
-                device.register_callback(event_listener as *mut _, 0);
-                info!("HWC2 callbacks registered");
-
-                // Trigger hotplug for primary display (ID 0)
-                // This tells the hwcomposer that display 0 is connected
-                device.on_hotplug(0, true);
-                info!("Triggered hotplug for primary display");
-
-                // Small delay to allow hotplug processing
-                std::thread::sleep(std::time::Duration::from_millis(100));
-
-                // Get primary display
-                match device.get_primary_display() {
-                    Some(display) => {
-                        info!("Got HWC2 primary display");
-
-                        // Get display config
-                        if let Some(config) = display.get_active_config() {
-                            info!("HWC2 display config: {}x{} @ {:.1}fps, DPI: {:.1}x{:.1}",
-                                config.width, config.height,
-                                1_000_000_000.0 / config.vsync_period as f64,
-                                config.dpi_x, config.dpi_y);
-                        }
-
-                        // Power on display
-                        match display.set_power_mode(true) {
-                            Ok(()) => info!("HWC2 display powered on"),
-                            Err(e) => warn!("Failed to power on HWC2 display: error {}", e),
-                        }
-
-                        (Some(device), Some(display))
-                    }
-                    None => {
-                        warn!("Failed to get HWC2 primary display");
-                        (Some(device), None)
-                    }
-                }
-            }
-            None => {
-                warn!("Failed to create HWC2 device");
-                (None, None)
-            }
-        }
-    } else {
-        error!("Android hwcomposer service is NOT running!");
-        error!("Please start it with: sudo systemctl start android-service@hwcomposer.service");
-        error!("Display output will not work without the hwcomposer service.");
-        warn!("Continuing without HWC2 - rendering will work but display may be black");
-        (None, None)
-    };
-
-    // Create HWC2 layer if we have a display
-    let hwc2_layer = if let Some(ref display) = hwc2_display {
-        match display.create_layer() {
-            Some(layer) => {
-                info!("Created HWC2 layer");
-                // Configure the layer for fullscreen client composition
-                let w = width as i32;
-                let h = height as i32;
-
-                // Set composition type to CLIENT (we render, HWC just displays)
-                if let Err(e) = layer.set_composition_type(hwcomposer_ffi::hwc2_composition::HWC2_COMPOSITION_CLIENT) {
-                    warn!("Failed to set layer composition type: {}", e);
-                }
-
-                // Set blend mode to NONE (opaque)
-                if let Err(e) = layer.set_blend_mode(hwcomposer_ffi::hwc2_blend_mode::HWC2_BLEND_MODE_NONE) {
-                    warn!("Failed to set layer blend mode: {}", e);
-                }
-
-                // Set display frame (where on screen)
-                if let Err(e) = layer.set_display_frame(0, 0, w, h) {
-                    warn!("Failed to set layer display frame: {}", e);
-                }
-
-                // Set source crop (portion of buffer)
-                if let Err(e) = layer.set_source_crop(0.0, 0.0, width as f32, height as f32) {
-                    warn!("Failed to set layer source crop: {}", e);
-                }
-
-                // Set visible region
-                if let Err(e) = layer.set_visible_region(0, 0, w, h) {
-                    warn!("Failed to set layer visible region: {}", e);
-                }
-
-                // Set plane alpha to fully opaque
-                if let Err(e) = layer.set_plane_alpha(1.0) {
-                    warn!("Failed to set layer plane alpha: {}", e);
-                }
-
-                Some(layer)
-            }
-            None => {
-                warn!("Failed to create HWC2 layer");
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    // Create present callback data with HWC2 display and layer pointers
-    let frame_ready = Rc::new(AtomicBool::new(true));
-    let hwc2_display_ptr = hwc2_display.as_ref()
-        .map(|d| d.as_ptr())
-        .unwrap_or(std::ptr::null_mut());
-    let hwc2_layer_ptr = hwc2_layer.as_ref()
-        .map(|l| l.as_ptr())
-        .unwrap_or(std::ptr::null_mut());
-    let callback_data = Box::new(PresentCallbackData {
-        frame_ready: frame_ready.clone(),
-        hwc2_display: hwc2_display_ptr,
-        hwc2_layer: hwc2_layer_ptr,
-        buffer_slot: std::sync::atomic::AtomicU32::new(0),
-        present_count: std::sync::atomic::AtomicU32::new(0),
-        present_errors: std::sync::atomic::AtomicU32::new(0),
-    });
-    let callback_data_ptr = Box::into_raw(callback_data) as *mut c_void;
-
-    // Create HWC native window
-    let native_window = unsafe {
-        HwcNativeWindow::new(
-            width,
-            height,
-            hal_format::HAL_PIXEL_FORMAT_RGBA_8888,
-            Some(present_callback),
-            callback_data_ptr,
-        )
-    }.ok_or_else(|| anyhow::anyhow!("Failed to create HWC native window"))?;
-
-    // Set triple buffering
-    if let Err(e) = native_window.set_buffer_count(3) {
-        warn!("Failed to set buffer count: {}", e);
-    }
-
-    info!("Created HWC native window");
 
     // Load EGL dynamically
     let egl = unsafe { egl::DynamicInstance::<egl::EGL1_4>::load_required() }
         .map_err(|e| anyhow::anyhow!("Failed to load EGL: {:?}", e))?;
-
     info!("Loaded EGL library");
 
-    // Get EGL display (will use hwcomposer platform due to EGL_PLATFORM env var)
+    // Get EGL display (shim sets EGL_PLATFORM=hwcomposer)
     let egl_display = unsafe { egl.get_display(egl::DEFAULT_DISPLAY) }
         .ok_or_else(|| anyhow::anyhow!("Failed to get EGL display"))?;
-
     info!("Got EGL display");
 
     // Initialize EGL
     let (major, minor) = egl.initialize(egl_display)
         .map_err(|e| anyhow::anyhow!("Failed to initialize EGL: {:?}", e))?;
-
     info!("EGL initialized: {}.{}", major, minor);
 
     // Choose EGL config
@@ -625,7 +204,6 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
     let config = egl.choose_first_config(egl_display, &config_attribs)
         .map_err(|e| anyhow::anyhow!("Failed to choose EGL config: {:?}", e))?
         .ok_or_else(|| anyhow::anyhow!("No suitable EGL config found"))?;
-
     info!("Chose EGL config");
 
     // Create EGL context
@@ -636,7 +214,6 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
 
     let egl_context = egl.create_context(egl_display, config, None, &context_attribs)
         .map_err(|e| anyhow::anyhow!("Failed to create EGL context: {:?}", e))?;
-
     info!("Created EGL context");
 
     // Create EGL surface from native window
@@ -646,38 +223,30 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
         egl.create_window_surface(
             egl_display,
             config,
-            native_window.as_ptr() as egl::NativeWindowType,
+            native_window as egl::NativeWindowType,
             Some(&surface_attribs),
         )
     }.map_err(|e| anyhow::anyhow!("Failed to create EGL surface: {:?}", e))?;
-
     info!("Created EGL surface");
 
     // Make context current
     egl.make_current(egl_display, Some(egl_surface), Some(egl_surface), Some(egl_context))
         .map_err(|e| anyhow::anyhow!("Failed to make EGL context current: {:?}", e))?;
-
     info!("Made EGL context current");
 
     // Initialize GL function pointers
     unsafe { gl::init(); }
 
-    // Try to power on display again after EGL init (in case it was turned off)
-    unblank_display();
-
-    info!("HWComposer display initialized successfully");
+    info!("HWComposer display initialized successfully via shim");
 
     Ok(HwcDisplay {
-        native_window,
+        hwc_ctx,
         egl_instance: egl,
         egl_display,
         egl_surface,
         egl_context,
         width,
         height,
-        hwc2_device,
-        hwc2_display,
-        hwc2_layer,
     })
 }
 
@@ -1254,23 +823,19 @@ pub fn run() -> Result<()> {
     // Bind EGL to Wayland display for libhybris clients
     // This is required for EGL_WL_bind_wayland_display extension to work
     {
-        // Get the raw wl_display pointer using wayland-backend's server_system feature
         let mut display_ref = state.display.borrow_mut();
         let backend = display_ref.backend();
 
-        // With server_system feature, backend provides display_ptr()
-        #[cfg(feature = "hwcomposer")]
         unsafe {
+            #[allow(unused_imports)]
             use wayland_backend::server::Backend as WaylandBackend;
 
-            // The backend's handle has display_ptr() method with server_system feature
             let wl_display_ptr = backend.handle().display_ptr();
 
-            // Load eglBindWaylandDisplayWL function
             type EglBindWaylandDisplayWL = unsafe extern "C" fn(
-                *mut std::ffi::c_void, // EGLDisplay
-                *mut std::ffi::c_void, // wl_display*
-            ) -> u32; // EGLBoolean
+                *mut std::ffi::c_void,
+                *mut std::ffi::c_void,
+            ) -> u32;
 
             let bind_fn_ptr = hwc_display.egl_instance.get_proc_address("eglBindWaylandDisplayWL");
             if let Some(fn_ptr) = bind_fn_ptr {
@@ -1285,12 +850,15 @@ pub fn run() -> Result<()> {
                     warn!("Failed to bind EGL to Wayland display (result={})", result);
                 }
             } else {
-                info!("eglBindWaylandDisplayWL not available (may be OK for non-libhybris)");
+                info!("eglBindWaylandDisplayWL not available");
             }
         }
     }
 
-    // Update state with actual screen size
+    // Update state with actual screen size from hwc_display
+    // (may differ from initial estimate if shim got real dimensions)
+    let width = hwc_display.width;
+    let height = hwc_display.height;
     state.screen_size = (width as i32, height as i32).into();
     state.gesture_recognizer.screen_size = state.screen_size;
     state.shell.screen_size = state.screen_size;
