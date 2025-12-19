@@ -1160,28 +1160,41 @@ impl Shell {
         }
     }
 
-    /// Get switcher enter animation progress (0.0 to 1.0, None if not animating)
+    /// Get switcher enter animation progress (0.0 to 1.0)
+    /// Returns 1.0 if not animating (animation complete)
     /// Animation lasts 250ms with ease-out curve
-    pub fn get_switcher_enter_progress(&mut self) -> Option<f32> {
+    pub fn get_switcher_enter_progress(&self) -> f32 {
         if !self.switcher_enter_anim {
-            return None;
+            return 1.0;
         }
 
-        let start = self.switcher_enter_start?;
+        let start = match self.switcher_enter_start {
+            Some(s) => s,
+            None => return 1.0,
+        };
+
         let elapsed = start.elapsed().as_millis() as f32;
         let duration = 250.0; // 250ms animation
 
         if elapsed >= duration {
-            // Animation complete
-            self.switcher_enter_anim = false;
-            self.switcher_enter_start = None;
-            return None;
+            return 1.0;
         }
 
         // Progress 0.0 to 1.0 with ease-out curve
         let linear = elapsed / duration;
-        let eased = 1.0 - (1.0 - linear).powi(3); // Cubic ease-out
-        Some(eased)
+        1.0 - (1.0 - linear).powi(3) // Cubic ease-out
+    }
+
+    /// Update animation state (call periodically to clean up completed animations)
+    pub fn update_switcher_enter_anim(&mut self) {
+        if self.switcher_enter_anim {
+            if let Some(start) = self.switcher_enter_start {
+                if start.elapsed().as_millis() >= 250 {
+                    self.switcher_enter_anim = false;
+                    self.switcher_enter_start = None;
+                }
+            }
+        }
     }
 
     /// Sync Quick Settings panel with current system status
