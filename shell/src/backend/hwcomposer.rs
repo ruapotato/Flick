@@ -466,6 +466,11 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::Switcher => {
+                        // Start tracking horizontal scroll
+                        state.shell.switcher_touch_start_x = Some(touch_pos.x);
+                        state.shell.switcher_touch_last_x = Some(touch_pos.x);
+                        state.shell.is_scrolling = false;
+
                         // Forward to Slint for app switcher window selection
                         if let Some(ref slint_ui) = state.shell.slint_ui {
                             slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
@@ -560,6 +565,34 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::QuickSettings => {
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                        }
+                    }
+                    crate::shell::ShellView::Switcher => {
+                        // Horizontal scrolling in app switcher
+                        if let Some(start_x) = state.shell.switcher_touch_start_x {
+                            let total_move = (touch_pos.x - start_x).abs();
+                            if total_move > 10.0 {
+                                state.shell.is_scrolling = true;
+                            }
+                        }
+
+                        if let Some(last_x) = state.shell.switcher_touch_last_x {
+                            let delta_x = last_x - touch_pos.x;
+                            state.shell.switcher_scroll += delta_x;
+
+                            // Clamp scroll to valid range
+                            let num_windows = state.space.elements().count();
+                            let screen_w = state.screen_size.w as f64;
+                            let card_width = screen_w * 0.80;
+                            let card_spacing = card_width * 0.35;
+                            let max_scroll = state.shell.get_switcher_max_scroll(num_windows, card_spacing);
+                            state.shell.switcher_scroll = state.shell.switcher_scroll.clamp(0.0, max_scroll);
+                        }
+                        state.shell.switcher_touch_last_x = Some(touch_pos.x);
+
+                        // Forward to Slint
                         if let Some(ref slint_ui) = state.shell.slint_ui {
                             slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
                         }
@@ -795,33 +828,43 @@ fn handle_input_event(
                             }
                         }
 
-                        // Poll for switcher window tap from Slint
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            if let Some(window_id) = slint_ui.take_pending_switcher_tap() {
-                                info!("Switcher tap: switching to window id={}", window_id);
-                                let windows: Vec<_> = state.space.elements().cloned().collect();
-                                if let Some(window) = windows.get(window_id as usize) {
-                                    // Raise window to top
-                                    let loc = state.space.element_location(window).unwrap_or_default();
-                                    state.space.map_element(window.clone(), loc, true);
+                        // Only handle tap if not scrolling
+                        let was_scrolling = state.shell.is_scrolling;
 
-                                    // Set keyboard focus
-                                    if let Some(toplevel) = window.toplevel() {
-                                        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                                        if let Some(keyboard) = state.seat.get_keyboard() {
-                                            keyboard.set_focus(state, Some(toplevel.wl_surface().clone()), serial);
-                                        }
-                                    } else if let Some(x11) = window.x11_surface() {
-                                        if let Some(wl_surface) = x11.wl_surface() {
+                        // Clear touch tracking
+                        state.shell.switcher_touch_start_x = None;
+                        state.shell.switcher_touch_last_x = None;
+                        state.shell.is_scrolling = false;
+
+                        // Poll for switcher window tap from Slint (only if not scrolling)
+                        if !was_scrolling {
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                if let Some(window_id) = slint_ui.take_pending_switcher_tap() {
+                                    info!("Switcher tap: switching to window id={}", window_id);
+                                    let windows: Vec<_> = state.space.elements().cloned().collect();
+                                    if let Some(window) = windows.get(window_id as usize) {
+                                        // Raise window to top
+                                        let loc = state.space.element_location(window).unwrap_or_default();
+                                        state.space.map_element(window.clone(), loc, true);
+
+                                        // Set keyboard focus
+                                        if let Some(toplevel) = window.toplevel() {
                                             let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                            if let Some(keyboard) = state.seat.get_keyboard() {
+                                                keyboard.set_focus(state, Some(toplevel.wl_surface().clone()), serial);
+                                            }
+                                        } else if let Some(x11) = window.x11_surface() {
+                                            if let Some(wl_surface) = x11.wl_surface() {
+                                                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                                             if let Some(keyboard) = state.seat.get_keyboard() {
                                                 keyboard.set_focus(state, Some(wl_surface), serial);
                                             }
                                         }
                                     }
 
-                                    // Switch to App view
-                                    state.shell.set_view(crate::shell::ShellView::App);
+                                        // Switch to App view
+                                        state.shell.set_view(crate::shell::ShellView::App);
+                                    }
                                 }
                             }
                         }
