@@ -1707,14 +1707,14 @@ component AppSwitcherPanel inherits Rectangle {
     callback window-tapped(int);  // Window ID
     callback close-requested();   // Swipe down to close
 
-    // Card layout constants
-    property <length> card-width: parent.width * 80%;
-    property <length> card-height: parent.height * 55%;
-    property <length> card-spacing: card-width * 35%;  // 35% spacing = 65% overlap
-
     width: 100%;
     height: 100%;
     background: #0a0a12;
+
+    // Card layout constants (calculated from self dimensions)
+    property <length> card-width: self.width * 0.80;
+    property <length> card-height: self.height * 0.55;
+    property <length> card-spacing: card-width * 0.35;  // 35% spacing = 65% overlap
 
     // Header bar
     Rectangle {
