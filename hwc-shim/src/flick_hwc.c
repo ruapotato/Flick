@@ -97,7 +97,7 @@ static FlickHwcContext* g_ctx = NULL;
 /*
  * Present callback - called by HWCNativeWindow when buffer is ready
  */
-static void present_callback(void* user_data, struct ANativeWindow* window,
+static void present_callback(void* user_data, struct ANativeWindow* window __attribute__((unused)),
                              struct ANativeWindowBuffer* buffer) {
     FlickHwcContext* ctx = (FlickHwcContext*)user_data;
     if (!ctx || !ctx->hwc2_display || !buffer) {
@@ -335,22 +335,22 @@ static int init_hwc2(FlickHwcContext* ctx) {
     if (config) {
         ctx->display_info.width = config->width;
         ctx->display_info.height = config->height;
-        ctx->display_info.vsync_period_ns = config->vsync_period;
-        ctx->display_info.refresh_rate = 1000000000.0f / (float)config->vsync_period;
-        ctx->display_info.dpi_x = config->dpi_x;
-        ctx->display_info.dpi_y = config->dpi_y;
+        ctx->display_info.vsync_period_ns = config->vsyncPeriod;
+        ctx->display_info.refresh_rate = 1000000000.0f / (float)config->vsyncPeriod;
+        ctx->display_info.dpi_x = config->dpiX;
+        ctx->display_info.dpi_y = config->dpiY;
 
         /* Calculate physical size from DPI if available */
-        if (config->dpi_x > 0) {
-            ctx->display_info.physical_width = (int32_t)(config->width / config->dpi_x * 25.4f);
+        if (config->dpiX > 0) {
+            ctx->display_info.physical_width = (int32_t)(config->width / config->dpiX * 25.4f);
         }
-        if (config->dpi_y > 0) {
-            ctx->display_info.physical_height = (int32_t)(config->height / config->dpi_y * 25.4f);
+        if (config->dpiY > 0) {
+            ctx->display_info.physical_height = (int32_t)(config->height / config->dpiY * 25.4f);
         }
 
         log_info("hwc2 config: %dx%d @ %.1fHz, DPI: %.1fx%.1f",
                  config->width, config->height, ctx->display_info.refresh_rate,
-                 config->dpi_x, config->dpi_y);
+                 config->dpiX, config->dpiY);
     } else {
         /* Fall back to detection */
         log_info("hwc2 config unavailable, using fallback");
