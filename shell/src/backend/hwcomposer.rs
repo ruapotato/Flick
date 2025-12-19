@@ -834,54 +834,94 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::Switcher => {
-                        // Dispatch to Slint for tap detection
-                        if let Some(pos) = last_pos {
-                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
-                            }
-                        }
-
                         // Only handle tap if not scrolling
                         let was_scrolling = state.shell.is_scrolling;
-                        info!("Switcher TouchUp: was_scrolling={}", was_scrolling);
+                        let touch_pos = last_pos;
 
                         // Clear touch tracking
                         state.shell.switcher_touch_start_x = None;
                         state.shell.switcher_touch_last_x = None;
                         state.shell.is_scrolling = false;
 
-                        // Poll for switcher window tap from Slint (only if not scrolling)
-                        info!("Switcher: checking tap, was_scrolling={}, slint_ui={}", was_scrolling, state.shell.slint_ui.is_some());
+                        // Calculate which card was tapped based on touch position
                         if !was_scrolling {
-                            info!("Switcher: not scrolling, polling for tap");
-                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                let pending_tap = slint_ui.take_pending_switcher_tap();
-                                info!("Switcher tap poll result: {:?}", pending_tap);
-                                if let Some(window_id) = pending_tap {
-                                    info!("Switcher tap: switching to window id={}", window_id);
-                                    let windows: Vec<_> = state.space.elements().cloned().collect();
-                                    if let Some(window) = windows.get(window_id as usize) {
-                                        // Raise window to top
-                                        let loc = state.space.element_location(window).unwrap_or_default();
-                                        state.space.map_element(window.clone(), loc, true);
+                            if let Some(pos) = touch_pos {
+                                let screen_w = state.screen_size.w as f64;
+                                let screen_h = state.screen_size.h as f64;
+                                let card_width = screen_w * 0.80;
+                                let card_height = screen_h * 0.55;
+                                let card_spacing = card_width * 0.35;
+                                let scroll = state.shell.switcher_scroll;
+                                let num_windows = state.space.elements().count();
 
-                                        // Set keyboard focus
-                                        if let Some(toplevel) = window.toplevel() {
-                                            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                                            if let Some(keyboard) = state.seat.get_keyboard() {
-                                                keyboard.set_focus(state, Some(toplevel.wl_surface().clone()), serial);
-                                            }
-                                        } else if let Some(x11) = window.x11_surface() {
-                                            if let Some(wl_surface) = x11.wl_surface() {
-                                                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                                            if let Some(keyboard) = state.seat.get_keyboard() {
-                                                keyboard.set_focus(state, Some(wl_surface), serial);
+                                // Card area starts at y=60px, ends at screen_h - 40px
+                                let card_area_top = 60.0;
+                                let card_area_bottom = screen_h - 40.0;
+                                let card_area_height = card_area_bottom - card_area_top;
+
+                                // Check if tap is in the card area vertically
+                                if pos.y >= card_area_top && pos.y <= card_area_bottom {
+                                    // Find which card was tapped (check from center outward for z-order)
+                                    let mut tapped_window: Option<usize> = None;
+
+                                    // Calculate center index based on scroll
+                                    let center_idx = (scroll / card_spacing).round() as i32;
+
+                                    // Check cards in order of visual z-order (center first, then outward)
+                                    for offset in 0..=(num_windows as i32) {
+                                        for sign in [-1i32, 1i32] {
+                                            if offset == 0 && sign == -1 { continue; } // Don't check center twice
+
+                                            let idx = center_idx + offset * sign;
+                                            if idx < 0 || idx >= num_windows as i32 { continue; }
+                                            let idx = idx as usize;
+
+                                            // Calculate card position
+                                            let normalized_pos = (idx as f64 * card_spacing - scroll) / card_spacing;
+                                            let distance = normalized_pos.abs();
+                                            let scale = (1.0 - distance * 0.1).max(0.75);
+
+                                            let card_w = card_width * scale;
+                                            let card_h = card_height * scale;
+                                            let card_x = idx as f64 * card_spacing - scroll + (screen_w - card_width) / 2.0;
+                                            let card_y = card_area_top + (card_area_height - card_h) / 2.0;
+
+                                            // Check if tap is within this card
+                                            if pos.x >= card_x && pos.x <= card_x + card_w &&
+                                               pos.y >= card_y && pos.y <= card_y + card_h {
+                                                tapped_window = Some(idx);
+                                                break;
                                             }
                                         }
+                                        if tapped_window.is_some() { break; }
                                     }
 
-                                        // Switch to App view
-                                        state.shell.set_view(crate::shell::ShellView::App);
+                                    if let Some(window_id) = tapped_window {
+                                        info!("Switcher tap: tapped window index {} at ({}, {})", window_id, pos.x, pos.y);
+                                        let windows: Vec<_> = state.space.elements().cloned().collect();
+                                        if let Some(window) = windows.get(window_id) {
+                                            // Raise window to top
+                                            let loc = state.space.element_location(window).unwrap_or_default();
+                                            state.space.map_element(window.clone(), loc, true);
+
+                                            // Set keyboard focus
+                                            if let Some(toplevel) = window.toplevel() {
+                                                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                                if let Some(keyboard) = state.seat.get_keyboard() {
+                                                    keyboard.set_focus(state, Some(toplevel.wl_surface().clone()), serial);
+                                                }
+                                            } else if let Some(x11) = window.x11_surface() {
+                                                if let Some(wl_surface) = x11.wl_surface() {
+                                                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                                    if let Some(keyboard) = state.seat.get_keyboard() {
+                                                        keyboard.set_focus(state, Some(wl_surface), serial);
+                                                    }
+                                                }
+                                            }
+
+                                            // Switch to App view
+                                            state.shell.set_view(crate::shell::ShellView::App);
+                                        }
                                     }
                                 }
                             }
