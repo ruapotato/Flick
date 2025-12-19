@@ -39,6 +39,8 @@ use smithay::{
     },
     utils::Transform,
     wayland::compositor,
+    wayland::xwayland_shell::XWaylandShellState,
+    xwayland::{XWayland, XWaylandEvent, xwm::X11Wm},
 };
 
 use crate::state::Flick;
@@ -603,16 +605,43 @@ fn handle_input_event(
                                 let windows: Vec<_> = state.space.elements()
                                     .enumerate()
                                     .map(|(i, window)| {
-                                        // Try X11 surface first, fall back to generic name
-                                        let title = window.x11_surface()
-                                            .map(|x11| {
-                                                let t = x11.title();
-                                                if !t.is_empty() { t } else { x11.class() }
-                                            })
-                                            .unwrap_or_else(|| format!("Window {}", i + 1));
-                                        let app_class = window.x11_surface()
-                                            .map(|x11| x11.class())
-                                            .unwrap_or_else(|| "app".to_string());
+                                        // Try X11 surface first, then Wayland toplevel, fall back to generic name
+                                        let title = if let Some(x11) = window.x11_surface() {
+                                            let t = x11.title();
+                                            if !t.is_empty() { t } else { x11.class() }
+                                        } else if let Some(toplevel) = window.toplevel() {
+                                            // Get title from Wayland toplevel
+                                            compositor::with_states(toplevel.wl_surface(), |states| {
+                                                states
+                                                    .data_map
+                                                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                                    .and_then(|data| {
+                                                        let data = data.lock().unwrap();
+                                                        let title = data.title.clone();
+                                                        if title.as_ref().map(|t| !t.is_empty()).unwrap_or(false) {
+                                                            title
+                                                        } else {
+                                                            data.app_id.clone()
+                                                        }
+                                                    })
+                                            }).unwrap_or_else(|| format!("Window {}", i + 1))
+                                        } else {
+                                            format!("Window {}", i + 1)
+                                        };
+
+                                        let app_class = if let Some(x11) = window.x11_surface() {
+                                            x11.class()
+                                        } else if let Some(toplevel) = window.toplevel() {
+                                            compositor::with_states(toplevel.wl_surface(), |states| {
+                                                states
+                                                    .data_map
+                                                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                                    .and_then(|data| data.lock().unwrap().app_id.clone())
+                                            }).unwrap_or_else(|| "app".to_string())
+                                        } else {
+                                            "app".to_string()
+                                        };
+
                                         (i as i32, title, app_class)
                                     })
                                     .collect();
@@ -916,6 +945,15 @@ pub fn run() -> Result<()> {
         })
         .map_err(|e| anyhow::anyhow!("Failed to insert render timer: {:?}", e))?;
 
+    // Initialize XWayland for X11 app support
+    info!("Starting XWayland...");
+    if let Err(e) = init_xwayland(&mut state, &loop_handle) {
+        warn!("Failed to start XWayland: {:?}", e);
+        warn!("X11 applications will not be available");
+    } else {
+        info!("XWayland started successfully");
+    }
+
     info!("Entering event loop");
 
     // Main event loop
@@ -1120,16 +1158,42 @@ fn render_frame(
                                 let windows: Vec<_> = state.space.elements()
                                     .enumerate()
                                     .map(|(i, window)| {
-                                        // Try X11 surface first, fall back to generic name
-                                        let title = window.x11_surface()
-                                            .map(|x11| {
-                                                let t = x11.title();
-                                                if !t.is_empty() { t } else { x11.class() }
-                                            })
-                                            .unwrap_or_else(|| format!("Window {}", i + 1));
-                                        let app_class = window.x11_surface()
-                                            .map(|x11| x11.class())
-                                            .unwrap_or_else(|| "app".to_string());
+                                        // Try X11 surface first, then Wayland toplevel, fall back to generic name
+                                        let title = if let Some(x11) = window.x11_surface() {
+                                            let t = x11.title();
+                                            if !t.is_empty() { t } else { x11.class() }
+                                        } else if let Some(toplevel) = window.toplevel() {
+                                            compositor::with_states(toplevel.wl_surface(), |states| {
+                                                states
+                                                    .data_map
+                                                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                                    .and_then(|data| {
+                                                        let data = data.lock().unwrap();
+                                                        let title = data.title.clone();
+                                                        if title.as_ref().map(|t| !t.is_empty()).unwrap_or(false) {
+                                                            title
+                                                        } else {
+                                                            data.app_id.clone()
+                                                        }
+                                                    })
+                                            }).unwrap_or_else(|| format!("Window {}", i + 1))
+                                        } else {
+                                            format!("Window {}", i + 1)
+                                        };
+
+                                        let app_class = if let Some(x11) = window.x11_surface() {
+                                            x11.class()
+                                        } else if let Some(toplevel) = window.toplevel() {
+                                            compositor::with_states(toplevel.wl_surface(), |states| {
+                                                states
+                                                    .data_map
+                                                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                                    .and_then(|data| data.lock().unwrap().app_id.clone())
+                                            }).unwrap_or_else(|| "app".to_string())
+                                        } else {
+                                            "app".to_string()
+                                        };
+
                                         (i as i32, title, app_class)
                                     })
                                     .collect();
@@ -1170,17 +1234,27 @@ fn render_frame(
 
             for (i, window) in windows.iter().enumerate() {
                 debug!("Processing window {}", i);
-                // Get the surface from the window
-                if let Some(toplevel) = window.toplevel() {
-                    debug!("Window {} has toplevel", i);
-                    let wl_surface = toplevel.wl_surface();
+
+                // Get the wl_surface from either Wayland toplevel or X11 surface
+                let wl_surface = if let Some(toplevel) = window.toplevel() {
+                    debug!("Window {} is Wayland toplevel", i);
+                    Some(toplevel.wl_surface().clone())
+                } else if let Some(x11_surface) = window.x11_surface() {
+                    debug!("Window {} is X11 surface", i);
+                    x11_surface.wl_surface().map(|s| s.clone())
+                } else {
+                    debug!("Window {} has no surface", i);
+                    None
+                };
+
+                if let Some(wl_surface) = wl_surface {
                     debug!("Window {} surface: {:?}", i, wl_surface.id());
 
                     // Render using stored buffer data from commit handler
                     debug!("Window {} trying to render stored buffer", i);
 
                     // Get stored buffer from surface user data
-                    let buffer_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(wl_surface, |data| {
+                    let buffer_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(&wl_surface, |data| {
                         debug!("  stored: inside with_states");
                         use std::cell::RefCell;
                         use crate::state::SurfaceBufferData;
@@ -1213,8 +1287,9 @@ fn render_frame(
                             } else {
                                 (0, 0, 0, 0)
                             };
-                            info!("QML RENDER frame {}: {}x{} corner=RGBA({},{},{},{}) center=RGBA({},{},{},{})",
-                                frame_num, width, height,
+                            let window_type = if window.toplevel().is_some() { "Wayland" } else { "X11" };
+                            info!("{} RENDER frame {}: {}x{} corner=RGBA({},{},{},{}) center=RGBA({},{},{},{})",
+                                window_type, frame_num, width, height,
                                 pixels[0], pixels[1], pixels[2], pixels[3],
                                 cr, cg, cb, ca);
                         }
@@ -1222,7 +1297,8 @@ fn render_frame(
                             gl::render_texture(width, height, &pixels, display.width, display.height);
                         }
                     } else if log_frame {
-                        info!("QML NO BUFFER frame {}: window {} has no stored buffer", frame_num, i);
+                        let window_type = if window.toplevel().is_some() { "Wayland" } else { "X11" };
+                        info!("{} NO BUFFER frame {}: window {} has no stored buffer", window_type, frame_num, i);
                     }
                 }
             }
@@ -1652,4 +1728,77 @@ mod gl {
                 FRAME_COUNT, tex_width, tex_height, screen_width, screen_height, texture, r, g, b, a);
         }
     }
+}
+
+/// Initialize XWayland for X11 application support
+fn init_xwayland(
+    state: &mut Flick,
+    loop_handle: &smithay::reexports::calloop::LoopHandle<'static, Flick>,
+) -> Result<()> {
+    use std::process::Stdio;
+
+    // Initialize XWayland shell state
+    state.xwayland_shell_state = Some(XWaylandShellState::new::<Flick>(&state.display_handle));
+
+    // Spawn XWayland
+    let (xwayland, client) = XWayland::spawn(
+        &state.display_handle,
+        None,  // Let Smithay choose display number
+        std::iter::empty::<(&str, &str)>(),  // No extra env vars
+        true,  // Enable abstract socket
+        Stdio::null(),  // stdout
+        Stdio::null(),  // stderr
+        |_| {},  // user_data initialization
+    ).map_err(|e| anyhow::anyhow!("Failed to spawn XWayland: {:?}", e))?;
+
+    // Register XWayland event source - XWayland implements EventSource directly
+    let client_clone = client.clone();
+    let loop_handle_clone = loop_handle.clone();
+    loop_handle
+        .insert_source(xwayland, move |event, _, state| {
+            match event {
+                XWaylandEvent::Ready {
+                    x11_socket,
+                    display_number,
+                } => {
+                    info!("XWayland ready on display :{}", display_number);
+
+                    // Start the X11 window manager
+                    match X11Wm::start_wm(
+                        loop_handle_clone.clone(),
+                        &state.display_handle,
+                        x11_socket,
+                        client_clone.clone(),
+                    ) {
+                        Ok(wm) => {
+                            info!("X11 Window Manager started");
+                            state.xwm = Some(wm);
+
+                            // Set DISPLAY for child processes
+                            let display_str = format!(":{}", display_number);
+                            std::env::set_var("DISPLAY", &display_str);
+
+                            // Write display number to runtime file for shell to read
+                            if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+                                let display_file = format!("{}/flick-xwayland-display", runtime_dir);
+                                if let Err(e) = std::fs::write(&display_file, &display_str) {
+                                    warn!("Failed to write XWayland display file: {:?}", e);
+                                } else {
+                                    info!("Wrote XWayland display {} to {}", display_str, display_file);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to start X11 WM: {:?}", e);
+                        }
+                    }
+                }
+                XWaylandEvent::Error => {
+                    error!("XWayland encountered an error");
+                }
+            }
+        })
+        .map_err(|e| anyhow::anyhow!("Failed to insert XWayland source: {:?}", e))?;
+
+    Ok(())
 }
