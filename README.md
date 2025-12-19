@@ -13,17 +13,27 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 | **Native Linux** (PinePhone, Librem 5) | ✅ Works | Standard DRM/KMS, full support |
 | **PostmarketOS** (mainline kernel) | ✅ Works | Uses freedreno/panfrost DRM drivers |
 | **Mobian** | ✅ Works | Standard Linux graphics stack |
-| **Droidian** (Android phones) | ⚠️ WIP | Needs significant work - see below |
+| **Droidian** (Android phones) | ⚠️ Partly Working | Renders to screen, but buggy - see below |
 
 ### Droidian / HWComposer Support
 
-Droidian and similar Android-based Linux distributions require **HWComposer** integration to access the GPU. This is **experimental and incomplete**.
+Droidian and similar Android-based Linux distributions require **HWComposer** integration to access the GPU.
 
-The `wlroots-test` branch contains attempts at:
-- DRM/HWComposer shim layer for intercepting graphics calls
-- Direct HWComposer 2.x rendering
+**Current status (Dec 2024):** Basic hwcomposer backend is working!
 
-**Current status:** The shim approach requires significantly more work to properly intercept and translate between Linux DRM/GBM and Android's HWComposer HAL. Native Linux support works well; Droidian support is a longer-term goal.
+✅ **Working:**
+- Display output via hwcomposer (tested on Pixel 3a)
+- EGL/GLES rendering through libhybris HWCNativeWindow
+- Wayland compositor accepting clients
+- Lock screen and basic shell UI rendering
+- Edge gesture detection (swipe from edges)
+
+⚠️ **Known Issues:**
+- App windows render as black (buffer format/import issue)
+- App switcher shows "No Apps" even when windows are open
+- Window tracking not fully functional
+
+The hwcomposer backend uses a C shim library (`hwc-shim/`) that wraps Android's HWC2 API via libhybris, with Rust FFI bindings calling into it.
 
 ## Current Status
 
