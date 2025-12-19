@@ -28,7 +28,7 @@ FLICK_BIN="$REAL_HOME/Flick/shell/target/release/flick"
 
 if [ ! -f "$FLICK_BIN" ]; then
     echo "Error: flick binary not found at $FLICK_BIN"
-    echo "Build it first: cd ~/Flick/shell && cargo build --release --features hwcomposer"
+    echo "Build it first: cd ~/Flick/shell && cargo build --release"
     exit 1
 fi
 
@@ -76,7 +76,7 @@ fi
 echo "Starting Flick..."
 
 if [ "$1" = "--bg" ]; then
-    sudo -E "$FLICK_BIN" --hwcomposer > /tmp/flick.log 2>&1 &
+    sudo -E "$FLICK_BIN" > /tmp/flick.log 2>&1 &
     sleep 2
 
     # Fix Wayland socket permissions so non-root clients can connect
@@ -96,7 +96,7 @@ elif [ "$1" = "--log" ]; then
     echo "Press Ctrl+C to stop..."
 
     # Start flick with output to log file
-    sudo -E "$FLICK_BIN" --hwcomposer > "$LOG_FILE" 2>&1 &
+    sudo -E "$FLICK_BIN" > "$LOG_FILE" 2>&1 &
     SUDO_PID=$!
 
     # Get the actual flick process PID (child of sudo)
@@ -136,7 +136,7 @@ else
     trap stop_flick INT TERM
 
     # Run directly
-    sudo -E "$FLICK_BIN" --hwcomposer || true
+    sudo -E "$FLICK_BIN" || true
 
     # Restore terminal state after exit
     if [ -n "$TERM_STATE" ]; then
