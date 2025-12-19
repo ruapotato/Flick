@@ -573,7 +573,8 @@ fn handle_input_event(
                         // Horizontal scrolling in app switcher
                         if let Some(start_x) = state.shell.switcher_touch_start_x {
                             let total_move = (touch_pos.x - start_x).abs();
-                            if total_move > 10.0 {
+                            // Use higher threshold for scrolling detection (30px) to allow taps
+                            if total_move > 30.0 {
                                 state.shell.is_scrolling = true;
                             }
                         }
@@ -830,6 +831,7 @@ fn handle_input_event(
 
                         // Only handle tap if not scrolling
                         let was_scrolling = state.shell.is_scrolling;
+                        info!("Switcher TouchUp: was_scrolling={}", was_scrolling);
 
                         // Clear touch tracking
                         state.shell.switcher_touch_start_x = None;
@@ -839,7 +841,9 @@ fn handle_input_event(
                         // Poll for switcher window tap from Slint (only if not scrolling)
                         if !was_scrolling {
                             if let Some(ref slint_ui) = state.shell.slint_ui {
-                                if let Some(window_id) = slint_ui.take_pending_switcher_tap() {
+                                let pending_tap = slint_ui.take_pending_switcher_tap();
+                                info!("Switcher tap poll result: {:?}", pending_tap);
+                                if let Some(window_id) = pending_tap {
                                     info!("Switcher tap: switching to window id={}", window_id);
                                     let windows: Vec<_> = state.space.elements().cloned().collect();
                                     if let Some(window) = windows.get(window_id as usize) {
