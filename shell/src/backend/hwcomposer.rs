@@ -851,7 +851,9 @@ fn handle_input_event(
                         state.shell.is_scrolling = false;
 
                         // Poll for switcher window tap from Slint (only if not scrolling)
+                        info!("Switcher: checking tap, was_scrolling={}, slint_ui={}", was_scrolling, state.shell.slint_ui.is_some());
                         if !was_scrolling {
+                            info!("Switcher: not scrolling, polling for tap");
                             if let Some(ref slint_ui) = state.shell.slint_ui {
                                 let pending_tap = slint_ui.take_pending_switcher_tap();
                                 info!("Switcher tap poll result: {:?}", pending_tap);
