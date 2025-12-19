@@ -1729,7 +1729,7 @@ component AppSwitcherPanel inherits Rectangle {
             }
         }
 
-        // Card area - compositor renders stacked cards on top
+        // Card area - scrollable list of window cards
         Rectangle {
             vertical-stretch: 1;
             background: Theme.background;
@@ -1750,8 +1750,63 @@ component AppSwitcherPanel inherits Rectangle {
                     vertical-alignment: center;
                 }
             }
-            // Card backgrounds and window previews are rendered by the compositor
-            // with dynamic sizing based on scroll position (stacked Android-style layout)
+
+            // Window cards - vertical scrollable list
+            if windows.length > 0: Flickable {
+                width: 100%;
+                height: 100%;
+                viewport-height: windows.length * 220px + 40px;
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 20px;
+
+                    for window[idx] in windows: Rectangle {
+                        height: 180px;
+                        background: #3a3a5a;
+                        border-radius: 16px;
+
+                        ta := TouchArea {
+                            clicked => { window-tapped(window.id); }
+                        }
+
+                        VerticalLayout {
+                            padding: 16px;
+                            spacing: 8px;
+
+                            Text {
+                                text: window.title;
+                                color: white;
+                                font-size: 18px;
+                                font-weight: 600;
+                                overflow: elide;
+                            }
+
+                            Text {
+                                text: window.app-class;
+                                color: #aaaacc;
+                                font-size: 14px;
+                            }
+
+                            Rectangle {
+                                vertical-stretch: 1;
+                                background: #2a2a4a;
+                                border-radius: 8px;
+
+                                Text {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: "Window Preview";
+                                    color: #666688;
+                                    font-size: 12px;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         HomeIndicator {}
