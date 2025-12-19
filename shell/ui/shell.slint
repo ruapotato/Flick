@@ -1699,117 +1699,169 @@ component OnScreenKeyboard inherits Rectangle {
     }
 }
 
-// App Switcher panel - stacked card layout (cards rendered by compositor)
+// App Switcher panel - horizontal fan-out card stack (like Android/iOS)
 component AppSwitcherPanel inherits Rectangle {
     in property <[WindowCard]> windows: [];
-    in property <float> scroll-offset: 0;  // Horizontal scroll position (for sync)
+    in property <float> scroll-offset: 0;  // Horizontal scroll position
 
     callback window-tapped(int);  // Window ID
     callback close-requested();   // Swipe down to close
 
+    // Card layout constants
+    property <length> card-width: parent.width * 80%;
+    property <length> card-height: parent.height * 55%;
+    property <length> card-spacing: card-width * 35%;  // 35% spacing = 65% overlap
+
     width: 100%;
     height: 100%;
-    background: Theme.background;
+    background: #0a0a12;
 
-    VerticalLayout {
-        // Header bar
-        Rectangle {
-            height: 60px;
-            background: #26263a;
+    // Header bar
+    Rectangle {
+        y: 0;
+        width: 100%;
+        height: 60px;
+        background: #1a1a2a;
 
-            Text {
-                width: 100%;
-                height: 100%;
-                text: "RECENT APPS";
-                color: Theme.on-surface;
-                font-size: 18px;
-                font-weight: 600;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
+        Text {
+            width: 100%;
+            height: 100%;
+            text: "RECENT APPS";
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    // Card area
+    Rectangle {
+        y: 60px;
+        width: 100%;
+        height: parent.height - 60px - 40px;
+
+        // Empty state
+        if windows.length == 0: Text {
+            width: 100%;
+            height: 100%;
+            text: "NO APPS";
+            color: #666688;
+            font-size: 32px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
         }
 
-        // Card area - scrollable list of window cards
-        Rectangle {
-            vertical-stretch: 1;
-            background: Theme.background;
+        // Fan-out cards - each card positioned based on index and scroll
+        for window[idx] in windows: Rectangle {
+            // Calculate position based on scroll offset
+            // Each card is at: idx * card-spacing - scroll-offset + center
+            property <length> base-x: idx * card-spacing - scroll-offset * 1px + (parent.width - card-width) / 2;
+            property <float> normalized-pos: (idx * card-spacing / 1px - scroll-offset) / (card-spacing / 1px);
+            property <float> distance: abs(normalized-pos);
+            property <float> scale: max(0.75, 1.0 - distance * 0.1);
 
-            // Empty state
-            if windows.length == 0: Rectangle {
-                width: 100%;
-                height: 100%;
+            x: base-x;
+            y: (parent.height - card-height * scale) / 2;
+            width: card-width * scale;
+            height: card-height * scale;
+            background: #2a2a4a;
+            border-radius: 20px;
 
-                Text {
-                    width: 100%;
-                    height: 100%;
-                    text: "NO APPS";
-                    color: #9999aa;
-                    font-size: 32px;
-                    font-weight: 600;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            // Drop shadow effect
+            Rectangle {
+                x: 4px;
+                y: 4px;
+                width: parent.width;
+                height: parent.height;
+                background: #00000040;
+                border-radius: 20px;
             }
 
-            // Window cards - vertical scrollable list
-            if windows.length > 0: Flickable {
+            // Card content
+            Rectangle {
                 width: 100%;
                 height: 100%;
-                viewport-height: windows.length * 220px + 40px;
+                background: #3a3a5a;
+                border-radius: 20px;
 
                 VerticalLayout {
-                    padding: 20px;
-                    spacing: 20px;
+                    padding: 16px;
+                    spacing: 8px;
 
-                    for window[idx] in windows: Rectangle {
-                        height: 180px;
-                        background: #3a3a5a;
-                        border-radius: 16px;
+                    // App title bar
+                    Rectangle {
+                        height: 40px;
+                        background: #4a4a6a;
+                        border-radius: 8px;
 
-                        ta := TouchArea {
-                            clicked => { window-tapped(window.id); }
-                        }
-
-                        VerticalLayout {
-                            padding: 16px;
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
                             spacing: 8px;
 
                             Text {
-                                text: window.title;
-                                color: white;
-                                font-size: 18px;
-                                font-weight: 600;
-                                overflow: elide;
-                            }
-
-                            Text {
+                                vertical-alignment: center;
                                 text: window.app-class;
                                 color: #aaaacc;
                                 font-size: 14px;
                             }
 
-                            Rectangle {
-                                vertical-stretch: 1;
-                                background: #2a2a4a;
-                                border-radius: 8px;
+                            Rectangle { horizontal-stretch: 1; }
 
-                                Text {
-                                    width: 100%;
-                                    height: 100%;
-                                    text: "Window Preview";
-                                    color: #666688;
-                                    font-size: 12px;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                }
+                            Text {
+                                vertical-alignment: center;
+                                text: "✕";
+                                color: #888888;
+                                font-size: 16px;
+                            }
+                        }
+                    }
+
+                    // Window content placeholder
+                    Rectangle {
+                        vertical-stretch: 1;
+                        background: #252540;
+                        border-radius: 8px;
+
+                        VerticalLayout {
+                            padding: 20px;
+
+                            Text {
+                                text: window.title;
+                                color: white;
+                                font-size: 16px;
+                                font-weight: 500;
+                                overflow: elide;
+                                horizontal-alignment: center;
+                            }
+
+                            Rectangle { vertical-stretch: 1; }
+
+                            Text {
+                                text: "Tap to switch";
+                                color: #666688;
+                                font-size: 12px;
+                                horizontal-alignment: center;
                             }
                         }
                     }
                 }
             }
-        }
 
-        HomeIndicator {}
+            // TouchArea for tap detection
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => { window-tapped(window.id); }
+            }
+        }
+    }
+
+    // Home indicator
+    HomeIndicator {
+        y: parent.height - 40px;
     }
 }
 
