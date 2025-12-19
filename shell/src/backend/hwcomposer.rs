@@ -264,6 +264,14 @@ fn handle_input_event(
     };
     use smithay::input::keyboard::FilterResult;
 
+    // Log all input events (brief)
+    match &event {
+        InputEvent::TouchDown { .. } => info!("INPUT: TouchDown"),
+        InputEvent::TouchUp { .. } => info!("INPUT: TouchUp"),
+        InputEvent::TouchMotion { .. } => {} // too spammy
+        _ => {}
+    }
+
     match event {
         InputEvent::Keyboard { event } => {
             use smithay::backend::input::KeyState;
