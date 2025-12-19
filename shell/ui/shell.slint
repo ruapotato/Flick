@@ -1761,9 +1761,12 @@ component AppSwitcherPanel inherits Rectangle {
             property <float> normalized-pos: (idx * card-spacing / 1px - scroll-offset) / (card-spacing / 1px);
             property <float> distance: abs(normalized-pos);
             property <float> scale: max(0.75, 1.0 - distance * 0.1);
+            // Z-order: cards closer to center (smaller distance) are on top
+            property <float> z-value: 100.0 - distance * 10.0;
 
             x: base-x;
             y: (parent.height - card-height * scale) / 2;
+            z: z-value;
             width: card-width * scale;
             height: card-height * scale;
             background: #2a2a4a;
@@ -1850,11 +1853,25 @@ component AppSwitcherPanel inherits Rectangle {
                 }
             }
 
-            // TouchArea for tap detection
-            TouchArea {
+            // TouchArea for tap detection - covers entire card
+            touch := TouchArea {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                clicked => {
+                    debug("Card tapped: " + window.id);
+                    window-tapped(window.id);
+                }
+            }
+
+            // Visual feedback when pressed
+            Rectangle {
+                visible: touch.pressed;
                 width: 100%;
                 height: 100%;
-                clicked => { window-tapped(window.id); }
+                background: #ffffff20;
+                border-radius: 20px;
             }
         }
     }
