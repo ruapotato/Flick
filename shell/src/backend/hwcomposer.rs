@@ -1327,6 +1327,9 @@ fn render_frame(
                             ShellView::Switcher => {
                                 slint_ui.set_view("switcher");
                                 slint_ui.set_switcher_scroll(state.shell.switcher_scroll as f32);
+                                // Update enter animation progress
+                                let enter_progress = state.shell.get_switcher_enter_progress().unwrap_or(1.0);
+                                slint_ui.set_switcher_enter_progress(enter_progress);
                                 // Update window list for Slint Switcher
                                 let windows: Vec<_> = state.space.elements()
                                     .enumerate()

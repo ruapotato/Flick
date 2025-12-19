@@ -223,6 +223,10 @@ pub struct Shell {
     pub switcher_last_update: Option<std::time::Instant>,
     /// Touch times for velocity calculation
     pub switcher_touch_times: Vec<(f64, std::time::Instant)>, // (x position, time)
+    /// Switcher enter animation active (shrink from app to card)
+    pub switcher_enter_anim: bool,
+    /// When switcher enter animation started
+    pub switcher_enter_start: Option<std::time::Instant>,
     /// Scroll offset for app grid (home screen)
     pub home_scroll: f64,
     /// Touch tracking for scrolling (home screen - vertical)
@@ -331,6 +335,8 @@ impl Shell {
             switcher_snap_target: None,
             switcher_last_update: None,
             switcher_touch_times: Vec::new(),
+            switcher_enter_anim: false,
+            switcher_enter_start: None,
             home_scroll: 0.0,
             scroll_touch_start_y: None,
             scroll_touch_last_y: None,
@@ -1125,6 +1131,9 @@ impl Shell {
     /// num_windows: total number of windows
     /// card_spacing: spacing between cards in the switcher
     pub fn open_switcher(&mut self, num_windows: usize, card_spacing: f64) {
+        // Start enter animation if coming from App view
+        let was_in_app = self.view == ShellView::App;
+
         self.set_view(ShellView::Switcher);
         self.gesture = GestureState::default();
         // Set scroll so the topmost window (last index) is centered
@@ -1140,6 +1149,39 @@ impl Shell {
         self.switcher_animating = false;
         self.switcher_snap_target = None;
         self.switcher_touch_times.clear();
+
+        // Start shrink animation if there are windows and we came from App view
+        if was_in_app && num_windows > 0 {
+            self.switcher_enter_anim = true;
+            self.switcher_enter_start = Some(std::time::Instant::now());
+        } else {
+            self.switcher_enter_anim = false;
+            self.switcher_enter_start = None;
+        }
+    }
+
+    /// Get switcher enter animation progress (0.0 to 1.0, None if not animating)
+    /// Animation lasts 250ms with ease-out curve
+    pub fn get_switcher_enter_progress(&mut self) -> Option<f32> {
+        if !self.switcher_enter_anim {
+            return None;
+        }
+
+        let start = self.switcher_enter_start?;
+        let elapsed = start.elapsed().as_millis() as f32;
+        let duration = 250.0; // 250ms animation
+
+        if elapsed >= duration {
+            // Animation complete
+            self.switcher_enter_anim = false;
+            self.switcher_enter_start = None;
+            return None;
+        }
+
+        // Progress 0.0 to 1.0 with ease-out curve
+        let linear = elapsed / duration;
+        let eased = 1.0 - (1.0 - linear).powi(3); // Cubic ease-out
+        Some(eased)
     }
 
     /// Sync Quick Settings panel with current system status

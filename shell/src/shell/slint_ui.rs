@@ -566,6 +566,11 @@ impl SlintShell {
         self.shell.set_switcher_scroll(offset);
     }
 
+    /// Set switcher enter animation progress (0.0 = full screen, 1.0 = card size)
+    pub fn set_switcher_enter_progress(&self, progress: f32) {
+        self.shell.set_switcher_enter_progress(progress);
+    }
+
     /// Poll for pending switcher window tap (from Slint callback)
     /// Returns the window ID if there was a tap, and clears the pending state
     pub fn take_pending_switcher_tap(&self) -> Option<i32> {

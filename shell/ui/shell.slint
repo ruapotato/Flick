@@ -1704,6 +1704,7 @@ component OnScreenKeyboard inherits Rectangle {
 component AppSwitcherPanel inherits Rectangle {
     in property <[WindowCard]> windows: [];
     in property <float> scroll-offset: 0;  // Horizontal scroll position
+    in property <float> enter-progress: 1.0;  // 0.0 = full screen (animating), 1.0 = card size (complete)
 
     callback window-tapped(int);  // Window ID
     callback close-requested();   // Swipe down to close
@@ -1764,12 +1765,32 @@ component AppSwitcherPanel inherits Rectangle {
             property <length> base-x: pos-idx * card-spacing - scroll-offset * 1px + (parent.width - card-width) / 2;
             property <float> normalized-pos: (pos-idx * card-spacing / 1px - scroll-offset) / (card-spacing / 1px);
             property <float> distance: abs(normalized-pos);
-            property <float> scale: max(0.75, 1.0 - distance * 0.1);
+            property <float> base-scale: max(0.75, 1.0 - distance * 0.1);
 
-            x: base-x;
-            y: (parent.height - card-height * scale) / 2;
-            width: card-width * scale;
-            height: card-height * scale;
+            // Animation: center card (distance < 0.5) animates from full screen to card size
+            property <bool> is-center-card: distance < 0.5;
+            property <float> anim-progress: is-center-card ? enter-progress : 1.0;
+
+            // Interpolate between full screen (progress=0) and card size (progress=1)
+            // Full screen: x=0, y=0, w=parent.width, h=parent.height
+            // Card: x=base-x, y=center, w=card-width*scale, h=card-height*scale
+            property <length> target-x: base-x;
+            property <length> target-y: (parent.height - card-height * base-scale) / 2;
+            property <length> target-w: card-width * base-scale;
+            property <length> target-h: card-height * base-scale;
+
+            property <length> full-x: (parent.width - parent.width) / 2;  // 0
+            property <length> full-y: 0px;
+            property <length> full-w: parent.width;
+            property <length> full-h: parent.height;
+
+            property <float> scale: base-scale;
+
+            // Animated position/size (lerp from full to target)
+            x: full-x + (target-x - full-x) * anim-progress;
+            y: full-y + (target-y - full-y) * anim-progress;
+            width: full-w + (target-w - full-w) * anim-progress;
+            height: full-h + (target-h - full-h) * anim-progress;
             background: #2a2a4a;
             border-radius: 20px;
 
@@ -1925,6 +1946,7 @@ export component FlickShell inherits Window {
     // App switcher state
     in property <[WindowCard]> switcher-windows: [];
     in property <float> switcher-scroll: 0;
+    in property <float> switcher-enter-progress: 1.0;  // 0.0 = full screen, 1.0 = card size (animation complete)
 
     // Keyboard state
     in property <bool> keyboard-visible: false;
@@ -2041,6 +2063,7 @@ export component FlickShell inherits Window {
         height: 100%;
         windows: switcher-windows;
         scroll-offset: switcher-scroll;
+        enter-progress: switcher-enter-progress;
         window-tapped(id) => { switcher-window-tapped(id); }
     }
 
