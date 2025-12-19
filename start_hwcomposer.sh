@@ -22,9 +22,17 @@ sudo systemctl stop phosh 2>/dev/null || true
 sleep 1
 
 echo "Restarting hwcomposer..."
-sudo pkill -9 -f 'graphics.composer' 2>/dev/null || true
-sudo pkill -9 -f 'hwcomposer' 2>/dev/null || true
+# Use killall with exact names to avoid killing this script
+sudo killall -9 android.hardware.graphics.composer 2>/dev/null || true
+sudo killall -9 composer 2>/dev/null || true
 sleep 1
+
+# Stop the service if running
+if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
+    sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
+        /usr/lib/halium-wrappers/android-service.sh hwcomposer stop 2>/dev/null || true
+fi
+sleep 2
 
 if [ -f /usr/lib/halium-wrappers/android-service.sh ]; then
     sudo ANDROID_SERVICE='(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)' \
