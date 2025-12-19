@@ -402,6 +402,7 @@ fn handle_input_event(
             // Check if QML lockscreen is connected (has windows in space)
             let has_wayland_window = state.space.elements().count() > 0;
             let shell_view = state.shell.view;
+            info!("TouchDown: shell_view={:?}, has_wayland_window={}", shell_view, has_wayland_window);
 
             // Forward touch to Wayland client if connected
             if has_wayland_window && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
@@ -466,6 +467,7 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::Switcher => {
+                        info!("Switcher TouchDown at ({}, {})", touch_pos.x, touch_pos.y);
                         // Start tracking horizontal scroll
                         state.shell.switcher_touch_start_x = Some(touch_pos.x);
                         state.shell.switcher_touch_last_x = Some(touch_pos.x);
