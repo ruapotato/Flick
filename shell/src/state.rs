@@ -1121,19 +1121,6 @@ impl CompositorHandler for Flick {
                             }
                         }
 
-                        // Log raw bytes from source to debug black windows (with offset applied)
-                        let raw_first_8: Vec<u8> = (0..32).map(|i| unsafe { *ptr.add(buffer_offset + i) }).collect();
-                        let raw_center_offset = buffer_offset + ((height/2) * stride + (width/2) * 4) as usize;
-                        let raw_center_8: Vec<u8> = (0..8).map(|i| unsafe { *ptr.add(raw_center_offset + i) }).collect();
-
-                        let first_nonzero = pixels.chunks(4).position(|p| p[0] != 0 || p[1] != 0 || p[2] != 0);
-                        let sample_idx = width as usize / 2 + (height as usize / 2) * width as usize;
-                        let center = if sample_idx * 4 + 3 < pixels.len() {
-                            (pixels[sample_idx*4], pixels[sample_idx*4+1], pixels[sample_idx*4+2], pixels[sample_idx*4+3])
-                        } else { (0,0,0,0) };
-                        // Log to stderr for immediate visibility
-                        eprintln!("BUFFER: {}x{} stride={} fmt={} offset={} raw_first={:?} first_nonzero={:?}",
-                            width, height, stride, format, buf_data.offset, &raw_first_8[..8], first_nonzero);
                         StoredBuffer { width, height, stride, format, pixels }
                     });
 
