@@ -1290,10 +1290,15 @@ fn render_frame(
             }
         }
 
+        // Check if we're in a gesture that needs to preview the switcher
+        let switcher_gesture_preview = state.switcher_gesture_active && shell_view == ShellView::App;
+
         // Render Slint UI for shell views (but not when QML lockscreen is connected)
+        // Also render during switcher gesture preview
         if !qml_lockscreen_connected {
             match shell_view {
-                ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault | ShellView::LockScreen => {
+                ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault | ShellView::LockScreen
+                if !switcher_gesture_preview => {
                     // Update Slint timers and animations (needed for clock updates, etc.)
                     slint::platform::update_timers_and_animations();
 
@@ -1413,6 +1418,80 @@ fn render_frame(
                     }
                 }
                 _ => {}
+            }
+
+            // Render switcher preview during edge gesture (while still in App view)
+            if switcher_gesture_preview {
+                slint::platform::update_timers_and_animations();
+
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    slint_ui.set_view("switcher");
+                    // Use gesture progress to drive the shrink animation
+                    // gesture_progress goes 0.0 -> 1.0 as you drag
+                    let enter_progress = state.switcher_gesture_progress as f32;
+                    slint_ui.set_switcher_enter_progress(enter_progress);
+                    slint_ui.set_switcher_scroll(0.0);
+
+                    // Update window list for preview
+                    let screen_w = state.screen_size.w as f64;
+                    let card_width = screen_w * 0.80;
+                    let card_spacing = card_width * 0.35;
+
+                    let windows: Vec<_> = state.space.elements()
+                        .enumerate()
+                        .map(|(i, window)| {
+                            let title = if let Some(x11) = window.x11_surface() {
+                                let t = x11.title();
+                                if !t.is_empty() { t } else { x11.class() }
+                            } else if let Some(toplevel) = window.toplevel() {
+                                compositor::with_states(toplevel.wl_surface(), |states| {
+                                    states
+                                        .data_map
+                                        .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                        .and_then(|data| {
+                                            let data = data.lock().unwrap();
+                                            data.title.clone().or(data.app_id.clone())
+                                        })
+                                }).unwrap_or_else(|| format!("Window {}", i + 1))
+                            } else {
+                                format!("Window {}", i + 1)
+                            };
+
+                            let app_class = if let Some(x11) = window.x11_surface() {
+                                x11.class()
+                            } else if let Some(toplevel) = window.toplevel() {
+                                compositor::with_states(toplevel.wl_surface(), |states| {
+                                    states
+                                        .data_map
+                                        .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                        .and_then(|data| data.lock().unwrap().app_id.clone())
+                                }).unwrap_or_else(|| "app".to_string())
+                            } else {
+                                "app".to_string()
+                            };
+
+                            (i as i32, title, app_class, i as i32)
+                        })
+                        .collect();
+
+                    // Sort by render order (furthest from center first)
+                    let scroll = 0.0;
+                    let mut windows = windows;
+                    windows.sort_by(|a, b| {
+                        let dist_a = ((a.3 as f64) * card_spacing - scroll).abs();
+                        let dist_b = ((b.3 as f64) * card_spacing - scroll).abs();
+                        dist_b.partial_cmp(&dist_a).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+
+                    slint_ui.set_switcher_windows(windows);
+
+                    // Render the switcher preview
+                    if let Some((width, height, pixels)) = slint_ui.render() {
+                        unsafe {
+                            gl::render_texture(width, height, &pixels, display.width, display.height);
+                        }
+                    }
+                }
             }
         }
 

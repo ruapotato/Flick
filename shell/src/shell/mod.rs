@@ -1130,10 +1130,13 @@ impl Shell {
     /// Open the app switcher with the current (topmost) app centered
     /// num_windows: total number of windows
     /// card_spacing: spacing between cards in the switcher
+    /// from_gesture: true if opened via edge swipe gesture (animation already done)
     pub fn open_switcher(&mut self, num_windows: usize, card_spacing: f64) {
-        // Start enter animation if coming from App view
-        let was_in_app = self.view == ShellView::App;
+        self.open_switcher_ex(num_windows, card_spacing, false);
+    }
 
+    /// Open the app switcher with optional gesture flag
+    pub fn open_switcher_ex(&mut self, num_windows: usize, card_spacing: f64, from_gesture: bool) {
         self.set_view(ShellView::Switcher);
         self.gesture = GestureState::default();
         // Set scroll so the topmost window (last index) is centered
@@ -1150,14 +1153,10 @@ impl Shell {
         self.switcher_snap_target = None;
         self.switcher_touch_times.clear();
 
-        // Start shrink animation if there are windows and we came from App view
-        if was_in_app && num_windows > 0 {
-            self.switcher_enter_anim = true;
-            self.switcher_enter_start = Some(std::time::Instant::now());
-        } else {
-            self.switcher_enter_anim = false;
-            self.switcher_enter_start = None;
-        }
+        // Don't start animation if opened via gesture (gesture already drove the animation)
+        // Animation is complete when from_gesture is true
+        self.switcher_enter_anim = false;
+        self.switcher_enter_start = None;
     }
 
     /// Get switcher enter animation progress (0.0 to 1.0)
