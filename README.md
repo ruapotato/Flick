@@ -13,28 +13,30 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 | **Native Linux** (PinePhone, Librem 5) | ✅ Works | Standard DRM/KMS, full support |
 | **PostmarketOS** (mainline kernel) | ✅ Works | Uses freedreno/panfrost DRM drivers |
 | **Mobian** | ✅ Works | Standard Linux graphics stack |
-| **Droidian** (Android phones) | ⚠️ Partly Working | Renders to screen, but buggy - see below |
+| **Droidian** (Android phones) | ✅ Works | Shell and native Wayland apps working - see below |
 
 ### Droidian / HWComposer Support
 
 Droidian and similar Android-based Linux distributions require **HWComposer** integration to access the GPU.
 
-**Current status (Dec 2024):** HWComposer backend is functional with on-screen keyboard!
+**Current status (Dec 2024):** HWComposer backend is fully functional as a daily driver shell!
 
 ✅ **Working:**
 - Display output via hwcomposer (tested on Pixel 3a)
 - EGL/GLES rendering through libhybris HWCNativeWindow
-- Wayland compositor accepting clients
-- Lock screen and basic shell UI rendering
+- Wayland compositor with full client support
+- Lock screen, shell UI, and native Wayland apps (terminals, Settings, etc.)
 - Edge gesture detection (swipe from edges)
 - App switcher with fan-out card stack and gesture-driven animations
 - Smooth shrink animation when entering app switcher (follows finger)
 - On-screen keyboard overlay with touch input to apps
 - Keyboard input injection to focused Wayland clients
-- Proper privilege dropping for app launching (Firefox etc. work correctly)
+- Proper privilege dropping for app launching
 - Keyboard state save/restore when switching apps
+- SHM buffer rendering for external Wayland clients
 
 ⚠️ **Known Issues:**
+- X11/XWayland apps do not work (Firefox, etc.) - native Wayland apps only
 - App windows may show incorrectly sized on first open (resize after switching away and back)
 
 The hwcomposer backend uses a C shim library (`hwc-shim/`) that wraps Android's HWC2 API via libhybris, with Rust FFI bindings calling into it.
