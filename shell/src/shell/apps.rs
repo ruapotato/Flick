@@ -276,13 +276,28 @@ impl AppConfig {
     /// Load config from file, or return default if not found
     pub fn load() -> Self {
         if let Some(path) = Self::config_path() {
-            if let Ok(contents) = fs::read_to_string(&path) {
-                if let Ok(config) = serde_json::from_str(&contents) {
-                    tracing::info!("Loaded app config from {:?}", path);
-                    return config;
+            tracing::info!("Looking for app config at {:?}", path);
+            match fs::read_to_string(&path) {
+                Ok(contents) => {
+                    tracing::info!("Read app config file: {}", contents);
+                    match serde_json::from_str(&contents) {
+                        Ok(config) => {
+                            tracing::info!("Loaded app config from {:?}", path);
+                            return config;
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to parse app config: {:?}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::info!("No app config file found: {:?}", e);
                 }
             }
+        } else {
+            tracing::warn!("Could not determine app config path (HOME not set?)");
         }
+        tracing::info!("Using default app config");
         Self::default()
     }
 
