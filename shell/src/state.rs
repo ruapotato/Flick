@@ -1102,9 +1102,11 @@ impl CompositorHandler for Flick {
                         let is_xrgb = format == 1; // Xrgb8888
 
                         // Copy row by row, converting BGRA/BGRX to RGBA
+                        // buf_data.offset is where this buffer starts within the SHM pool
+                        let buffer_offset = buf_data.offset as usize;
                         let mut pixels = Vec::with_capacity(row_bytes * height as usize);
                         for y in 0..height {
-                            let row_start = (y * stride) as usize;
+                            let row_start = buffer_offset + (y * stride) as usize;
                             for x in 0..width as usize {
                                 let pixel_offset = row_start + x * 4;
                                 let b = unsafe { *ptr.add(pixel_offset) };
@@ -1119,9 +1121,9 @@ impl CompositorHandler for Flick {
                             }
                         }
 
-                        // Log raw bytes from source to debug black windows
-                        let raw_first_8: Vec<u8> = (0..32).map(|i| unsafe { *ptr.add(i) }).collect();
-                        let raw_center_offset = ((height/2) * stride + (width/2) * 4) as usize;
+                        // Log raw bytes from source to debug black windows (with offset applied)
+                        let raw_first_8: Vec<u8> = (0..32).map(|i| unsafe { *ptr.add(buffer_offset + i) }).collect();
+                        let raw_center_offset = buffer_offset + ((height/2) * stride + (width/2) * 4) as usize;
                         let raw_center_8: Vec<u8> = (0..8).map(|i| unsafe { *ptr.add(raw_center_offset + i) }).collect();
 
                         let first_nonzero = pixels.chunks(4).position(|p| p[0] != 0 || p[1] != 0 || p[2] != 0);
