@@ -1281,117 +1281,103 @@ impl Shell {
     }
 
     /// Hit test for app grid - returns category if hit
-    /// Uses Slint's layout constants to match visual display
+    /// Uses Slint's absolute positioning layout constants to match visual display
     pub fn hit_test_category(&self, pos: Point<f64, Logical>) -> Option<apps::AppCategory> {
         let categories = &self.app_manager.config.grid_order;
-        let width = self.screen_size.w as f64;
-
-        // Match Slint HomeScreen layout constants exactly
-        let status_bar_height = 48.0;
-        let padding = 24.0;
-        let row_height = 140.0;
-        let row_spacing = 16.0;
-        let col_spacing = 12.0;
-        let columns = 4;
-
-        // Grid starts after status bar + padding
-        let grid_start_y = status_bar_height + padding;
-
-        // Check if above the grid
-        if pos.y < grid_start_y - self.home_scroll {
-            tracing::debug!("Touch above grid at ({:.0},{:.0})", pos.x, pos.y);
-            return None;
-        }
-
-        // Calculate grid dimensions
-        let grid_width = width - 2.0 * padding;
-        let col_width = (grid_width - (columns - 1) as f64 * col_spacing) / columns as f64;
-
-        // Adjust touch position for scroll
-        let scroll_adjusted_y = pos.y + self.home_scroll;
-        let relative_y = scroll_adjusted_y - grid_start_y;
-
-        // Calculate row (accounting for spacing)
-        let row_with_spacing = row_height + row_spacing;
-        let row = (relative_y / row_with_spacing) as usize;
-
-        // Check if tap is between rows (in the spacing)
-        let y_in_row = relative_y - (row as f64 * row_with_spacing);
-        if y_in_row > row_height {
-            tracing::debug!("Touch in row gap at ({:.0},{:.0})", pos.x, pos.y);
-            return None;
-        }
-
-        // Calculate column
-        let relative_x = pos.x - padding;
-        if relative_x < 0.0 || relative_x > grid_width {
-            tracing::debug!("Touch outside grid horizontally at ({:.0},{:.0})", pos.x, pos.y);
-            return None;
-        }
-
-        let col_with_spacing = col_width + col_spacing;
-        let col = (relative_x / col_with_spacing) as usize;
-
-        // Check if tap is between columns (in the spacing)
-        let x_in_col = relative_x - (col as f64 * col_with_spacing);
-        if x_in_col > col_width {
-            tracing::debug!("Touch in column gap at ({:.0},{:.0})", pos.x, pos.y);
-            return None;
-        }
-
-        // Calculate index
-        let index = row * columns + col;
-
-        tracing::debug!("Hit test: pos({:.0},{:.0}) scroll={:.0} -> row={}, col={}, index={}",
-            pos.x, pos.y, self.home_scroll, row, col, index);
-
-        // Return category if valid index
-        if index < categories.len() {
-            let category = categories[index];
-            tracing::info!("Hit category {} '{}'", index, category.display_name());
-            Some(category)
-        } else {
-            tracing::debug!("Index {} out of range ({})", index, categories.len());
-            None
-        }
-    }
-
-    /// Hit test for app grid - returns grid index if hit (for drag/drop)
-    /// Also handles dropping below/after the last item
-    /// Uses Slint's layout constants to match visual display
-    pub fn hit_test_category_index(&self, pos: Point<f64, Logical>) -> Option<usize> {
-        let categories = &self.app_manager.config.grid_order;
         let num_categories = categories.len();
-        let width = self.screen_size.w as f64;
-
         if num_categories == 0 {
             return None;
         }
 
-        // Match Slint HomeScreen layout constants exactly
+        let width = self.screen_size.w as f64;
+        let height = self.screen_size.h as f64;
+
+        // Match Slint HomeScreen absolute positioning layout exactly
         let status_bar_height = 48.0;
-        let padding = 24.0;
-        let row_height = 140.0;
-        let row_spacing = 16.0;
-        let col_spacing = 12.0;
-        let columns = 4;
+        let home_indicator_height = 34.0;
+        let grid_padding = 12.0;
+        let grid_spacing = 8.0;
+        let columns = 4usize;
 
-        // Grid starts after status bar + padding
-        let grid_start_y = status_bar_height + padding;
+        // Calculate number of rows based on category count (same as Slint)
+        let num_rows = if num_categories > 12 { 4 } else if num_categories > 8 { 3 } else if num_categories > 4 { 2 } else { 1 };
 
-        // Calculate grid dimensions
-        let grid_width = width - 2.0 * padding;
-        let col_width = (grid_width - (columns - 1) as f64 * col_spacing) / columns as f64;
-        let row_with_spacing = row_height + row_spacing;
-        let col_with_spacing = col_width + col_spacing;
+        // Grid dimensions (matching Slint calculations)
+        let grid_top = status_bar_height + grid_padding;
+        let grid_height = height - status_bar_height - home_indicator_height - grid_padding * 2.0;
+        let grid_width = width - grid_padding * 2.0;
+
+        // Tile dimensions (matching Slint calculations)
+        let tile_width = (grid_width - grid_spacing * 3.0) / 4.0;
+        let tile_height = (grid_height - grid_spacing * (num_rows as f64 - 1.0)) / num_rows as f64;
+
+        // Check if above the grid
+        if pos.y < grid_top {
+            tracing::debug!("Touch above grid at ({:.0},{:.0})", pos.x, pos.y);
+            return None;
+        }
+
+        // Calculate which tile was hit by checking each tile's bounds
+        for i in 0..num_categories {
+            let row = i / columns;
+            let col = i % columns;
+
+            let tile_x = grid_padding + (tile_width + grid_spacing) * col as f64;
+            let tile_y = grid_top + (tile_height + grid_spacing) * row as f64;
+
+            if pos.x >= tile_x && pos.x < tile_x + tile_width &&
+               pos.y >= tile_y && pos.y < tile_y + tile_height {
+                tracing::debug!("Hit test: pos({:.0},{:.0}) -> tile row={}, col={}, index={}",
+                    pos.x, pos.y, row, col, i);
+                let category = categories[i];
+                tracing::info!("Hit category {} '{}'", i, category.display_name());
+                return Some(category);
+            }
+        }
+
+        tracing::debug!("Hit test: pos({:.0},{:.0}) -> no tile hit", pos.x, pos.y);
+        None
+    }
+
+    /// Hit test for app grid - returns grid index if hit (for drag/drop)
+    /// Also handles dropping below/after the last item
+    /// Uses Slint's absolute positioning layout constants to match visual display
+    pub fn hit_test_category_index(&self, pos: Point<f64, Logical>) -> Option<usize> {
+        let categories = &self.app_manager.config.grid_order;
+        let num_categories = categories.len();
+        if num_categories == 0 {
+            return None;
+        }
+
+        let width = self.screen_size.w as f64;
+        let height = self.screen_size.h as f64;
+
+        // Match Slint HomeScreen absolute positioning layout exactly
+        let status_bar_height = 48.0;
+        let home_indicator_height = 34.0;
+        let grid_padding = 12.0;
+        let grid_spacing = 8.0;
+        let columns = 4usize;
+
+        // Calculate number of rows based on category count (same as Slint)
+        let num_rows = if num_categories > 12 { 4 } else if num_categories > 8 { 3 } else if num_categories > 4 { 2 } else { 1 };
+
+        // Grid dimensions (matching Slint calculations)
+        let grid_top = status_bar_height + grid_padding;
+        let grid_height = height - status_bar_height - home_indicator_height - grid_padding * 2.0;
+        let grid_width = width - grid_padding * 2.0;
+
+        // Tile dimensions (matching Slint calculations)
+        let tile_width = (grid_width - grid_spacing * 3.0) / 4.0;
+        let tile_height = (grid_height - grid_spacing * (num_rows as f64 - 1.0)) / num_rows as f64;
 
         // Helper to get rect for an index
         let get_rect = |index: usize| -> (f64, f64, f64, f64) {
             let row = index / columns;
             let col = index % columns;
-            let x = padding + col as f64 * col_with_spacing;
-            let y = grid_start_y + row as f64 * row_with_spacing - self.home_scroll;
-            (x, y, col_width, row_height)
+            let x = grid_padding + (tile_width + grid_spacing) * col as f64;
+            let y = grid_top + (tile_height + grid_spacing) * row as f64;
+            (x, y, tile_width, tile_height)
         };
 
         // First check for exact hit on a tile
@@ -1414,7 +1400,7 @@ impl Shell {
         let last_col = (num_categories - 1) % columns;
         if last_col < columns - 1 {
             let (last_x, last_row_y, last_w, _) = get_rect(num_categories - 1);
-            if pos.y >= last_row_y && pos.y < last_row_y + row_height {
+            if pos.y >= last_row_y && pos.y < last_row_y + tile_height {
                 // Check if in the empty space after last tile
                 if pos.x > last_x + last_w {
                     return Some(num_categories - 1);
