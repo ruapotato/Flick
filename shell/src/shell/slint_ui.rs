@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Platform, WindowAdapter, PointerEventButton, WindowEvent};
-use slint::{LogicalPosition, PhysicalSize, Rgb8Pixel, SharedPixelBuffer};
+use slint::{LogicalPosition, PhysicalSize, Rgba8Pixel, SharedPixelBuffer};
 use smithay::utils::{Logical, Size};
 use tracing::{info, warn};
 
@@ -643,14 +643,14 @@ impl SlintShell {
         self.window.draw_if_needed(|renderer| {
             drew.set(true);
 
-            // Create a SharedPixelBuffer for rendering (RGB888)
-            let mut buffer = SharedPixelBuffer::<Rgb8Pixel>::new(width, height);
+            // Create a SharedPixelBuffer for rendering (RGBA8888 to preserve transparency)
+            let mut buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
 
-            // Render to the buffer
+            // Render to the buffer - Slint will output RGBA with proper alpha
             renderer.render(buffer.make_mut_slice(), width as usize);
 
-            // Convert RGB888 to RGBA8888
-            let rgb_data = buffer.as_bytes();
+            // Copy RGBA data directly (alpha is preserved from Slint)
+            let rgba_data = buffer.as_bytes();
             let mut pixel_buffer = self.pixel_buffer.borrow_mut();
 
             // Ensure buffer is correct size (RGBA = 4 bytes per pixel)
@@ -659,18 +659,8 @@ impl SlintShell {
                 pixel_buffer.resize(expected_size, 0);
             }
 
-            // Convert RGB to RGBA (add opaque alpha channel)
-            for (i, chunk) in rgb_data.chunks(3).enumerate() {
-                if chunk.len() == 3 {
-                    let offset = i * 4;
-                    if offset + 3 < pixel_buffer.len() {
-                        pixel_buffer[offset] = chunk[0];     // R
-                        pixel_buffer[offset + 1] = chunk[1]; // G
-                        pixel_buffer[offset + 2] = chunk[2]; // B
-                        pixel_buffer[offset + 3] = 255;      // A (opaque)
-                    }
-                }
-            }
+            // Direct copy - RGBA data is already in correct format
+            pixel_buffer.copy_from_slice(rgba_data);
         });
 
         // Log if we drew or not
