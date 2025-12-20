@@ -439,14 +439,19 @@ component AppTile inherits Rectangle {
     property <length> wiggle-x: wiggling && !is-dragging ? sin((wiggle-time * 12 + wiggle-phase * 0.7) * 1rad) * 3px : 0px;
     property <length> wiggle-y: wiggling && !is-dragging ? cos((wiggle-time * 10 + wiggle-phase * 0.5) * 1rad) * 2px : 0px;
 
-    // Container for the icon with wiggle offset (not in a layout so we can position it)
+    // Calculate sizes - icon takes most of the space, label at bottom
+    property <length> icon-size: min(root.width * 0.85, root.height * 0.70);
+    property <length> label-height: 40px;
+    property <length> total-content-height: icon-size + label-height + 8px;
+    property <length> vertical-offset: (root.height - total-content-height) / 2;
+
+    // Container for the icon with wiggle offset - centered in tile
     Rectangle {
-        property <length> icon-size: min(root.width * 0.75, root.height * 0.65);
-        x: (root.width - self.icon-size) / 2 + root.wiggle-x;
-        y: root.height * 0.05 + root.wiggle-y;
-        width: self.icon-size;
-        height: self.icon-size;
-        border-radius: self.icon-size * 0.22;
+        x: (root.width - root.icon-size) / 2 + root.wiggle-x;
+        y: root.vertical-offset + root.wiggle-y;
+        width: root.icon-size;
+        height: root.icon-size;
+        border-radius: root.icon-size * 0.22;
         background: tile-color;
         clip: true;
 
@@ -459,17 +464,17 @@ component AppTile inherits Rectangle {
         }
     }
 
-    // Name label at bottom - larger, readable text
+    // Name label below icon - centered
     Text {
-        property <length> icon-size: min(root.width * 0.75, root.height * 0.65);
         x: 4px;
-        y: root.height * 0.05 + self.icon-size + 8px;
+        y: root.vertical-offset + root.icon-size + 8px;
         width: root.width - 8px;
-        height: root.height * 0.2;
+        height: root.label-height;
         text: name;
         color: Theme.on-surface-variant;
-        font-size: max(18px, root.width * 0.12);
+        font-size: max(16px, root.width * 0.11);
         horizontal-alignment: center;
+        vertical-alignment: top;
         overflow: elide;
     }
 
