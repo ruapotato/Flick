@@ -2005,9 +2005,9 @@ export component FlickShell inherits Window {
     callback keyboard-hide();
 
     title: "Flick Shell";
-    // Transparent background when in app view (keyboard only), otherwise dark
-    // Use explicit #00000000 for full transparency
-    background: current-view == "app" ? #00000000 : #1a1a2e;
+    // Use magenta as chroma key for transparency in app view (keyboard only)
+    // The Rust renderer will replace #FF00FF with transparent pixels
+    background: current-view == "app" ? #FF00FF : #1a1a2e;
 
     // Home screen - visible except in app view (where we only show keyboard overlay)
     if current-view != "app": HomeScreen {
