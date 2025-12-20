@@ -136,14 +136,15 @@ fn launch_app_as_user(exec: &str, socket_name: &str) {
             })
             .unwrap_or_else(|| "1000".to_string());  // Default to 1000 if lookup fails
         let xdg_runtime = format!("/run/user/{}", uid);
+        let dbus_address = format!("unix:path=/run/user/{}/bus", uid);
 
         // Escape single quotes in the exec command for safe shell wrapping
         let escaped_exec = exec.replace("'", "'\"'\"'");
 
         // Use sudo -u to run as the original user with proper environment
         let wrapped_cmd = format!(
-            "sudo -u {} HOME={} XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} LIBGL_ALWAYS_SOFTWARE=1 GDK_BACKEND=wayland GSK_RENDERER=cairo GDK_RENDERING=image GALLIUM_DRIVER=llvmpipe QT_QUICK_BACKEND=software QT_OPENGL=software sh -c '{}'",
-            sudo_user, home, xdg_runtime, socket_name, escaped_exec
+            "sudo -u {} HOME={} XDG_RUNTIME_DIR={} DBUS_SESSION_BUS_ADDRESS={} WAYLAND_DISPLAY={} LIBGL_ALWAYS_SOFTWARE=1 GDK_BACKEND=wayland GSK_RENDERER=cairo GDK_RENDERING=image GALLIUM_DRIVER=llvmpipe QT_QUICK_BACKEND=software QT_OPENGL=software sh -c '{}'",
+            sudo_user, home, xdg_runtime, dbus_address, socket_name, escaped_exec
         );
 
         info!("Launching app as user {}: {}", sudo_user, exec);
@@ -154,9 +155,14 @@ fn launch_app_as_user(exec: &str, socket_name: &str) {
             .ok();
     } else {
         // Not running via sudo - launch directly
+        // Construct DBUS address from XDG_RUNTIME_DIR if available
+        let dbus_address = std::env::var("XDG_RUNTIME_DIR")
+            .map(|dir| format!("unix:path={}/bus", dir))
+            .ok();
+
         info!("Launching app directly: {}", exec);
-        std::process::Command::new("sh")
-            .arg("-c")
+        let mut cmd = std::process::Command::new("sh");
+        cmd.arg("-c")
             .arg(exec)
             .env("WAYLAND_DISPLAY", socket_name)
             .env("LIBGL_ALWAYS_SOFTWARE", "1")
@@ -166,9 +172,13 @@ fn launch_app_as_user(exec: &str, socket_name: &str) {
             .env("GALLIUM_DRIVER", "llvmpipe")
             .env("__EGL_VENDOR_LIBRARY_FILENAMES", "")
             .env("QT_QUICK_BACKEND", "software")
-            .env("QT_OPENGL", "software")
-            .spawn()
-            .ok();
+            .env("QT_OPENGL", "software");
+
+        if let Some(addr) = dbus_address {
+            cmd.env("DBUS_SESSION_BUS_ADDRESS", addr);
+        }
+
+        cmd.spawn().ok();
     }
 }
 
@@ -1451,28 +1461,20 @@ pub fn run() -> Result<()> {
             info!("After unlock: view={:?}, lock_screen_active={}", state.shell.view, state.shell.lock_screen_active);
         }
 
-        // Log every loop iteration for debugging
-        debug!("Loop {}: after dispatch_clients", loop_count);
-
         // Dispatch calloop events
         event_loop
             .dispatch(Some(Duration::from_millis(1)), &mut state)
             .map_err(|e| anyhow::anyhow!("Event loop error: {:?}", e))?;
 
-        debug!("Loop {}: after calloop dispatch", loop_count);
-
         // Skip rendering if session not active
         if !*session_active.borrow() {
-            debug!("Loop {}: session not active, skipping render", loop_count);
             continue;
         }
 
-        debug!("Loop {}: calling render_frame", loop_count);
         // Render frame
         if let Err(e) = render_frame(&mut hwc_display, &state, &output) {
             error!("Render error: {:?}", e);
         }
-        debug!("Loop {}: after render_frame", loop_count);
 
         // Send frame callbacks to Wayland clients
         state.space.elements().for_each(|window| {
@@ -1795,50 +1797,34 @@ fn render_frame(
         if (shell_view == ShellView::App && !switcher_gesture_preview) || qml_lockscreen_connected {
             // Render Wayland client surfaces (windows)
             let windows: Vec<_> = state.space.elements().cloned().collect();
-            debug!("Rendering {} Wayland windows", windows.len());
 
             for (i, window) in windows.iter().enumerate() {
-                debug!("Processing window {}", i);
-
                 // Get the wl_surface from either Wayland toplevel or X11 surface
                 let wl_surface = if let Some(toplevel) = window.toplevel() {
-                    debug!("Window {} is Wayland toplevel", i);
                     Some(toplevel.wl_surface().clone())
                 } else if let Some(x11_surface) = window.x11_surface() {
-                    debug!("Window {} is X11 surface", i);
                     x11_surface.wl_surface().map(|s| s.clone())
                 } else {
-                    debug!("Window {} has no surface", i);
                     None
                 };
 
                 if let Some(wl_surface) = wl_surface {
-                    debug!("Window {} surface: {:?}", i, wl_surface.id());
-
-                    // Render using stored buffer data from commit handler
-                    debug!("Window {} trying to render stored buffer", i);
-
                     // Get stored buffer from surface user data
                     let buffer_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(&wl_surface, |data| {
-                        debug!("  stored: inside with_states");
                         use std::cell::RefCell;
                         use crate::state::SurfaceBufferData;
 
                         if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
                             let data = buffer_data.borrow();
                             if let Some(ref stored) = data.buffer {
-                                debug!("  stored: found buffer {}x{}", stored.width, stored.height);
                                 Some((stored.width, stored.height, stored.pixels.clone()))
                             } else {
-                                debug!("  stored: no buffer in data_map");
                                 None
                             }
                         } else {
-                            debug!("  stored: no SurfaceBufferData in data_map");
                             None
                         }
                     });
-                    debug!("Window {} after with_states", i);
 
                     // Render outside of with_states to avoid holding locks
                     if let Some((width, height, pixels)) = buffer_info {
@@ -1874,7 +1860,6 @@ fn render_frame(
                     }
                 }
             }
-            debug!("Finished rendering windows");
 
             // Render Slint keyboard overlay on top of app window if keyboard is visible
             if let Some(ref slint_ui) = state.shell.slint_ui {
@@ -1894,7 +1879,6 @@ fn render_frame(
         }
     }
 
-    debug!("render_frame: before swap_buffers");
     // Swap EGL buffers - this triggers the present callback which handles display
     display.egl_instance.swap_buffers(display.egl_display, display.egl_surface)
         .map_err(|e| anyhow::anyhow!("Failed to swap buffers: {:?}", e))?;

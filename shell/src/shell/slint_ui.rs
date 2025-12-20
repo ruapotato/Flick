@@ -540,11 +540,6 @@ impl SlintShell {
     /// Set switcher window cards (id, title, app_class, original_index)
     /// Windows should be sorted by render order (furthest from center first, center last)
     pub fn set_switcher_windows(&self, windows: Vec<(i32, String, String, i32)>) {
-        tracing::info!("set_switcher_windows called with {} windows", windows.len());
-        for (i, (id, title, app_class, orig_idx)) in windows.iter().enumerate() {
-            tracing::info!("  Window {}: id={}, title='{}', class='{}', orig_idx={}", i, id, title, app_class, orig_idx);
-        }
-
         let model: Vec<WindowCard> = windows
             .into_iter()
             .map(|(id, title, app_class, original_index)| WindowCard {
@@ -555,10 +550,8 @@ impl SlintShell {
             })
             .collect();
 
-        let model_len = model.len();
         let model_rc = std::rc::Rc::new(slint::VecModel::from(model));
         self.shell.set_switcher_windows(model_rc.into());
-        tracing::info!("set_switcher_windows completed, model has {} items", model_len);
     }
 
     /// Set switcher horizontal scroll offset

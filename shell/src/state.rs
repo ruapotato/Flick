@@ -954,15 +954,12 @@ impl Flick {
         let display_ptr = self.display.as_ptr();
         let self_ptr = self as *mut Self;
         unsafe {
-            tracing::debug!("dispatch_clients: calling Display::dispatch_clients");
             if let Err(e) = (*display_ptr).dispatch_clients(&mut *self_ptr) {
                 tracing::warn!("Failed to dispatch clients: {:?}", e);
             }
-            tracing::debug!("dispatch_clients: returned from Display::dispatch_clients");
             if let Err(e) = (*display_ptr).flush_clients() {
                 tracing::warn!("Failed to flush clients: {:?}", e);
             }
-            tracing::debug!("dispatch_clients: complete");
         }
     }
 
@@ -1112,8 +1109,6 @@ impl CompositorHandler for Flick {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
-        tracing::debug!("Surface commit: {:?}", surface.id());
-
         // Capture buffer data for hwcomposer backend before on_commit_buffer_handler clears it
         // This stores the SHM buffer pixels so we can render without Smithay's renderer
         with_states(surface, |data| {
@@ -1254,7 +1249,6 @@ impl DndGrabHandler for Flick {}
 
 impl XdgShellHandler for Flick {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
-        tracing::debug!("xdg_shell_state accessed");
         &mut self.xdg_shell_state
     }
 
