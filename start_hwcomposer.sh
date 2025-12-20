@@ -46,6 +46,8 @@ sleep 2
 REAL_UID=$(id -u "${SUDO_USER:-$USER}")
 export XDG_RUNTIME_DIR="/run/user/$REAL_UID"
 export EGL_PLATFORM=hwcomposer
+# Save the real user for flick (the nested sudo will overwrite SUDO_USER)
+export FLICK_USER="${SUDO_USER:-$USER}"
 
 mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
 

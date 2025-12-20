@@ -117,7 +117,11 @@ fn char_to_evdev(c: char) -> Option<(u32, bool)> {
 /// When running as root (via sudo), drops privileges to the original user
 fn launch_app_as_user(exec: &str, socket_name: &str) {
     // Check if we're running via sudo and need to drop privileges
-    if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+    // FLICK_USER is set by start_hwcomposer.sh to preserve the real user across nested sudo
+    let real_user = std::env::var("FLICK_USER")
+        .or_else(|_| std::env::var("SUDO_USER"))
+        .ok();
+    if let Some(sudo_user) = real_user {
         // Running as root via sudo - launch as the original user
         let home = format!("/home/{}", sudo_user);
 

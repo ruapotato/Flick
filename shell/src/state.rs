@@ -217,7 +217,11 @@ impl Flick {
         let socket_name = socket.socket_name().to_os_string();
 
         // If running via sudo, change socket ownership to allow user apps to connect
-        if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+        // FLICK_USER is set by start_hwcomposer.sh to preserve the real user across nested sudo
+        let real_user = std::env::var("FLICK_USER")
+            .or_else(|_| std::env::var("SUDO_USER"))
+            .ok();
+        if let Some(sudo_user) = real_user {
             if let Ok(xdg_runtime) = std::env::var("XDG_RUNTIME_DIR") {
                 let socket_path = std::path::Path::new(&xdg_runtime).join(&socket_name);
 
