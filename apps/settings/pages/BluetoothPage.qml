@@ -10,13 +10,13 @@ Page {
     }
 
     header: Rectangle {
-        height: 100
+        height: 140
         color: "#12121a"
 
         Text {
             anchors.centerIn: parent
             text: "Bluetooth"
-            font.pixelSize: 36
+            font.pixelSize: 48
             font.weight: Font.Light
             color: "#ffffff"
         }
@@ -24,24 +24,24 @@ Page {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 24
-        anchors.bottomMargin: 100
-        spacing: 24
+        anchors.margins: 32
+        anchors.bottomMargin: 120
+        spacing: 32
 
         // Bluetooth toggle
         Rectangle {
             Layout.fillWidth: true
-            height: 80
+            height: 120
             color: "#12121a"
-            radius: 12
+            radius: 16
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 20
+                anchors.margins: 28
 
                 Text {
                     text: "Bluetooth"
-                    font.pixelSize: 24
+                    font.pixelSize: 32
                     color: "#ffffff"
                     Layout.fillWidth: true
                 }
@@ -51,17 +51,17 @@ Page {
                     checked: true
 
                     indicator: Rectangle {
-                        implicitWidth: 60
-                        implicitHeight: 34
-                        radius: 17
+                        implicitWidth: 80
+                        implicitHeight: 44
+                        radius: 22
                         color: btSwitch.checked ? "#e94560" : "#333344"
 
                         Rectangle {
                             x: btSwitch.checked ? parent.width - width - 4 : 4
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 26
-                            height: 26
-                            radius: 13
+                            width: 36
+                            height: 36
+                            radius: 18
                             color: "#ffffff"
 
                             Behavior on x {
@@ -76,16 +76,16 @@ Page {
         // Paired devices
         Text {
             text: "Paired Devices"
-            font.pixelSize: 18
+            font.pixelSize: 24
             color: "#666677"
-            Layout.topMargin: 12
+            Layout.topMargin: 16
         }
 
         ListView {
             Layout.fillWidth: true
-            Layout.preferredHeight: 180
+            Layout.preferredHeight: 260
             clip: true
-            spacing: 4
+            spacing: 8
 
             model: ListModel {
                 ListElement { name: "AirPods Pro"; type: "headphones"; connected: true }
@@ -94,32 +94,32 @@ Page {
 
             delegate: Rectangle {
                 width: parent.width
-                height: 80
+                height: 120
                 color: mouseArea.pressed ? "#1a1a2e" : "#12121a"
-                radius: 12
+                radius: 16
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 16
+                    anchors.margins: 28
+                    spacing: 24
 
                     Text {
                         text: model.type === "headphones" ? "🎧" : "🔊"
-                        font.pixelSize: 32
+                        font.pixelSize: 44
                     }
 
                     Column {
                         Layout.fillWidth: true
-                        spacing: 4
+                        spacing: 8
 
                         Text {
                             text: model.name
-                            font.pixelSize: 22
+                            font.pixelSize: 28
                             color: "#ffffff"
                         }
                         Text {
                             text: model.connected ? "Connected" : "Not Connected"
-                            font.pixelSize: 16
+                            font.pixelSize: 20
                             color: model.connected ? "#4ade80" : "#666677"
                         }
                     }
@@ -135,30 +135,30 @@ Page {
         // Available devices
         Text {
             text: "Available Devices"
-            font.pixelSize: 18
+            font.pixelSize: 24
             color: "#666677"
-            Layout.topMargin: 12
+            Layout.topMargin: 16
         }
 
         Rectangle {
             Layout.fillWidth: true
-            height: 80
+            height: 120
             color: "#12121a"
-            radius: 12
+            radius: 16
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 20
+                anchors.margins: 28
 
                 BusyIndicator {
                     running: true
-                    implicitWidth: 32
-                    implicitHeight: 32
+                    implicitWidth: 44
+                    implicitHeight: 44
                 }
 
                 Text {
                     text: "Scanning..."
-                    font.pixelSize: 20
+                    font.pixelSize: 28
                     color: "#666677"
                     Layout.fillWidth: true
                 }
@@ -168,23 +168,23 @@ Page {
         Item { Layout.fillHeight: true }
     }
 
-    // Back button - bottom right (Flick design spec)
+    // Back button - bottom right
     Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.rightMargin: 24
-        anchors.bottomMargin: 24
-        width: 64
-        height: 64
-        radius: 32
+        anchors.rightMargin: 32
+        anchors.bottomMargin: 32
+        width: 80
+        height: 80
+        radius: 40
         color: backButtonMouse.pressed ? "#333344" : "#1a1a2e"
         border.color: "#444455"
-        border.width: 2
+        border.width: 3
 
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 28
+            font.pixelSize: 36
             color: "#ffffff"
         }
 

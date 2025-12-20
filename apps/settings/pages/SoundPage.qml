@@ -10,13 +10,13 @@ Page {
     }
 
     header: Rectangle {
-        height: 100
+        height: 140
         color: "#12121a"
 
         Text {
             anchors.centerIn: parent
             text: "Sound"
-            font.pixelSize: 36
+            font.pixelSize: 48
             font.weight: Font.Light
             color: "#ffffff"
         }
@@ -24,35 +24,35 @@ Page {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 24
-        anchors.bottomMargin: 100
-        spacing: 24
+        anchors.margins: 32
+        anchors.bottomMargin: 120
+        spacing: 32
 
         // Media volume
         Rectangle {
             Layout.fillWidth: true
-            height: 120
+            height: 160
             color: "#12121a"
-            radius: 12
+            radius: 16
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 20
-                spacing: 16
+                anchors.margins: 28
+                spacing: 20
 
                 Text {
                     text: "Media Volume"
-                    font.pixelSize: 24
+                    font.pixelSize: 32
                     color: "#ffffff"
                 }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 16
+                    spacing: 20
 
                     Text {
                         text: "🔈"
-                        font.pixelSize: 28
+                        font.pixelSize: 36
                     }
 
                     Slider {
@@ -66,14 +66,14 @@ Page {
                             x: mediaSlider.leftPadding
                             y: mediaSlider.topPadding + mediaSlider.availableHeight / 2 - height / 2
                             width: mediaSlider.availableWidth
-                            height: 8
-                            radius: 4
+                            height: 12
+                            radius: 6
                             color: "#333344"
 
                             Rectangle {
                                 width: mediaSlider.visualPosition * parent.width
                                 height: parent.height
-                                radius: 4
+                                radius: 6
                                 color: "#e94560"
                             }
                         }
@@ -81,16 +81,16 @@ Page {
                         handle: Rectangle {
                             x: mediaSlider.leftPadding + mediaSlider.visualPosition * (mediaSlider.availableWidth - width)
                             y: mediaSlider.topPadding + mediaSlider.availableHeight / 2 - height / 2
-                            width: 32
-                            height: 32
-                            radius: 16
+                            width: 44
+                            height: 44
+                            radius: 22
                             color: "#ffffff"
                         }
                     }
 
                     Text {
                         text: "🔊"
-                        font.pixelSize: 28
+                        font.pixelSize: 36
                     }
                 }
             }
@@ -99,28 +99,28 @@ Page {
         // Ring volume
         Rectangle {
             Layout.fillWidth: true
-            height: 120
+            height: 160
             color: "#12121a"
-            radius: 12
+            radius: 16
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 20
-                spacing: 16
+                anchors.margins: 28
+                spacing: 20
 
                 Text {
                     text: "Ring Volume"
-                    font.pixelSize: 24
+                    font.pixelSize: 32
                     color: "#ffffff"
                 }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 16
+                    spacing: 20
 
                     Text {
                         text: "🔔"
-                        font.pixelSize: 28
+                        font.pixelSize: 36
                     }
 
                     Slider {
@@ -134,14 +134,14 @@ Page {
                             x: ringSlider.leftPadding
                             y: ringSlider.topPadding + ringSlider.availableHeight / 2 - height / 2
                             width: ringSlider.availableWidth
-                            height: 8
-                            radius: 4
+                            height: 12
+                            radius: 6
                             color: "#333344"
 
                             Rectangle {
                                 width: ringSlider.visualPosition * parent.width
                                 height: parent.height
-                                radius: 4
+                                radius: 6
                                 color: "#e94560"
                             }
                         }
@@ -149,16 +149,16 @@ Page {
                         handle: Rectangle {
                             x: ringSlider.leftPadding + ringSlider.visualPosition * (ringSlider.availableWidth - width)
                             y: ringSlider.topPadding + ringSlider.availableHeight / 2 - height / 2
-                            width: 32
-                            height: 32
-                            radius: 16
+                            width: 44
+                            height: 44
+                            radius: 22
                             color: "#ffffff"
                         }
                     }
 
                     Text {
                         text: "🔔"
-                        font.pixelSize: 28
+                        font.pixelSize: 36
                     }
                 }
             }
@@ -167,17 +167,17 @@ Page {
         // Vibration toggle
         Rectangle {
             Layout.fillWidth: true
-            height: 80
+            height: 120
             color: "#12121a"
-            radius: 12
+            radius: 16
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 20
+                anchors.margins: 28
 
                 Text {
                     text: "Vibration"
-                    font.pixelSize: 24
+                    font.pixelSize: 32
                     color: "#ffffff"
                     Layout.fillWidth: true
                 }
@@ -187,17 +187,17 @@ Page {
                     checked: true
 
                     indicator: Rectangle {
-                        implicitWidth: 60
-                        implicitHeight: 34
-                        radius: 17
+                        implicitWidth: 80
+                        implicitHeight: 44
+                        radius: 22
                         color: vibrationSwitch.checked ? "#e94560" : "#333344"
 
                         Rectangle {
                             x: vibrationSwitch.checked ? parent.width - width - 4 : 4
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 26
-                            height: 26
-                            radius: 13
+                            width: 36
+                            height: 36
+                            radius: 18
                             color: "#ffffff"
 
                             Behavior on x {
@@ -212,17 +212,17 @@ Page {
         // Silent mode
         Rectangle {
             Layout.fillWidth: true
-            height: 80
+            height: 120
             color: "#12121a"
-            radius: 12
+            radius: 16
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 20
+                anchors.margins: 28
 
                 Text {
                     text: "Silent Mode"
-                    font.pixelSize: 24
+                    font.pixelSize: 32
                     color: "#ffffff"
                     Layout.fillWidth: true
                 }
@@ -232,17 +232,17 @@ Page {
                     checked: false
 
                     indicator: Rectangle {
-                        implicitWidth: 60
-                        implicitHeight: 34
-                        radius: 17
+                        implicitWidth: 80
+                        implicitHeight: 44
+                        radius: 22
                         color: silentSwitch.checked ? "#e94560" : "#333344"
 
                         Rectangle {
                             x: silentSwitch.checked ? parent.width - width - 4 : 4
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 26
-                            height: 26
-                            radius: 13
+                            width: 36
+                            height: 36
+                            radius: 18
                             color: "#ffffff"
 
                             Behavior on x {
@@ -257,23 +257,23 @@ Page {
         Item { Layout.fillHeight: true }
     }
 
-    // Back button - bottom right (Flick design spec)
+    // Back button - bottom right
     Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.rightMargin: 24
-        anchors.bottomMargin: 24
-        width: 64
-        height: 64
-        radius: 32
+        anchors.rightMargin: 32
+        anchors.bottomMargin: 32
+        width: 80
+        height: 80
+        radius: 40
         color: backButtonMouse.pressed ? "#333344" : "#1a1a2e"
         border.color: "#444455"
-        border.width: 2
+        border.width: 3
 
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 28
+            font.pixelSize: 36
             color: "#ffffff"
         }
 

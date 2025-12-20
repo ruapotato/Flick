@@ -13,13 +13,13 @@ Page {
 
     // Header
     header: Rectangle {
-        height: 100
+        height: 140
         color: "#12121a"
 
         Text {
             anchors.centerIn: parent
             text: "Settings"
-            font.pixelSize: 36
+            font.pixelSize: 48
             font.weight: Font.Light
             color: "#ffffff"
         }
@@ -67,36 +67,36 @@ Page {
 
         delegate: Rectangle {
             width: settingsList.width
-            height: 100
+            height: 160
             color: mouseArea.pressed ? "#1a1a2e" : "transparent"
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 24
-                anchors.rightMargin: 24
-                spacing: 20
+                anchors.leftMargin: 32
+                anchors.rightMargin: 32
+                spacing: 28
 
                 // Icon
                 Text {
                     text: model.icon
-                    font.pixelSize: 36
-                    Layout.preferredWidth: 50
+                    font.pixelSize: 56
+                    Layout.preferredWidth: 70
                 }
 
                 // Text
                 Column {
                     Layout.fillWidth: true
-                    spacing: 6
+                    spacing: 10
 
                     Text {
                         text: model.title
-                        font.pixelSize: 24
+                        font.pixelSize: 32
                         font.weight: Font.Medium
                         color: "#ffffff"
                     }
                     Text {
                         text: model.subtitle
-                        font.pixelSize: 16
+                        font.pixelSize: 22
                         color: "#666677"
                     }
                 }
@@ -104,7 +104,7 @@ Page {
                 // Arrow
                 Text {
                     text: "›"
-                    font.pixelSize: 32
+                    font.pixelSize: 48
                     color: "#444455"
                 }
             }
@@ -114,8 +114,8 @@ Page {
                 anchors.bottom: parent.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.leftMargin: 94
-                height: 1
+                anchors.leftMargin: 130
+                height: 2
                 color: "#1a1a2e"
             }
 
@@ -138,19 +138,19 @@ Page {
     Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.rightMargin: 24
-        anchors.bottomMargin: 24
-        width: 64
-        height: 64
-        radius: 32
+        anchors.rightMargin: 32
+        anchors.bottomMargin: 32
+        width: 80
+        height: 80
+        radius: 40
         color: backButtonMouse.pressed ? "#333344" : "#1a1a2e"
         border.color: "#444455"
-        border.width: 2
+        border.width: 3
 
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 28
+            font.pixelSize: 36
             color: "#ffffff"
         }
 

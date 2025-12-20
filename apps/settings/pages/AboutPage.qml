@@ -10,13 +10,13 @@ Page {
     }
 
     header: Rectangle {
-        height: 100
+        height: 140
         color: "#12121a"
 
         Text {
             anchors.centerIn: parent
             text: "About"
-            font.pixelSize: 36
+            font.pixelSize: 48
             font.weight: Font.Light
             color: "#ffffff"
         }
@@ -24,8 +24,8 @@ Page {
 
     Flickable {
         anchors.fill: parent
-        anchors.bottomMargin: 100
-        contentHeight: content.height + 40
+        anchors.bottomMargin: 120
+        contentHeight: content.height + 60
         clip: true
 
         ColumnLayout {
@@ -33,33 +33,33 @@ Page {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.margins: 24
-            spacing: 24
+            anchors.margins: 32
+            spacing: 32
 
             // Logo and name
             Column {
                 Layout.fillWidth: true
-                Layout.topMargin: 24
-                spacing: 20
+                Layout.topMargin: 32
+                spacing: 28
 
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: 120
-                    height: 120
-                    radius: 24
+                    width: 160
+                    height: 160
+                    radius: 32
                     color: "#1a1a2e"
 
                     Text {
                         anchors.centerIn: parent
                         text: "⚡"
-                        font.pixelSize: 60
+                        font.pixelSize: 80
                     }
                 }
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "Flick"
-                    font.pixelSize: 40
+                    font.pixelSize: 56
                     font.weight: Font.Medium
                     color: "#ffffff"
                 }
@@ -67,7 +67,7 @@ Page {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "Mobile Shell for Linux"
-                    font.pixelSize: 20
+                    font.pixelSize: 28
                     color: "#666677"
                 }
             }
@@ -75,17 +75,17 @@ Page {
             // Version info
             Rectangle {
                 Layout.fillWidth: true
-                Layout.topMargin: 24
-                height: infoColumn.height + 40
+                Layout.topMargin: 32
+                height: infoColumn.height + 48
                 color: "#12121a"
-                radius: 12
+                radius: 16
 
                 Column {
                     id: infoColumn
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: 20
+                    anchors.margins: 24
                     spacing: 0
 
                     // Info rows
@@ -100,21 +100,21 @@ Page {
 
                         delegate: Item {
                             width: parent.width
-                            height: 60
+                            height: 80
 
                             RowLayout {
                                 anchors.fill: parent
 
                                 Text {
                                     text: model.label
-                                    font.pixelSize: 20
+                                    font.pixelSize: 26
                                     color: "#888899"
                                     Layout.fillWidth: true
                                 }
 
                                 Text {
                                     text: model.value
-                                    font.pixelSize: 20
+                                    font.pixelSize: 26
                                     color: "#ffffff"
                                 }
                             }
@@ -123,7 +123,7 @@ Page {
                                 anchors.bottom: parent.bottom
                                 anchors.left: parent.left
                                 anchors.right: parent.right
-                                height: 1
+                                height: 2
                                 color: "#1a1a2e"
                                 visible: index < 4
                             }
@@ -135,15 +135,15 @@ Page {
             // Credits
             Text {
                 text: "Created by David Hamner"
-                font.pixelSize: 18
+                font.pixelSize: 24
                 color: "#666677"
                 Layout.alignment: Qt.AlignHCenter
-                Layout.topMargin: 24
+                Layout.topMargin: 32
             }
 
             Text {
                 text: "github.com/ruapotato/Flick"
-                font.pixelSize: 18
+                font.pixelSize: 24
                 color: "#e94560"
                 Layout.alignment: Qt.AlignHCenter
 
@@ -153,27 +153,27 @@ Page {
                 }
             }
 
-            Item { height: 40 }
+            Item { height: 60 }
         }
     }
 
-    // Back button - bottom right (Flick design spec)
+    // Back button - bottom right
     Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.rightMargin: 24
-        anchors.bottomMargin: 24
-        width: 64
-        height: 64
-        radius: 32
+        anchors.rightMargin: 32
+        anchors.bottomMargin: 32
+        width: 80
+        height: 80
+        radius: 40
         color: backButtonMouse.pressed ? "#333344" : "#1a1a2e"
         border.color: "#444455"
-        border.width: 2
+        border.width: 3
 
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 28
+            font.pixelSize: 36
             color: "#ffffff"
         }
 
