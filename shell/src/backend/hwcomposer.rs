@@ -766,6 +766,11 @@ fn handle_input_event(
                     // Right edge = App Switcher
                     if *edge == crate::input::Edge::Right {
                         if *completed && state.switcher_gesture_active {
+                            // Save keyboard state before leaving App view
+                            if state.shell.view == crate::shell::ShellView::App {
+                                state.save_keyboard_state_for_current_window();
+                            }
+
                             // Open App Switcher with proper initialization
                             let num_windows = state.space.elements().count();
                             let screen_w = state.screen_size.w as f64;
@@ -1078,8 +1083,9 @@ fn handle_input_event(
                                                 }
                                             }
 
-                                            // Switch to App view
+                                            // Switch to App view and restore keyboard state
                                             state.shell.set_view(crate::shell::ShellView::App);
+                                            state.restore_keyboard_state_for_current_window();
                                         }
                                     }
                                 }

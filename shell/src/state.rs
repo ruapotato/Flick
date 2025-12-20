@@ -604,6 +604,11 @@ impl Flick {
             if past_keyboard {
                 // User went past the buffer zone - keyboard is already hidden, go home
                 tracing::info!("Home gesture: past buffer zone (offset={}px) - going home", actual_offset);
+
+                // Save keyboard state before leaving App view
+                // (keyboard may have been visible before the gesture started)
+                self.save_keyboard_state_for_current_window();
+
                 self.shell.set_view(crate::shell::ShellView::Home);
 
                 // Restore window to original position (it will be hidden anyway)
@@ -1228,20 +1233,33 @@ impl XdgShellHandler for Flick {
         tracing::info!("  Surface: {:?}", surface.wl_surface().id());
         tracing::info!("  Number of outputs: {}", self.outputs.len());
 
-        // Configure for fullscreen on our output
+        // Configure for fullscreen on our output, accounting for keyboard if visible
         if let Some(output) = self.outputs.first() {
             let output_size = output
                 .current_mode()
                 .map(|m| m.size)
                 .unwrap_or((720, 1440).into());
 
+            // Check if keyboard is visible and adjust height accordingly
+            let keyboard_visible = self.shell.slint_ui.as_ref()
+                .map(|ui| ui.is_keyboard_visible())
+                .unwrap_or(false);
+            let keyboard_height = std::cmp::max(200, (self.screen_size.h as f32 * 0.22) as i32);
+            let available_height = if keyboard_visible {
+                self.screen_size.h - keyboard_height
+            } else {
+                self.screen_size.h
+            };
+
             surface.with_pending_state(|state| {
-                state.size = Some(output_size.to_logical(1));
+                state.size = Some((self.screen_size.w, available_height).into());
                 // Set fullscreen and activated states - this tells the client
                 // not to draw decorations (title bar, borders)
                 state.states.set(xdg_toplevel::State::Fullscreen);
                 state.states.set(xdg_toplevel::State::Activated);
             });
+            tracing::info!("Configured new window: {}x{} (keyboard_visible={})",
+                self.screen_size.w, available_height, keyboard_visible);
         }
 
         surface.send_configure();
