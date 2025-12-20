@@ -502,10 +502,13 @@ impl Flick {
                     self.home_gesture_past_keyboard = true;
                     tracing::info!("Home gesture: keyboard already visible, going directly to home mode");
                 } else {
-                    // Show keyboard as part of the gesture
+                    // Show keyboard but start offscreen (will slide up following finger)
                     self.home_gesture_past_keyboard = false;
                     if let Some(ref slint_ui) = self.shell.slint_ui {
-                        tracing::info!("Home gesture: showing keyboard");
+                        let keyboard_height = self.get_keyboard_height();
+                        tracing::info!("Home gesture: starting keyboard slide-up, height={}", keyboard_height);
+                        // Set offset to keyboard height so it starts fully offscreen
+                        slint_ui.set_keyboard_y_offset(keyboard_height as f32);
                         slint_ui.set_keyboard_visible(true);
                     }
                 }
@@ -540,8 +543,8 @@ impl Flick {
             let buffer_zone = 60; // Buffer zone above keyboard where user can still change mind
             let commit_threshold = keyboard_height + buffer_zone;
 
-            // Dynamically update keyboard visibility based on current finger position
-            // This allows user to change their mind mid-gesture
+            // Update keyboard slide-up position based on finger position
+            // Keyboard slides up from bottom as finger moves up
             if let Some(ref slint_ui) = self.shell.slint_ui {
                 let was_past = self.home_gesture_past_keyboard;
 
@@ -554,12 +557,17 @@ impl Flick {
                         self.home_gesture_past_keyboard = true;
                     }
                 } else {
-                    // Within keyboard zone or buffer zone - keyboard should be visible
+                    // Within keyboard zone - keyboard follows finger
+                    // keyboard_y_offset goes from keyboard_height (offscreen) to 0 (fully visible)
+                    let keyboard_offset = (keyboard_height - offset).max(0);
+                    slint_ui.set_keyboard_y_offset(keyboard_offset as f32);
+
                     // This handles the "changed mind" case where user drags up then back down
                     if was_past {
                         tracing::info!("Home gesture: back in range ({}px < {}px), showing keyboard",
                             offset, commit_threshold);
                         slint_ui.set_keyboard_visible(true);
+                        slint_ui.set_keyboard_y_offset(keyboard_offset as f32);
                         self.home_gesture_past_keyboard = false;
                     }
                 }
@@ -607,6 +615,11 @@ impl Flick {
                 tracing::info!("Home gesture: within buffer zone (offset={}px) - snapping keyboard into place",
                     actual_offset);
 
+                // Snap keyboard to fully visible (offset = 0)
+                if let Some(ref slint_ui) = self.shell.slint_ui {
+                    slint_ui.set_keyboard_y_offset(0.0);
+                }
+
                 // Restore window position
                 if let Some(loc) = self.space.element_location(&window) {
                     self.space.map_element(window.clone(), (loc.x, self.home_gesture_original_y), false);
@@ -631,6 +644,7 @@ impl Flick {
 
                 // Hide keyboard since gesture was cancelled
                 if let Some(ref slint_ui) = self.shell.slint_ui {
+                    slint_ui.set_keyboard_y_offset(0.0);  // Reset offset
                     slint_ui.set_keyboard_visible(false);
                 }
             }
