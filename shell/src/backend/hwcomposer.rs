@@ -1554,6 +1554,10 @@ fn render_frame(
 
                     // Render outside of with_states to avoid holding locks
                     if let Some((width, height, pixels)) = buffer_info {
+                        // Get window position from space (for close gesture animation)
+                        let window_pos = state.space.element_location(window)
+                            .unwrap_or_default();
+
                         // Log periodically - check center pixel
                         if log_frame && pixels.len() >= 4 {
                             let center_x = width / 2;
@@ -1565,13 +1569,16 @@ fn render_frame(
                                 (0, 0, 0, 0)
                             };
                             let window_type = if window.toplevel().is_some() { "Wayland" } else { "X11" };
-                            info!("{} RENDER frame {}: {}x{} corner=RGBA({},{},{},{}) center=RGBA({},{},{},{})",
-                                window_type, frame_num, width, height,
+                            info!("{} RENDER frame {}: {}x{} at ({},{}) corner=RGBA({},{},{},{}) center=RGBA({},{},{},{})",
+                                window_type, frame_num, width, height, window_pos.x, window_pos.y,
                                 pixels[0], pixels[1], pixels[2], pixels[3],
                                 cr, cg, cb, ca);
                         }
+
+                        // Use positioned rendering to support close gesture animation
                         unsafe {
-                            gl::render_texture(width, height, &pixels, display.width, display.height);
+                            gl::render_texture_at(width, height, &pixels, display.width, display.height,
+                                                   window_pos.x, window_pos.y);
                         }
                     } else if log_frame {
                         let window_type = if window.toplevel().is_some() { "Wayland" } else { "X11" };
@@ -2004,6 +2011,107 @@ mod gl {
             tracing::info!("Frame {}: texture={}x{} -> screen={}x{}, tex_id={}, first_pixel=RGBA({},{},{},{})",
                 FRAME_COUNT, tex_width, tex_height, screen_width, screen_height, texture, r, g, b, a);
         }
+    }
+
+    /// Render texture at a specific screen position (for window animations)
+    /// x, y are in screen pixels from top-left
+    pub unsafe fn render_texture_at(tex_width: u32, tex_height: u32, pixels: &[u8],
+                                     screen_width: u32, screen_height: u32,
+                                     x: i32, y: i32) {
+        if SHADER_PROGRAM == 0 || ATTR_POSITION < 0 || ATTR_TEXCOORD < 0 {
+            return;
+        }
+
+        // Clear any pending errors
+        while GetError() != 0 {}
+
+        // Set viewport
+        if let Some(f) = FN_VIEWPORT {
+            f(0, 0, screen_width as i32, screen_height as i32);
+        }
+
+        // Create and bind texture
+        let mut texture: u32 = 0;
+        if let Some(f) = FN_GEN_TEXTURES { f(1, &mut texture); }
+        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, texture); }
+
+        // Set texture parameters
+        if let Some(f) = FN_TEX_PARAMETERI {
+            f(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
+            f(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
+        }
+
+        // Upload texture data
+        let expected_size = (tex_width * tex_height * 4) as usize;
+        if pixels.len() != expected_size {
+            return;
+        }
+
+        if let Some(f) = FN_TEX_IMAGE_2D {
+            f(TEXTURE_2D, 0, RGBA as i32, tex_width as i32, tex_height as i32,
+              0, RGBA, UNSIGNED_BYTE, pixels.as_ptr() as *const c_void);
+        }
+
+        // Use shader program
+        if let Some(f) = FN_USE_PROGRAM { f(SHADER_PROGRAM); }
+
+        // Set texture uniform
+        if let Some(f) = FN_ACTIVE_TEXTURE { f(0x84C0); } // GL_TEXTURE0
+        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, texture); }
+        if let Some(f) = FN_UNIFORM1I { f(UNIFORM_TEXTURE, 0); }
+
+        // Convert screen coordinates to normalized device coordinates (-1 to 1)
+        // Screen: (0,0) is top-left, (width, height) is bottom-right
+        // NDC: (-1,-1) is bottom-left, (1,1) is top-right
+        let sw = screen_width as f32;
+        let sh = screen_height as f32;
+        let tw = tex_width as f32;
+        let th = tex_height as f32;
+
+        // Calculate NDC positions
+        let left = (x as f32 / sw) * 2.0 - 1.0;
+        let right = ((x as f32 + tw) / sw) * 2.0 - 1.0;
+        let top = 1.0 - (y as f32 / sh) * 2.0;
+        let bottom = 1.0 - ((y as f32 + th) / sh) * 2.0;
+
+        // Quad vertices with position offset
+        #[rustfmt::skip]
+        let vertices: [f32; 16] = [
+            // Position (x, y)  // TexCoord (u, v)
+            left,  bottom,      0.0, 1.0,  // Bottom-left
+            right, bottom,      1.0, 1.0,  // Bottom-right
+            left,  top,         0.0, 0.0,  // Top-left
+            right, top,         1.0, 0.0,  // Top-right
+        ];
+
+        // Set vertex attributes
+        if let Some(f) = FN_ENABLE_VERTEX_ATTRIB_ARRAY {
+            f(ATTR_POSITION as u32);
+            f(ATTR_TEXCOORD as u32);
+        }
+
+        if let Some(f) = FN_VERTEX_ATTRIB_POINTER {
+            let stride = 4 * std::mem::size_of::<f32>() as i32;
+            f(ATTR_POSITION as u32, 2, FLOAT, FALSE, stride, vertices.as_ptr() as *const c_void);
+            f(ATTR_TEXCOORD as u32, 2, FLOAT, FALSE, stride,
+              (vertices.as_ptr() as *const f32).add(2) as *const c_void);
+        }
+
+        // Enable blending for transparency
+        if let Some(f) = FN_ENABLE { f(BLEND); }
+        if let Some(f) = FN_BLEND_FUNC { f(SRC_ALPHA, ONE_MINUS_SRC_ALPHA); }
+
+        // Draw
+        if let Some(f) = FN_DRAW_ARRAYS {
+            f(TRIANGLE_STRIP, 0, 4);
+        }
+
+        // Flush
+        Flush();
+
+        // Cleanup
+        if let Some(f) = FN_DISABLE { f(BLEND); }
+        if let Some(f) = FN_DELETE_TEXTURES { f(1, &texture); }
     }
 }
 

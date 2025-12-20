@@ -19,7 +19,7 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 
 Droidian and similar Android-based Linux distributions require **HWComposer** integration to access the GPU.
 
-**Current status (Dec 2024):** Basic hwcomposer backend is working!
+**Current status (Dec 2024):** HWComposer backend is working well!
 
 ✅ **Working:**
 - Display output via hwcomposer (tested on Pixel 3a)
@@ -27,11 +27,11 @@ Droidian and similar Android-based Linux distributions require **HWComposer** in
 - Wayland compositor accepting clients
 - Lock screen and basic shell UI rendering
 - Edge gesture detection (swipe from edges)
+- App switcher with fan-out card stack and gesture-driven animations
+- Smooth shrink animation when entering app switcher (follows finger)
 
 ⚠️ **Known Issues:**
 - App windows render as black (buffer format/import issue)
-- App switcher shows "No Apps" even when windows are open
-- Window tracking not fully functional
 
 The hwcomposer backend uses a C shim library (`hwc-shim/`) that wraps Android's HWC2 API via libhybris, with Rust FFI bindings calling into it.
 
