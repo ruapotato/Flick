@@ -1119,14 +1119,18 @@ impl CompositorHandler for Flick {
                             }
                         }
 
-                        // Log first non-zero pixel to help debug black windows
+                        // Log raw bytes from source to debug black windows
+                        let raw_first_8: Vec<u8> = (0..32).map(|i| unsafe { *ptr.add(i) }).collect();
+                        let raw_center_offset = ((height/2) * stride + (width/2) * 4) as usize;
+                        let raw_center_8: Vec<u8> = (0..8).map(|i| unsafe { *ptr.add(raw_center_offset + i) }).collect();
+
                         let first_nonzero = pixels.chunks(4).position(|p| p[0] != 0 || p[1] != 0 || p[2] != 0);
                         let sample_idx = width as usize / 2 + (height as usize / 2) * width as usize;
                         let center = if sample_idx * 4 + 3 < pixels.len() {
                             (pixels[sample_idx*4], pixels[sample_idx*4+1], pixels[sample_idx*4+2], pixels[sample_idx*4+3])
                         } else { (0,0,0,0) };
-                        tracing::info!("Captured buffer: {}x{}, stride={}, format={}, first_nonzero={:?}, center=RGBA{:?}",
-                            width, height, stride, format, first_nonzero, center);
+                        tracing::info!("Captured buffer: {}x{}, stride={}, format={}, raw_first={:?}, raw_center={:?}, first_nonzero={:?}, center=RGBA{:?}",
+                            width, height, stride, format, raw_first_8, raw_center_8, first_nonzero, center);
                         StoredBuffer { width, height, stride, format, pixels }
                     });
 
