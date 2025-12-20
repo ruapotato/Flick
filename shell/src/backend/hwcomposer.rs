@@ -508,12 +508,19 @@ fn handle_input_event(
                         .map(|(window, loc)| {
                             let surface = window.toplevel()
                                 .map(|t| t.wl_surface().clone());
+                            info!("Touch hit window at loc {:?}, surface: {:?}", loc, surface.is_some());
                             (surface, loc)
                         });
+
+                    if under.is_none() {
+                        info!("Touch at {:?} didn't hit any window!", touch_pos);
+                    }
 
                     let focus = under.as_ref().and_then(|(surface, loc)| {
                         surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
                     });
+
+                    info!("Forwarding touch to Wayland client at {:?}, focus: {:?}", touch_pos, focus.is_some());
 
                     touch.down(
                         state,
