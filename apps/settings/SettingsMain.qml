@@ -13,13 +13,13 @@ Page {
 
     // Header
     header: Rectangle {
-        height: 80
+        height: 100
         color: "#12121a"
 
         Text {
             anchors.centerIn: parent
             text: "Settings"
-            font.pixelSize: 28
+            font.pixelSize: 36
             font.weight: Font.Light
             color: "#ffffff"
         }
@@ -29,7 +29,8 @@ Page {
     ListView {
         id: settingsList
         anchors.fill: parent
-        anchors.topMargin: 20
+        anchors.topMargin: 24
+        anchors.bottomMargin: 80  // Leave space for back button
 
         model: ListModel {
             ListElement {
@@ -66,36 +67,36 @@ Page {
 
         delegate: Rectangle {
             width: settingsList.width
-            height: 80
+            height: 100
             color: mouseArea.pressed ? "#1a1a2e" : "transparent"
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 20
-                anchors.rightMargin: 20
-                spacing: 16
+                anchors.leftMargin: 24
+                anchors.rightMargin: 24
+                spacing: 20
 
                 // Icon
                 Text {
                     text: model.icon
-                    font.pixelSize: 28
-                    Layout.preferredWidth: 40
+                    font.pixelSize: 36
+                    Layout.preferredWidth: 50
                 }
 
                 // Text
                 Column {
                     Layout.fillWidth: true
-                    spacing: 4
+                    spacing: 6
 
                     Text {
                         text: model.title
-                        font.pixelSize: 18
+                        font.pixelSize: 24
                         font.weight: Font.Medium
                         color: "#ffffff"
                     }
                     Text {
                         text: model.subtitle
-                        font.pixelSize: 14
+                        font.pixelSize: 16
                         color: "#666677"
                     }
                 }
@@ -103,7 +104,7 @@ Page {
                 // Arrow
                 Text {
                     text: "›"
-                    font.pixelSize: 24
+                    font.pixelSize: 32
                     color: "#444455"
                 }
             }
@@ -113,7 +114,7 @@ Page {
                 anchors.bottom: parent.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.leftMargin: 76
+                anchors.leftMargin: 94
                 height: 1
                 color: "#1a1a2e"
             }
@@ -129,6 +130,35 @@ Page {
                         console.log("Could not load page: " + model.pageName)
                     }
                 }
+            }
+        }
+    }
+
+    // Back button - bottom right (Flick design spec for 1st party apps)
+    Rectangle {
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 24
+        width: 64
+        height: 64
+        radius: 32
+        color: backButtonMouse.pressed ? "#333344" : "#1a1a2e"
+        border.color: "#444455"
+        border.width: 2
+
+        Text {
+            anchors.centerIn: parent
+            text: "←"
+            font.pixelSize: 28
+            color: "#ffffff"
+        }
+
+        MouseArea {
+            id: backButtonMouse
+            anchors.fill: parent
+            onClicked: {
+                Qt.quit()
             }
         }
     }

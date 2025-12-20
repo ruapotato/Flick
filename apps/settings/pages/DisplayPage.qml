@@ -10,61 +10,42 @@ Page {
     }
 
     header: Rectangle {
-        height: 80
+        height: 100
         color: "#12121a"
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-
-            Text {
-                text: "‹"
-                font.pixelSize: 32
-                color: "#e94560"
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -10
-                    onClicked: stackView.pop()
-                }
-            }
-
-            Text {
-                text: "Display"
-                font.pixelSize: 28
-                font.weight: Font.Light
-                color: "#ffffff"
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Item { width: 32 }
+        Text {
+            anchors.centerIn: parent
+            text: "Display"
+            font.pixelSize: 36
+            font.weight: Font.Light
+            color: "#ffffff"
         }
     }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 20
-        spacing: 20
+        anchors.margins: 24
+        anchors.bottomMargin: 100
+        spacing: 24
 
         // Brightness section
         Rectangle {
             Layout.fillWidth: true
-            height: 120
+            height: 140
             color: "#12121a"
-            radius: 10
+            radius: 12
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 16
-                spacing: 16
+                anchors.margins: 20
+                spacing: 20
 
                 RowLayout {
                     Layout.fillWidth: true
 
                     Text {
                         text: "Brightness"
-                        font.pixelSize: 18
+                        font.pixelSize: 24
                         color: "#ffffff"
                     }
 
@@ -72,18 +53,18 @@ Page {
 
                     Text {
                         text: Math.round(brightnessSlider.value) + "%"
-                        font.pixelSize: 16
+                        font.pixelSize: 20
                         color: "#666677"
                     }
                 }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: 16
 
                     Text {
                         text: "🔅"
-                        font.pixelSize: 20
+                        font.pixelSize: 28
                     }
 
                     Slider {
@@ -97,14 +78,14 @@ Page {
                             x: brightnessSlider.leftPadding
                             y: brightnessSlider.topPadding + brightnessSlider.availableHeight / 2 - height / 2
                             width: brightnessSlider.availableWidth
-                            height: 6
-                            radius: 3
+                            height: 8
+                            radius: 4
                             color: "#333344"
 
                             Rectangle {
                                 width: brightnessSlider.visualPosition * parent.width
                                 height: parent.height
-                                radius: 3
+                                radius: 4
                                 color: "#e94560"
                             }
                         }
@@ -112,16 +93,16 @@ Page {
                         handle: Rectangle {
                             x: brightnessSlider.leftPadding + brightnessSlider.visualPosition * (brightnessSlider.availableWidth - width)
                             y: brightnessSlider.topPadding + brightnessSlider.availableHeight / 2 - height / 2
-                            width: 24
-                            height: 24
-                            radius: 12
+                            width: 32
+                            height: 32
+                            radius: 16
                             color: "#ffffff"
                         }
                     }
 
                     Text {
                         text: "🔆"
-                        font.pixelSize: 20
+                        font.pixelSize: 28
                     }
                 }
             }
@@ -130,17 +111,17 @@ Page {
         // Auto brightness
         Rectangle {
             Layout.fillWidth: true
-            height: 60
+            height: 80
             color: "#12121a"
-            radius: 10
+            radius: 12
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 16
+                anchors.margins: 20
 
                 Text {
                     text: "Auto Brightness"
-                    font.pixelSize: 18
+                    font.pixelSize: 24
                     color: "#ffffff"
                     Layout.fillWidth: true
                 }
@@ -150,17 +131,17 @@ Page {
                     checked: false
 
                     indicator: Rectangle {
-                        implicitWidth: 50
-                        implicitHeight: 28
-                        radius: 14
+                        implicitWidth: 60
+                        implicitHeight: 34
+                        radius: 17
                         color: autoBrightnessSwitch.checked ? "#e94560" : "#333344"
 
                         Rectangle {
                             x: autoBrightnessSwitch.checked ? parent.width - width - 4 : 4
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 20
-                            height: 20
-                            radius: 10
+                            width: 26
+                            height: 26
+                            radius: 13
                             color: "#ffffff"
 
                             Behavior on x {
@@ -175,35 +156,62 @@ Page {
         // Screen timeout
         Rectangle {
             Layout.fillWidth: true
-            height: 60
+            height: 80
             color: "#12121a"
-            radius: 10
+            radius: 12
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 16
+                anchors.margins: 20
 
                 Text {
                     text: "Screen Timeout"
-                    font.pixelSize: 18
+                    font.pixelSize: 24
                     color: "#ffffff"
                     Layout.fillWidth: true
                 }
 
                 Text {
                     text: "30 seconds"
-                    font.pixelSize: 16
+                    font.pixelSize: 20
                     color: "#666677"
                 }
 
                 Text {
                     text: "›"
-                    font.pixelSize: 20
+                    font.pixelSize: 28
                     color: "#444455"
                 }
             }
         }
 
         Item { Layout.fillHeight: true }
+    }
+
+    // Back button - bottom right (Flick design spec)
+    Rectangle {
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 24
+        width: 64
+        height: 64
+        radius: 32
+        color: backButtonMouse.pressed ? "#333344" : "#1a1a2e"
+        border.color: "#444455"
+        border.width: 2
+
+        Text {
+            anchors.centerIn: parent
+            text: "←"
+            font.pixelSize: 28
+            color: "#ffffff"
+        }
+
+        MouseArea {
+            id: backButtonMouse
+            anchors.fill: parent
+            onClicked: stackView.pop()
+        }
     }
 }

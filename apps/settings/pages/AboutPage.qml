@@ -10,40 +10,21 @@ Page {
     }
 
     header: Rectangle {
-        height: 80
+        height: 100
         color: "#12121a"
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-
-            Text {
-                text: "‹"
-                font.pixelSize: 32
-                color: "#e94560"
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -10
-                    onClicked: stackView.pop()
-                }
-            }
-
-            Text {
-                text: "About"
-                font.pixelSize: 28
-                font.weight: Font.Light
-                color: "#ffffff"
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Item { width: 32 }
+        Text {
+            anchors.centerIn: parent
+            text: "About"
+            font.pixelSize: 36
+            font.weight: Font.Light
+            color: "#ffffff"
         }
     }
 
     Flickable {
         anchors.fill: parent
+        anchors.bottomMargin: 100
         contentHeight: content.height + 40
         clip: true
 
@@ -52,33 +33,33 @@ Page {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.margins: 20
-            spacing: 20
+            anchors.margins: 24
+            spacing: 24
 
             // Logo and name
             Column {
                 Layout.fillWidth: true
-                Layout.topMargin: 20
-                spacing: 16
+                Layout.topMargin: 24
+                spacing: 20
 
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: 100
-                    height: 100
-                    radius: 20
+                    width: 120
+                    height: 120
+                    radius: 24
                     color: "#1a1a2e"
 
                     Text {
                         anchors.centerIn: parent
                         text: "⚡"
-                        font.pixelSize: 48
+                        font.pixelSize: 60
                     }
                 }
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "Flick"
-                    font.pixelSize: 32
+                    font.pixelSize: 40
                     font.weight: Font.Medium
                     color: "#ffffff"
                 }
@@ -86,7 +67,7 @@ Page {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "Mobile Shell for Linux"
-                    font.pixelSize: 16
+                    font.pixelSize: 20
                     color: "#666677"
                 }
             }
@@ -94,24 +75,24 @@ Page {
             // Version info
             Rectangle {
                 Layout.fillWidth: true
-                Layout.topMargin: 20
-                height: infoColumn.height + 32
+                Layout.topMargin: 24
+                height: infoColumn.height + 40
                 color: "#12121a"
-                radius: 10
+                radius: 12
 
                 Column {
                     id: infoColumn
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: 16
+                    anchors.margins: 20
                     spacing: 0
 
                     // Info rows
                     Repeater {
                         model: ListModel {
                             ListElement { label: "Version"; value: "0.1.0" }
-                            ListElement { label: "Build"; value: "2024.12.15" }
+                            ListElement { label: "Build"; value: "2024.12.20" }
                             ListElement { label: "Compositor"; value: "Smithay + Slint" }
                             ListElement { label: "Apps"; value: "Qt5/QML" }
                             ListElement { label: "License"; value: "GPL-3.0" }
@@ -119,21 +100,21 @@ Page {
 
                         delegate: Item {
                             width: parent.width
-                            height: 50
+                            height: 60
 
                             RowLayout {
                                 anchors.fill: parent
 
                                 Text {
                                     text: model.label
-                                    font.pixelSize: 16
+                                    font.pixelSize: 20
                                     color: "#888899"
                                     Layout.fillWidth: true
                                 }
 
                                 Text {
                                     text: model.value
-                                    font.pixelSize: 16
+                                    font.pixelSize: 20
                                     color: "#ffffff"
                                 }
                             }
@@ -154,15 +135,15 @@ Page {
             // Credits
             Text {
                 text: "Created by David Hamner"
-                font.pixelSize: 14
+                font.pixelSize: 18
                 color: "#666677"
                 Layout.alignment: Qt.AlignHCenter
-                Layout.topMargin: 20
+                Layout.topMargin: 24
             }
 
             Text {
                 text: "github.com/ruapotato/Flick"
-                font.pixelSize: 14
+                font.pixelSize: 18
                 color: "#e94560"
                 Layout.alignment: Qt.AlignHCenter
 
@@ -173,6 +154,33 @@ Page {
             }
 
             Item { height: 40 }
+        }
+    }
+
+    // Back button - bottom right (Flick design spec)
+    Rectangle {
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 24
+        width: 64
+        height: 64
+        radius: 32
+        color: backButtonMouse.pressed ? "#333344" : "#1a1a2e"
+        border.color: "#444455"
+        border.width: 2
+
+        Text {
+            anchors.centerIn: parent
+            text: "←"
+            font.pixelSize: 28
+            color: "#ffffff"
+        }
+
+        MouseArea {
+            id: backButtonMouse
+            anchors.fill: parent
+            onClicked: stackView.pop()
         }
     }
 }

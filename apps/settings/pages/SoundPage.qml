@@ -10,68 +10,49 @@ Page {
     }
 
     header: Rectangle {
-        height: 80
+        height: 100
         color: "#12121a"
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-
-            Text {
-                text: "‹"
-                font.pixelSize: 32
-                color: "#e94560"
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -10
-                    onClicked: stackView.pop()
-                }
-            }
-
-            Text {
-                text: "Sound"
-                font.pixelSize: 28
-                font.weight: Font.Light
-                color: "#ffffff"
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Item { width: 32 }
+        Text {
+            anchors.centerIn: parent
+            text: "Sound"
+            font.pixelSize: 36
+            font.weight: Font.Light
+            color: "#ffffff"
         }
     }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 20
-        spacing: 20
+        anchors.margins: 24
+        anchors.bottomMargin: 100
+        spacing: 24
 
         // Media volume
         Rectangle {
             Layout.fillWidth: true
-            height: 100
+            height: 120
             color: "#12121a"
-            radius: 10
+            radius: 12
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 16
-                spacing: 12
+                anchors.margins: 20
+                spacing: 16
 
                 Text {
                     text: "Media Volume"
-                    font.pixelSize: 18
+                    font.pixelSize: 24
                     color: "#ffffff"
                 }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: 16
 
                     Text {
                         text: "🔈"
-                        font.pixelSize: 20
+                        font.pixelSize: 28
                     }
 
                     Slider {
@@ -85,14 +66,14 @@ Page {
                             x: mediaSlider.leftPadding
                             y: mediaSlider.topPadding + mediaSlider.availableHeight / 2 - height / 2
                             width: mediaSlider.availableWidth
-                            height: 6
-                            radius: 3
+                            height: 8
+                            radius: 4
                             color: "#333344"
 
                             Rectangle {
                                 width: mediaSlider.visualPosition * parent.width
                                 height: parent.height
-                                radius: 3
+                                radius: 4
                                 color: "#e94560"
                             }
                         }
@@ -100,16 +81,16 @@ Page {
                         handle: Rectangle {
                             x: mediaSlider.leftPadding + mediaSlider.visualPosition * (mediaSlider.availableWidth - width)
                             y: mediaSlider.topPadding + mediaSlider.availableHeight / 2 - height / 2
-                            width: 24
-                            height: 24
-                            radius: 12
+                            width: 32
+                            height: 32
+                            radius: 16
                             color: "#ffffff"
                         }
                     }
 
                     Text {
                         text: "🔊"
-                        font.pixelSize: 20
+                        font.pixelSize: 28
                     }
                 }
             }
@@ -118,28 +99,28 @@ Page {
         // Ring volume
         Rectangle {
             Layout.fillWidth: true
-            height: 100
+            height: 120
             color: "#12121a"
-            radius: 10
+            radius: 12
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 16
-                spacing: 12
+                anchors.margins: 20
+                spacing: 16
 
                 Text {
                     text: "Ring Volume"
-                    font.pixelSize: 18
+                    font.pixelSize: 24
                     color: "#ffffff"
                 }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: 16
 
                     Text {
                         text: "🔔"
-                        font.pixelSize: 20
+                        font.pixelSize: 28
                     }
 
                     Slider {
@@ -153,14 +134,14 @@ Page {
                             x: ringSlider.leftPadding
                             y: ringSlider.topPadding + ringSlider.availableHeight / 2 - height / 2
                             width: ringSlider.availableWidth
-                            height: 6
-                            radius: 3
+                            height: 8
+                            radius: 4
                             color: "#333344"
 
                             Rectangle {
                                 width: ringSlider.visualPosition * parent.width
                                 height: parent.height
-                                radius: 3
+                                radius: 4
                                 color: "#e94560"
                             }
                         }
@@ -168,16 +149,16 @@ Page {
                         handle: Rectangle {
                             x: ringSlider.leftPadding + ringSlider.visualPosition * (ringSlider.availableWidth - width)
                             y: ringSlider.topPadding + ringSlider.availableHeight / 2 - height / 2
-                            width: 24
-                            height: 24
-                            radius: 12
+                            width: 32
+                            height: 32
+                            radius: 16
                             color: "#ffffff"
                         }
                     }
 
                     Text {
                         text: "🔔"
-                        font.pixelSize: 20
+                        font.pixelSize: 28
                     }
                 }
             }
@@ -186,17 +167,17 @@ Page {
         // Vibration toggle
         Rectangle {
             Layout.fillWidth: true
-            height: 60
+            height: 80
             color: "#12121a"
-            radius: 10
+            radius: 12
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 16
+                anchors.margins: 20
 
                 Text {
                     text: "Vibration"
-                    font.pixelSize: 18
+                    font.pixelSize: 24
                     color: "#ffffff"
                     Layout.fillWidth: true
                 }
@@ -206,17 +187,17 @@ Page {
                     checked: true
 
                     indicator: Rectangle {
-                        implicitWidth: 50
-                        implicitHeight: 28
-                        radius: 14
+                        implicitWidth: 60
+                        implicitHeight: 34
+                        radius: 17
                         color: vibrationSwitch.checked ? "#e94560" : "#333344"
 
                         Rectangle {
                             x: vibrationSwitch.checked ? parent.width - width - 4 : 4
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 20
-                            height: 20
-                            radius: 10
+                            width: 26
+                            height: 26
+                            radius: 13
                             color: "#ffffff"
 
                             Behavior on x {
@@ -231,17 +212,17 @@ Page {
         // Silent mode
         Rectangle {
             Layout.fillWidth: true
-            height: 60
+            height: 80
             color: "#12121a"
-            radius: 10
+            radius: 12
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 16
+                anchors.margins: 20
 
                 Text {
                     text: "Silent Mode"
-                    font.pixelSize: 18
+                    font.pixelSize: 24
                     color: "#ffffff"
                     Layout.fillWidth: true
                 }
@@ -251,17 +232,17 @@ Page {
                     checked: false
 
                     indicator: Rectangle {
-                        implicitWidth: 50
-                        implicitHeight: 28
-                        radius: 14
+                        implicitWidth: 60
+                        implicitHeight: 34
+                        radius: 17
                         color: silentSwitch.checked ? "#e94560" : "#333344"
 
                         Rectangle {
                             x: silentSwitch.checked ? parent.width - width - 4 : 4
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 20
-                            height: 20
-                            radius: 10
+                            width: 26
+                            height: 26
+                            radius: 13
                             color: "#ffffff"
 
                             Behavior on x {
@@ -274,5 +255,32 @@ Page {
         }
 
         Item { Layout.fillHeight: true }
+    }
+
+    // Back button - bottom right (Flick design spec)
+    Rectangle {
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 24
+        width: 64
+        height: 64
+        radius: 32
+        color: backButtonMouse.pressed ? "#333344" : "#1a1a2e"
+        border.color: "#444455"
+        border.width: 2
+
+        Text {
+            anchors.centerIn: parent
+            text: "←"
+            font.pixelSize: 28
+            color: "#ffffff"
+        }
+
+        MouseArea {
+            id: backButtonMouse
+            anchors.fill: parent
+            onClicked: stackView.pop()
+        }
     }
 }

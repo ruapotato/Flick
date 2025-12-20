@@ -5,16 +5,16 @@ Item {
     id: pinEntry
 
     // Scale based on parent width - use most of the screen
-    width: parent ? Math.min(parent.width * 0.9, 600) : 400
-    height: parent ? parent.height * 0.8 : 700
+    width: parent ? Math.min(parent.width * 0.95, 800) : 500
+    height: parent ? parent.height * 0.85 : 800
 
     property string correctPin: "1234"
     property string enteredPin: ""
     property int maxDigits: 4
 
-    // Calculate button size based on available width
-    property real buttonSize: Math.min((width - 60) / 3, 120)
-    property real buttonSpacing: buttonSize * 0.2
+    // Calculate button size based on available width - larger for mobile
+    property real buttonSize: Math.min((width - 40) / 3, 160)
+    property real buttonSpacing: buttonSize * 0.15
 
     signal pinCorrect()
     signal pinIncorrect()
@@ -24,10 +24,10 @@ Item {
     Text {
         id: title
         anchors.top: parent.top
-        anchors.topMargin: 20
+        anchors.topMargin: 30
         anchors.horizontalCenter: parent.horizontalCenter
         text: "Enter PIN"
-        font.pixelSize: Math.max(32, parent.width * 0.08)
+        font.pixelSize: Math.max(40, parent.width * 0.1)
         font.weight: Font.Light
         color: "#ffffff"
     }
@@ -36,19 +36,19 @@ Item {
     Row {
         id: pinDots
         anchors.top: title.bottom
-        anchors.topMargin: 40
+        anchors.topMargin: 50
         anchors.horizontalCenter: parent.horizontalCenter
-        spacing: buttonSize * 0.3
+        spacing: buttonSize * 0.35
 
         Repeater {
             model: maxDigits
             Rectangle {
-                width: buttonSize * 0.25
+                width: buttonSize * 0.3
                 height: width
                 radius: width / 2
                 color: index < enteredPin.length ? "#e94560" : "transparent"
                 border.color: index < enteredPin.length ? "#e94560" : "#444455"
-                border.width: 3
+                border.width: 4
 
                 Behavior on color {
                     ColorAnimation { duration: 150 }
@@ -66,7 +66,7 @@ Item {
     Grid {
         id: numPad
         anchors.top: pinDots.bottom
-        anchors.topMargin: 50
+        anchors.topMargin: 60
         anchors.horizontalCenter: parent.horizontalCenter
         columns: 3
         spacing: buttonSpacing
@@ -80,14 +80,14 @@ Item {
                 radius: buttonSize / 2
                 color: buttonMouse.pressed ? "#333344" : (modelData === "" ? "transparent" : "#1a1a2e")
                 border.color: modelData === "" ? "transparent" : "#444455"
-                border.width: 2
+                border.width: 3
                 visible: modelData !== ""
 
                 Text {
                     anchors.centerIn: parent
                     text: modelData
-                    font.pixelSize: modelData === "⌫" ? buttonSize * 0.35 : buttonSize * 0.45
-                    font.weight: Font.Light
+                    font.pixelSize: modelData === "⌫" ? buttonSize * 0.4 : buttonSize * 0.5
+                    font.weight: Font.Normal
                     color: "#ffffff"
                 }
 
@@ -125,15 +125,15 @@ Item {
     // Cancel button
     Text {
         anchors.top: numPad.bottom
-        anchors.topMargin: 40
+        anchors.topMargin: 50
         anchors.horizontalCenter: parent.horizontalCenter
         text: "Cancel"
-        font.pixelSize: buttonSize * 0.25
+        font.pixelSize: buttonSize * 0.3
         color: "#888899"
 
         MouseArea {
             anchors.fill: parent
-            anchors.margins: -20
+            anchors.margins: -30
             onClicked: {
                 enteredPin = ""
                 cancelled()

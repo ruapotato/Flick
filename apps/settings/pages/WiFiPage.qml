@@ -10,58 +10,38 @@ Page {
     }
 
     header: Rectangle {
-        height: 80
+        height: 100
         color: "#12121a"
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-
-            Text {
-                text: "‹"
-                font.pixelSize: 32
-                color: "#e94560"
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -10
-                    onClicked: stackView.pop()
-                }
-            }
-
-            Text {
-                text: "WiFi"
-                font.pixelSize: 28
-                font.weight: Font.Light
-                color: "#ffffff"
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            // Placeholder for symmetry
-            Item { width: 32 }
+        Text {
+            anchors.centerIn: parent
+            text: "WiFi"
+            font.pixelSize: 36
+            font.weight: Font.Light
+            color: "#ffffff"
         }
     }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 20
-        spacing: 20
+        anchors.margins: 24
+        anchors.bottomMargin: 100  // Space for back button
+        spacing: 24
 
         // WiFi toggle
         Rectangle {
             Layout.fillWidth: true
-            height: 60
+            height: 80
             color: "#12121a"
-            radius: 10
+            radius: 12
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 16
+                anchors.margins: 20
 
                 Text {
                     text: "WiFi"
-                    font.pixelSize: 18
+                    font.pixelSize: 24
                     color: "#ffffff"
                     Layout.fillWidth: true
                 }
@@ -71,17 +51,17 @@ Page {
                     checked: true
 
                     indicator: Rectangle {
-                        implicitWidth: 50
-                        implicitHeight: 28
-                        radius: 14
+                        implicitWidth: 60
+                        implicitHeight: 34
+                        radius: 17
                         color: wifiSwitch.checked ? "#e94560" : "#333344"
 
                         Rectangle {
                             x: wifiSwitch.checked ? parent.width - width - 4 : 4
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 20
-                            height: 20
-                            radius: 10
+                            width: 26
+                            height: 26
+                            radius: 13
                             color: "#ffffff"
 
                             Behavior on x {
@@ -96,9 +76,9 @@ Page {
         // Networks section
         Text {
             text: "Available Networks"
-            font.pixelSize: 14
+            font.pixelSize: 18
             color: "#666677"
-            Layout.topMargin: 10
+            Layout.topMargin: 12
         }
 
         // Network list
@@ -106,7 +86,7 @@ Page {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            spacing: 2
+            spacing: 4
 
             model: ListModel {
                 ListElement { name: "Home WiFi"; signal: 4; secured: true; connected: true }
@@ -117,14 +97,14 @@ Page {
 
             delegate: Rectangle {
                 width: parent.width
-                height: 60
+                height: 80
                 color: mouseArea.pressed ? "#1a1a2e" : "#12121a"
-                radius: index === 0 ? 10 : (index === 3 ? 10 : 0)
+                radius: index === 0 ? 12 : (index === 3 ? 12 : 0)
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 12
+                    anchors.margins: 20
+                    spacing: 16
 
                     // Signal strength
                     Text {
@@ -132,29 +112,29 @@ Page {
                             var bars = model.signal
                             return bars >= 4 ? "📶" : bars >= 3 ? "📶" : bars >= 2 ? "📶" : "📶"
                         }
-                        font.pixelSize: 20
+                        font.pixelSize: 28
                         opacity: model.signal / 4
                     }
 
                     Column {
                         Layout.fillWidth: true
-                        spacing: 2
+                        spacing: 4
 
                         Text {
                             text: model.name
-                            font.pixelSize: 16
+                            font.pixelSize: 22
                             color: "#ffffff"
                         }
                         Text {
                             text: model.connected ? "Connected" : (model.secured ? "Secured" : "Open")
-                            font.pixelSize: 12
+                            font.pixelSize: 16
                             color: model.connected ? "#4ade80" : "#666677"
                         }
                     }
 
                     Text {
                         text: model.secured ? "🔒" : ""
-                        font.pixelSize: 16
+                        font.pixelSize: 22
                     }
                 }
 
@@ -164,6 +144,33 @@ Page {
                     onClicked: console.log("Connect to: " + model.name)
                 }
             }
+        }
+    }
+
+    // Back button - bottom right (Flick design spec)
+    Rectangle {
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 24
+        width: 64
+        height: 64
+        radius: 32
+        color: backButtonMouse.pressed ? "#333344" : "#1a1a2e"
+        border.color: "#444455"
+        border.width: 2
+
+        Text {
+            anchors.centerIn: parent
+            text: "←"
+            font.pixelSize: 28
+            color: "#ffffff"
+        }
+
+        MouseArea {
+            id: backButtonMouse
+            anchors.fill: parent
+            onClicked: stackView.pop()
         }
     }
 }
