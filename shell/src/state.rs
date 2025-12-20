@@ -216,6 +216,34 @@ impl Flick {
         let socket = ListeningSocketSource::new_auto().expect("Failed to create socket");
         let socket_name = socket.socket_name().to_os_string();
 
+        // If running via sudo, change socket ownership to allow user apps to connect
+        if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+            if let Ok(xdg_runtime) = std::env::var("XDG_RUNTIME_DIR") {
+                let socket_path = std::path::Path::new(&xdg_runtime).join(&socket_name);
+
+                // Look up user's UID and GID from /etc/passwd
+                if let Ok(passwd) = std::fs::read_to_string("/etc/passwd") {
+                    if let Some(line) = passwd.lines().find(|l| l.starts_with(&format!("{}:", sudo_user))) {
+                        let parts: Vec<&str> = line.split(':').collect();
+                        if parts.len() >= 4 {
+                            if let (Ok(uid), Ok(gid)) = (parts[2].parse::<u32>(), parts[3].parse::<u32>()) {
+                                // Use libc to chown the socket
+                                use std::ffi::CString;
+                                if let Ok(path_cstr) = CString::new(socket_path.to_string_lossy().as_bytes()) {
+                                    let result = unsafe { libc::chown(path_cstr.as_ptr(), uid, gid) };
+                                    if result == 0 {
+                                        tracing::info!("Changed socket ownership to {}:{} for user {}", uid, gid, sudo_user);
+                                    } else {
+                                        tracing::warn!("Failed to chown socket: {}", std::io::Error::last_os_error());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         loop_handle
             .insert_source(socket, move |client, _, state| {
                 tracing::info!("New Wayland client connected!");

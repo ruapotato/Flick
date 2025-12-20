@@ -7,7 +7,7 @@ set -e
 cd "$(dirname "$0")/shell"
 
 echo "Building Flick with hwcomposer support..."
-cargo build --release --features hwcomposer
+cargo build --release
 
 echo ""
 echo "Build complete: target/release/flick"

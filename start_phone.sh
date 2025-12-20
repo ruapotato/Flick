@@ -18,4 +18,4 @@ sleep 1
 
 # Run flick
 echo "Starting Flick..."
-ssh -t $PHONE_USER@$PHONE_IP "sudo XDG_RUNTIME_DIR=/run/user/\$(id -u $PHONE_USER) EGL_PLATFORM=hwcomposer ~/Flick/shell/target/release/flick --hwcomposer"
+ssh -t $PHONE_USER@$PHONE_IP "sudo XDG_RUNTIME_DIR=/run/user/\$(id -u $PHONE_USER) EGL_PLATFORM=hwcomposer ~/Flick/shell/target/release/flick"
