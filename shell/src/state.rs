@@ -216,38 +216,6 @@ impl Flick {
         let socket = ListeningSocketSource::new_auto().expect("Failed to create socket");
         let socket_name = socket.socket_name().to_os_string();
 
-        // If running via sudo, change socket ownership to allow user apps to connect
-        // FLICK_USER is set by start_hwcomposer.sh to preserve the real user across nested sudo
-        let real_user = std::env::var("FLICK_USER")
-            .or_else(|_| std::env::var("SUDO_USER"))
-            .ok();
-        if let Some(sudo_user) = real_user {
-            if let Ok(xdg_runtime) = std::env::var("XDG_RUNTIME_DIR") {
-                let socket_path = std::path::Path::new(&xdg_runtime).join(&socket_name);
-
-                // Look up user's UID and GID from /etc/passwd
-                if let Ok(passwd) = std::fs::read_to_string("/etc/passwd") {
-                    if let Some(line) = passwd.lines().find(|l| l.starts_with(&format!("{}:", sudo_user))) {
-                        let parts: Vec<&str> = line.split(':').collect();
-                        if parts.len() >= 4 {
-                            if let (Ok(uid), Ok(gid)) = (parts[2].parse::<u32>(), parts[3].parse::<u32>()) {
-                                // Use libc to chown the socket
-                                use std::ffi::CString;
-                                if let Ok(path_cstr) = CString::new(socket_path.to_string_lossy().as_bytes()) {
-                                    let result = unsafe { libc::chown(path_cstr.as_ptr(), uid, gid) };
-                                    if result == 0 {
-                                        tracing::info!("Changed socket ownership to {}:{} for user {}", uid, gid, sudo_user);
-                                    } else {
-                                        tracing::warn!("Failed to chown socket: {}", std::io::Error::last_os_error());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         loop_handle
             .insert_source(socket, move |client, _, state| {
                 tracing::info!("New Wayland client connected!");
@@ -636,11 +604,6 @@ impl Flick {
             if past_keyboard {
                 // User went past the buffer zone - keyboard is already hidden, go home
                 tracing::info!("Home gesture: past buffer zone (offset={}px) - going home", actual_offset);
-
-                // Save keyboard state before leaving App view
-                // (keyboard may have been visible before the gesture started)
-                self.save_keyboard_state_for_current_window();
-
                 self.shell.set_view(crate::shell::ShellView::Home);
 
                 // Restore window to original position (it will be hidden anyway)
@@ -954,12 +917,15 @@ impl Flick {
         let display_ptr = self.display.as_ptr();
         let self_ptr = self as *mut Self;
         unsafe {
+            tracing::debug!("dispatch_clients: calling Display::dispatch_clients");
             if let Err(e) = (*display_ptr).dispatch_clients(&mut *self_ptr) {
                 tracing::warn!("Failed to dispatch clients: {:?}", e);
             }
+            tracing::debug!("dispatch_clients: returned from Display::dispatch_clients");
             if let Err(e) = (*display_ptr).flush_clients() {
                 tracing::warn!("Failed to flush clients: {:?}", e);
             }
+            tracing::debug!("dispatch_clients: complete");
         }
     }
 
@@ -1109,6 +1075,8 @@ impl CompositorHandler for Flick {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
+        tracing::debug!("Surface commit: {:?}", surface.id());
+
         // Capture buffer data for hwcomposer backend before on_commit_buffer_handler clears it
         // This stores the SHM buffer pixels so we can render without Smithay's renderer
         with_states(surface, |data| {
@@ -1151,8 +1119,14 @@ impl CompositorHandler for Flick {
                             }
                         }
 
-                        tracing::debug!("Captured buffer: {}x{}, stride={}, format={}, stored {} bytes",
-                            width, height, stride, format, pixels.len());
+                        // Log first non-zero pixel to help debug black windows
+                        let first_nonzero = pixels.chunks(4).position(|p| p[0] != 0 || p[1] != 0 || p[2] != 0);
+                        let sample_idx = width as usize / 2 + (height as usize / 2) * width as usize;
+                        let center = if sample_idx * 4 + 3 < pixels.len() {
+                            (pixels[sample_idx*4], pixels[sample_idx*4+1], pixels[sample_idx*4+2], pixels[sample_idx*4+3])
+                        } else { (0,0,0,0) };
+                        tracing::info!("Captured buffer: {}x{}, stride={}, format={}, first_nonzero={:?}, center=RGBA{:?}",
+                            width, height, stride, format, first_nonzero, center);
                         StoredBuffer { width, height, stride, format, pixels }
                     });
 
@@ -1249,6 +1223,7 @@ impl DndGrabHandler for Flick {}
 
 impl XdgShellHandler for Flick {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
+        tracing::debug!("xdg_shell_state accessed");
         &mut self.xdg_shell_state
     }
 
@@ -1259,33 +1234,20 @@ impl XdgShellHandler for Flick {
         tracing::info!("  Surface: {:?}", surface.wl_surface().id());
         tracing::info!("  Number of outputs: {}", self.outputs.len());
 
-        // Configure for fullscreen on our output, accounting for keyboard if visible
+        // Configure for fullscreen on our output
         if let Some(output) = self.outputs.first() {
             let output_size = output
                 .current_mode()
                 .map(|m| m.size)
                 .unwrap_or((720, 1440).into());
 
-            // Check if keyboard is visible and adjust height accordingly
-            let keyboard_visible = self.shell.slint_ui.as_ref()
-                .map(|ui| ui.is_keyboard_visible())
-                .unwrap_or(false);
-            let keyboard_height = std::cmp::max(200, (self.screen_size.h as f32 * 0.22) as i32);
-            let available_height = if keyboard_visible {
-                self.screen_size.h - keyboard_height
-            } else {
-                self.screen_size.h
-            };
-
             surface.with_pending_state(|state| {
-                state.size = Some((self.screen_size.w, available_height).into());
+                state.size = Some(output_size.to_logical(1));
                 // Set fullscreen and activated states - this tells the client
                 // not to draw decorations (title bar, borders)
                 state.states.set(xdg_toplevel::State::Fullscreen);
                 state.states.set(xdg_toplevel::State::Activated);
             });
-            tracing::info!("Configured new window: {}x{} (keyboard_visible={})",
-                self.screen_size.w, available_height, keyboard_visible);
         }
 
         surface.send_configure();
