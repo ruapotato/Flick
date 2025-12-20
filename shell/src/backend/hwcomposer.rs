@@ -503,24 +503,11 @@ fn handle_input_event(
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
-                    // Find surface under touch point
-                    let under = state.space.element_under(touch_pos.to_f64())
-                        .map(|(window, loc)| {
-                            let surface = window.toplevel()
-                                .map(|t| t.wl_surface().clone());
-                            info!("Touch hit window at loc {:?}, surface: {:?}", loc, surface.is_some());
-                            (surface, loc)
-                        });
-
-                    if under.is_none() {
-                        info!("Touch at {:?} didn't hit any window!", touch_pos);
-                    }
-
-                    let focus = under.as_ref().and_then(|(surface, loc)| {
-                        surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
-                    });
-
-                    info!("Forwarding touch to Wayland client at {:?}, focus: {:?}", touch_pos, focus.is_some());
+                    // For mobile fullscreen apps, use keyboard focus to determine which window gets touch
+                    // This ensures the focused/topmost window receives touch events
+                    let focus = state.seat.get_keyboard()
+                        .and_then(|kb| kb.current_focus())
+                        .map(|surface| (surface, smithay::utils::Point::from((0.0, 0.0))));
 
                     touch.down(
                         state,
@@ -657,17 +644,10 @@ fn handle_input_event(
             // Forward touch to Wayland client if connected (but not if touching keyboard)
             if has_wayland_window && !touch_on_keyboard && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
                 if let Some(touch) = state.seat.get_touch() {
-                    // Find surface under touch point
-                    let under = state.space.element_under(touch_pos.to_f64())
-                        .map(|(window, loc)| {
-                            let surface = window.toplevel()
-                                .map(|t| t.wl_surface().clone());
-                            (surface, loc)
-                        });
-
-                    let focus = under.as_ref().and_then(|(surface, loc)| {
-                        surface.as_ref().map(|s| (s.clone(), loc.to_f64()))
-                    });
+                    // For mobile fullscreen apps, use keyboard focus to determine which window gets touch
+                    let focus = state.seat.get_keyboard()
+                        .and_then(|kb| kb.current_focus())
+                        .map(|surface| (surface, smithay::utils::Point::from((0.0, 0.0))));
 
                     touch.motion(
                         state,
