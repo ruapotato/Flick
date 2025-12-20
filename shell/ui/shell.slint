@@ -439,16 +439,14 @@ component AppTile inherits Rectangle {
     property <length> wiggle-x: wiggling && !is-dragging ? sin((wiggle-time * 12 + wiggle-phase * 0.7) * 1rad) * 3px : 0px;
     property <length> wiggle-y: wiggling && !is-dragging ? cos((wiggle-time * 10 + wiggle-phase * 0.5) * 1rad) * 2px : 0px;
 
-    // Dynamic icon sizing - fills 70% of tile width, centered
-    property <length> icon-size: min(parent.width * 0.75, parent.height * 0.65);
-
     // Container for the icon with wiggle offset (not in a layout so we can position it)
     Rectangle {
-        x: (parent.width - icon-size) / 2 + root.wiggle-x;
-        y: parent.height * 0.05 + root.wiggle-y;
-        width: icon-size;
-        height: icon-size;
-        border-radius: icon-size * 0.22;
+        property <length> icon-size: min(root.width * 0.75, root.height * 0.65);
+        x: (root.width - self.icon-size) / 2 + root.wiggle-x;
+        y: root.height * 0.05 + root.wiggle-y;
+        width: self.icon-size;
+        height: self.icon-size;
+        border-radius: self.icon-size * 0.22;
         background: tile-color;
         clip: true;
 
@@ -463,13 +461,14 @@ component AppTile inherits Rectangle {
 
     // Name label at bottom - larger, readable text
     Text {
+        property <length> icon-size: min(root.width * 0.75, root.height * 0.65);
         x: 4px;
-        y: parent.height * 0.05 + icon-size + 8px;
-        width: parent.width - 8px;
-        height: parent.height * 0.2;
+        y: root.height * 0.05 + self.icon-size + 8px;
+        width: root.width - 8px;
+        height: root.height * 0.2;
         text: name;
         color: Theme.on-surface-variant;
-        font-size: max(18px, parent.width * 0.12);
+        font-size: max(18px, root.width * 0.12);
         horizontal-alignment: center;
         overflow: elide;
     }
