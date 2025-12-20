@@ -45,6 +45,73 @@ use smithay::{
 
 use crate::state::Flick;
 use crate::shell::ShellView;
+use smithay::input::keyboard::FilterResult;
+
+/// Convert a character to evdev keycode and shift state
+fn char_to_evdev(c: char) -> Option<(u32, bool)> {
+    let (keycode, shift) = match c {
+        // Numbers (row 1)
+        '1' => (2, false),  '!' => (2, true),
+        '2' => (3, false),  '@' => (3, true),
+        '3' => (4, false),  '#' => (4, true),
+        '4' => (5, false),  '$' => (5, true),
+        '5' => (6, false),  '%' => (6, true),
+        '6' => (7, false),  '^' => (7, true),
+        '7' => (8, false),  '&' => (8, true),
+        '8' => (9, false),  '*' => (9, true),
+        '9' => (10, false), '(' => (10, true),
+        '0' => (11, false), ')' => (11, true),
+        '-' => (12, false), '_' => (12, true),
+        '=' => (13, false), '+' => (13, true),
+
+        // Row 2: qwertyuiop
+        'q' => (16, false), 'Q' => (16, true),
+        'w' => (17, false), 'W' => (17, true),
+        'e' => (18, false), 'E' => (18, true),
+        'r' => (19, false), 'R' => (19, true),
+        't' => (20, false), 'T' => (20, true),
+        'y' => (21, false), 'Y' => (21, true),
+        'u' => (22, false), 'U' => (22, true),
+        'i' => (23, false), 'I' => (23, true),
+        'o' => (24, false), 'O' => (24, true),
+        'p' => (25, false), 'P' => (25, true),
+        '[' => (26, false), '{' => (26, true),
+        ']' => (27, false), '}' => (27, true),
+        '\\' => (43, false), '|' => (43, true),
+
+        // Row 3: asdfghjkl
+        'a' => (30, false), 'A' => (30, true),
+        's' => (31, false), 'S' => (31, true),
+        'd' => (32, false), 'D' => (32, true),
+        'f' => (33, false), 'F' => (33, true),
+        'g' => (34, false), 'G' => (34, true),
+        'h' => (35, false), 'H' => (35, true),
+        'j' => (36, false), 'J' => (36, true),
+        'k' => (37, false), 'K' => (37, true),
+        'l' => (38, false), 'L' => (38, true),
+        ';' => (39, false), ':' => (39, true),
+        '\'' => (40, false), '"' => (40, true),
+        '`' => (41, false), '~' => (41, true),
+
+        // Row 4: zxcvbnm
+        'z' => (44, false), 'Z' => (44, true),
+        'x' => (45, false), 'X' => (45, true),
+        'c' => (46, false), 'C' => (46, true),
+        'v' => (47, false), 'V' => (47, true),
+        'b' => (48, false), 'B' => (48, true),
+        'n' => (49, false), 'N' => (49, true),
+        'm' => (50, false), 'M' => (50, true),
+        ',' => (51, false), '<' => (51, true),
+        '.' => (52, false), '>' => (52, true),
+        '/' => (53, false), '?' => (53, true),
+
+        // Space
+        ' ' => (57, false),
+
+        _ => return None,
+    };
+    Some((keycode, shift))
+}
 
 // Use our C shim FFI bindings
 use super::hwc_shim_ffi::{HwcContext, FlickDisplayInfo};
@@ -1024,8 +1091,94 @@ fn handle_input_event(
                         if touch_on_keyboard {
                             if let Some(pos) = last_pos {
                                 info!("Keyboard TouchUp at ({}, {})", pos.x, pos.y);
-                                if let Some(ref slint_ui) = state.shell.slint_ui {
+
+                                // Dispatch to Slint and get pending keyboard actions
+                                use crate::shell::slint_ui::KeyboardAction;
+                                let actions = if let Some(ref slint_ui) = state.shell.slint_ui {
                                     slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
+                                    slint_ui.take_pending_keyboard_actions()
+                                } else {
+                                    Vec::new()
+                                };
+
+                                // Process keyboard actions (after dropping slint_ui borrow)
+                                for action in actions {
+                                    info!("KB ACTION: {:?}", action);
+                                    match action {
+                                        KeyboardAction::Character(ch) => {
+                                            if let Some(c) = ch.chars().next() {
+                                                if let Some((keycode, needs_shift)) = char_to_evdev(c) {
+                                                    if let Some(keyboard) = state.seat.get_keyboard() {
+                                                        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                                        let time = std::time::SystemTime::now()
+                                                            .duration_since(std::time::UNIX_EPOCH)
+                                                            .unwrap_or_default()
+                                                            .as_millis() as u32;
+                                                        let xkb_keycode = keycode + 8;
+                                                        info!("Injecting key '{}' keycode={}", c, xkb_keycode);
+                                                        if needs_shift {
+                                                            keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(42 + 8), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                        }
+                                                        keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(xkb_keycode), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                        keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(xkb_keycode), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                        if needs_shift {
+                                                            keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(42 + 8), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        KeyboardAction::Backspace => {
+                                            if let Some(keyboard) = state.seat.get_keyboard() {
+                                                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                                let time = std::time::SystemTime::now()
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .unwrap_or_default()
+                                                    .as_millis() as u32;
+                                                keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(14 + 8), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(14 + 8), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                            }
+                                        }
+                                        KeyboardAction::Enter => {
+                                            if let Some(keyboard) = state.seat.get_keyboard() {
+                                                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                                let time = std::time::SystemTime::now()
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .unwrap_or_default()
+                                                    .as_millis() as u32;
+                                                keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(28 + 8), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(28 + 8), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                            }
+                                        }
+                                        KeyboardAction::Space => {
+                                            if let Some(keyboard) = state.seat.get_keyboard() {
+                                                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                                let time = std::time::SystemTime::now()
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .unwrap_or_default()
+                                                    .as_millis() as u32;
+                                                keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(57 + 8), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(57 + 8), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                            }
+                                        }
+                                        KeyboardAction::ShiftToggled => {
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                let current = slint_ui.is_keyboard_shifted();
+                                                slint_ui.set_keyboard_shifted(!current);
+                                            }
+                                        }
+                                        KeyboardAction::LayoutToggled => {
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                let current = slint_ui.get_keyboard_layout();
+                                                slint_ui.set_keyboard_layout(if current == 0 { 1 } else { 0 });
+                                            }
+                                        }
+                                        KeyboardAction::Hide => {
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                slint_ui.set_keyboard_visible(false);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
