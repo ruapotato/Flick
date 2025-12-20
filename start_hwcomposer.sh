@@ -52,13 +52,14 @@ export FLICK_USER="${SUDO_USER:-$USER}"
 mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
 
 echo "Starting Flick..."
-# Run as the real user (not root) to fix SHM buffer access issues
-# Set HOME explicitly to ensure log files go to user's home
-FLICK_CMD="HOME=$REAL_HOME XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR EGL_PLATFORM=hwcomposer $FLICK_BIN"
 if [ "$1" = "--bg" ]; then
-    sudo -u "$FLICK_USER" -E sh -c "$FLICK_CMD" > /tmp/flick.log 2>&1 &
+    sudo -E "$FLICK_BIN" > /tmp/flick.log 2>&1 &
     sleep 2
+    # Fix Wayland socket permissions
+    for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
+        [ -S "$sock" ] && sudo chmod 0777 "$sock"
+    done
     echo "Flick running in background. Logs: /tmp/flick.log"
 else
-    sudo -u "$FLICK_USER" -E sh -c "$FLICK_CMD"
+    sudo -E "$FLICK_BIN"
 fi
