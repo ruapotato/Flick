@@ -246,10 +246,13 @@ impl DesktopEntry {
 
 /// App configuration - stores user preferences for which apps to use
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppConfig {
     /// Selected app exec command per category
+    #[serde(default)]
     pub selections: HashMap<AppCategory, String>,
     /// Grid positions for categories (index -> category)
+    #[serde(default = "AppCategory::all")]
     pub grid_order: Vec<AppCategory>,
 }
 
