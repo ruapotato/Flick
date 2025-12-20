@@ -1134,11 +1134,16 @@ impl CompositorHandler for Flick {
                         StoredBuffer { width, height, stride, format, pixels }
                     });
 
-                    if let Ok(stored) = buffer_data {
-                        // Store in surface user data
-                        data.data_map.insert_if_missing(|| RefCell::new(SurfaceBufferData::default()));
-                        if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
-                            buffer_data.borrow_mut().buffer = Some(stored);
+                    match buffer_data {
+                        Ok(stored) => {
+                            // Store in surface user data
+                            data.data_map.insert_if_missing(|| RefCell::new(SurfaceBufferData::default()));
+                            if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                buffer_data.borrow_mut().buffer = Some(stored);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to capture buffer contents: {:?}", e);
                         }
                     }
                 }
