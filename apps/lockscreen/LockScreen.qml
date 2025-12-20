@@ -7,26 +7,75 @@ Item {
     property string correctPin: "1234"
     property string stateDir: ""
     property bool showingPin: false
+    property real swipeProgress: 0  // 0-1 for swipe animation
 
     signal unlocked()
 
-    // Simple dark background
+    // Beautiful gradient background
     Rectangle {
         anchors.fill: parent
-        color: "#1a1a2e"
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#0f0f1a" }
+            GradientStop { position: 0.4; color: "#1a1a2e" }
+            GradientStop { position: 1.0; color: "#16213e" }
+        }
     }
 
-    // Time display - scaled for screen size
-    Column {
-        anchors.centerIn: parent
-        anchors.verticalCenterOffset: -parent.height * 0.15
-        spacing: 16
+    // Subtle animated particles/stars effect
+    Repeater {
+        model: 20
+        Rectangle {
+            property real baseX: Math.random() * lockScreen.width
+            property real baseY: Math.random() * lockScreen.height * 0.7
+            property real animOffset: Math.random() * 2 * Math.PI
 
+            x: baseX + Math.sin(starAnim.elapsed * 0.001 + animOffset) * 3
+            y: baseY + Math.cos(starAnim.elapsed * 0.0008 + animOffset) * 2
+            width: 2 + Math.random() * 2
+            height: width
+            radius: width / 2
+            color: "#ffffff"
+            opacity: 0.1 + Math.random() * 0.15
+
+            NumberAnimation on opacity {
+                from: 0.05
+                to: 0.25
+                duration: 2000 + Math.random() * 3000
+                loops: Animation.Infinite
+                easing.type: Easing.InOutSine
+            }
+        }
+    }
+
+    Timer {
+        id: starAnim
+        property real elapsed: 0
+        interval: 50
+        running: true
+        repeat: true
+        onTriggered: elapsed += interval
+    }
+
+    // Main clock display
+    Item {
+        id: clockContainer
+        anchors.centerIn: parent
+        anchors.verticalCenterOffset: -parent.height * 0.12
+        width: parent.width
+        height: timeText.height + dateText.height + 24
+        opacity: 1 - swipeProgress * 1.5
+        scale: 1 - swipeProgress * 0.1
+
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+        Behavior on scale { NumberAnimation { duration: 150 } }
+
+        // Time - large, elegant, thin
         Text {
             id: timeText
             anchors.horizontalCenter: parent.horizontalCenter
-            font.pixelSize: Math.max(120, lockScreen.width * 0.2)
-            font.weight: Font.Light
+            font.pixelSize: Math.min(lockScreen.width * 0.28, 180)
+            font.weight: Font.Thin
+            font.letterSpacing: -4
             color: "#ffffff"
             text: Qt.formatTime(new Date(), "hh:mm")
 
@@ -38,89 +87,129 @@ Item {
             }
         }
 
+        // Date - elegant subtitle
         Text {
             id: dateText
+            anchors.top: timeText.bottom
+            anchors.topMargin: 8
             anchors.horizontalCenter: parent.horizontalCenter
-            font.pixelSize: Math.max(28, lockScreen.width * 0.05)
+            font.pixelSize: Math.min(lockScreen.width * 0.055, 32)
             font.weight: Font.Light
-            color: "#888899"
-            text: Qt.formatDate(new Date(), "dddd, MMMM d")
+            font.letterSpacing: 2
+            color: "#8888aa"
+            text: Qt.formatDate(new Date(), "dddd, MMMM d").toUpperCase()
 
             Timer {
                 interval: 60000
                 running: true
                 repeat: true
-                onTriggered: dateText.text = Qt.formatDate(new Date(), "dddd, MMMM d")
+                onTriggered: dateText.text = Qt.formatDate(new Date(), "dddd, MMMM d").toUpperCase()
             }
         }
     }
 
-    // Swipe up hint
+    // Swipe up hint with animated chevron
     Column {
+        id: swipeHint
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 60
-        spacing: 12
-        opacity: showingPin ? 0 : 1
+        anchors.bottomMargin: 80
+        spacing: 16
+        opacity: (1 - swipeProgress * 2) * 0.8
+
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+
+        // Animated chevron
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "^"
+            font.pixelSize: 32
+            font.weight: Font.Light
+            color: "#666688"
+
+            SequentialAnimation on y {
+                loops: Animation.Infinite
+                NumberAnimation { from: 0; to: -8; duration: 800; easing.type: Easing.InOutSine }
+                NumberAnimation { from: -8; to: 0; duration: 800; easing.type: Easing.InOutSine }
+            }
+        }
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "Swipe up to unlock"
-            font.pixelSize: Math.max(20, lockScreen.width * 0.04)
-            color: "#666677"
+            font.pixelSize: Math.min(lockScreen.width * 0.045, 22)
+            font.weight: Font.Light
+            font.letterSpacing: 1
+            color: "#555566"
         }
     }
 
-    // Swipe gesture area
+    // Swipe gesture handler
     MouseArea {
+        id: swipeArea
         anchors.fill: parent
+        enabled: !showingPin
         property real startY: 0
-        property real dragDistance: 0
+        property bool isDragging: false
 
         onPressed: {
             startY = mouse.y
+            isDragging = true
         }
 
         onPositionChanged: {
-            dragDistance = startY - mouse.y
-            if (dragDistance > 100 && !showingPin) {
-                showingPin = true
+            if (isDragging) {
+                var dragDist = startY - mouse.y
+                swipeProgress = Math.max(0, Math.min(1, dragDist / (lockScreen.height * 0.3)))
+
+                if (swipeProgress > 0.7) {
+                    isDragging = false
+                    showingPin = true
+                    swipeProgress = 0
+                }
             }
         }
 
         onReleased: {
-            dragDistance = 0
+            isDragging = false
+            if (!showingPin) {
+                swipeProgress = 0
+            }
         }
     }
 
-    // PIN Entry overlay
+    // PIN Entry overlay - slides up from bottom
     Rectangle {
         id: pinOverlay
         anchors.fill: parent
-        color: "#0a0a0f"
-        opacity: showingPin ? 0.95 : 0
+        color: "transparent"
+        opacity: showingPin ? 1 : 0
         visible: opacity > 0
 
         Behavior on opacity {
-            NumberAnimation {
-                duration: 300
-                easing.type: Easing.OutCubic
-            }
+            NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
+        }
+
+        // Semi-transparent background
+        Rectangle {
+            anchors.fill: parent
+            color: "#0a0a0f"
+            opacity: 0.92
         }
 
         PinEntry {
             id: pinEntry
             anchors.centerIn: parent
+            anchors.verticalCenterOffset: showingPin ? 0 : 200
             correctPin: lockScreen.correctPin
 
-            Component.onCompleted: {
-                console.log("PinEntry created, correctPin:", correctPin, "enteredPin:", enteredPin)
+            Behavior on anchors.verticalCenterOffset {
+                NumberAnimation { duration: 400; easing.type: Easing.OutBack }
             }
 
             onPinCorrect: {
-                console.log("PIN CORRECT triggered!")
-                writeUnlockSignal()
-                lockScreen.unlocked()
+                // Success animation
+                successAnim.start()
             }
 
             onPinIncorrect: {
@@ -135,12 +224,37 @@ Item {
         // Shake animation for wrong PIN
         SequentialAnimation {
             id: shakeAnimation
-            PropertyAnimation { target: pinEntry; property: "x"; to: pinEntry.x - 20; duration: 50 }
-            PropertyAnimation { target: pinEntry; property: "x"; to: pinEntry.x + 20; duration: 50 }
-            PropertyAnimation { target: pinEntry; property: "x"; to: pinEntry.x - 15; duration: 50 }
-            PropertyAnimation { target: pinEntry; property: "x"; to: pinEntry.x + 15; duration: 50 }
-            PropertyAnimation { target: pinEntry; property: "x"; to: pinEntry.x; duration: 50 }
+            PropertyAnimation { target: pinEntry; property: "x"; to: pinEntry.x - 25; duration: 40 }
+            PropertyAnimation { target: pinEntry; property: "x"; to: pinEntry.x + 25; duration: 40 }
+            PropertyAnimation { target: pinEntry; property: "x"; to: pinEntry.x - 20; duration: 40 }
+            PropertyAnimation { target: pinEntry; property: "x"; to: pinEntry.x + 20; duration: 40 }
+            PropertyAnimation { target: pinEntry; property: "x"; to: pinEntry.x; duration: 40 }
         }
+
+        // Success animation
+        SequentialAnimation {
+            id: successAnim
+            PropertyAnimation { target: pinOverlay; property: "scale"; to: 1.05; duration: 150 }
+            PropertyAnimation { target: pinOverlay; property: "opacity"; to: 0; duration: 300 }
+            ScriptAction {
+                script: {
+                    writeUnlockSignal()
+                    lockScreen.unlocked()
+                }
+            }
+        }
+    }
+
+    // Home indicator at bottom
+    Rectangle {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 12
+        width: 134
+        height: 5
+        radius: 2.5
+        color: "#444455"
+        opacity: 0.6
     }
 
     // Write unlock signal file

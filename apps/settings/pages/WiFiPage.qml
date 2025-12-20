@@ -6,162 +6,306 @@ Page {
     id: wifiPage
 
     background: Rectangle {
-        color: "#0a0a0f"
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#0a0a0f" }
+            GradientStop { position: 1.0; color: "#0f0f18" }
+        }
     }
 
     header: Rectangle {
-        height: 140
-        color: "#12121a"
+        height: 120
+        color: "transparent"
+
+        Rectangle {
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 1
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.3; color: "#e94560" }
+                GradientStop { position: 0.7; color: "#e94560" }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+            opacity: 0.4
+        }
 
         Text {
             anchors.centerIn: parent
             text: "WiFi"
-            font.pixelSize: 48
+            font.pixelSize: 38
             font.weight: Font.Light
+            font.letterSpacing: 4
             color: "#ffffff"
         }
     }
 
-    ColumnLayout {
+    Flickable {
         anchors.fill: parent
-        anchors.margins: 32
-        anchors.bottomMargin: 120
-        spacing: 32
+        anchors.bottomMargin: 100
+        contentHeight: content.height + 40
+        clip: true
 
-        // WiFi toggle
-        Rectangle {
-            Layout.fillWidth: true
-            height: 120
-            color: "#12121a"
-            radius: 16
+        ColumnLayout {
+            id: content
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 16
+            spacing: 12
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 28
+            // WiFi toggle card
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.topMargin: 8
+                height: 80
+                radius: 16
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                border.width: 1
 
-                Text {
-                    text: "WiFi"
-                    font.pixelSize: 32
-                    color: "#ffffff"
-                    Layout.fillWidth: true
-                }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
 
-                Switch {
-                    id: wifiSwitch
-                    checked: true
+                    Rectangle {
+                        Layout.preferredWidth: 52
+                        Layout.preferredHeight: 52
+                        radius: 12
+                        color: wifiSwitch.checked ? "#1a3a5c" : "#1a1a28"
 
-                    indicator: Rectangle {
-                        implicitWidth: 80
-                        implicitHeight: 44
-                        radius: 22
-                        color: wifiSwitch.checked ? "#e94560" : "#333344"
+                        Text {
+                            anchors.centerIn: parent
+                            text: "📶"
+                            font.pixelSize: 24
+                        }
+                    }
 
-                        Rectangle {
-                            x: wifiSwitch.checked ? parent.width - width - 4 : 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 36
-                            height: 36
+                    Text {
+                        text: "WiFi"
+                        font.pixelSize: 22
+                        font.weight: Font.Medium
+                        color: "#ffffff"
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 16
+                    }
+
+                    Switch {
+                        id: wifiSwitch
+                        checked: true
+
+                        indicator: Rectangle {
+                            implicitWidth: 64
+                            implicitHeight: 36
                             radius: 18
-                            color: "#ffffff"
+                            color: wifiSwitch.checked ? "#e94560" : "#333344"
 
-                            Behavior on x {
-                                NumberAnimation { duration: 150 }
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            Rectangle {
+                                x: wifiSwitch.checked ? parent.width - width - 4 : 4
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 28
+                                height: 28
+                                radius: 14
+                                color: "#ffffff"
+
+                                Behavior on x { NumberAnimation { duration: 150 } }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Networks section
-        Text {
-            text: "Available Networks"
-            font.pixelSize: 24
-            color: "#666677"
-            Layout.topMargin: 16
-        }
-
-        // Network list
-        ListView {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            spacing: 8
-
-            model: ListModel {
-                ListElement { name: "Home WiFi"; signal: 4; secured: true; connected: true }
-                ListElement { name: "Neighbor's Network"; signal: 3; secured: true; connected: false }
-                ListElement { name: "Coffee Shop"; signal: 2; secured: false; connected: false }
-                ListElement { name: "Guest Network"; signal: 1; secured: true; connected: false }
+            // Current network section
+            Text {
+                text: "CONNECTED"
+                font.pixelSize: 14
+                font.weight: Font.Medium
+                font.letterSpacing: 2
+                color: "#4ade80"
+                Layout.leftMargin: 8
+                Layout.topMargin: 20
+                visible: wifiSwitch.checked
             }
 
-            delegate: Rectangle {
-                width: parent.width
-                height: 120
-                color: mouseArea.pressed ? "#1a1a2e" : "#12121a"
+            Rectangle {
+                Layout.fillWidth: true
+                height: 90
                 radius: 16
+                color: "#14141e"
+                border.color: "#4ade80"
+                border.width: 1
+                visible: wifiSwitch.checked
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 28
-                    spacing: 24
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
+                    spacing: 16
 
-                    // Signal strength
-                    Text {
-                        text: "📶"
-                        font.pixelSize: 40
-                        opacity: model.signal / 4
+                    Rectangle {
+                        Layout.preferredWidth: 52
+                        Layout.preferredHeight: 52
+                        radius: 12
+                        color: "#1a3a5c"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "📶"
+                            font.pixelSize: 24
+                        }
                     }
 
                     Column {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: 4
 
                         Text {
-                            text: model.name
-                            font.pixelSize: 28
+                            text: "Home WiFi"
+                            font.pixelSize: 20
+                            font.weight: Font.Medium
                             color: "#ffffff"
                         }
                         Text {
-                            text: model.connected ? "Connected" : (model.secured ? "Secured" : "Open")
-                            font.pixelSize: 20
-                            color: model.connected ? "#4ade80" : "#666677"
+                            text: "Connected • Excellent signal"
+                            font.pixelSize: 14
+                            color: "#4ade80"
                         }
                     }
 
                     Text {
-                        text: model.secured ? "🔒" : ""
-                        font.pixelSize: 28
+                        text: "🔒"
+                        font.pixelSize: 18
                     }
                 }
+            }
 
-                MouseArea {
-                    id: mouseArea
-                    anchors.fill: parent
-                    onClicked: console.log("Connect to: " + model.name)
+            // Available networks section
+            Text {
+                text: "AVAILABLE NETWORKS"
+                font.pixelSize: 14
+                font.weight: Font.Medium
+                font.letterSpacing: 2
+                color: "#666677"
+                Layout.leftMargin: 8
+                Layout.topMargin: 20
+                visible: wifiSwitch.checked
+            }
+
+            // Network list
+            Repeater {
+                model: wifiSwitch.checked ? networkModel : []
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 80
+                    radius: 16
+                    color: networkMouse.pressed ? "#1e1e2e" : "#14141e"
+                    border.color: "#1a1a2e"
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 100 } }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 20
+                        anchors.rightMargin: 20
+                        spacing: 16
+
+                        Rectangle {
+                            Layout.preferredWidth: 48
+                            Layout.preferredHeight: 48
+                            radius: 12
+                            color: "#1a1a28"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "📶"
+                                font.pixelSize: 20
+                                opacity: model.signal / 4
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Text {
+                                text: model.name
+                                font.pixelSize: 18
+                                color: "#ffffff"
+                            }
+                            Text {
+                                text: model.secured ? "Secured" : "Open"
+                                font.pixelSize: 13
+                                color: "#666677"
+                            }
+                        }
+
+                        Text {
+                            text: model.secured ? "🔒" : ""
+                            font.pixelSize: 16
+                            visible: model.secured
+                        }
+                    }
+
+                    MouseArea {
+                        id: networkMouse
+                        anchors.fill: parent
+                        onClicked: console.log("Connect to: " + model.name)
+                    }
                 }
             }
+
+            ListModel {
+                id: networkModel
+                ListElement { name: "Neighbor's Network"; signal: 3; secured: true }
+                ListElement { name: "Coffee Shop"; signal: 2; secured: false }
+                ListElement { name: "Guest Network"; signal: 2; secured: true }
+                ListElement { name: "NETGEAR-5G"; signal: 1; secured: true }
+            }
+
+            Item { height: 40 }
         }
     }
 
-    // Back button - bottom right
+    // Back button
     Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.rightMargin: 32
-        anchors.bottomMargin: 32
-        width: 80
-        height: 80
-        radius: 40
-        color: backButtonMouse.pressed ? "#333344" : "#1a1a2e"
-        border.color: "#444455"
-        border.width: 3
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 24
+        width: 72
+        height: 72
+        radius: 36
+        color: backButtonMouse.pressed ? "#2a2a3e" : "#1a1a28"
+        border.color: backButtonMouse.pressed ? "#e94560" : "#2a2a3e"
+        border.width: 2
+
+        Behavior on color { ColorAnimation { duration: 100 } }
+        Behavior on border.color { ColorAnimation { duration: 100 } }
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 2
+            radius: 34
+            color: "transparent"
+            border.color: "#ffffff"
+            border.width: 1
+            opacity: 0.05
+        }
 
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 36
-            color: "#ffffff"
+            font.pixelSize: 28
+            font.weight: Font.Light
+            color: backButtonMouse.pressed ? "#e94560" : "#ffffff"
+
+            Behavior on color { ColorAnimation { duration: 100 } }
         }
 
         MouseArea {
@@ -169,5 +313,17 @@ Page {
             anchors.fill: parent
             onClicked: stackView.pop()
         }
+    }
+
+    // Home indicator
+    Rectangle {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 8
+        width: 100
+        height: 4
+        radius: 2
+        color: "#333344"
+        opacity: 0.5
     }
 }

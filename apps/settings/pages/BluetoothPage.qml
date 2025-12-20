@@ -6,186 +6,311 @@ Page {
     id: bluetoothPage
 
     background: Rectangle {
-        color: "#0a0a0f"
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#0a0a0f" }
+            GradientStop { position: 1.0; color: "#0f0f18" }
+        }
     }
 
     header: Rectangle {
-        height: 140
-        color: "#12121a"
+        height: 120
+        color: "transparent"
+
+        Rectangle {
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 1
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.3; color: "#e94560" }
+                GradientStop { position: 0.7; color: "#e94560" }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+            opacity: 0.4
+        }
 
         Text {
             anchors.centerIn: parent
             text: "Bluetooth"
-            font.pixelSize: 48
+            font.pixelSize: 38
             font.weight: Font.Light
+            font.letterSpacing: 4
             color: "#ffffff"
         }
     }
 
-    ColumnLayout {
+    Flickable {
         anchors.fill: parent
-        anchors.margins: 32
-        anchors.bottomMargin: 120
-        spacing: 32
+        anchors.bottomMargin: 100
+        contentHeight: content.height + 40
+        clip: true
 
-        // Bluetooth toggle
-        Rectangle {
-            Layout.fillWidth: true
-            height: 120
-            color: "#12121a"
-            radius: 16
+        ColumnLayout {
+            id: content
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 16
+            spacing: 12
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 28
+            // Bluetooth toggle
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.topMargin: 8
+                height: 80
+                radius: 16
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                border.width: 1
 
-                Text {
-                    text: "Bluetooth"
-                    font.pixelSize: 32
-                    color: "#ffffff"
-                    Layout.fillWidth: true
-                }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
 
-                Switch {
-                    id: btSwitch
-                    checked: true
+                    Rectangle {
+                        Layout.preferredWidth: 52
+                        Layout.preferredHeight: 52
+                        radius: 12
+                        color: btSwitch.checked ? "#2a2a5c" : "#1a1a28"
 
-                    indicator: Rectangle {
-                        implicitWidth: 80
-                        implicitHeight: 44
-                        radius: 22
-                        color: btSwitch.checked ? "#e94560" : "#333344"
+                        Text {
+                            anchors.centerIn: parent
+                            text: "🔵"
+                            font.pixelSize: 24
+                        }
+                    }
 
-                        Rectangle {
-                            x: btSwitch.checked ? parent.width - width - 4 : 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 36
-                            height: 36
+                    Text {
+                        text: "Bluetooth"
+                        font.pixelSize: 22
+                        font.weight: Font.Medium
+                        color: "#ffffff"
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 16
+                    }
+
+                    Switch {
+                        id: btSwitch
+                        checked: true
+
+                        indicator: Rectangle {
+                            implicitWidth: 64
+                            implicitHeight: 36
                             radius: 18
-                            color: "#ffffff"
+                            color: btSwitch.checked ? "#e94560" : "#333344"
 
-                            Behavior on x {
-                                NumberAnimation { duration: 150 }
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            Rectangle {
+                                x: btSwitch.checked ? parent.width - width - 4 : 4
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 28
+                                height: 28
+                                radius: 14
+                                color: "#ffffff"
+
+                                Behavior on x { NumberAnimation { duration: 150 } }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Paired devices
-        Text {
-            text: "Paired Devices"
-            font.pixelSize: 24
-            color: "#666677"
-            Layout.topMargin: 16
-        }
+            // Paired devices section
+            Text {
+                text: "PAIRED DEVICES"
+                font.pixelSize: 14
+                font.weight: Font.Medium
+                font.letterSpacing: 2
+                color: "#666677"
+                Layout.leftMargin: 8
+                Layout.topMargin: 20
+                visible: btSwitch.checked
+            }
 
-        ListView {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 260
-            clip: true
-            spacing: 8
+            Repeater {
+                model: btSwitch.checked ? pairedModel : []
 
-            model: ListModel {
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 80
+                    radius: 16
+                    color: deviceMouse.pressed ? "#1e1e2e" : "#14141e"
+                    border.color: model.connected ? "#4ade80" : "#1a1a2e"
+                    border.width: model.connected ? 2 : 1
+
+                    Behavior on color { ColorAnimation { duration: 100 } }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 20
+                        anchors.rightMargin: 20
+                        spacing: 16
+
+                        Rectangle {
+                            Layout.preferredWidth: 48
+                            Layout.preferredHeight: 48
+                            radius: 12
+                            color: model.connected ? "#1a3a2a" : "#1a1a28"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: model.type === "headphones" ? "🎧" : "🔊"
+                                font.pixelSize: 22
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Text {
+                                text: model.name
+                                font.pixelSize: 18
+                                color: "#ffffff"
+                            }
+                            Text {
+                                text: model.connected ? "Connected" : "Not Connected"
+                                font.pixelSize: 13
+                                color: model.connected ? "#4ade80" : "#666677"
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.preferredWidth: 8
+                            Layout.preferredHeight: 8
+                            radius: 4
+                            color: model.connected ? "#4ade80" : "#444455"
+                        }
+                    }
+
+                    MouseArea {
+                        id: deviceMouse
+                        anchors.fill: parent
+                        onClicked: console.log("Toggle connection: " + model.name)
+                    }
+                }
+            }
+
+            ListModel {
+                id: pairedModel
                 ListElement { name: "AirPods Pro"; type: "headphones"; connected: true }
                 ListElement { name: "Car Stereo"; type: "speaker"; connected: false }
             }
 
-            delegate: Rectangle {
-                width: parent.width
-                height: 120
-                color: mouseArea.pressed ? "#1a1a2e" : "#12121a"
+            // Available devices section
+            Text {
+                text: "AVAILABLE DEVICES"
+                font.pixelSize: 14
+                font.weight: Font.Medium
+                font.letterSpacing: 2
+                color: "#666677"
+                Layout.leftMargin: 8
+                Layout.topMargin: 20
+                visible: btSwitch.checked
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 70
                 radius: 16
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                border.width: 1
+                visible: btSwitch.checked
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 28
-                    spacing: 24
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
+                    spacing: 16
+
+                    BusyIndicator {
+                        Layout.preferredWidth: 32
+                        Layout.preferredHeight: 32
+                        running: true
+
+                        contentItem: Item {
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 24
+                                height: 24
+                                radius: 12
+                                color: "transparent"
+                                border.color: "#e94560"
+                                border.width: 2
+                                opacity: 0.3
+
+                                Rectangle {
+                                    width: 8
+                                    height: 8
+                                    radius: 4
+                                    color: "#e94560"
+                                    anchors.top: parent.top
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    anchors.topMargin: -2
+                                }
+
+                                RotationAnimation on rotation {
+                                    from: 0
+                                    to: 360
+                                    duration: 1000
+                                    loops: Animation.Infinite
+                                }
+                            }
+                        }
+                    }
 
                     Text {
-                        text: model.type === "headphones" ? "🎧" : "🔊"
-                        font.pixelSize: 44
-                    }
-
-                    Column {
+                        text: "Scanning for devices..."
+                        font.pixelSize: 16
+                        color: "#888899"
                         Layout.fillWidth: true
-                        spacing: 8
-
-                        Text {
-                            text: model.name
-                            font.pixelSize: 28
-                            color: "#ffffff"
-                        }
-                        Text {
-                            text: model.connected ? "Connected" : "Not Connected"
-                            font.pixelSize: 20
-                            color: model.connected ? "#4ade80" : "#666677"
-                        }
                     }
                 }
-
-                MouseArea {
-                    id: mouseArea
-                    anchors.fill: parent
-                }
             }
+
+            Item { height: 40 }
         }
-
-        // Available devices
-        Text {
-            text: "Available Devices"
-            font.pixelSize: 24
-            color: "#666677"
-            Layout.topMargin: 16
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            height: 120
-            color: "#12121a"
-            radius: 16
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 28
-
-                BusyIndicator {
-                    running: true
-                    implicitWidth: 44
-                    implicitHeight: 44
-                }
-
-                Text {
-                    text: "Scanning..."
-                    font.pixelSize: 28
-                    color: "#666677"
-                    Layout.fillWidth: true
-                }
-            }
-        }
-
-        Item { Layout.fillHeight: true }
     }
 
-    // Back button - bottom right
+    // Back button
     Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.rightMargin: 32
-        anchors.bottomMargin: 32
-        width: 80
-        height: 80
-        radius: 40
-        color: backButtonMouse.pressed ? "#333344" : "#1a1a2e"
-        border.color: "#444455"
-        border.width: 3
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 24
+        width: 72
+        height: 72
+        radius: 36
+        color: backButtonMouse.pressed ? "#2a2a3e" : "#1a1a28"
+        border.color: backButtonMouse.pressed ? "#e94560" : "#2a2a3e"
+        border.width: 2
+
+        Behavior on color { ColorAnimation { duration: 100 } }
+        Behavior on border.color { ColorAnimation { duration: 100 } }
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 2
+            radius: 34
+            color: "transparent"
+            border.color: "#ffffff"
+            border.width: 1
+            opacity: 0.05
+        }
 
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 36
-            color: "#ffffff"
+            font.pixelSize: 28
+            font.weight: Font.Light
+            color: backButtonMouse.pressed ? "#e94560" : "#ffffff"
+
+            Behavior on color { ColorAnimation { duration: 100 } }
         }
 
         MouseArea {
@@ -193,5 +318,17 @@ Page {
             anchors.fill: parent
             onClicked: stackView.pop()
         }
+    }
+
+    // Home indicator
+    Rectangle {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 8
+        width: 100
+        height: 4
+        radius: 2
+        color: "#333344"
+        opacity: 0.5
     }
 }

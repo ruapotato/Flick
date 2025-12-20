@@ -5,276 +5,400 @@ import QtQuick.Layouts 1.15
 Page {
     id: soundPage
 
+    property real mediaVolume: 0.7
+    property real ringVolume: 0.8
+
     background: Rectangle {
-        color: "#0a0a0f"
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#0a0a0f" }
+            GradientStop { position: 1.0; color: "#0f0f18" }
+        }
     }
 
     header: Rectangle {
-        height: 140
-        color: "#12121a"
+        height: 120
+        color: "transparent"
+
+        Rectangle {
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 1
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.3; color: "#e94560" }
+                GradientStop { position: 0.7; color: "#e94560" }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+            opacity: 0.4
+        }
 
         Text {
             anchors.centerIn: parent
             text: "Sound"
-            font.pixelSize: 48
+            font.pixelSize: 38
             font.weight: Font.Light
+            font.letterSpacing: 4
             color: "#ffffff"
         }
     }
 
-    ColumnLayout {
+    Flickable {
         anchors.fill: parent
-        anchors.margins: 32
-        anchors.bottomMargin: 120
-        spacing: 32
+        anchors.bottomMargin: 100
+        contentHeight: content.height + 40
+        clip: true
 
-        // Media volume
-        Rectangle {
-            Layout.fillWidth: true
-            height: 160
-            color: "#12121a"
-            radius: 16
+        ColumnLayout {
+            id: content
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 16
+            spacing: 16
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 28
-                spacing: 20
+            // Volume section
+            Text {
+                text: "VOLUME"
+                font.pixelSize: 14
+                font.weight: Font.Medium
+                font.letterSpacing: 2
+                color: "#666677"
+                Layout.leftMargin: 8
+                Layout.topMargin: 16
+            }
 
-                Text {
-                    text: "Media Volume"
-                    font.pixelSize: 32
-                    color: "#ffffff"
-                }
+            // Media volume
+            Rectangle {
+                Layout.fillWidth: true
+                height: 100
+                radius: 16
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                border.width: 1
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 20
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    spacing: 12
 
-                    Text {
-                        text: "🔈"
-                        font.pixelSize: 36
+                    RowLayout {
+                        width: parent.width
+
+                        Text {
+                            text: "🎵  Media"
+                            font.pixelSize: 18
+                            color: "#ffffff"
+                            Layout.fillWidth: true
+                        }
+
+                        Text {
+                            text: Math.round(mediaVolume * 100) + "%"
+                            font.pixelSize: 14
+                            color: "#888899"
+                        }
                     }
 
-                    Slider {
-                        id: mediaSlider
-                        Layout.fillWidth: true
-                        from: 0
-                        to: 100
-                        value: 70
+                    // Slider
+                    Item {
+                        width: parent.width
+                        height: 32
 
-                        background: Rectangle {
-                            x: mediaSlider.leftPadding
-                            y: mediaSlider.topPadding + mediaSlider.availableHeight / 2 - height / 2
-                            width: mediaSlider.availableWidth
-                            height: 12
-                            radius: 6
-                            color: "#333344"
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: 6
+                            radius: 3
+                            color: "#2a2a3e"
 
                             Rectangle {
-                                width: mediaSlider.visualPosition * parent.width
+                                width: parent.width * mediaVolume
                                 height: parent.height
-                                radius: 6
+                                radius: 3
                                 color: "#e94560"
                             }
                         }
 
-                        handle: Rectangle {
-                            x: mediaSlider.leftPadding + mediaSlider.visualPosition * (mediaSlider.availableWidth - width)
-                            y: mediaSlider.topPadding + mediaSlider.availableHeight / 2 - height / 2
-                            width: 44
-                            height: 44
-                            radius: 22
+                        Rectangle {
+                            x: (parent.width - 28) * mediaVolume
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 28
+                            height: 28
+                            radius: 14
                             color: "#ffffff"
                         }
-                    }
 
-                    Text {
-                        text: "🔊"
-                        font.pixelSize: 36
+                        MouseArea {
+                            anchors.fill: parent
+                            onPressed: mediaVolume = Math.max(0, Math.min(1, mouse.x / parent.width))
+                            onPositionChanged: if (pressed) mediaVolume = Math.max(0, Math.min(1, mouse.x / parent.width))
+                        }
                     }
                 }
             }
-        }
 
-        // Ring volume
-        Rectangle {
-            Layout.fillWidth: true
-            height: 160
-            color: "#12121a"
-            radius: 16
+            // Ring volume
+            Rectangle {
+                Layout.fillWidth: true
+                height: 100
+                radius: 16
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                border.width: 1
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 28
-                spacing: 20
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    spacing: 12
 
-                Text {
-                    text: "Ring Volume"
-                    font.pixelSize: 32
-                    color: "#ffffff"
-                }
+                    RowLayout {
+                        width: parent.width
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 20
+                        Text {
+                            text: "🔔  Ringtone"
+                            font.pixelSize: 18
+                            color: "#ffffff"
+                            Layout.fillWidth: true
+                        }
 
-                    Text {
-                        text: "🔔"
-                        font.pixelSize: 36
+                        Text {
+                            text: Math.round(ringVolume * 100) + "%"
+                            font.pixelSize: 14
+                            color: "#888899"
+                        }
                     }
 
-                    Slider {
-                        id: ringSlider
-                        Layout.fillWidth: true
-                        from: 0
-                        to: 100
-                        value: 80
+                    Item {
+                        width: parent.width
+                        height: 32
 
-                        background: Rectangle {
-                            x: ringSlider.leftPadding
-                            y: ringSlider.topPadding + ringSlider.availableHeight / 2 - height / 2
-                            width: ringSlider.availableWidth
-                            height: 12
-                            radius: 6
-                            color: "#333344"
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: 6
+                            radius: 3
+                            color: "#2a2a3e"
 
                             Rectangle {
-                                width: ringSlider.visualPosition * parent.width
+                                width: parent.width * ringVolume
                                 height: parent.height
-                                radius: 6
+                                radius: 3
                                 color: "#e94560"
                             }
                         }
 
-                        handle: Rectangle {
-                            x: ringSlider.leftPadding + ringSlider.visualPosition * (ringSlider.availableWidth - width)
-                            y: ringSlider.topPadding + ringSlider.availableHeight / 2 - height / 2
-                            width: 44
-                            height: 44
-                            radius: 22
+                        Rectangle {
+                            x: (parent.width - 28) * ringVolume
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 28
+                            height: 28
+                            radius: 14
                             color: "#ffffff"
                         }
-                    }
 
-                    Text {
-                        text: "🔔"
-                        font.pixelSize: 36
+                        MouseArea {
+                            anchors.fill: parent
+                            onPressed: ringVolume = Math.max(0, Math.min(1, mouse.x / parent.width))
+                            onPositionChanged: if (pressed) ringVolume = Math.max(0, Math.min(1, mouse.x / parent.width))
+                        }
                     }
                 }
             }
-        }
 
-        // Vibration toggle
-        Rectangle {
-            Layout.fillWidth: true
-            height: 120
-            color: "#12121a"
-            radius: 16
+            // Sound modes section
+            Text {
+                text: "SOUND MODE"
+                font.pixelSize: 14
+                font.weight: Font.Medium
+                font.letterSpacing: 2
+                color: "#666677"
+                Layout.leftMargin: 8
+                Layout.topMargin: 20
+            }
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 28
+            // Vibration toggle
+            Rectangle {
+                Layout.fillWidth: true
+                height: 80
+                radius: 16
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                border.width: 1
 
-                Text {
-                    text: "Vibration"
-                    font.pixelSize: 32
-                    color: "#ffffff"
-                    Layout.fillWidth: true
-                }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
 
-                Switch {
-                    id: vibrationSwitch
-                    checked: true
+                    Rectangle {
+                        Layout.preferredWidth: 48
+                        Layout.preferredHeight: 48
+                        radius: 12
+                        color: vibrationSwitch.checked ? "#2a3c3a" : "#1a1a28"
 
-                    indicator: Rectangle {
-                        implicitWidth: 80
-                        implicitHeight: 44
-                        radius: 22
-                        color: vibrationSwitch.checked ? "#e94560" : "#333344"
+                        Text {
+                            anchors.centerIn: parent
+                            text: "📳"
+                            font.pixelSize: 22
+                        }
+                    }
 
-                        Rectangle {
-                            x: vibrationSwitch.checked ? parent.width - width - 4 : 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 36
-                            height: 36
-                            radius: 18
+                    Column {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 16
+                        spacing: 4
+
+                        Text {
+                            text: "Vibration"
+                            font.pixelSize: 18
                             color: "#ffffff"
+                        }
+                        Text {
+                            text: "Vibrate for calls and notifications"
+                            font.pixelSize: 13
+                            color: "#666677"
+                        }
+                    }
 
-                            Behavior on x {
-                                NumberAnimation { duration: 150 }
+                    Switch {
+                        id: vibrationSwitch
+                        checked: true
+
+                        indicator: Rectangle {
+                            implicitWidth: 64
+                            implicitHeight: 36
+                            radius: 18
+                            color: vibrationSwitch.checked ? "#e94560" : "#333344"
+
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            Rectangle {
+                                x: vibrationSwitch.checked ? parent.width - width - 4 : 4
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 28
+                                height: 28
+                                radius: 14
+                                color: "#ffffff"
+
+                                Behavior on x { NumberAnimation { duration: 150 } }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Silent mode
-        Rectangle {
-            Layout.fillWidth: true
-            height: 120
-            color: "#12121a"
-            radius: 16
+            // Silent mode toggle
+            Rectangle {
+                Layout.fillWidth: true
+                height: 80
+                radius: 16
+                color: "#14141e"
+                border.color: silentSwitch.checked ? "#e94560" : "#1a1a2e"
+                border.width: silentSwitch.checked ? 2 : 1
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 28
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
 
-                Text {
-                    text: "Silent Mode"
-                    font.pixelSize: 32
-                    color: "#ffffff"
-                    Layout.fillWidth: true
-                }
+                    Rectangle {
+                        Layout.preferredWidth: 48
+                        Layout.preferredHeight: 48
+                        radius: 12
+                        color: silentSwitch.checked ? "#3c2a3a" : "#1a1a28"
 
-                Switch {
-                    id: silentSwitch
-                    checked: false
+                        Text {
+                            anchors.centerIn: parent
+                            text: "🔕"
+                            font.pixelSize: 22
+                        }
+                    }
 
-                    indicator: Rectangle {
-                        implicitWidth: 80
-                        implicitHeight: 44
-                        radius: 22
-                        color: silentSwitch.checked ? "#e94560" : "#333344"
+                    Column {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 16
+                        spacing: 4
 
-                        Rectangle {
-                            x: silentSwitch.checked ? parent.width - width - 4 : 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 36
-                            height: 36
-                            radius: 18
+                        Text {
+                            text: "Silent Mode"
+                            font.pixelSize: 18
                             color: "#ffffff"
+                        }
+                        Text {
+                            text: "Mute all sounds"
+                            font.pixelSize: 13
+                            color: "#666677"
+                        }
+                    }
 
-                            Behavior on x {
-                                NumberAnimation { duration: 150 }
+                    Switch {
+                        id: silentSwitch
+                        checked: false
+
+                        indicator: Rectangle {
+                            implicitWidth: 64
+                            implicitHeight: 36
+                            radius: 18
+                            color: silentSwitch.checked ? "#e94560" : "#333344"
+
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            Rectangle {
+                                x: silentSwitch.checked ? parent.width - width - 4 : 4
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 28
+                                height: 28
+                                radius: 14
+                                color: "#ffffff"
+
+                                Behavior on x { NumberAnimation { duration: 150 } }
                             }
                         }
                     }
                 }
             }
-        }
 
-        Item { Layout.fillHeight: true }
+            Item { height: 40 }
+        }
     }
 
-    // Back button - bottom right
+    // Back button
     Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.rightMargin: 32
-        anchors.bottomMargin: 32
-        width: 80
-        height: 80
-        radius: 40
-        color: backButtonMouse.pressed ? "#333344" : "#1a1a2e"
-        border.color: "#444455"
-        border.width: 3
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 24
+        width: 72
+        height: 72
+        radius: 36
+        color: backButtonMouse.pressed ? "#2a2a3e" : "#1a1a28"
+        border.color: backButtonMouse.pressed ? "#e94560" : "#2a2a3e"
+        border.width: 2
+
+        Behavior on color { ColorAnimation { duration: 100 } }
+        Behavior on border.color { ColorAnimation { duration: 100 } }
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 2
+            radius: 34
+            color: "transparent"
+            border.color: "#ffffff"
+            border.width: 1
+            opacity: 0.05
+        }
 
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 36
-            color: "#ffffff"
+            font.pixelSize: 28
+            font.weight: Font.Light
+            color: backButtonMouse.pressed ? "#e94560" : "#ffffff"
+
+            Behavior on color { ColorAnimation { duration: 100 } }
         }
 
         MouseArea {
@@ -282,5 +406,17 @@ Page {
             anchors.fill: parent
             onClicked: stackView.pop()
         }
+    }
+
+    // Home indicator
+    Rectangle {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 8
+        width: 100
+        height: 4
+        radius: 2
+        color: "#333344"
+        opacity: 0.5
     }
 }
