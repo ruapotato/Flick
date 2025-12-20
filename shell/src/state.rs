@@ -1129,8 +1129,9 @@ impl CompositorHandler for Flick {
                         let center = if sample_idx * 4 + 3 < pixels.len() {
                             (pixels[sample_idx*4], pixels[sample_idx*4+1], pixels[sample_idx*4+2], pixels[sample_idx*4+3])
                         } else { (0,0,0,0) };
-                        tracing::info!("Captured buffer: {}x{}, stride={}, format={}, raw_first={:?}, raw_center={:?}, first_nonzero={:?}, center=RGBA{:?}",
-                            width, height, stride, format, raw_first_8, raw_center_8, first_nonzero, center);
+                        // Log to stderr for immediate visibility
+                        eprintln!("BUFFER: {}x{} stride={} fmt={} offset={} raw_first={:?} first_nonzero={:?}",
+                            width, height, stride, format, buf_data.offset, &raw_first_8[..8], first_nonzero);
                         StoredBuffer { width, height, stride, format, pixels }
                     });
 
