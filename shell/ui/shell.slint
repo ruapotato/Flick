@@ -2025,8 +2025,9 @@ export component FlickShell inherits Window {
     }
 
     // Quick settings - slides down as overlay on top of home
-    QuickSettingsPanel {
-        y: current-view == "quick-settings" ? 0px : -parent.height;
+    // Only render when visible (not in app view where we only show keyboard overlay)
+    if current-view == "quick-settings": QuickSettingsPanel {
+        y: 0px;
         width: 100%;
         height: 100%;
         brightness: brightness;
@@ -2056,9 +2057,9 @@ export component FlickShell inherits Window {
         clear-all-notifications => { clear-all-notifications(); }
     }
 
-    // App Switcher - slides in from right edge
-    AppSwitcherPanel {
-        x: current-view == "switcher" ? 0px : parent.width;
+    // App Switcher - only render when visible
+    if current-view == "switcher": AppSwitcherPanel {
+        x: 0px;
         width: 100%;
         height: 100%;
         windows: switcher-windows;
@@ -2067,9 +2068,9 @@ export component FlickShell inherits Window {
         window-tapped(id) => { switcher-window-tapped(id); }
     }
 
-    // Lock screen - overlay on top of everything when locked
-    LockScreen {
-        y: current-view == "lock" ? 0px : -parent.height;
+    // Lock screen - only render when locked
+    if current-view == "lock": LockScreen {
+        y: 0px;
         width: 100%;
         height: 100%;
         time: lock-time;
