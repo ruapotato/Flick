@@ -412,8 +412,27 @@ fn handle_input_event(
             let shell_view = state.shell.view;
             info!("TouchDown: shell_view={:?}, has_wayland_window={}", shell_view, has_wayland_window);
 
-            // Forward touch to Wayland client if connected
-            if has_wayland_window && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
+            // Check if touch is on keyboard overlay (in App view with keyboard visible)
+            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App {
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    if slint_ui.is_keyboard_visible() {
+                        // Keyboard is ~22% of screen height at the bottom
+                        let screen_height = state.screen_size.h as f64;
+                        let keyboard_height = (screen_height * 0.22).max(200.0);
+                        let keyboard_top = screen_height - keyboard_height;
+                        touch_pos.y >= keyboard_top
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Forward touch to Wayland client if connected (but not if touching keyboard)
+            if has_wayland_window && !touch_on_keyboard && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
@@ -486,6 +505,15 @@ fn handle_input_event(
                             slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
                         }
                     }
+                    crate::shell::ShellView::App => {
+                        // Touch on keyboard overlay - forward to Slint
+                        if touch_on_keyboard {
+                            info!("Keyboard TouchDown at ({}, {})", touch_pos.x, touch_pos.y);
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -534,8 +562,26 @@ fn handle_input_event(
             let has_wayland_window = state.space.elements().count() > 0;
             let shell_view = state.shell.view;
 
-            // Forward touch to Wayland client if connected
-            if has_wayland_window && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
+            // Check if touch is on keyboard overlay (in App view with keyboard visible)
+            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App {
+                if let Some(ref slint_ui) = state.shell.slint_ui {
+                    if slint_ui.is_keyboard_visible() {
+                        let screen_height = state.screen_size.h as f64;
+                        let keyboard_height = (screen_height * 0.22).max(200.0);
+                        let keyboard_top = screen_height - keyboard_height;
+                        touch_pos.y >= keyboard_top
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Forward touch to Wayland client if connected (but not if touching keyboard)
+            if has_wayland_window && !touch_on_keyboard && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
                 if let Some(touch) = state.seat.get_touch() {
                     // Find surface under touch point
                     let under = state.space.element_under(touch_pos.to_f64())
@@ -606,6 +652,14 @@ fn handle_input_event(
                         // Forward to Slint
                         if let Some(ref slint_ui) = state.shell.slint_ui {
                             slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                        }
+                    }
+                    crate::shell::ShellView::App => {
+                        // Touch motion on keyboard overlay - forward to Slint
+                        if touch_on_keyboard {
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                            }
                         }
                     }
                     _ => {}
@@ -746,8 +800,30 @@ fn handle_input_event(
             let has_wayland_window = state.space.elements().count() > 0;
             let shell_view = state.shell.view;
 
-            // Forward touch to Wayland client if connected
-            if has_wayland_window && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
+            // Check if touch was on keyboard overlay (in App view with keyboard visible)
+            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App {
+                if let Some(pos) = last_pos {
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        if slint_ui.is_keyboard_visible() {
+                            let screen_height = state.screen_size.h as f64;
+                            let keyboard_height = (screen_height * 0.22).max(200.0);
+                            let keyboard_top = screen_height - keyboard_height;
+                            pos.y >= keyboard_top
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Forward touch to Wayland client if connected (but not if touching keyboard)
+            if has_wayland_window && !touch_on_keyboard && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
@@ -939,6 +1015,17 @@ fn handle_input_event(
                                             state.shell.set_view(crate::shell::ShellView::App);
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+                    crate::shell::ShellView::App => {
+                        // Touch up on keyboard overlay - forward to Slint
+                        if touch_on_keyboard {
+                            if let Some(pos) = last_pos {
+                                info!("Keyboard TouchUp at ({}, {})", pos.x, pos.y);
+                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
                                 }
                             }
                         }
