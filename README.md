@@ -31,10 +31,11 @@ Droidian and similar Android-based Linux distributions require **HWComposer** in
 - Smooth shrink animation when entering app switcher (follows finger)
 - On-screen keyboard overlay with touch input to apps
 - Keyboard input injection to focused Wayland clients
+- Proper privilege dropping for app launching (Firefox etc. work correctly)
+- Keyboard state save/restore when switching apps
 
 ⚠️ **Known Issues:**
 - App windows may show incorrectly sized on first open (resize after switching away and back)
-- Keyboard not auto-restored when returning to app (swipe up to reopen)
 
 The hwcomposer backend uses a C shim library (`hwc-shim/`) that wraps Android's HWC2 API via libhybris, with Rust FFI bindings calling into it.
 

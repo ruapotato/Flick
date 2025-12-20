@@ -113,6 +113,61 @@ fn char_to_evdev(c: char) -> Option<(u32, bool)> {
     Some((keycode, shift))
 }
 
+/// Launch an app with proper privileges
+/// When running as root (via sudo), drops privileges to the original user
+fn launch_app_as_user(exec: &str, socket_name: &str) {
+    // Check if we're running via sudo and need to drop privileges
+    if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+        // Running as root via sudo - launch as the original user
+        let home = format!("/home/{}", sudo_user);
+
+        // Look up the user's UID from /etc/passwd for XDG_RUNTIME_DIR
+        let uid = std::fs::read_to_string("/etc/passwd")
+            .ok()
+            .and_then(|passwd| {
+                passwd.lines()
+                    .find(|line| line.starts_with(&format!("{}:", sudo_user)))
+                    .and_then(|line| line.split(':').nth(2))
+                    .map(String::from)
+            })
+            .unwrap_or_else(|| "1000".to_string());  // Default to 1000 if lookup fails
+        let xdg_runtime = format!("/run/user/{}", uid);
+
+        // Escape single quotes in the exec command for safe shell wrapping
+        let escaped_exec = exec.replace("'", "'\"'\"'");
+
+        // Use sudo -u to run as the original user with proper environment
+        let wrapped_cmd = format!(
+            "sudo -u {} HOME={} XDG_RUNTIME_DIR={} WAYLAND_DISPLAY={} LIBGL_ALWAYS_SOFTWARE=1 GDK_BACKEND=wayland GSK_RENDERER=cairo GDK_RENDERING=image GALLIUM_DRIVER=llvmpipe QT_QUICK_BACKEND=software QT_OPENGL=software sh -c '{}'",
+            sudo_user, home, xdg_runtime, socket_name, escaped_exec
+        );
+
+        info!("Launching app as user {}: {}", sudo_user, exec);
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&wrapped_cmd)
+            .spawn()
+            .ok();
+    } else {
+        // Not running via sudo - launch directly
+        info!("Launching app directly: {}", exec);
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(exec)
+            .env("WAYLAND_DISPLAY", socket_name)
+            .env("LIBGL_ALWAYS_SOFTWARE", "1")
+            .env("GDK_BACKEND", "wayland")
+            .env("GSK_RENDERER", "cairo")
+            .env("GDK_RENDERING", "image")
+            .env("GALLIUM_DRIVER", "llvmpipe")
+            .env("__EGL_VENDOR_LIBRARY_FILENAMES", "")
+            .env("QT_QUICK_BACKEND", "software")
+            .env("QT_OPENGL", "software")
+            .spawn()
+            .ok();
+    }
+}
+
 // Use our C shim FFI bindings
 use super::hwc_shim_ffi::{HwcContext, FlickDisplayInfo};
 
@@ -925,25 +980,8 @@ fn handle_input_event(
                             info!("Launching app from home touch: {}", exec);
                             // Get socket name for WAYLAND_DISPLAY
                             let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
-                            std::process::Command::new("sh")
-                                .arg("-c")
-                                .arg(&exec)
-                                .env("WAYLAND_DISPLAY", socket_name)
-                                // Force software rendering so apps use SHM buffers
-                                // hwcomposer can't handle EGL/DMA-BUF buffers from apps
-                                .env("LIBGL_ALWAYS_SOFTWARE", "1")
-                                .env("GDK_BACKEND", "wayland")
-                                // GTK4 specific - force Cairo rendering instead of GPU
-                                .env("GSK_RENDERER", "cairo")
-                                .env("GDK_RENDERING", "image")
-                                // Disable hardware acceleration hints
-                                .env("GALLIUM_DRIVER", "llvmpipe")
-                                .env("__EGL_VENDOR_LIBRARY_FILENAMES", "")
-                                // Also set for Qt apps
-                                .env("QT_QUICK_BACKEND", "software")
-                                .env("QT_OPENGL", "software")
-                                .spawn()
-                                .ok();
+                            // Launch app with privilege dropping if running as root
+                            launch_app_as_user(&exec, socket_name);
 
                             // Switch to App view to show the window
                             state.shell.view = crate::shell::ShellView::App;
