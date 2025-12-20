@@ -6,136 +6,173 @@ Page {
     id: aboutPage
 
     background: Rectangle {
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: "#0a0a0f" }
-            GradientStop { position: 1.0; color: "#0f0f18" }
-        }
+        color: "#0a0a0f"
     }
 
-    header: Rectangle {
-        height: 120
+    // Hero section with animated logo
+    Rectangle {
+        id: heroSection
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 340
         color: "transparent"
 
-        Rectangle {
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: 1
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.3; color: "#e94560" }
-                GradientStop { position: 0.7; color: "#e94560" }
-                GradientStop { position: 1.0; color: "transparent" }
+        // Animated background particles
+        Repeater {
+            model: 20
+            Rectangle {
+                property real startX: Math.random() * heroSection.width
+                property real startY: Math.random() * heroSection.height
+
+                x: startX
+                y: startY
+                width: 2 + Math.random() * 4
+                height: width
+                radius: width / 2
+                color: "#e94560"
+                opacity: 0.1 + Math.random() * 0.2
+
+                SequentialAnimation on y {
+                    loops: Animation.Infinite
+                    NumberAnimation {
+                        to: startY - 50 - Math.random() * 100
+                        duration: 3000 + Math.random() * 4000
+                        easing.type: Easing.InOutSine
+                    }
+                    NumberAnimation {
+                        to: startY
+                        duration: 3000 + Math.random() * 4000
+                        easing.type: Easing.InOutSine
+                    }
+                }
+
+                SequentialAnimation on opacity {
+                    loops: Animation.Infinite
+                    NumberAnimation {
+                        to: 0.3 + Math.random() * 0.3
+                        duration: 2000 + Math.random() * 2000
+                    }
+                    NumberAnimation {
+                        to: 0.1
+                        duration: 2000 + Math.random() * 2000
+                    }
+                }
             }
-            opacity: 0.4
         }
 
-        Text {
+        Column {
             anchors.centerIn: parent
-            text: "About"
-            font.pixelSize: 38
-            font.weight: Font.Light
-            font.letterSpacing: 4
-            color: "#ffffff"
-        }
-    }
-
-    Flickable {
-        anchors.fill: parent
-        anchors.bottomMargin: 100
-        contentHeight: content.height + 60
-        clip: true
-
-        ColumnLayout {
-            id: content
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: 16
             spacing: 20
 
-            // Logo and branding
+            // Large logo with pulsing glow
             Item {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 200
-                Layout.topMargin: 20
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 140
+                height: 140
 
-                Column {
+                // Outer glow ring
+                Rectangle {
                     anchors.centerIn: parent
-                    spacing: 16
+                    width: 180
+                    height: 180
+                    radius: 90
+                    color: "transparent"
+                    border.color: "#e94560"
+                    border.width: 2
+                    opacity: 0
 
-                    // App icon with glow
-                    Item {
-                        width: 100
-                        height: 100
-                        anchors.horizontalCenter: parent.horizontalCenter
+                    SequentialAnimation on opacity {
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.4; duration: 1500 }
+                        NumberAnimation { to: 0; duration: 1500 }
+                    }
 
-                        // Glow effect
-                        Rectangle {
-                            anchors.centerIn: parent
-                            width: 120
-                            height: 120
-                            radius: 60
-                            color: "#e94560"
-                            opacity: 0.15
+                    SequentialAnimation on scale {
+                        loops: Animation.Infinite
+                        NumberAnimation { from: 0.8; to: 1.2; duration: 3000 }
+                    }
+                }
 
-                            NumberAnimation on opacity {
-                                from: 0.1
-                                to: 0.2
-                                duration: 2000
-                                loops: Animation.Infinite
-                                easing.type: Easing.InOutSine
-                            }
-                        }
+                // Second glow ring
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 160
+                    height: 160
+                    radius: 80
+                    color: "transparent"
+                    border.color: "#e94560"
+                    border.width: 1
+                    opacity: 0.2
+                }
 
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: 24
-                            gradient: Gradient {
-                                GradientStop { position: 0.0; color: "#e94560" }
-                                GradientStop { position: 1.0; color: "#c23a50" }
-                            }
+                // Main logo
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 120
+                    height: 120
+                    radius: 30
 
-                            Text {
-                                anchors.centerIn: parent
-                                text: "⚡"
-                                font.pixelSize: 48
-                            }
-                        }
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: "#e94560" }
+                        GradientStop { position: 1.0; color: "#c23a50" }
                     }
 
                     Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: "Flick"
-                        font.pixelSize: 42
-                        font.weight: Font.Medium
-                        font.letterSpacing: 2
-                        color: "#ffffff"
-                    }
-
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: "Mobile Shell for Linux"
-                        font.pixelSize: 18
-                        font.weight: Font.Light
-                        font.letterSpacing: 1
-                        color: "#888899"
+                        anchors.centerIn: parent
+                        text: "⚡"
+                        font.pixelSize: 60
                     }
                 }
             }
 
-            // Version info card
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Flick"
+                font.pixelSize: 56
+                font.weight: Font.ExtraLight
+                font.letterSpacing: 8
+                color: "#ffffff"
+            }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "MOBILE SHELL FOR LINUX"
+                font.pixelSize: 13
+                font.letterSpacing: 3
+                color: "#555566"
+            }
+        }
+    }
+
+    // Info section
+    Flickable {
+        anchors.top: heroSection.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16
+        anchors.bottomMargin: 100
+        contentHeight: infoColumn.height
+        clip: true
+
+        Column {
+            id: infoColumn
+            anchors.left: parent.left
+            anchors.right: parent.right
+            spacing: 16
+
+            // System info card
             Rectangle {
-                Layout.fillWidth: true
-                height: infoColumn.height + 32
-                radius: 16
+                width: infoColumn.width
+                height: infoListColumn.height + 32
+                radius: 24
                 color: "#14141e"
                 border.color: "#1a1a2e"
                 border.width: 1
 
                 Column {
-                    id: infoColumn
+                    id: infoListColumn
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
@@ -152,8 +189,8 @@ Page {
                         }
 
                         Item {
-                            width: infoColumn.width
-                            height: 52
+                            width: infoListColumn.width
+                            height: 56
 
                             RowLayout {
                                 anchors.fill: parent
@@ -162,14 +199,14 @@ Page {
 
                                 Text {
                                     text: model.label
-                                    font.pixelSize: 16
+                                    font.pixelSize: 17
                                     color: "#666677"
                                     Layout.fillWidth: true
                                 }
 
                                 Text {
                                     text: model.value
-                                    font.pixelSize: 16
+                                    font.pixelSize: 17
                                     font.weight: Font.Medium
                                     color: "#ffffff"
                                 }
@@ -179,6 +216,8 @@ Page {
                                 anchors.bottom: parent.bottom
                                 anchors.left: parent.left
                                 anchors.right: parent.right
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
                                 height: 1
                                 color: "#1a1a2e"
                                 visible: index < 4
@@ -188,52 +227,51 @@ Page {
                 }
             }
 
-            // Credits section
+            // Creator card
             Rectangle {
-                Layout.fillWidth: true
-                height: creditsColumn.height + 32
-                radius: 16
+                width: infoColumn.width
+                height: 160
+                radius: 24
                 color: "#14141e"
                 border.color: "#1a1a2e"
                 border.width: 1
 
                 Column {
-                    id: creditsColumn
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: 16
+                    anchors.fill: parent
+                    anchors.margins: 20
                     spacing: 16
 
                     Text {
-                        text: "CREDITS"
-                        font.pixelSize: 14
-                        font.weight: Font.Medium
+                        text: "CREATED BY"
+                        font.pixelSize: 12
                         font.letterSpacing: 2
-                        color: "#666677"
+                        color: "#555566"
                     }
 
                     Text {
-                        text: "Created by David Hamner"
-                        font.pixelSize: 18
+                        text: "David Hamner"
+                        font.pixelSize: 26
+                        font.weight: Font.Medium
                         color: "#ffffff"
                     }
 
                     // GitHub link
                     Rectangle {
                         width: parent.width
-                        height: 50
-                        radius: 12
+                        height: 56
+                        radius: 16
                         color: githubMouse.pressed ? "#2a2a3e" : "#1a1a28"
+
+                        Behavior on color { ColorAnimation { duration: 100 } }
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 16
-                            anchors.rightMargin: 16
+                            anchors.margins: 16
+                            spacing: 12
 
                             Text {
                                 text: "🔗"
-                                font.pixelSize: 18
+                                font.pixelSize: 20
                             }
 
                             Text {
@@ -245,7 +283,7 @@ Page {
 
                             Text {
                                 text: "→"
-                                font.pixelSize: 20
+                                font.pixelSize: 24
                                 color: "#444455"
                             }
                         }
@@ -259,7 +297,7 @@ Page {
                 }
             }
 
-            Item { height: 40 }
+            Item { height: 20 }
         }
     }
 
@@ -272,35 +310,22 @@ Page {
         width: 72
         height: 72
         radius: 36
-        color: backButtonMouse.pressed ? "#2a2a3e" : "#1a1a28"
-        border.color: backButtonMouse.pressed ? "#e94560" : "#2a2a3e"
+        color: backMouse.pressed ? "#e94560" : "#1a1a28"
+        border.color: "#2a2a3e"
         border.width: 2
 
-        Behavior on color { ColorAnimation { duration: 100 } }
-        Behavior on border.color { ColorAnimation { duration: 100 } }
-
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: 2
-            radius: 34
-            color: "transparent"
-            border.color: "#ffffff"
-            border.width: 1
-            opacity: 0.05
-        }
+        Behavior on color { ColorAnimation { duration: 150 } }
 
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 28
+            font.pixelSize: 32
             font.weight: Font.Light
-            color: backButtonMouse.pressed ? "#e94560" : "#ffffff"
-
-            Behavior on color { ColorAnimation { duration: 100 } }
+            color: "#ffffff"
         }
 
         MouseArea {
-            id: backButtonMouse
+            id: backMouse
             anchors.fill: parent
             onClicked: stackView.pop()
         }
@@ -311,10 +336,9 @@ Page {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 8
-        width: 100
+        width: 120
         height: 4
         radius: 2
         color: "#333344"
-        opacity: 0.5
     }
 }

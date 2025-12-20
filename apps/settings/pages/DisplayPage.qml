@@ -6,212 +6,210 @@ Page {
     id: displayPage
 
     property real brightness: 0.75
+    property bool autoBrightness: false
+    property int selectedTimeout: 1
 
     background: Rectangle {
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: "#0a0a0f" }
-            GradientStop { position: 1.0; color: "#0f0f18" }
-        }
+        color: "#0a0a0f"
     }
 
-    header: Rectangle {
-        height: 120
+    // Hero section with brightness control
+    Rectangle {
+        id: heroSection
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 320
         color: "transparent"
 
+        // Dynamic ambient glow based on brightness
         Rectangle {
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: 1
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.3; color: "#e94560" }
-                GradientStop { position: 0.7; color: "#e94560" }
-                GradientStop { position: 1.0; color: "transparent" }
-            }
-            opacity: 0.4
+            anchors.centerIn: parent
+            width: 400
+            height: 300
+            radius: 200
+            color: "#4a3a1a"
+            opacity: brightness * 0.3
+
+            Behavior on opacity { NumberAnimation { duration: 100 } }
         }
 
-        Text {
+        Column {
             anchors.centerIn: parent
-            text: "Display"
-            font.pixelSize: 38
-            font.weight: Font.Light
-            font.letterSpacing: 4
-            color: "#ffffff"
+            spacing: 20
+
+            // Large sun icon with glow
+            Item {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 140
+                height: 140
+
+                // Sun rays
+                Repeater {
+                    model: 8
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 4
+                        height: 60
+                        radius: 2
+                        color: "#ffaa44"
+                        opacity: brightness * 0.6
+                        rotation: index * 45
+                        transformOrigin: Item.Center
+
+                        Behavior on opacity { NumberAnimation { duration: 100 } }
+                    }
+                }
+
+                // Sun body
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 80
+                    height: 80
+                    radius: 40
+                    color: Qt.lighter("#ffaa44", 1 + brightness * 0.5)
+
+                    Behavior on color { ColorAnimation { duration: 100 } }
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: Math.round(brightness * 100)
+                    font.pixelSize: 28
+                    font.weight: Font.Bold
+                    color: "#0a0a0f"
+                }
+            }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Display"
+                font.pixelSize: 42
+                font.weight: Font.ExtraLight
+                font.letterSpacing: 6
+                color: "#ffffff"
+            }
+
+            // Large slider
+            Item {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 300
+                height: 60
+
+                // Track background
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: parent.width
+                    height: 12
+                    radius: 6
+                    color: "#1a1a28"
+
+                    // Filled portion
+                    Rectangle {
+                        width: parent.width * brightness
+                        height: parent.height
+                        radius: 6
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: "#cc6600" }
+                            GradientStop { position: 1.0; color: "#ffcc00" }
+                        }
+
+                        Behavior on width { NumberAnimation { duration: 50 } }
+                    }
+                }
+
+                // Handle
+                Rectangle {
+                    x: (parent.width - 44) * brightness
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 44
+                    height: 44
+                    radius: 22
+                    color: "#ffffff"
+                    border.color: "#ffcc00"
+                    border.width: 3
+
+                    Behavior on x { NumberAnimation { duration: 50 } }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: brightness > 0.5 ? "☀" : "🌙"
+                        font.pixelSize: 20
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onPressed: updateBrightness(mouse)
+                    onPositionChanged: if (pressed) updateBrightness(mouse)
+
+                    function updateBrightness(mouse) {
+                        brightness = Math.max(0.05, Math.min(1, mouse.x / parent.width))
+                    }
+                }
+            }
         }
     }
 
+    // Settings below hero
     Flickable {
-        anchors.fill: parent
+        anchors.top: heroSection.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16
         anchors.bottomMargin: 100
-        contentHeight: content.height + 40
+        contentHeight: settingsColumn.height
         clip: true
 
-        ColumnLayout {
-            id: content
+        Column {
+            id: settingsColumn
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: 16
-            spacing: 16
+            spacing: 12
 
-            // Brightness section
-            Text {
-                text: "BRIGHTNESS"
-                font.pixelSize: 14
-                font.weight: Font.Medium
-                font.letterSpacing: 2
-                color: "#666677"
-                Layout.leftMargin: 8
-                Layout.topMargin: 16
-            }
-
+            // Auto brightness toggle
             Rectangle {
-                Layout.fillWidth: true
-                height: 120
-                radius: 16
-                color: "#14141e"
-                border.color: "#1a1a2e"
-                border.width: 1
+                width: settingsColumn.width
+                height: 100
+                radius: 24
+                color: autoMouse.pressed ? "#1e1e2e" : "#14141e"
+                border.color: autoBrightness ? "#ffcc00" : "#1a1a2e"
+                border.width: autoBrightness ? 2 : 1
 
-                Column {
+                Behavior on border.color { ColorAnimation { duration: 200 } }
+
+                RowLayout {
                     anchors.fill: parent
                     anchors.margins: 20
                     spacing: 16
 
-                    RowLayout {
-                        width: parent.width
-
-                        Text {
-                            text: "Screen Brightness"
-                            font.pixelSize: 18
-                            color: "#ffffff"
-                            Layout.fillWidth: true
-                        }
-
-                        Text {
-                            text: Math.round(brightness * 100) + "%"
-                            font.pixelSize: 16
-                            color: "#e94560"
-                        }
-                    }
-
-                    // Custom slider
-                    Item {
-                        width: parent.width
-                        height: 40
-
-                        RowLayout {
-                            anchors.fill: parent
-                            spacing: 16
-
-                            Text {
-                                text: "🔅"
-                                font.pixelSize: 20
-                            }
-
-                            // Slider track
-                            Item {
-                                Layout.fillWidth: true
-                                height: 40
-
-                                Rectangle {
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    height: 8
-                                    radius: 4
-                                    color: "#2a2a3e"
-
-                                    Rectangle {
-                                        width: parent.width * brightness
-                                        height: parent.height
-                                        radius: 4
-                                        gradient: Gradient {
-                                            orientation: Gradient.Horizontal
-                                            GradientStop { position: 0.0; color: "#e94560" }
-                                            GradientStop { position: 1.0; color: "#ff6b8a" }
-                                        }
-                                    }
-                                }
-
-                                // Handle
-                                Rectangle {
-                                    x: (parent.width - 32) * brightness
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 32
-                                    height: 32
-                                    radius: 16
-                                    color: "#ffffff"
-
-                                    Rectangle {
-                                        anchors.centerIn: parent
-                                        width: 12
-                                        height: 12
-                                        radius: 6
-                                        color: "#e94560"
-                                    }
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onPressed: updateBrightness(mouse)
-                                    onPositionChanged: if (pressed) updateBrightness(mouse)
-
-                                    function updateBrightness(mouse) {
-                                        brightness = Math.max(0.05, Math.min(1, mouse.x / parent.width))
-                                    }
-                                }
-                            }
-
-                            Text {
-                                text: "🔆"
-                                font.pixelSize: 20
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Auto brightness toggle
-            Rectangle {
-                Layout.fillWidth: true
-                height: 80
-                radius: 16
-                color: "#14141e"
-                border.color: "#1a1a2e"
-                border.width: 1
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 20
-                    anchors.rightMargin: 20
-
                     Rectangle {
-                        Layout.preferredWidth: 52
-                        Layout.preferredHeight: 52
-                        radius: 12
-                        color: autoBrightnessSwitch.checked ? "#3c3a2a" : "#1a1a28"
+                        Layout.preferredWidth: 56
+                        Layout.preferredHeight: 56
+                        radius: 14
+                        color: autoBrightness ? "#3c3a1a" : "#1a1a28"
+
+                        Behavior on color { ColorAnimation { duration: 200 } }
 
                         Text {
                             anchors.centerIn: parent
                             text: "✨"
-                            font.pixelSize: 24
+                            font.pixelSize: 28
                         }
                     }
 
                     Column {
                         Layout.fillWidth: true
-                        Layout.leftMargin: 16
-                        spacing: 4
+                        spacing: 6
 
                         Text {
                             text: "Auto Brightness"
-                            font.pixelSize: 18
+                            font.pixelSize: 20
                             color: "#ffffff"
                         }
+
                         Text {
                             text: "Adjust based on ambient light"
                             font.pixelSize: 13
@@ -219,84 +217,89 @@ Page {
                         }
                     }
 
-                    Switch {
-                        id: autoBrightnessSwitch
-                        checked: false
+                    // Custom toggle
+                    Rectangle {
+                        Layout.preferredWidth: 64
+                        Layout.preferredHeight: 36
+                        radius: 18
+                        color: autoBrightness ? "#e94560" : "#2a2a3e"
 
-                        indicator: Rectangle {
-                            implicitWidth: 64
-                            implicitHeight: 36
-                            radius: 18
-                            color: autoBrightnessSwitch.checked ? "#e94560" : "#333344"
+                        Behavior on color { ColorAnimation { duration: 200 } }
 
-                            Behavior on color { ColorAnimation { duration: 150 } }
+                        Rectangle {
+                            x: autoBrightness ? parent.width - width - 4 : 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 28
+                            height: 28
+                            radius: 14
+                            color: "#ffffff"
 
-                            Rectangle {
-                                x: autoBrightnessSwitch.checked ? parent.width - width - 4 : 4
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 28
-                                height: 28
-                                radius: 14
-                                color: "#ffffff"
-
-                                Behavior on x { NumberAnimation { duration: 150 } }
-                            }
+                            Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
                         }
                     }
                 }
+
+                MouseArea {
+                    id: autoMouse
+                    anchors.fill: parent
+                    onClicked: autoBrightness = !autoBrightness
+                }
             }
 
-            // Screen timeout section
+            Item { height: 8 }
+
             Text {
                 text: "SCREEN TIMEOUT"
-                font.pixelSize: 14
-                font.weight: Font.Medium
+                font.pixelSize: 12
                 font.letterSpacing: 2
-                color: "#666677"
-                Layout.leftMargin: 8
-                Layout.topMargin: 20
+                color: "#555566"
+                leftPadding: 8
             }
 
+            // Timeout options as large cards
             Repeater {
                 model: ListModel {
-                    ListElement { label: "15 seconds"; value: 15; selected: false }
-                    ListElement { label: "30 seconds"; value: 30; selected: true }
-                    ListElement { label: "1 minute"; value: 60; selected: false }
-                    ListElement { label: "2 minutes"; value: 120; selected: false }
-                    ListElement { label: "Never"; value: 0; selected: false }
+                    ListElement { label: "15 seconds"; value: 15 }
+                    ListElement { label: "30 seconds"; value: 30 }
+                    ListElement { label: "1 minute"; value: 60 }
+                    ListElement { label: "5 minutes"; value: 300 }
+                    ListElement { label: "Never"; value: 0 }
                 }
 
                 Rectangle {
-                    Layout.fillWidth: true
-                    height: 60
-                    radius: 16
+                    width: settingsColumn.width
+                    height: 70
+                    radius: 20
                     color: timeoutMouse.pressed ? "#1e1e2e" : "#14141e"
-                    border.color: model.selected ? "#e94560" : "#1a1a2e"
-                    border.width: model.selected ? 2 : 1
+                    border.color: selectedTimeout === index ? "#e94560" : "#1a1a2e"
+                    border.width: selectedTimeout === index ? 2 : 1
+
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 20
-                        anchors.rightMargin: 20
+                        anchors.margins: 20
+                        spacing: 16
 
                         Text {
                             text: model.label
-                            font.pixelSize: 18
+                            font.pixelSize: 20
                             color: "#ffffff"
                             Layout.fillWidth: true
                         }
 
+                        // Radio indicator
                         Rectangle {
-                            Layout.preferredWidth: 24
-                            Layout.preferredHeight: 24
-                            radius: 12
+                            Layout.preferredWidth: 28
+                            Layout.preferredHeight: 28
+                            radius: 14
                             color: "transparent"
-                            border.color: model.selected ? "#e94560" : "#3a3a4e"
+                            border.color: selectedTimeout === index ? "#e94560" : "#3a3a4e"
                             border.width: 2
 
                             Rectangle {
                                 anchors.centerIn: parent
-                                width: model.selected ? 12 : 0
+                                width: selectedTimeout === index ? 14 : 0
                                 height: width
                                 radius: width / 2
                                 color: "#e94560"
@@ -311,22 +314,12 @@ Page {
                     MouseArea {
                         id: timeoutMouse
                         anchors.fill: parent
-                        onClicked: {
-                            // Update selection
-                            for (var i = 0; i < 5; i++) {
-                                timeoutModel.setProperty(i, "selected", i === index)
-                            }
-                        }
+                        onClicked: selectedTimeout = index
                     }
                 }
             }
 
-            Item { height: 40 }
-        }
-
-        // Need to define model separately for property modification
-        ListModel {
-            id: timeoutModel
+            Item { height: 20 }
         }
     }
 
@@ -339,35 +332,22 @@ Page {
         width: 72
         height: 72
         radius: 36
-        color: backButtonMouse.pressed ? "#2a2a3e" : "#1a1a28"
-        border.color: backButtonMouse.pressed ? "#e94560" : "#2a2a3e"
+        color: backMouse.pressed ? "#e94560" : "#1a1a28"
+        border.color: "#2a2a3e"
         border.width: 2
 
-        Behavior on color { ColorAnimation { duration: 100 } }
-        Behavior on border.color { ColorAnimation { duration: 100 } }
-
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: 2
-            radius: 34
-            color: "transparent"
-            border.color: "#ffffff"
-            border.width: 1
-            opacity: 0.05
-        }
+        Behavior on color { ColorAnimation { duration: 150 } }
 
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 28
+            font.pixelSize: 32
             font.weight: Font.Light
-            color: backButtonMouse.pressed ? "#e94560" : "#ffffff"
-
-            Behavior on color { ColorAnimation { duration: 100 } }
+            color: "#ffffff"
         }
 
         MouseArea {
-            id: backButtonMouse
+            id: backMouse
             anchors.fill: parent
             onClicked: stackView.pop()
         }
@@ -378,10 +358,9 @@ Page {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 8
-        width: 100
+        width: 120
         height: 4
         radius: 2
         color: "#333344"
-        opacity: 0.5
     }
 }

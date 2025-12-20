@@ -5,368 +5,465 @@ import QtQuick.Layouts 1.15
 Page {
     id: securityPage
 
-    property string currentMethod: "pin"  // pin, password, pattern, none
+    property int selectedMethod: 0  // 0=PIN, 1=Password, 2=Pattern, 3=None
 
     background: Rectangle {
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: "#0a0a0f" }
-            GradientStop { position: 1.0; color: "#0f0f18" }
-        }
+        color: "#0a0a0f"
     }
 
-    header: Rectangle {
-        height: 120
+    // Hero section
+    Rectangle {
+        id: heroSection
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 260
         color: "transparent"
 
+        // Ambient glow
         Rectangle {
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: 1
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.3; color: "#e94560" }
-                GradientStop { position: 0.7; color: "#e94560" }
-                GradientStop { position: 1.0; color: "transparent" }
-            }
-            opacity: 0.4
-        }
-
-        Text {
             anchors.centerIn: parent
-            text: "Security"
-            font.pixelSize: 38
-            font.weight: Font.Light
-            font.letterSpacing: 4
-            color: "#ffffff"
+            width: 350
+            height: 250
+            radius: 175
+            color: "#4a1a3a"
+            opacity: 0.2
         }
-    }
 
-    Flickable {
-        anchors.fill: parent
-        anchors.bottomMargin: 100
-        contentHeight: content.height + 40
-        clip: true
+        Column {
+            anchors.centerIn: parent
+            spacing: 20
 
-        ColumnLayout {
-            id: content
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: 16
-            spacing: 16
+            // Large shield icon
+            Item {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 120
+                height: 120
 
-            // Section header
-            Text {
-                text: "SCREEN LOCK"
-                font.pixelSize: 14
-                font.weight: Font.Medium
-                font.letterSpacing: 2
-                color: "#666677"
-                Layout.leftMargin: 8
-                Layout.topMargin: 16
-            }
+                // Shield glow
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 150
+                    height: 150
+                    radius: 75
+                    color: "#e94560"
+                    opacity: 0.1
 
-            // Lock method options
-            Repeater {
-                model: ListModel {
-                    ListElement {
-                        title: "PIN"
-                        subtitle: "4-digit numeric code"
-                        method: "pin"
-                        icon: "🔢"
-                    }
-                    ListElement {
-                        title: "Password"
-                        subtitle: "System password authentication"
-                        method: "password"
-                        icon: "🔐"
-                    }
-                    ListElement {
-                        title: "Pattern"
-                        subtitle: "Draw a pattern to unlock"
-                        method: "pattern"
-                        icon: "⬡"
-                    }
-                    ListElement {
-                        title: "None"
-                        subtitle: "No lock screen security"
-                        method: "none"
-                        icon: "🔓"
+                    SequentialAnimation on opacity {
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.2; duration: 2000 }
+                        NumberAnimation { to: 0.1; duration: 2000 }
                     }
                 }
 
                 Rectangle {
-                    Layout.fillWidth: true
-                    height: 90
-                    radius: 16
-                    color: methodMouse.pressed ? "#1e1e2e" : "#14141e"
-                    border.color: currentMethod === model.method ? "#e94560" : "#1a1a2e"
-                    border.width: currentMethod === model.method ? 2 : 1
+                    anchors.centerIn: parent
+                    width: 100
+                    height: 100
+                    radius: 50
+                    color: "#4a1a3a"
+                    border.color: "#e94560"
+                    border.width: 3
 
-                    Behavior on color { ColorAnimation { duration: 100 } }
-                    Behavior on border.color { ColorAnimation { duration: 200 } }
+                    Text {
+                        anchors.centerIn: parent
+                        text: selectedMethod === 3 ? "🔓" : "🔐"
+                        font.pixelSize: 44
+                    }
+                }
+            }
 
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 20
-                        anchors.rightMargin: 20
-                        spacing: 16
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Security"
+                font.pixelSize: 42
+                font.weight: Font.ExtraLight
+                font.letterSpacing: 6
+                color: "#ffffff"
+            }
 
-                        // Icon
-                        Rectangle {
-                            Layout.preferredWidth: 52
-                            Layout.preferredHeight: 52
-                            radius: 12
-                            color: currentMethod === model.method ? "#3c2a3a" : "#1a1a28"
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: selectedMethod === 3 ? "DEVICE UNLOCKED" : "DEVICE PROTECTED"
+                font.pixelSize: 12
+                font.letterSpacing: 2
+                color: selectedMethod === 3 ? "#cc8844" : "#4ade80"
+            }
+        }
+    }
 
-                            Text {
-                                anchors.centerIn: parent
-                                text: model.icon
-                                font.pixelSize: 24
-                            }
+    // Lock method selection
+    Flickable {
+        anchors.top: heroSection.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16
+        anchors.bottomMargin: 100
+        contentHeight: methodsColumn.height
+        clip: true
+
+        Column {
+            id: methodsColumn
+            anchors.left: parent.left
+            anchors.right: parent.right
+            spacing: 12
+
+            Text {
+                text: "SCREEN LOCK METHOD"
+                font.pixelSize: 12
+                font.letterSpacing: 2
+                color: "#555566"
+                leftPadding: 8
+            }
+
+            // PIN option
+            Rectangle {
+                width: methodsColumn.width
+                height: 100
+                radius: 24
+                color: pinMouse.pressed ? "#1e1e2e" : "#14141e"
+                border.color: selectedMethod === 0 ? "#e94560" : "#1a1a2e"
+                border.width: selectedMethod === 0 ? 2 : 1
+
+                Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    spacing: 16
+
+                    Rectangle {
+                        Layout.preferredWidth: 60
+                        Layout.preferredHeight: 60
+                        radius: 16
+                        color: selectedMethod === 0 ? "#3a1a2a" : "#1a1a28"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "🔢"
+                            font.pixelSize: 28
+                        }
+                    }
+
+                    Column {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Text {
+                            text: "PIN"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                            color: "#ffffff"
                         }
 
-                        // Text
-                        Column {
-                            Layout.fillWidth: true
-                            spacing: 4
+                        Text {
+                            text: "4-6 digit numeric code"
+                            font.pixelSize: 14
+                            color: "#666677"
+                        }
+                    }
 
-                            Text {
-                                text: model.title
-                                font.pixelSize: 22
-                                font.weight: Font.Medium
-                                color: "#ffffff"
-                            }
-                            Text {
-                                text: model.subtitle
-                                font.pixelSize: 14
-                                color: "#666677"
+                    Rectangle {
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 28
+                        radius: 14
+                        color: "transparent"
+                        border.color: selectedMethod === 0 ? "#e94560" : "#3a3a4e"
+                        border.width: 2
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: selectedMethod === 0 ? 14 : 0
+                            height: width
+                            radius: width / 2
+                            color: "#e94560"
+
+                            Behavior on width {
+                                NumberAnimation { duration: 150; easing.type: Easing.OutBack }
                             }
                         }
+                    }
+                }
 
-                        // Radio indicator
+                MouseArea {
+                    id: pinMouse
+                    anchors.fill: parent
+                    onClicked: selectedMethod = 0
+                }
+            }
+
+            // Password option
+            Rectangle {
+                width: methodsColumn.width
+                height: 100
+                radius: 24
+                color: passwordMouse.pressed ? "#1e1e2e" : "#14141e"
+                border.color: selectedMethod === 1 ? "#e94560" : "#1a1a2e"
+                border.width: selectedMethod === 1 ? 2 : 1
+
+                Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    spacing: 16
+
+                    Rectangle {
+                        Layout.preferredWidth: 60
+                        Layout.preferredHeight: 60
+                        radius: 16
+                        color: selectedMethod === 1 ? "#3a1a2a" : "#1a1a28"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "🔤"
+                            font.pixelSize: 28
+                        }
+                    }
+
+                    Column {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Text {
+                            text: "Password"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                            color: "#ffffff"
+                        }
+
+                        Text {
+                            text: "System password for unlock"
+                            font.pixelSize: 14
+                            color: "#666677"
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 28
+                        radius: 14
+                        color: "transparent"
+                        border.color: selectedMethod === 1 ? "#e94560" : "#3a3a4e"
+                        border.width: 2
+
                         Rectangle {
-                            Layout.preferredWidth: 28
-                            Layout.preferredHeight: 28
-                            radius: 14
-                            color: "transparent"
-                            border.color: currentMethod === model.method ? "#e94560" : "#3a3a4e"
-                            border.width: 2
+                            anchors.centerIn: parent
+                            width: selectedMethod === 1 ? 14 : 0
+                            height: width
+                            radius: width / 2
+                            color: "#e94560"
 
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: currentMethod === model.method ? 14 : 0
-                                height: width
-                                radius: width / 2
-                                color: "#e94560"
+                            Behavior on width {
+                                NumberAnimation { duration: 150; easing.type: Easing.OutBack }
+                            }
+                        }
+                    }
+                }
 
-                                Behavior on width {
-                                    NumberAnimation { duration: 150; easing.type: Easing.OutBack }
+                MouseArea {
+                    id: passwordMouse
+                    anchors.fill: parent
+                    onClicked: selectedMethod = 1
+                }
+            }
+
+            // Pattern option
+            Rectangle {
+                width: methodsColumn.width
+                height: 100
+                radius: 24
+                color: patternMouse.pressed ? "#1e1e2e" : "#14141e"
+                border.color: selectedMethod === 2 ? "#e94560" : "#1a1a2e"
+                border.width: selectedMethod === 2 ? 2 : 1
+
+                Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    spacing: 16
+
+                    Rectangle {
+                        Layout.preferredWidth: 60
+                        Layout.preferredHeight: 60
+                        radius: 16
+                        color: selectedMethod === 2 ? "#3a1a2a" : "#1a1a28"
+
+                        // Pattern grid preview
+                        Grid {
+                            anchors.centerIn: parent
+                            columns: 3
+                            spacing: 6
+
+                            Repeater {
+                                model: 9
+                                Rectangle {
+                                    width: 10
+                                    height: 10
+                                    radius: 5
+                                    color: (index === 0 || index === 4 || index === 8) ? "#e94560" : "#444455"
                                 }
                             }
                         }
                     }
 
-                    MouseArea {
-                        id: methodMouse
-                        anchors.fill: parent
-                        onClicked: {
-                            currentMethod = model.method
-                            // TODO: Save setting and show appropriate config dialog
+                    Column {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Text {
+                            text: "Pattern"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                            color: "#ffffff"
+                        }
+
+                        Text {
+                            text: "Draw a pattern to unlock"
+                            font.pixelSize: 14
+                            color: "#666677"
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 28
+                        radius: 14
+                        color: "transparent"
+                        border.color: selectedMethod === 2 ? "#e94560" : "#3a3a4e"
+                        border.width: 2
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: selectedMethod === 2 ? 14 : 0
+                            height: width
+                            radius: width / 2
+                            color: "#e94560"
+
+                            Behavior on width {
+                                NumberAnimation { duration: 150; easing.type: Easing.OutBack }
+                            }
                         }
                     }
                 }
+
+                MouseArea {
+                    id: patternMouse
+                    anchors.fill: parent
+                    onClicked: selectedMethod = 2
+                }
             }
 
-            // PIN Settings (shown when PIN is selected)
+            // None option
             Rectangle {
-                Layout.fillWidth: true
-                Layout.topMargin: 16
-                height: pinSettingsColumn.height + 40
-                radius: 16
-                color: "#14141e"
-                border.color: "#1a1a2e"
-                border.width: 1
-                visible: currentMethod === "pin"
+                width: methodsColumn.width
+                height: 100
+                radius: 24
+                color: noneMouse.pressed ? "#1e1e2e" : "#14141e"
+                border.color: selectedMethod === 3 ? "#cc8844" : "#1a1a2e"
+                border.width: selectedMethod === 3 ? 2 : 1
 
-                Column {
-                    id: pinSettingsColumn
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
+                Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                RowLayout {
+                    anchors.fill: parent
                     anchors.margins: 20
                     spacing: 16
 
-                    Text {
-                        text: "PIN Settings"
-                        font.pixelSize: 18
-                        font.weight: Font.Medium
-                        color: "#888899"
-                    }
-
-                    // Change PIN button
                     Rectangle {
-                        width: parent.width
-                        height: 60
-                        radius: 12
-                        color: changePinMouse.pressed ? "#2a2a3e" : "#1a1a28"
+                        Layout.preferredWidth: 60
+                        Layout.preferredHeight: 60
+                        radius: 16
+                        color: selectedMethod === 3 ? "#3a2a1a" : "#1a1a28"
 
                         Text {
                             anchors.centerIn: parent
-                            text: "Change PIN"
-                            font.pixelSize: 18
-                            color: "#e94560"
+                            text: "🔓"
+                            font.pixelSize: 28
+                        }
+                    }
+
+                    Column {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Text {
+                            text: "None"
+                            font.pixelSize: 22
+                            font.weight: Font.Medium
+                            color: "#ffffff"
                         }
 
-                        MouseArea {
-                            id: changePinMouse
-                            anchors.fill: parent
-                            onClicked: {
-                                // TODO: Show PIN change dialog
-                                console.log("Change PIN clicked")
+                        Text {
+                            text: "Swipe to unlock (not secure)"
+                            font.pixelSize: 14
+                            color: "#cc8844"
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 28
+                        radius: 14
+                        color: "transparent"
+                        border.color: selectedMethod === 3 ? "#cc8844" : "#3a3a4e"
+                        border.width: 2
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: selectedMethod === 3 ? 14 : 0
+                            height: width
+                            radius: width / 2
+                            color: "#cc8844"
+
+                            Behavior on width {
+                                NumberAnimation { duration: 150; easing.type: Easing.OutBack }
                             }
                         }
                     }
                 }
-            }
 
-            // Pattern Settings (shown when pattern is selected)
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.topMargin: 16
-                height: patternSettingsColumn.height + 40
-                radius: 16
-                color: "#14141e"
-                border.color: "#1a1a2e"
-                border.width: 1
-                visible: currentMethod === "pattern"
-
-                Column {
-                    id: patternSettingsColumn
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: 20
-                    spacing: 16
-
-                    Text {
-                        text: "Pattern Settings"
-                        font.pixelSize: 18
-                        font.weight: Font.Medium
-                        color: "#888899"
-                    }
-
-                    // Draw new pattern button
-                    Rectangle {
-                        width: parent.width
-                        height: 60
-                        radius: 12
-                        color: drawPatternMouse.pressed ? "#2a2a3e" : "#1a1a28"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Draw New Pattern"
-                            font.pixelSize: 18
-                            color: "#e94560"
-                        }
-
-                        MouseArea {
-                            id: drawPatternMouse
-                            anchors.fill: parent
-                            onClicked: {
-                                // TODO: Show pattern setup
-                                console.log("Draw pattern clicked")
-                            }
-                        }
-                    }
-
-                    // Show pattern toggle
-                    Rectangle {
-                        width: parent.width
-                        height: 60
-                        radius: 12
-                        color: "#1a1a28"
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 16
-                            anchors.rightMargin: 16
-
-                            Text {
-                                text: "Show pattern while drawing"
-                                font.pixelSize: 16
-                                color: "#ffffff"
-                                Layout.fillWidth: true
-                            }
-
-                            Switch {
-                                id: showPatternSwitch
-                                checked: true
-
-                                indicator: Rectangle {
-                                    implicitWidth: 56
-                                    implicitHeight: 32
-                                    radius: 16
-                                    color: showPatternSwitch.checked ? "#e94560" : "#333344"
-
-                                    Rectangle {
-                                        x: showPatternSwitch.checked ? parent.width - width - 3 : 3
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 26
-                                        height: 26
-                                        radius: 13
-                                        color: "#ffffff"
-
-                                        Behavior on x {
-                                            NumberAnimation { duration: 150 }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                MouseArea {
+                    id: noneMouse
+                    anchors.fill: parent
+                    onClicked: selectedMethod = 3
                 }
             }
 
-            // Security info
+            Item { height: 16 }
+
+            // Info card
             Rectangle {
-                Layout.fillWidth: true
-                Layout.topMargin: 24
-                height: infoColumn.height + 32
-                radius: 16
-                color: "#14141e"
-                border.color: "#1a1a2e"
+                width: methodsColumn.width
+                height: 80
+                radius: 20
+                color: "#1a1a1a"
+                border.color: "#2a2a2e"
                 border.width: 1
 
-                Column {
-                    id: infoColumn
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
+                RowLayout {
+                    anchors.fill: parent
                     anchors.margins: 16
                     spacing: 12
 
                     Text {
-                        text: "ℹ️  Security Information"
-                        font.pixelSize: 16
-                        font.weight: Font.Medium
-                        color: "#888899"
+                        text: "ℹ️"
+                        font.pixelSize: 24
                     }
 
                     Text {
-                        width: parent.width
-                        text: "Your device will lock automatically after the screen timeout. You can also lock it manually by pressing the power button."
-                        font.pixelSize: 14
-                        color: "#555566"
+                        text: "Changes take effect on next lock"
+                        font.pixelSize: 15
+                        color: "#777788"
+                        Layout.fillWidth: true
                         wrapMode: Text.WordWrap
-                        lineHeight: 1.4
                     }
                 }
             }
 
-            Item { height: 40 }
+            Item { height: 20 }
         }
     }
 
@@ -379,35 +476,22 @@ Page {
         width: 72
         height: 72
         radius: 36
-        color: backButtonMouse.pressed ? "#2a2a3e" : "#1a1a28"
-        border.color: backButtonMouse.pressed ? "#e94560" : "#2a2a3e"
+        color: backMouse.pressed ? "#e94560" : "#1a1a28"
+        border.color: "#2a2a3e"
         border.width: 2
 
-        Behavior on color { ColorAnimation { duration: 100 } }
-        Behavior on border.color { ColorAnimation { duration: 100 } }
-
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: 2
-            radius: 34
-            color: "transparent"
-            border.color: "#ffffff"
-            border.width: 1
-            opacity: 0.05
-        }
+        Behavior on color { ColorAnimation { duration: 150 } }
 
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 28
+            font.pixelSize: 32
             font.weight: Font.Light
-            color: backButtonMouse.pressed ? "#e94560" : "#ffffff"
-
-            Behavior on color { ColorAnimation { duration: 100 } }
+            color: "#ffffff"
         }
 
         MouseArea {
-            id: backButtonMouse
+            id: backMouse
             anchors.fill: parent
             onClicked: stackView.pop()
         }
@@ -418,10 +502,9 @@ Page {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 8
-        width: 100
+        width: 120
         height: 4
         radius: 2
         color: "#333344"
-        opacity: 0.5
     }
 }
