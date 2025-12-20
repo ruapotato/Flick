@@ -1430,12 +1430,20 @@ fn render_frame(
                     // gesture_progress goes 0.0 -> 1.0 as you drag
                     let enter_progress = state.switcher_gesture_progress as f32;
                     slint_ui.set_switcher_enter_progress(enter_progress);
-                    slint_ui.set_switcher_scroll(0.0);
 
                     // Update window list for preview
                     let screen_w = state.screen_size.w as f64;
                     let card_width = screen_w * 0.80;
                     let card_spacing = card_width * 0.35;
+                    let num_windows = state.space.elements().count();
+
+                    // Use same scroll as when switcher opens: center the topmost (last) window
+                    let scroll = if num_windows > 0 {
+                        (num_windows - 1) as f64 * card_spacing
+                    } else {
+                        0.0
+                    };
+                    slint_ui.set_switcher_scroll(scroll as f32);
 
                     let windows: Vec<_> = state.space.elements()
                         .enumerate()
@@ -1474,8 +1482,7 @@ fn render_frame(
                         })
                         .collect();
 
-                    // Sort by render order (furthest from center first)
-                    let scroll = 0.0;
+                    // Sort by render order (furthest from center first, using same scroll)
                     let mut windows = windows;
                     windows.sort_by(|a, b| {
                         let dist_a = ((a.3 as f64) * card_spacing - scroll).abs();
