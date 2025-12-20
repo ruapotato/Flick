@@ -18,11 +18,11 @@ Item {
     signal back()
 
     // Minimum swipe distance to trigger back (in pixels)
-    property int swipeThreshold: 80
+    property int swipeThreshold: 100
 
     // Edge margin - swipes starting within this margin from left edge are ignored
     // (those are for system gestures like quick settings)
-    property int edgeMargin: 30
+    property int edgeMargin: 40
 
     // Visual feedback
     property bool showIndicator: true
@@ -31,9 +31,7 @@ Item {
     // Internal state
     property real startX: 0
     property real startY: 0
-    property real currentX: 0
-    property bool tracking: false
-    property bool validSwipe: false
+    property bool swiping: false
 
     // Content goes here
     default property alias content: contentContainer.data
@@ -42,32 +40,21 @@ Item {
     Item {
         id: contentContainer
         anchors.fill: parent
-
-        // Slide effect during swipe
-        transform: Translate {
-            x: swipeBack.tracking && swipeBack.validSwipe ?
-               Math.max(0, Math.min(swipeBack.currentX - swipeBack.startX, 100)) : 0
-
-            Behavior on x {
-                enabled: !swipeBack.tracking
-                NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
-            }
-        }
     }
 
-    // Back indicator arrow
+    // Back indicator arrow - only visible during valid swipe
     Rectangle {
         id: backIndicator
         anchors.left: parent.left
+        anchors.leftMargin: -40
         anchors.verticalCenter: parent.verticalCenter
         width: 50
         height: 100
         radius: 8
         color: indicatorColor
         opacity: 0
-        visible: showIndicator
+        visible: showIndicator && swiping
 
-        // Arrow icon
         Text {
             anchors.centerIn: parent
             text: "‹"
@@ -75,32 +62,21 @@ Item {
             font.weight: Font.Light
             color: "#ffffff"
         }
-
-        states: State {
-            name: "visible"
-            when: swipeBack.tracking && swipeBack.validSwipe &&
-                  (swipeBack.currentX - swipeBack.startX) > swipeBack.swipeThreshold * 0.5
-            PropertyChanges {
-                target: backIndicator
-                opacity: Math.min(0.9, (swipeBack.currentX - swipeBack.startX - swipeBack.swipeThreshold * 0.5) / swipeBack.swipeThreshold)
-                x: Math.min(10, (swipeBack.currentX - swipeBack.startX - swipeBack.swipeThreshold * 0.5) / 4)
-            }
-        }
-
-        Behavior on opacity { NumberAnimation { duration: 100 } }
-        Behavior on x { NumberAnimation { duration: 100 } }
     }
 
-    // Gesture detection
+    // Gesture detection - thin strip on left side only
     MouseArea {
         id: gestureArea
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 60  // Only detect swipes starting from left 60px
+        z: 1000
 
-        // Pass through clicks to content below
-        propagateComposedEvents: true
+        property real dragDistance: 0
 
         onPressed: function(mouse) {
-            // Ignore swipes from the left edge (system gesture area)
+            // Ignore if too close to edge (system gesture area)
             if (mouse.x < swipeBack.edgeMargin) {
                 mouse.accepted = false
                 return
@@ -108,46 +84,39 @@ Item {
 
             swipeBack.startX = mouse.x
             swipeBack.startY = mouse.y
-            swipeBack.currentX = mouse.x
-            swipeBack.tracking = true
-            swipeBack.validSwipe = false
-
-            // Don't consume the event yet - let content handle it
-            mouse.accepted = false
+            swipeBack.swiping = false
+            dragDistance = 0
         }
 
         onPositionChanged: function(mouse) {
-            if (!swipeBack.tracking) return
-
-            swipeBack.currentX = mouse.x
-
             var deltaX = mouse.x - swipeBack.startX
             var deltaY = Math.abs(mouse.y - swipeBack.startY)
 
-            // Check if this is a valid horizontal swipe (more horizontal than vertical)
-            if (deltaX > 20 && deltaX > deltaY * 1.5) {
-                swipeBack.validSwipe = true
-                mouse.accepted = true  // Now consume the event
+            // Only track horizontal swipes (more horizontal than vertical)
+            if (deltaX > 30 && deltaX > deltaY * 2) {
+                swipeBack.swiping = true
+                dragDistance = deltaX
+
+                // Update indicator
+                backIndicator.opacity = Math.min(0.9, deltaX / swipeBack.swipeThreshold)
+                backIndicator.anchors.leftMargin = Math.min(10, deltaX / 10) - 40
             }
         }
 
         onReleased: function(mouse) {
-            if (swipeBack.tracking && swipeBack.validSwipe) {
-                var deltaX = mouse.x - swipeBack.startX
-
-                if (deltaX >= swipeBack.swipeThreshold) {
-                    // Trigger back action
-                    swipeBack.back()
-                }
+            if (swipeBack.swiping && dragDistance >= swipeBack.swipeThreshold) {
+                swipeBack.back()
             }
 
-            swipeBack.tracking = false
-            swipeBack.validSwipe = false
+            swipeBack.swiping = false
+            backIndicator.opacity = 0
+            backIndicator.anchors.leftMargin = -40
         }
 
         onCanceled: {
-            swipeBack.tracking = false
-            swipeBack.validSwipe = false
+            swipeBack.swiping = false
+            backIndicator.opacity = 0
+            backIndicator.anchors.leftMargin = -40
         }
     }
 }

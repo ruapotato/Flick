@@ -922,12 +922,11 @@ component HomeScreen inherits Rectangle {
             VerticalLayout {
                 padding: 12px;
                 spacing: 8px;
-                alignment: stretch;
 
-                // Row 0 (items 0-3) - large fixed height for touch alignment
+                // Row 0 (items 0-3)
                 if categories.length > 0: HorizontalLayout {
                     spacing: 8px;
-                    height: 480px;
+                    vertical-stretch: 1;
 
                     Rectangle {
                         horizontal-stretch: 1;
@@ -986,7 +985,7 @@ component HomeScreen inherits Rectangle {
                 // Row 1 (items 4-7)
                 if categories.length > 4: HorizontalLayout {
                     spacing: 8px;
-                    height: 480px;
+                    vertical-stretch: 1;
 
                     Rectangle {
                         horizontal-stretch: 1;
@@ -1045,7 +1044,7 @@ component HomeScreen inherits Rectangle {
                 // Row 2 (items 8-11)
                 if categories.length > 8: HorizontalLayout {
                     spacing: 8px;
-                    height: 480px;
+                    vertical-stretch: 1;
 
                     Rectangle {
                         horizontal-stretch: 1;
@@ -1104,7 +1103,7 @@ component HomeScreen inherits Rectangle {
                 // Row 3 (items 12-15)
                 if categories.length > 12: HorizontalLayout {
                     spacing: 8px;
-                    height: 480px;
+                    vertical-stretch: 1;
 
                     Rectangle {
                         horizontal-stretch: 1;
@@ -1160,8 +1159,6 @@ component HomeScreen inherits Rectangle {
                     }
                 }
 
-                // Spacer at bottom
-                Rectangle { vertical-stretch: 1; }
             }
         }
 
