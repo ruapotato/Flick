@@ -344,6 +344,10 @@ fn handle_input_event(
         InputEvent::TouchDown { .. } => info!("INPUT: TouchDown"),
         InputEvent::TouchUp { .. } => info!("INPUT: TouchUp"),
         InputEvent::TouchMotion { .. } => {} // too spammy
+        InputEvent::Keyboard { ref event } => {
+            use smithay::backend::input::KeyboardKeyEvent;
+            info!("INPUT: Keyboard key={} state={:?}", event.key_code().raw(), event.state());
+        }
         _ => {}
     }
 
