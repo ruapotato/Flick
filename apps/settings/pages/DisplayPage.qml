@@ -8,6 +8,7 @@ Page {
     property real brightness: 0.75
     property bool autoBrightness: false
     property int selectedTimeout: 1
+    property int selectedScale: 2  // 0=Small, 1=Default, 2=Large, 3=Extra Large
 
     background: Rectangle {
         color: "#0a0a0f"
@@ -315,6 +316,119 @@ Page {
                         id: timeoutMouse
                         anchors.fill: parent
                         onClicked: selectedTimeout = index
+                    }
+                }
+            }
+
+            Item { height: 16 }
+
+            Text {
+                text: "TEXT SIZE"
+                font.pixelSize: 12
+                font.letterSpacing: 2
+                color: "#555566"
+                leftPadding: 8
+            }
+
+            // Text scale preview
+            Rectangle {
+                width: settingsColumn.width
+                height: 100
+                radius: 24
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                border.width: 1
+
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 8
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "Preview Text"
+                        font.pixelSize: 16 + selectedScale * 4
+                        color: "#ffffff"
+
+                        Behavior on font.pixelSize { NumberAnimation { duration: 150 } }
+                    }
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: ["Small", "Default", "Large", "Extra Large"][selectedScale]
+                        font.pixelSize: 13
+                        color: "#666677"
+                    }
+                }
+            }
+
+            // Text scale options
+            Repeater {
+                model: ListModel {
+                    ListElement { label: "Small"; desc: "Fit more content"; value: 0 }
+                    ListElement { label: "Default"; desc: "Standard size"; value: 1 }
+                    ListElement { label: "Large"; desc: "Easier to read"; value: 2 }
+                    ListElement { label: "Extra Large"; desc: "Maximum readability"; value: 3 }
+                }
+
+                Rectangle {
+                    width: settingsColumn.width
+                    height: 80
+                    radius: 20
+                    color: scaleMouse.pressed ? "#1e1e2e" : "#14141e"
+                    border.color: selectedScale === model.value ? "#e94560" : "#1a1a2e"
+                    border.width: selectedScale === model.value ? 2 : 1
+
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 20
+                        spacing: 16
+
+                        Column {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Text {
+                                text: model.label
+                                font.pixelSize: 20
+                                color: "#ffffff"
+                            }
+
+                            Text {
+                                text: model.desc
+                                font.pixelSize: 13
+                                color: "#666677"
+                            }
+                        }
+
+                        // Radio indicator
+                        Rectangle {
+                            Layout.preferredWidth: 28
+                            Layout.preferredHeight: 28
+                            radius: 14
+                            color: "transparent"
+                            border.color: selectedScale === model.value ? "#e94560" : "#3a3a4e"
+                            border.width: 2
+
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: selectedScale === model.value ? 14 : 0
+                                height: width
+                                radius: width / 2
+                                color: "#e94560"
+
+                                Behavior on width {
+                                    NumberAnimation { duration: 150; easing.type: Easing.OutBack }
+                                }
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        id: scaleMouse
+                        anchors.fill: parent
+                        onClicked: selectedScale = model.value
                     }
                 }
             }

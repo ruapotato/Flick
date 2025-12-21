@@ -1,0 +1,122 @@
+#!/bin/bash
+# Flick Settings Control Helper
+# This script provides system integration for the Settings app
+
+set -e
+
+usage() {
+    echo "Usage: $0 <command> [args...]"
+    echo "Commands:"
+    echo "  brightness get        - Get current brightness (0-100)"
+    echo "  brightness set <val>  - Set brightness (0-100)"
+    echo "  volume get            - Get current volume (0-100)"
+    echo "  volume set <val>      - Set volume (0-100)"
+    echo "  mute get              - Get mute status (0/1)"
+    echo "  mute set <0|1>        - Set mute status"
+    exit 1
+}
+
+[ $# -lt 2 ] && usage
+
+CMD="$1"
+ACTION="$2"
+VALUE="${3:-}"
+
+case "$CMD" in
+    brightness)
+        case "$ACTION" in
+            get)
+                # Try brightnessctl first, then fall back to sysfs
+                if command -v brightnessctl &>/dev/null; then
+                    val=$(brightnessctl -m | cut -d',' -f4 | tr -d '%')
+                    echo "${val:-50}"
+                else
+                    # Find first backlight
+                    for bl in /sys/class/backlight/*; do
+                        if [ -f "$bl/brightness" ] && [ -f "$bl/max_brightness" ]; then
+                            cur=$(cat "$bl/brightness")
+                            max=$(cat "$bl/max_brightness")
+                            echo $(( cur * 100 / max ))
+                            exit 0
+                        fi
+                    done
+                    echo 50
+                fi
+                ;;
+            set)
+                [ -z "$VALUE" ] && usage
+                if command -v brightnessctl &>/dev/null; then
+                    brightnessctl set "${VALUE}%" &>/dev/null
+                else
+                    for bl in /sys/class/backlight/*; do
+                        if [ -f "$bl/brightness" ] && [ -f "$bl/max_brightness" ]; then
+                            max=$(cat "$bl/max_brightness")
+                            new=$(( VALUE * max / 100 ))
+                            echo "$new" > "$bl/brightness" 2>/dev/null || true
+                            exit 0
+                        fi
+                    done
+                fi
+                ;;
+            *)
+                usage
+                ;;
+        esac
+        ;;
+    volume)
+        case "$ACTION" in
+            get)
+                # Try pactl (PulseAudio) first, then wpctl (PipeWire)
+                if command -v pactl &>/dev/null; then
+                    vol=$(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | grep -oP '\d+%' | head -1 | tr -d '%')
+                    echo "${vol:-50}"
+                elif command -v wpctl &>/dev/null; then
+                    vol=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | grep -oP '[\d.]+' | head -1)
+                    echo $(echo "$vol * 100" | bc 2>/dev/null || echo 50)
+                else
+                    echo 50
+                fi
+                ;;
+            set)
+                [ -z "$VALUE" ] && usage
+                if command -v pactl &>/dev/null; then
+                    pactl set-sink-volume @DEFAULT_SINK@ "${VALUE}%" &>/dev/null || true
+                elif command -v wpctl &>/dev/null; then
+                    wpctl set-volume @DEFAULT_AUDIO_SINK@ "$(echo "$VALUE / 100" | bc -l)%" &>/dev/null || true
+                fi
+                ;;
+            *)
+                usage
+                ;;
+        esac
+        ;;
+    mute)
+        case "$ACTION" in
+            get)
+                if command -v pactl &>/dev/null; then
+                    muted=$(pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null | grep -oP '(yes|no)')
+                    [ "$muted" = "yes" ] && echo 1 || echo 0
+                elif command -v wpctl &>/dev/null; then
+                    muted=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | grep -q MUTED && echo 1 || echo 0)
+                    echo "$muted"
+                else
+                    echo 0
+                fi
+                ;;
+            set)
+                [ -z "$VALUE" ] && usage
+                if command -v pactl &>/dev/null; then
+                    [ "$VALUE" = "1" ] && pactl set-sink-mute @DEFAULT_SINK@ 1 || pactl set-sink-mute @DEFAULT_SINK@ 0
+                elif command -v wpctl &>/dev/null; then
+                    [ "$VALUE" = "1" ] && wpctl set-mute @DEFAULT_AUDIO_SINK@ 1 || wpctl set-mute @DEFAULT_AUDIO_SINK@ 0
+                fi
+                ;;
+            *)
+                usage
+                ;;
+        esac
+        ;;
+    *)
+        usage
+        ;;
+esac

@@ -366,6 +366,20 @@ fn handle_input_event(
                 }
             }
 
+            // Update last activity time for auto-lock
+            state.last_activity = std::time::Instant::now();
+
+            // Power button (evdev keycode 116) locks the screen
+            if evdev_keycode == 116 && pressed {
+                info!("Power button pressed, locking screen");
+                state.shell.lock();
+                // Launch lock screen app
+                if let Some(socket) = state.socket_name.to_str() {
+                    state.shell.launch_lock_screen_app(socket);
+                }
+                return;
+            }
+
             let serial = smithay::utils::SERIAL_COUNTER.next_serial();
             let time = event.time_msec();
 
@@ -438,6 +452,9 @@ fn handle_input_event(
             let slot_id: i32 = event.slot().into();
             let position = event.position_transformed(state.screen_size);
             let touch_pos = Point::from((position.x, position.y));
+
+            // Update last activity time for auto-lock
+            state.last_activity = std::time::Instant::now();
 
             // Track touch position
             state.last_touch_pos.insert(slot_id, touch_pos);
@@ -975,6 +992,78 @@ fn handle_input_event(
                         if let Some(pos) = last_pos {
                             if let Some(ref slint_ui) = state.shell.slint_ui {
                                 slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
+
+                                // Process pending Quick Settings actions
+                                use crate::system::{WifiManager, BluetoothManager, AirplaneMode, Flashlight};
+                                use crate::shell::slint_ui::QuickSettingsAction;
+
+                                let actions = slint_ui.take_pending_qs_actions();
+                                for action in actions {
+                                    match action {
+                                        QuickSettingsAction::WifiToggle => {
+                                            WifiManager::toggle();
+                                            state.system.wifi_enabled = WifiManager::is_enabled();
+                                            state.system.wifi_ssid = WifiManager::current_connection();
+                                            info!("WiFi toggled: {}", if state.system.wifi_enabled { "ON" } else { "OFF" });
+                                        }
+                                        QuickSettingsAction::BluetoothToggle => {
+                                            BluetoothManager::toggle();
+                                            state.system.bluetooth_enabled = BluetoothManager::is_enabled();
+                                            info!("Bluetooth toggled: {}", if state.system.bluetooth_enabled { "ON" } else { "OFF" });
+                                        }
+                                        QuickSettingsAction::DndToggle => {
+                                            state.system.dnd.toggle();
+                                            info!("Do Not Disturb: {}", if state.system.dnd.enabled { "ON" } else { "OFF" });
+                                        }
+                                        QuickSettingsAction::FlashlightToggle => {
+                                            Flashlight::toggle();
+                                            info!("Flashlight toggled");
+                                        }
+                                        QuickSettingsAction::AirplaneToggle => {
+                                            AirplaneMode::toggle();
+                                            state.system.wifi_enabled = WifiManager::is_enabled();
+                                            state.system.bluetooth_enabled = BluetoothManager::is_enabled();
+                                            info!("Airplane mode toggled");
+                                        }
+                                        QuickSettingsAction::RotationToggle => {
+                                            state.system.rotation_lock.toggle();
+                                            info!("Rotation lock: {}", if state.system.rotation_lock.locked { "ON" } else { "OFF" });
+                                        }
+                                        QuickSettingsAction::TouchEffectsToggle => {
+                                            let enabled = !state.touch_effects_enabled;
+                                            state.set_touch_effects_enabled(enabled);
+                                            info!("Touch effects: {}", if enabled { "ON" } else { "OFF" });
+                                        }
+                                        QuickSettingsAction::Lock => {
+                                            info!("Lock button pressed - locking screen");
+                                            state.shell.lock();
+                                            if let Some(socket) = state.socket_name.to_str() {
+                                                state.shell.launch_lock_screen_app(socket);
+                                            }
+                                        }
+                                        QuickSettingsAction::Settings => {
+                                            info!("Settings button pressed - launching settings app");
+                                            use crate::shell::apps::AppCategory;
+                                            if let Some(exec) = state.shell.app_manager.get_exec(AppCategory::Settings) {
+                                                state.shell.set_view(crate::shell::ShellView::App);
+                                                let exec_clone = exec.clone();
+                                                std::thread::spawn(move || {
+                                                    if let Err(e) = std::process::Command::new("/bin/sh")
+                                                        .arg("-c")
+                                                        .arg(&exec_clone)
+                                                        .spawn()
+                                                    {
+                                                        error!("Failed to launch settings app: {}", e);
+                                                    }
+                                                });
+                                            }
+                                        }
+                                        QuickSettingsAction::BrightnessChanged(value) => {
+                                            state.system.set_brightness(value);
+                                            info!("Brightness set to {:.0}%", value * 100.0);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1388,6 +1477,19 @@ pub fn run() -> Result<()> {
 
             state.shell.unlock();
             info!("After unlock: view={:?}, lock_screen_active={}", state.shell.view, state.shell.lock_screen_active);
+        }
+
+        // Auto-lock check - only when not already locked and timeout is positive
+        if !state.shell.lock_screen_active && state.shell.lock_config.timeout_seconds > 0 {
+            let idle_duration = state.last_activity.elapsed();
+            let timeout = Duration::from_secs(state.shell.lock_config.timeout_seconds as u64);
+            if idle_duration >= timeout {
+                info!("Auto-lock triggered after {:?} idle", idle_duration);
+                state.shell.lock();
+                if let Some(socket) = state.socket_name.to_str() {
+                    state.shell.launch_lock_screen_app(socket);
+                }
+            }
         }
 
         // Log every loop iteration for debugging
