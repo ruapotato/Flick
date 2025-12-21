@@ -8,7 +8,31 @@ Page {
     property real brightness: 0.75
     property bool autoBrightness: false
     property int selectedTimeout: 1
-    property int selectedScale: 2  // 0=Small, 1=Default, 2=Large, 3=Extra Large
+    property real textScale: 2.0  // Text scale factor (0.5 to 3.0, default 2.0)
+    property string scaleConfigPath: "/home/droidian/.local/state/flick/display_config.json"
+
+    Component.onCompleted: loadScaleConfig()
+
+    function loadScaleConfig() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + scaleConfigPath, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200) {
+                var config = JSON.parse(xhr.responseText)
+                if (config.text_scale !== undefined) {
+                    textScale = config.text_scale
+                }
+            }
+        } catch (e) {
+            console.log("Using default text scale: 2.0")
+        }
+    }
+
+    function saveScaleConfig() {
+        // Log the scale value - shell script will capture and save to config
+        console.log("Saving text scale: " + textScale.toFixed(2))
+    }
 
     background: Rectangle {
         color: "#0a0a0f"
@@ -330,107 +354,146 @@ Page {
                 leftPadding: 8
             }
 
-            // Text scale preview
+            // Text scale card with slider
             Rectangle {
                 width: settingsColumn.width
-                height: 100
+                height: 200
                 radius: 24
                 color: "#14141e"
                 border.color: "#1a1a2e"
                 border.width: 1
 
                 Column {
-                    anchors.centerIn: parent
-                    spacing: 8
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    spacing: 16
 
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: "Preview Text"
-                        font.pixelSize: 16 + selectedScale * 4
-                        color: "#ffffff"
+                    // Preview text
+                    Item {
+                        width: parent.width
+                        height: 60
 
-                        Behavior on font.pixelSize { NumberAnimation { duration: 150 } }
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Preview Text"
+                            font.pixelSize: 14 * textScale
+                            color: "#ffffff"
+
+                            Behavior on font.pixelSize { NumberAnimation { duration: 100 } }
+                        }
                     }
 
+                    // Scale value display
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: ["Small", "Default", "Large", "Extra Large"][selectedScale]
-                        font.pixelSize: 13
-                        color: "#666677"
+                        text: textScale.toFixed(1) + "x"
+                        font.pixelSize: 24
+                        font.weight: Font.Bold
+                        color: "#e94560"
+                    }
+
+                    // Slider
+                    Item {
+                        width: parent.width
+                        height: 50
+
+                        // Track labels
+                        Row {
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+
+                            Text {
+                                width: parent.width / 3
+                                text: "0.5x"
+                                font.pixelSize: 11
+                                color: "#555566"
+                                horizontalAlignment: Text.AlignLeft
+                            }
+                            Text {
+                                width: parent.width / 3
+                                text: "2.0x"
+                                font.pixelSize: 11
+                                color: "#555566"
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                            Text {
+                                width: parent.width / 3
+                                text: "3.0x"
+                                font.pixelSize: 11
+                                color: "#555566"
+                                horizontalAlignment: Text.AlignRight
+                            }
+                        }
+
+                        // Track background
+                        Rectangle {
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 8
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: parent.width
+                            height: 10
+                            radius: 5
+                            color: "#1a1a28"
+
+                            // Filled portion
+                            Rectangle {
+                                width: parent.width * ((textScale - 0.5) / 2.5)
+                                height: parent.height
+                                radius: 5
+                                gradient: Gradient {
+                                    orientation: Gradient.Horizontal
+                                    GradientStop { position: 0.0; color: "#993366" }
+                                    GradientStop { position: 1.0; color: "#e94560" }
+                                }
+
+                                Behavior on width { NumberAnimation { duration: 50 } }
+                            }
+                        }
+
+                        // Handle
+                        Rectangle {
+                            x: (parent.width - 36) * ((textScale - 0.5) / 2.5)
+                            anchors.bottom: parent.bottom
+                            width: 36
+                            height: 36
+                            radius: 18
+                            color: "#ffffff"
+                            border.color: "#e94560"
+                            border.width: 3
+
+                            Behavior on x { NumberAnimation { duration: 50 } }
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Aa"
+                                font.pixelSize: 14
+                                font.weight: Font.Bold
+                                color: "#e94560"
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onPressed: updateScale(mouse)
+                            onPositionChanged: if (pressed) updateScale(mouse)
+                            onReleased: saveScaleConfig()
+
+                            function updateScale(mouse) {
+                                var ratio = Math.max(0, Math.min(1, mouse.x / parent.width))
+                                textScale = 0.5 + ratio * 2.5  // 0.5 to 3.0 range
+                            }
+                        }
                     }
                 }
             }
 
-            // Text scale options
-            Repeater {
-                model: ListModel {
-                    ListElement { label: "Small"; desc: "Fit more content"; value: 0 }
-                    ListElement { label: "Default"; desc: "Standard size"; value: 1 }
-                    ListElement { label: "Large"; desc: "Easier to read"; value: 2 }
-                    ListElement { label: "Extra Large"; desc: "Maximum readability"; value: 3 }
-                }
-
-                Rectangle {
-                    width: settingsColumn.width
-                    height: 80
-                    radius: 20
-                    color: scaleMouse.pressed ? "#1e1e2e" : "#14141e"
-                    border.color: selectedScale === model.value ? "#e94560" : "#1a1a2e"
-                    border.width: selectedScale === model.value ? 2 : 1
-
-                    Behavior on border.color { ColorAnimation { duration: 150 } }
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 20
-                        spacing: 16
-
-                        Column {
-                            Layout.fillWidth: true
-                            spacing: 4
-
-                            Text {
-                                text: model.label
-                                font.pixelSize: 20
-                                color: "#ffffff"
-                            }
-
-                            Text {
-                                text: model.desc
-                                font.pixelSize: 13
-                                color: "#666677"
-                            }
-                        }
-
-                        // Radio indicator
-                        Rectangle {
-                            Layout.preferredWidth: 28
-                            Layout.preferredHeight: 28
-                            radius: 14
-                            color: "transparent"
-                            border.color: selectedScale === model.value ? "#e94560" : "#3a3a4e"
-                            border.width: 2
-
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: selectedScale === model.value ? 14 : 0
-                                height: width
-                                radius: width / 2
-                                color: "#e94560"
-
-                                Behavior on width {
-                                    NumberAnimation { duration: 150; easing.type: Easing.OutBack }
-                                }
-                            }
-                        }
-                    }
-
-                    MouseArea {
-                        id: scaleMouse
-                        anchors.fill: parent
-                        onClicked: selectedScale = model.value
-                    }
-                }
+            // Description
+            Text {
+                text: "Adjusts text size in apps. Default is 2.0x."
+                font.pixelSize: 13
+                color: "#666677"
+                leftPadding: 8
             }
 
             Item { height: 20 }

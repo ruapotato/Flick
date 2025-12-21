@@ -565,41 +565,41 @@ Page {
         }
     }
 
-    // Hero section
+    // Hero section - compact
     Rectangle {
         id: heroSection
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 260
+        height: 180
         color: "transparent"
 
         // Ambient glow
         Rectangle {
             anchors.centerIn: parent
-            width: 350
-            height: 250
-            radius: 175
+            width: 280
+            height: 180
+            radius: 140
             color: "#4a1a3a"
             opacity: 0.2
         }
 
         Column {
             anchors.centerIn: parent
-            spacing: 20
+            spacing: 12
 
-            // Large shield icon
+            // Shield icon - smaller
             Item {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 120
-                height: 120
+                width: 80
+                height: 80
 
                 // Shield glow
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 150
-                    height: 150
-                    radius: 75
+                    width: 100
+                    height: 100
+                    radius: 50
                     color: "#e94560"
                     opacity: 0.1
 
@@ -612,17 +612,17 @@ Page {
 
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 100
-                    height: 100
-                    radius: 50
+                    width: 70
+                    height: 70
+                    radius: 35
                     color: "#4a1a3a"
                     border.color: "#e94560"
-                    border.width: 3
+                    border.width: 2
 
                     Text {
                         anchors.centerIn: parent
                         text: selectedMethod === 3 ? "🔓" : "🔐"
-                        font.pixelSize: 44
+                        font.pixelSize: 32
                     }
                 }
             }
@@ -630,16 +630,16 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Security"
-                font.pixelSize: 42
+                font.pixelSize: 36
                 font.weight: Font.ExtraLight
-                font.letterSpacing: 6
+                font.letterSpacing: 4
                 color: "#ffffff"
             }
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: selectedMethod === 3 ? "DEVICE UNLOCKED" : "DEVICE PROTECTED"
-                font.pixelSize: 12
+                font.pixelSize: 11
                 font.letterSpacing: 2
                 color: selectedMethod === 3 ? "#cc8844" : "#4ade80"
             }
@@ -661,7 +661,7 @@ Page {
             id: methodsColumn
             anchors.left: parent.left
             anchors.right: parent.right
-            spacing: 12
+            spacing: 10
 
             Text {
                 text: "SCREEN LOCK METHOD"
@@ -674,8 +674,8 @@ Page {
             // PIN option
             Rectangle {
                 width: methodsColumn.width
-                height: 100
-                radius: 24
+                height: 76
+                radius: 20
                 color: pinMouse.pressed ? "#1e1e2e" : "#14141e"
                 border.color: selectedMethod === 0 ? "#e94560" : "#1a1a2e"
                 border.width: selectedMethod === 0 ? 2 : 1
@@ -684,51 +684,51 @@ Page {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 16
+                    anchors.margins: 14
+                    spacing: 12
 
                     Rectangle {
-                        Layout.preferredWidth: 60
-                        Layout.preferredHeight: 60
-                        radius: 16
+                        Layout.preferredWidth: 48
+                        Layout.preferredHeight: 48
+                        radius: 12
                         color: selectedMethod === 0 ? "#3a1a2a" : "#1a1a28"
 
                         Text {
                             anchors.centerIn: parent
                             text: "🔢"
-                            font.pixelSize: 28
+                            font.pixelSize: 24
                         }
                     }
 
                     Column {
                         Layout.fillWidth: true
-                        spacing: 6
+                        spacing: 4
 
                         Text {
                             text: "PIN"
-                            font.pixelSize: 22
+                            font.pixelSize: 18
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }
 
                         Text {
                             text: "4-6 digit numeric code"
-                            font.pixelSize: 14
+                            font.pixelSize: 12
                             color: "#666677"
                         }
                     }
 
                     Rectangle {
-                        Layout.preferredWidth: 28
-                        Layout.preferredHeight: 28
-                        radius: 14
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 12
                         color: "transparent"
                         border.color: selectedMethod === 0 ? "#e94560" : "#3a3a4e"
                         border.width: 2
 
                         Rectangle {
                             anchors.centerIn: parent
-                            width: selectedMethod === 0 ? 14 : 0
+                            width: selectedMethod === 0 ? 12 : 0
                             height: width
                             radius: width / 2
                             color: "#e94560"
@@ -750,8 +750,8 @@ Page {
             // Password option
             Rectangle {
                 width: methodsColumn.width
-                height: 100
-                radius: 24
+                height: 76
+                radius: 20
                 color: passwordMouse.pressed ? "#1e1e2e" : "#14141e"
                 border.color: selectedMethod === 1 ? "#e94560" : "#1a1a2e"
                 border.width: selectedMethod === 1 ? 2 : 1
@@ -760,51 +760,51 @@ Page {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 16
+                    anchors.margins: 14
+                    spacing: 12
 
                     Rectangle {
-                        Layout.preferredWidth: 60
-                        Layout.preferredHeight: 60
-                        radius: 16
+                        Layout.preferredWidth: 48
+                        Layout.preferredHeight: 48
+                        radius: 12
                         color: selectedMethod === 1 ? "#3a1a2a" : "#1a1a28"
 
                         Text {
                             anchors.centerIn: parent
                             text: "🔤"
-                            font.pixelSize: 28
+                            font.pixelSize: 24
                         }
                     }
 
                     Column {
                         Layout.fillWidth: true
-                        spacing: 6
+                        spacing: 4
 
                         Text {
                             text: "Password"
-                            font.pixelSize: 22
+                            font.pixelSize: 18
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }
 
                         Text {
                             text: "System password for unlock"
-                            font.pixelSize: 14
+                            font.pixelSize: 12
                             color: "#666677"
                         }
                     }
 
                     Rectangle {
-                        Layout.preferredWidth: 28
-                        Layout.preferredHeight: 28
-                        radius: 14
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 12
                         color: "transparent"
                         border.color: selectedMethod === 1 ? "#e94560" : "#3a3a4e"
                         border.width: 2
 
                         Rectangle {
                             anchors.centerIn: parent
-                            width: selectedMethod === 1 ? 14 : 0
+                            width: selectedMethod === 1 ? 12 : 0
                             height: width
                             radius: width / 2
                             color: "#e94560"
@@ -826,8 +826,8 @@ Page {
             // Pattern option
             Rectangle {
                 width: methodsColumn.width
-                height: 100
-                radius: 24
+                height: 76
+                radius: 20
                 color: patternMouse.pressed ? "#1e1e2e" : "#14141e"
                 border.color: selectedMethod === 2 ? "#e94560" : "#1a1a2e"
                 border.width: selectedMethod === 2 ? 2 : 1
@@ -836,27 +836,27 @@ Page {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 16
+                    anchors.margins: 14
+                    spacing: 12
 
                     Rectangle {
-                        Layout.preferredWidth: 60
-                        Layout.preferredHeight: 60
-                        radius: 16
+                        Layout.preferredWidth: 48
+                        Layout.preferredHeight: 48
+                        radius: 12
                         color: selectedMethod === 2 ? "#3a1a2a" : "#1a1a28"
 
                         // Pattern grid preview
                         Grid {
                             anchors.centerIn: parent
                             columns: 3
-                            spacing: 6
+                            spacing: 5
 
                             Repeater {
                                 model: 9
                                 Rectangle {
-                                    width: 10
-                                    height: 10
-                                    radius: 5
+                                    width: 8
+                                    height: 8
+                                    radius: 4
                                     color: (index === 0 || index === 4 || index === 8) ? "#e94560" : "#444455"
                                 }
                             }
@@ -865,33 +865,33 @@ Page {
 
                     Column {
                         Layout.fillWidth: true
-                        spacing: 6
+                        spacing: 4
 
                         Text {
                             text: "Pattern"
-                            font.pixelSize: 22
+                            font.pixelSize: 18
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }
 
                         Text {
                             text: "Draw a pattern to unlock"
-                            font.pixelSize: 14
+                            font.pixelSize: 12
                             color: "#666677"
                         }
                     }
 
                     Rectangle {
-                        Layout.preferredWidth: 28
-                        Layout.preferredHeight: 28
-                        radius: 14
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 12
                         color: "transparent"
                         border.color: selectedMethod === 2 ? "#e94560" : "#3a3a4e"
                         border.width: 2
 
                         Rectangle {
                             anchors.centerIn: parent
-                            width: selectedMethod === 2 ? 14 : 0
+                            width: selectedMethod === 2 ? 12 : 0
                             height: width
                             radius: width / 2
                             color: "#e94560"
@@ -913,8 +913,8 @@ Page {
             // None option
             Rectangle {
                 width: methodsColumn.width
-                height: 100
-                radius: 24
+                height: 76
+                radius: 20
                 color: noneMouse.pressed ? "#1e1e2e" : "#14141e"
                 border.color: selectedMethod === 3 ? "#cc8844" : "#1a1a2e"
                 border.width: selectedMethod === 3 ? 2 : 1
@@ -923,51 +923,51 @@ Page {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 16
+                    anchors.margins: 14
+                    spacing: 12
 
                     Rectangle {
-                        Layout.preferredWidth: 60
-                        Layout.preferredHeight: 60
-                        radius: 16
+                        Layout.preferredWidth: 48
+                        Layout.preferredHeight: 48
+                        radius: 12
                         color: selectedMethod === 3 ? "#3a2a1a" : "#1a1a28"
 
                         Text {
                             anchors.centerIn: parent
                             text: "🔓"
-                            font.pixelSize: 28
+                            font.pixelSize: 24
                         }
                     }
 
                     Column {
                         Layout.fillWidth: true
-                        spacing: 6
+                        spacing: 4
 
                         Text {
                             text: "None"
-                            font.pixelSize: 22
+                            font.pixelSize: 18
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }
 
                         Text {
                             text: "Swipe to unlock (not secure)"
-                            font.pixelSize: 14
+                            font.pixelSize: 12
                             color: "#cc8844"
                         }
                     }
 
                     Rectangle {
-                        Layout.preferredWidth: 28
-                        Layout.preferredHeight: 28
-                        radius: 14
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 12
                         color: "transparent"
                         border.color: selectedMethod === 3 ? "#cc8844" : "#3a3a4e"
                         border.width: 2
 
                         Rectangle {
                             anchors.centerIn: parent
-                            width: selectedMethod === 3 ? 14 : 0
+                            width: selectedMethod === 3 ? 12 : 0
                             height: width
                             radius: width / 2
                             color: "#cc8844"
@@ -986,38 +986,37 @@ Page {
                 }
             }
 
-            Item { height: 16 }
+            Item { height: 12 }
 
-            // Info card
+            // Info card - more compact
             Rectangle {
                 width: methodsColumn.width
-                height: 80
-                radius: 20
+                height: 56
+                radius: 16
                 color: "#1a1a1a"
                 border.color: "#2a2a2e"
                 border.width: 1
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 12
+                    anchors.margins: 12
+                    spacing: 10
 
                     Text {
                         text: "ℹ️"
-                        font.pixelSize: 24
+                        font.pixelSize: 18
                     }
 
                     Text {
                         text: "Changes take effect on next lock"
-                        font.pixelSize: 15
+                        font.pixelSize: 13
                         color: "#777788"
                         Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
                     }
                 }
             }
 
-            Item { height: 20 }
+            Item { height: 16 }
         }
     }
 
