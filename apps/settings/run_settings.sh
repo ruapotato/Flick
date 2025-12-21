@@ -63,11 +63,12 @@ export QT_AUTO_SCREEN_SCALE_FACTOR=0
         echo "Detected pattern save: $PATTERN" >> "$LOG_FILE"
         echo "$PATTERN" > "$PATTERN_FILE"
     fi
-    # Check for text scale save messages
+    # Check for text scale save messages - save immediately
     if [[ "$line" == *"Saving text scale:"* ]]; then
         SCALE=$(echo "$line" | sed 's/.*Saving text scale: //')
         echo "Detected text scale change: $SCALE" >> "$LOG_FILE"
-        echo "$SCALE" > "$DISPLAY_PENDING"
+        echo "{\"text_scale\": $SCALE}" > "$DISPLAY_CONFIG"
+        echo "Display config saved to $DISPLAY_CONFIG" >> "$LOG_FILE"
     fi
 done
 EXIT_CODE=${PIPESTATUS[0]}
@@ -98,13 +99,4 @@ elif [ -f "$PENDING_FILE" ]; then
     rm -f "$PENDING_FILE"
 fi
 
-# Process any pending display config
-if [ -f "$DISPLAY_PENDING" ]; then
-    SCALE=$(cat "$DISPLAY_PENDING")
-    if [ -n "$SCALE" ]; then
-        echo "Applying pending text scale: $SCALE" >> "$LOG_FILE"
-        echo "{\"text_scale\": $SCALE}" > "$DISPLAY_CONFIG"
-        echo "Display config saved to $DISPLAY_CONFIG" >> "$LOG_FILE"
-    fi
-    rm -f "$DISPLAY_PENDING"
-fi
+# Display config is saved immediately when changed (no pending file needed)
