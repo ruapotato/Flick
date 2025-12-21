@@ -1798,9 +1798,10 @@ fn render_frame(
         // Check if we're in a gesture that needs to preview the switcher
         let switcher_gesture_preview = state.switcher_gesture_active && shell_view == ShellView::App;
 
-        // Render Slint UI for shell views (but not when QML lockscreen is connected)
+        // Render Slint UI for shell views
+        // Always render Slint for lock screen (we use Slint lock screen, not QML anymore)
         // Also render during switcher gesture preview
-        if !qml_lockscreen_connected {
+        if !qml_lockscreen_connected || shell_view == ShellView::LockScreen {
             match shell_view {
                 ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault | ShellView::LockScreen
                 if !switcher_gesture_preview => {
