@@ -1777,15 +1777,8 @@ fn render_frame(
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         match shell_view {
                             ShellView::LockScreen => {
-                                // QML lockscreen not connected yet - show debug info
+                                // Use built-in Slint lock screen
                                 slint_ui.set_view("lock");
-                                slint_ui.set_lock_time("WAITING");
-                                slint_ui.set_lock_date("QML lockscreen loading...");
-                                slint_ui.set_lock_error("elements=0, QML not connected yet");
-                                if log_frame {
-                                    warn!("LockScreen view but no QML app connected - showing debug fallback");
-                                }
-                                slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
 
                                 // Set lock mode based on config
                                 let lock_mode = match state.shell.lock_config.method {
@@ -1795,6 +1788,31 @@ fn render_frame(
                                     crate::shell::lock_screen::LockMethod::None => "none",
                                 };
                                 slint_ui.set_lock_mode(lock_mode);
+
+                                // Update lock screen state
+                                slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
+                                slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
+
+                                // Update pattern nodes
+                                let mut nodes = [false; 9];
+                                for &n in &state.shell.lock_state.pattern_nodes {
+                                    if (n as usize) < 9 {
+                                        nodes[n as usize] = true;
+                                    }
+                                }
+                                slint_ui.set_pattern_nodes(&nodes);
+
+                                // Show error message if any
+                                if let Some(ref err) = state.shell.lock_state.error_message {
+                                    slint_ui.set_lock_error(err);
+                                } else {
+                                    slint_ui.set_lock_error("");
+                                }
+
+                                // Update time/date for lock screen
+                                let now = chrono::Local::now();
+                                slint_ui.set_lock_time(&now.format("%H:%M").to_string());
+                                slint_ui.set_lock_date(&now.format("%A, %B %d").to_string());
                             }
                             ShellView::Home => {
                                 slint_ui.set_view("home");

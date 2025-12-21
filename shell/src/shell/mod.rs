@@ -509,11 +509,20 @@ impl Shell {
     }
 
     /// Launch the external lock screen app (called by compositor)
-    pub fn launch_lock_screen_app(&self, socket_name: &str) -> bool {
+    /// NOTE: We now use the built-in Slint lock screen which supports all modes
+    /// (PIN, password, pattern). The QML lock screen is disabled.
+    pub fn launch_lock_screen_app(&self, _socket_name: &str) -> bool {
         if !self.lock_screen_active {
             return false;
         }
 
+        // Use built-in Slint lock screen instead of QML app
+        // The Slint lock screen supports PIN, password, and pattern modes
+        tracing::info!("Using built-in Slint lock screen (QML app disabled)");
+        return false;
+
+        #[allow(unreachable_code)]
+        {
         let (cmd, args) = get_lockscreen_command();
         tracing::info!("Launching QML lock screen: {} {:?}", cmd, args);
 
@@ -559,6 +568,7 @@ impl Shell {
                 tracing::error!("Failed to launch QML lock screen app: {}", e);
                 false
             }
+        }
         }
     }
 
