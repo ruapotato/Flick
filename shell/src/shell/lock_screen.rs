@@ -28,7 +28,7 @@ pub enum LockMethod {
 
 impl Default for LockMethod {
     fn default() -> Self {
-        LockMethod::None // Default to no lock for initial setup
+        LockMethod::Password // Default to password auth for security
     }
 }
 
@@ -58,7 +58,7 @@ fn default_max_attempts() -> u32 { 5 }
 impl Default for LockConfig {
     fn default() -> Self {
         Self {
-            method: LockMethod::None,
+            method: LockMethod::default(),
             pin_hash: None,
             pattern_hash: None,
             timeout_seconds: default_timeout(),
@@ -99,7 +99,7 @@ impl LockConfig {
         } else {
             tracing::warn!("Could not determine lock config path (HOME not set?)");
         }
-        tracing::info!("Using default lock config (no lock)");
+        tracing::info!("Using default lock config (password auth)");
         Self::default()
     }
 
