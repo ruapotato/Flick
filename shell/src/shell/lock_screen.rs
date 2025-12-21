@@ -131,15 +131,28 @@ impl LockConfig {
     /// Verify a pattern against the stored hash
     /// Pattern is a sequence of node indices (0-8)
     pub fn verify_pattern(&self, pattern: &[u8]) -> bool {
+        let pattern_str = pattern.iter()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+
         if let Some(ref hash) = self.pattern_hash {
-            let pattern_str = pattern.iter()
-                .map(|n| n.to_string())
-                .collect::<Vec<_>>()
-                .join(",");
-            bcrypt::verify(&pattern_str, hash).unwrap_or(false)
-        } else {
-            false
+            // Check if hash is a valid bcrypt hash (starts with $2)
+            if hash.starts_with("$2") {
+                return bcrypt::verify(&pattern_str, hash).unwrap_or(false);
+            }
         }
+
+        // No valid hash set - generate and log one for first-time setup
+        if pattern.len() >= 4 {
+            if let Ok(new_hash) = bcrypt::hash(&pattern_str, bcrypt::DEFAULT_COST) {
+                tracing::info!("PATTERN SETUP: To save this pattern, set pattern_hash to: {}", new_hash);
+            }
+            // Accept the pattern for now (first-time setup mode)
+            tracing::warn!("No valid pattern hash configured - accepting pattern for first-time setup");
+            return true;
+        }
+        false
     }
 
     /// Set a new PIN (hashes it before storing)
