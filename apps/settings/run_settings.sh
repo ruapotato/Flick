@@ -43,8 +43,11 @@ export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 export LIBGL_ALWAYS_SOFTWARE=1
 # Try wayland-egl integration
 export QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=wayland-egl
-# Apply text scale factor
+# Apply text scale factor (default 2.0x if no config)
 export QT_SCALE_FACTOR="$TEXT_SCALE"
+# Also set font DPI for better text scaling (96 * scale)
+export QT_FONT_DPI=$(echo "$TEXT_SCALE * 96" | bc)
+export QT_AUTO_SCREEN_SCALE_FACTOR=0
 
 # Run qmlscene and capture output
 /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" | while read line; do
