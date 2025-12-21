@@ -333,6 +333,12 @@ fn handle_input_event(
 
     // Log all input events (brief)
     match &event {
+        InputEvent::DeviceAdded { device } => {
+            info!("INPUT: DeviceAdded: {:?}, has_keyboard={}", device.name(), device.has_capability(smithay::backend::input::DeviceCapability::Keyboard));
+        }
+        InputEvent::DeviceRemoved { device } => {
+            info!("INPUT: DeviceRemoved: {:?}", device.name());
+        }
         InputEvent::TouchDown { .. } => info!("INPUT: TouchDown"),
         InputEvent::TouchUp { .. } => info!("INPUT: TouchUp"),
         InputEvent::TouchMotion { .. } => {} // too spammy
@@ -351,7 +357,7 @@ fn handle_input_event(
             // Smithay Keycode.raw() returns XKB keycodes (evdev + 8)
             // Subtract 8 to get the raw evdev keycode
             let evdev_keycode = raw_keycode.saturating_sub(8);
-            debug!("Keyboard event: evdev_keycode={}, pressed={}", evdev_keycode, pressed);
+            info!("Keyboard event: raw={}, evdev={}, pressed={}", raw_keycode, evdev_keycode, pressed);
 
             // Track modifier state
             // Evdev keycodes: 29=LCtrl, 97=RCtrl, 56=LAlt, 100=RAlt, 42=LShift, 54=RShift, 125=LSuper, 126=RSuper
