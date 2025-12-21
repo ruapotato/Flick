@@ -841,17 +841,15 @@ component PatternGrid inherits Rectangle {
 // The actual lock screen UI is handled by an external Python/Kivy app
 // This component just provides a background while the Python app launches
 component LockScreen inherits Rectangle {
-    // Keep properties for compatibility with Rust code (not actively used)
     in property <string> time: "12:00";
     in property <string> date: "Saturday, December 7";
     in property <int> pin-length: 0;
     in property <string> error-message: "";
-    in property <string> lock-mode: "pin";
+    in property <string> lock-mode: "pin";  // "pin", "pattern", "password", "none"
     in property <[bool]> pattern-nodes: [false, false, false, false, false, false, false, false, false];
     in property <string> lockout-message: "";
     in property <int> password-length: 0;
 
-    // Keep callbacks for compatibility (not actively used)
     callback digit-pressed(string);
     callback backspace-pressed();
     callback pattern-node-touched(int);
@@ -865,11 +863,12 @@ component LockScreen inherits Rectangle {
     height: 100%;
     background: Theme.background;
 
-    // Simple "loading" indicator while Python app launches
     VerticalLayout {
         alignment: center;
-        spacing: 16px;
+        spacing: 24px;
+        padding: 32px;
 
+        // Time display
         Text {
             text: time;
             color: Theme.on-surface;
@@ -878,11 +877,168 @@ component LockScreen inherits Rectangle {
             horizontal-alignment: center;
         }
 
+        // Date display
         Text {
             text: date;
             color: Theme.on-surface-variant;
             font-size: 18px;
             horizontal-alignment: center;
+        }
+
+        Rectangle { height: 32px; }
+
+        // Error message (if any)
+        if error-message != "": Text {
+            text: error-message;
+            color: Theme.error;
+            font-size: 14px;
+            horizontal-alignment: center;
+        }
+
+        // Lockout message (if any)
+        if lockout-message != "": Text {
+            text: lockout-message;
+            color: Theme.error;
+            font-size: 14px;
+            horizontal-alignment: center;
+        }
+
+        // PIN mode: show dots and PIN pad
+        if lock-mode == "pin": VerticalLayout {
+            alignment: center;
+            spacing: 24px;
+
+            // PIN dots
+            HorizontalLayout {
+                alignment: center;
+                spacing: 16px;
+
+                for i in [0, 1, 2, 3, 4, 5]: Rectangle {
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 8px;
+                    background: i < pin-length ? Theme.primary : transparent;
+                    border-width: i < pin-length ? 0px : 2px;
+                    border-color: Theme.on-surface-variant;
+                }
+            }
+
+            // PIN pad
+            PinPad {
+                digit-pressed(d) => { root.digit-pressed(d); }
+                backspace-pressed => { root.backspace-pressed(); }
+            }
+        }
+
+        // Password mode: show password field
+        if lock-mode == "password": VerticalLayout {
+            alignment: center;
+            spacing: 24px;
+
+            // Password instruction
+            Text {
+                text: "Enter your password";
+                color: Theme.on-surface-variant;
+                font-size: 16px;
+                horizontal-alignment: center;
+            }
+
+            // Password field (tap to show keyboard)
+            Rectangle {
+                width: 300px;
+                height: 56px;
+                border-radius: 12px;
+                background: Theme.surface;
+                border-width: 2px;
+                border-color: Theme.primary;
+
+                TouchArea {
+                    clicked => { root.password-field-tapped(); }
+                }
+
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    alignment: start;
+                    spacing: 4px;
+
+                    // Password dots
+                    for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]: Rectangle {
+                        visible: i < password-length;
+                        width: 12px;
+                        height: 12px;
+                        border-radius: 6px;
+                        background: Theme.on-surface;
+                    }
+
+                    // Placeholder text when empty
+                    if password-length == 0: Text {
+                        text: "Tap to enter password";
+                        color: Theme.on-surface-variant;
+                        font-size: 16px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            // Submit button (visible when password entered)
+            if password-length > 0: Rectangle {
+                width: 200px;
+                height: 48px;
+                border-radius: 24px;
+                background: Theme.primary;
+
+                TouchArea {
+                    clicked => { root.password-submit(); }
+                }
+
+                Text {
+                    text: "Unlock";
+                    color: Theme.on-primary;
+                    font-size: 16px;
+                    font-weight: 500;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // Pattern mode: show pattern grid
+        if lock-mode == "pattern": VerticalLayout {
+            alignment: center;
+            spacing: 24px;
+
+            Text {
+                text: "Draw your pattern";
+                color: Theme.on-surface-variant;
+                font-size: 16px;
+                horizontal-alignment: center;
+            }
+
+            PatternGrid {
+                selected-nodes: root.pattern-nodes;
+                node-touched(idx) => { root.pattern-node-touched(idx); }
+                pattern-complete => { root.pattern-complete(); }
+                pattern-started => { root.pattern-started(); }
+            }
+        }
+
+        Rectangle { height: 16px; }
+
+        // "Use Password" fallback link (for PIN and pattern modes)
+        if lock-mode == "pin" || lock-mode == "pattern": TouchArea {
+            width: 200px;
+            height: 40px;
+
+            clicked => { root.use-password-pressed(); }
+
+            Text {
+                text: "Use Password Instead";
+                color: Theme.primary;
+                font-size: 14px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
         }
     }
 }

@@ -504,8 +504,8 @@ fn handle_input_event(
             let shell_view = state.shell.view;
             info!("TouchDown: shell_view={:?}, has_wayland_window={}", shell_view, has_wayland_window);
 
-            // Check if touch is on keyboard overlay (in App view with keyboard visible)
-            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App {
+            // Check if touch is on keyboard overlay (in App or LockScreen view with keyboard visible)
+            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App || shell_view == crate::shell::ShellView::LockScreen {
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     if slint_ui.is_keyboard_visible() {
                         // Keyboard is ~22% of screen height at the bottom
@@ -648,8 +648,8 @@ fn handle_input_event(
             let has_wayland_window = state.space.elements().count() > 0;
             let shell_view = state.shell.view;
 
-            // Check if touch is on keyboard overlay (in App view with keyboard visible)
-            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App {
+            // Check if touch is on keyboard overlay (in App or LockScreen view with keyboard visible)
+            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App || shell_view == crate::shell::ShellView::LockScreen {
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     if slint_ui.is_keyboard_visible() {
                         let screen_height = state.screen_size.h as f64;
@@ -879,8 +879,8 @@ fn handle_input_event(
             let has_wayland_window = state.space.elements().count() > 0;
             let shell_view = state.shell.view;
 
-            // Check if touch was on keyboard overlay (in App view with keyboard visible)
-            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App {
+            // Check if touch was on keyboard overlay (in App or LockScreen view with keyboard visible)
+            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App || shell_view == crate::shell::ShellView::LockScreen {
                 if let Some(pos) = last_pos {
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         if slint_ui.is_keyboard_visible() {
@@ -973,16 +973,82 @@ fn handle_input_event(
                             Vec::new()
                         };
 
+                        // Track if we need to show keyboard or update mode
+                        let mut show_keyboard = false;
+                        let mut switch_to_password = false;
+
                         // Process actions
-                        for action in actions {
+                        for action in &actions {
                             match action {
                                 LockScreenAction::PinDigit(digit) => {
-                                    state.shell.lock_state.entered_pin.push_str(&digit);
+                                    if state.shell.lock_state.entered_pin.len() < 6 {
+                                        state.shell.lock_state.entered_pin.push_str(digit);
+                                    }
                                 }
                                 LockScreenAction::PinBackspace => {
                                     state.shell.lock_state.entered_pin.pop();
                                 }
-                                _ => {}
+                                LockScreenAction::PatternNode(idx) => {
+                                    let idx_u8 = *idx as u8;
+                                    if !state.shell.lock_state.pattern_nodes.contains(&idx_u8) {
+                                        state.shell.lock_state.pattern_nodes.push(idx_u8);
+                                    }
+                                }
+                                LockScreenAction::PatternStarted => {
+                                    state.shell.lock_state.pattern_active = true;
+                                    state.shell.lock_state.pattern_nodes.clear();
+                                }
+                                LockScreenAction::PatternComplete => {
+                                    state.shell.lock_state.pattern_active = false;
+                                    if state.shell.lock_state.pattern_nodes.len() >= 4 {
+                                        state.shell.try_unlock();
+                                    } else if !state.shell.lock_state.pattern_nodes.is_empty() {
+                                        state.shell.lock_state.error_message = Some("Pattern too short (min 4 dots)".to_string());
+                                    }
+                                    state.shell.lock_state.pattern_nodes.clear();
+                                }
+                                LockScreenAction::UsePassword => {
+                                    state.shell.lock_state.switch_to_password();
+                                    switch_to_password = true;
+                                    info!("Switched to password mode");
+                                }
+                                LockScreenAction::PasswordFieldTapped => {
+                                    show_keyboard = true;
+                                    info!("Password field tapped - showing keyboard");
+                                }
+                                LockScreenAction::PasswordSubmit => {
+                                    info!("Password submit - attempting PAM auth");
+                                    state.shell.try_unlock();
+                                }
+                            }
+                        }
+
+                        // Update Slint UI
+                        if !actions.is_empty() {
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
+                                slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
+
+                                // Update pattern nodes
+                                let mut nodes = [false; 9];
+                                for &n in &state.shell.lock_state.pattern_nodes {
+                                    if (n as usize) < 9 {
+                                        nodes[n as usize] = true;
+                                    }
+                                }
+                                slint_ui.set_pattern_nodes(&nodes);
+
+                                if let Some(ref err) = state.shell.lock_state.error_message {
+                                    slint_ui.set_lock_error(err);
+                                }
+
+                                if switch_to_password {
+                                    slint_ui.set_lock_mode("password");
+                                }
+
+                                if show_keyboard {
+                                    slint_ui.set_keyboard_visible(true);
+                                }
                             }
                         }
 
@@ -993,6 +1059,67 @@ fn handle_input_event(
                             } else {
                                 // Failed attempt - reset PIN
                                 state.shell.lock_state.entered_pin.clear();
+                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    slint_ui.set_pin_length(0);
+                                }
+                            }
+                        }
+
+                        // Handle keyboard input for password entry
+                        if touch_on_keyboard {
+                            if let Some(pos) = last_pos {
+                                info!("LockScreen Keyboard TouchUp at ({}, {})", pos.x, pos.y);
+
+                                use crate::shell::slint_ui::KeyboardAction;
+                                let actions = if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
+                                    slint_ui.take_pending_keyboard_actions()
+                                } else {
+                                    Vec::new()
+                                };
+
+                                // Process keyboard actions - add to password
+                                for action in actions {
+                                    info!("LockScreen KB ACTION: {:?}", action);
+                                    match action {
+                                        KeyboardAction::Character(ch) => {
+                                            state.shell.lock_state.entered_password.push_str(&ch);
+                                        }
+                                        KeyboardAction::Backspace => {
+                                            state.shell.lock_state.entered_password.pop();
+                                        }
+                                        KeyboardAction::Enter => {
+                                            // Submit password
+                                            info!("Password submit via Enter key");
+                                            state.shell.try_unlock();
+                                        }
+                                        KeyboardAction::Space => {
+                                            state.shell.lock_state.entered_password.push(' ');
+                                        }
+                                        KeyboardAction::ShiftToggled => {
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                let current = slint_ui.is_keyboard_shifted();
+                                                slint_ui.set_keyboard_shifted(!current);
+                                            }
+                                        }
+                                        KeyboardAction::LayoutToggled => {
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                let current = slint_ui.get_keyboard_layout();
+                                                slint_ui.set_keyboard_layout(if current == 0 { 1 } else { 0 });
+                                            }
+                                        }
+                                        KeyboardAction::Hide => {
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                slint_ui.set_keyboard_visible(false);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Update password length in UI
+                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
+                                }
                             }
                         }
                     }
