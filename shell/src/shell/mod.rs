@@ -288,6 +288,8 @@ pub struct Shell {
     pub lock_screen_last_activity: std::time::Instant,
     /// Whether lock screen is dimmed (power saving mode)
     pub lock_screen_dimmed: bool,
+    /// Time of last tap on dimmed lock screen (for double-tap detection)
+    pub lock_screen_last_tap: Option<std::time::Instant>,
 }
 
 impl Shell {
@@ -375,6 +377,7 @@ impl Shell {
             last_unlock_time: None,
             lock_screen_last_activity: std::time::Instant::now(),
             lock_screen_dimmed: false,
+            lock_screen_last_tap: None,
         };
 
         // Preload icons for all categories
@@ -547,7 +550,7 @@ impl Shell {
     /// Check if lock screen should be dimmed (after timeout)
     /// Returns true if state changed
     pub fn check_lock_screen_dim(&mut self) -> bool {
-        const DIM_TIMEOUT_SECS: u64 = 10; // Dim after 10 seconds of inactivity
+        const DIM_TIMEOUT_SECS: u64 = 5; // Dim after 5 seconds of inactivity
 
         if !self.lock_screen_active || self.lock_screen_dimmed {
             return false;

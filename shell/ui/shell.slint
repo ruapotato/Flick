@@ -876,19 +876,11 @@ component LockScreen inherits Rectangle {
     property <bool> swiping: false;
 
     // Dimmed screen overlay - pure black for power saving
-    // When dimmed, this covers everything and wakes on any tap
+    // When dimmed, this covers everything. Double-tap to wake is handled by Rust.
     if screen-dimmed: Rectangle {
         width: 100%;
         height: 100%;
         background: #000000;
-
-        TouchArea {
-            width: 100%;
-            height: 100%;
-            clicked => {
-                root.wake-screen();
-            }
-        }
     }
 
     // Clock view (shown when unlock not revealed and not dimmed) - beautiful starry night sky

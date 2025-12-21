@@ -381,13 +381,22 @@ fn handle_input_event(
             // Update last activity time for auto-lock
             state.last_activity = std::time::Instant::now();
 
-            // Power button (evdev keycode 116) - wake dimmed screen or lock
+            // Power button (evdev keycode 116) - toggle dim/wake on lock screen, or lock
             if evdev_keycode == 116 && pressed {
-                if state.shell.lock_screen_active && state.shell.lock_screen_dimmed {
-                    // Wake the dimmed lock screen
-                    info!("Power button pressed, waking dimmed lock screen");
-                    state.shell.wake_lock_screen();
-                } else if !state.shell.lock_screen_active {
+                if state.shell.lock_screen_active {
+                    if state.shell.lock_screen_dimmed {
+                        // Wake the dimmed lock screen
+                        info!("Power button pressed, waking dimmed lock screen");
+                        state.shell.wake_lock_screen();
+                    } else {
+                        // Dim the lock screen immediately
+                        info!("Power button pressed, dimming lock screen");
+                        state.shell.lock_screen_dimmed = true;
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.set_lock_screen_dimmed(true);
+                        }
+                    }
+                } else {
                     // Lock the screen
                     info!("Power button pressed, locking screen");
                     state.shell.lock();
@@ -396,7 +405,6 @@ fn handle_input_event(
                         state.shell.launch_lock_screen_app(socket);
                     }
                 }
-                // If lock screen is active but not dimmed, power button does nothing
                 return;
             }
 
@@ -476,13 +484,30 @@ fn handle_input_event(
             // Update last activity time for auto-lock
             state.last_activity = std::time::Instant::now();
 
-            // If lock screen is active, reset activity and wake if dimmed
+            // If lock screen is active, handle touch
             if state.shell.lock_screen_active {
                 if state.shell.lock_screen_dimmed {
-                    // Touch wakes dimmed screen (Slint callback also handles this)
-                    state.shell.wake_lock_screen();
+                    // Require double-tap to wake dimmed screen
+                    const DOUBLE_TAP_MS: u128 = 400; // Max time between taps
+                    let now = std::time::Instant::now();
+                    if let Some(last_tap) = state.shell.lock_screen_last_tap {
+                        if now.duration_since(last_tap).as_millis() < DOUBLE_TAP_MS {
+                            // Double tap detected - wake screen
+                            info!("Double-tap detected, waking lock screen");
+                            state.shell.wake_lock_screen();
+                            state.shell.lock_screen_last_tap = None;
+                        } else {
+                            // Too slow, start new tap sequence
+                            state.shell.lock_screen_last_tap = Some(now);
+                        }
+                    } else {
+                        // First tap
+                        state.shell.lock_screen_last_tap = Some(now);
+                    }
+                } else {
+                    // Not dimmed - reset activity timer
+                    state.shell.reset_lock_screen_activity();
                 }
-                state.shell.reset_lock_screen_activity();
             }
 
             // Track touch position
