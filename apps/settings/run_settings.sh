@@ -6,14 +6,16 @@ QML_FILE="${SCRIPT_DIR}/main.qml"
 LOG_FILE="${HOME}/.local/state/flick/qml_settings.log"
 LOCK_CONFIG="${HOME}/.local/state/flick/lock_config.json"
 PENDING_FILE="/tmp/flick-lock-config-pending"
+PATTERN_FILE="/tmp/flick-pattern-pending"
+SETTINGS_CTL="${SCRIPT_DIR}/flick-settings-ctl"
 
 # Ensure state directory exists
 mkdir -p "$(dirname "$LOG_FILE")"
 mkdir -p "$(dirname "$LOCK_CONFIG")"
 
-# Clear old log and pending file
+# Clear old log and pending files
 > "$LOG_FILE"
-rm -f "$PENDING_FILE"
+rm -f "$PENDING_FILE" "$PATTERN_FILE"
 
 echo "Starting QML settings, QML_FILE=$QML_FILE" >> "$LOG_FILE"
 
@@ -38,13 +40,32 @@ export QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=wayland-egl
         echo "Detected lock method change: $METHOD" >> "$LOG_FILE"
         echo "$METHOD" > "$PENDING_FILE"
     fi
+    # Check for pattern save messages
+    if [[ "$line" == *"Saving pattern:"* ]]; then
+        PATTERN=$(echo "$line" | sed 's/.*Saving pattern: //')
+        echo "Detected pattern save: $PATTERN" >> "$LOG_FILE"
+        echo "$PATTERN" > "$PATTERN_FILE"
+    fi
 done
 EXIT_CODE=${PIPESTATUS[0]}
 
 echo "QML settings exited with code $EXIT_CODE" >> "$LOG_FILE"
 
-# Process any pending lock config
-if [ -f "$PENDING_FILE" ]; then
+# Process any pending pattern config first (has higher priority)
+if [ -f "$PATTERN_FILE" ]; then
+    PATTERN=$(cat "$PATTERN_FILE")
+    if [ -n "$PATTERN" ]; then
+        echo "Applying pending pattern: $PATTERN" >> "$LOG_FILE"
+        if [ -x "$SETTINGS_CTL" ]; then
+            "$SETTINGS_CTL" lock set-pattern "$PATTERN" >> "$LOG_FILE" 2>&1
+            echo "Pattern saved via flick-settings-ctl" >> "$LOG_FILE"
+        else
+            echo "ERROR: flick-settings-ctl not found or not executable" >> "$LOG_FILE"
+        fi
+    fi
+    rm -f "$PATTERN_FILE" "$PENDING_FILE"
+# Process any pending lock config (non-pattern methods)
+elif [ -f "$PENDING_FILE" ]; then
     METHOD=$(cat "$PENDING_FILE")
     if [ -n "$METHOD" ]; then
         echo "Applying pending lock method: $METHOD" >> "$LOG_FILE"

@@ -67,7 +67,7 @@ Page {
         }
     }
 
-    function saveConfigDirect(method) {
+    function saveConfigDirect(method, patternNodes) {
         var methodStr = "password"
         if (method === 0) methodStr = "pin"
         else if (method === 1) methodStr = "password"
@@ -76,29 +76,33 @@ Page {
 
         console.log("Saving lock method: " + methodStr)
 
-        // Write config file directly using XMLHttpRequest PUT (won't work)
-        // Instead, write to a marker file that a watcher can pick up
-        // For now, we'll use a simple file write via the settings helper
-
-        // Create the config directory and file using a shell command
-        var configDir = "/home/droidian/.local/state/flick"
-        var configFile = configDir + "/lock_config.json"
-        var configContent = '{"method": "' + methodStr + '"}'
-
         // Use Qt.callLater to ensure we're not blocking
         Qt.callLater(function() {
-            // Write by spawning shell via system()
-            // Since QML doesn't have direct file write, we'll mark it for the app to handle
-            console.log("Lock config to save: " + configContent)
-            console.log("Please run: mkdir -p " + configDir + " && echo '" + configContent + "' > " + configFile)
+            var helperPath = "/home/droidian/Flick/apps/settings/flick-settings-ctl"
 
-            // Write a marker file that the wrapper script will process
-            var xhr = new XMLHttpRequest()
-            xhr.open("PUT", "file:///tmp/flick-lock-config-pending", false)
-            try {
-                xhr.send(methodStr)
-            } catch (e) {
-                console.log("Could not write marker: " + e)
+            if (method === 2 && patternNodes && patternNodes.length >= 4) {
+                // Pattern mode - use set-pattern command with the pattern
+                var patternStr = patternNodes.join(",")
+                console.log("Saving pattern: " + patternStr)
+
+                // Write pattern to temp file for helper to read
+                var xhr = new XMLHttpRequest()
+                xhr.open("PUT", "file:///tmp/flick-pattern-pending", false)
+                try {
+                    xhr.send(patternStr)
+                    console.log("Pattern written to temp file: " + patternStr)
+                } catch (e) {
+                    console.log("Could not write pattern: " + e)
+                }
+            } else {
+                // Non-pattern mode - write method marker
+                var xhr = new XMLHttpRequest()
+                xhr.open("PUT", "file:///tmp/flick-lock-config-pending", false)
+                try {
+                    xhr.send(methodStr)
+                } catch (e) {
+                    console.log("Could not write marker: " + e)
+                }
             }
         })
     }
@@ -539,9 +543,9 @@ Page {
                                 patternSetupDialog.patternCount = 0
                             } else {
                                 if (JSON.stringify(patternSetupDialog.enteredPattern) === JSON.stringify(patternSetupDialog.confirmPattern)) {
-                                    // Patterns match - save config
+                                    // Patterns match - save config with pattern nodes
                                     selectedMethod = 2
-                                    saveConfigDirect(2)
+                                    saveConfigDirect(2, patternSetupDialog.enteredPattern)
                                     patternSetupDialog.enteredPattern = []
                                     patternSetupDialog.confirmPattern = []
                                     patternSetupDialog.confirming = false
