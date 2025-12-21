@@ -301,18 +301,16 @@ Page {
         }
     }
 
-    // Back button
+    // Back button - prominent floating action button
     Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
-        anchors.bottomMargin: 24
+        anchors.bottomMargin: 120
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#e94560" : "#1a1a28"
-        border.color: "#2a2a3e"
-        border.width: 2
+        color: backMouse.pressed ? "#c23a50" : "#e94560"
 
         Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -320,7 +318,7 @@ Page {
             anchors.centerIn: parent
             text: "←"
             font.pixelSize: 32
-            font.weight: Font.Light
+            font.weight: Font.Medium
             color: "#ffffff"
         }
 
