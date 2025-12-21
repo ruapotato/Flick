@@ -920,10 +920,10 @@ component LockScreen inherits Rectangle {
             horizontal-alignment: center;
         }
 
-        // Pattern grid - centered, starts below instruction
+        // Pattern grid - centered vertically on screen
         PatternGrid {
             x: (parent.width - 900px) / 2;
-            y: 220px;
+            y: (parent.height - 900px) / 2;
             selected-nodes: root.pattern-nodes;
             node-touched(idx) => { root.pattern-node-touched(idx); }
             pattern-complete => { root.pattern-complete(); }
