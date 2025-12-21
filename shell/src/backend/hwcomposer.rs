@@ -381,14 +381,22 @@ fn handle_input_event(
             // Update last activity time for auto-lock
             state.last_activity = std::time::Instant::now();
 
-            // Power button (evdev keycode 116) locks the screen
+            // Power button (evdev keycode 116) - wake dimmed screen or lock
             if evdev_keycode == 116 && pressed {
-                info!("Power button pressed, locking screen");
-                state.shell.lock();
-                // Launch lock screen app
-                if let Some(socket) = state.socket_name.to_str() {
-                    state.shell.launch_lock_screen_app(socket);
+                if state.shell.lock_screen_active && state.shell.lock_screen_dimmed {
+                    // Wake the dimmed lock screen
+                    info!("Power button pressed, waking dimmed lock screen");
+                    state.shell.wake_lock_screen();
+                } else if !state.shell.lock_screen_active {
+                    // Lock the screen
+                    info!("Power button pressed, locking screen");
+                    state.shell.lock();
+                    // Launch lock screen app
+                    if let Some(socket) = state.socket_name.to_str() {
+                        state.shell.launch_lock_screen_app(socket);
+                    }
                 }
+                // If lock screen is active but not dimmed, power button does nothing
                 return;
             }
 
@@ -467,6 +475,15 @@ fn handle_input_event(
 
             // Update last activity time for auto-lock
             state.last_activity = std::time::Instant::now();
+
+            // If lock screen is active, reset activity and wake if dimmed
+            if state.shell.lock_screen_active {
+                if state.shell.lock_screen_dimmed {
+                    // Touch wakes dimmed screen (Slint callback also handles this)
+                    state.shell.wake_lock_screen();
+                }
+                state.shell.reset_lock_screen_activity();
+            }
 
             // Track touch position
             state.last_touch_pos.insert(slot_id, touch_pos);
@@ -1057,7 +1074,13 @@ fn handle_input_event(
                                     info!("Password submit - attempting PAM auth");
                                     state.shell.try_unlock();
                                 }
+                                LockScreenAction::WakeScreen => {
+                                    info!("Wake screen requested");
+                                    state.shell.wake_lock_screen();
+                                }
                             }
+                            // Reset activity on any lock screen action
+                            state.shell.reset_lock_screen_activity();
                         }
 
                         // Update Slint UI
@@ -1687,6 +1710,11 @@ pub fn run() -> Result<()> {
             continue;
         }
 
+        // Check if lock screen should be dimmed (power saving)
+        if state.shell.view == crate::shell::ShellView::LockScreen {
+            state.shell.check_lock_screen_dim();
+        }
+
         debug!("Loop {}: calling render_frame", loop_count);
         // Render frame
         if let Err(e) = render_frame(&mut hwc_display, &state, &output) {
@@ -1847,14 +1875,17 @@ fn render_frame(
                                     slint_ui.set_lock_error("");
                                 }
 
-                                // Update time/date for lock screen
-                                let now = chrono::Local::now();
-                                slint_ui.set_lock_time(&now.format("%H:%M").to_string());
-                                slint_ui.set_lock_date(&now.format("%A, %B %d").to_string());
+                                // Only update animations and time when not dimmed (power saving)
+                                if !state.shell.lock_screen_dimmed {
+                                    // Update time/date for lock screen
+                                    let now = chrono::Local::now();
+                                    slint_ui.set_lock_time(&now.format("%H:%M").to_string());
+                                    slint_ui.set_lock_date(&now.format("%A, %B %d").to_string());
 
-                                // Update star twinkling animation time
-                                let elapsed = state.start_time.elapsed().as_secs_f32();
-                                slint_ui.set_star_time(elapsed);
+                                    // Update star twinkling animation time
+                                    let elapsed = state.start_time.elapsed().as_secs_f32();
+                                    slint_ui.set_star_time(elapsed);
+                                }
                             }
                             ShellView::Home => {
                                 slint_ui.set_view("home");

@@ -854,6 +854,7 @@ component LockScreen inherits Rectangle {
     in-out property <bool> unlock-revealed: false;  // Whether unlock UI is shown
     in property <bool> keyboard-showing: false;  // Whether on-screen keyboard is up
     in property <float> star-time: 0;  // Animation time for twinkling stars (set from Rust)
+    in property <bool> screen-dimmed: false;  // Power saving: screen is off, wake on tap/power
 
     callback digit-pressed(string);
     callback backspace-pressed();
@@ -864,6 +865,7 @@ component LockScreen inherits Rectangle {
     callback password-field-tapped();
     callback password-submit();
     callback reveal-unlock();  // Called when user swipes to reveal unlock
+    callback wake-screen();    // Called when user taps to wake dimmed screen
 
     width: 100%;
     height: 100%;
@@ -873,8 +875,24 @@ component LockScreen inherits Rectangle {
     property <length> swipe-start-y: 0px;
     property <bool> swiping: false;
 
-    // Clock view (shown when unlock not revealed) - beautiful starry night sky
-    if !unlock-revealed: Rectangle {
+    // Dimmed screen overlay - pure black for power saving
+    // When dimmed, this covers everything and wakes on any tap
+    if screen-dimmed: Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #000000;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => {
+                root.wake-screen();
+            }
+        }
+    }
+
+    // Clock view (shown when unlock not revealed and not dimmed) - beautiful starry night sky
+    if !unlock-revealed && !screen-dimmed: Rectangle {
         width: 100%;
         height: 100%;
         // Deep space gradient background
@@ -1007,7 +1025,7 @@ component LockScreen inherits Rectangle {
     }
 
     // Unlock UI (shown after swipe)
-    if unlock-revealed && lock-mode == "pattern": Rectangle {
+    if unlock-revealed && lock-mode == "pattern" && !screen-dimmed: Rectangle {
         x: 0;
         y: 0;
         width: 100%;
@@ -1091,7 +1109,7 @@ component LockScreen inherits Rectangle {
     }
 
     // Non-pattern unlock modes (PIN or Password)
-    if unlock-revealed && lock-mode != "pattern": VerticalLayout {
+    if unlock-revealed && lock-mode != "pattern" && !screen-dimmed: VerticalLayout {
         alignment: center;
         spacing: 24px;
         padding: 32px;
@@ -2333,8 +2351,10 @@ export component FlickShell inherits Window {
     in property <string> lockout-message: "";  // Shows when locked out
     in property <int> password-length: 0;  // Length of entered password
     in-out property <bool> unlock-revealed: false;  // Whether unlock UI is shown (vs clock screen)
+    in property <bool> lock-screen-dimmed: false;  // Power saving: screen is black, animations paused
 
     callback pin-digit-pressed(string);
+    callback wake-lock-screen();  // Called when user taps to wake dimmed lock screen
     callback lock-screen-revealed();  // Called when user swipes/taps to reveal unlock UI
     callback pin-backspace-pressed();
     callback pin-enter-pressed();
@@ -2458,6 +2478,7 @@ export component FlickShell inherits Window {
         unlock-revealed <=> root.unlock-revealed;
         keyboard-showing: root.keyboard-visible;
         star-time: root.star-time;
+        screen-dimmed: root.lock-screen-dimmed;
         digit-pressed(d) => { pin-digit-pressed(d); }
         backspace-pressed => { pin-backspace-pressed(); }
         pattern-node-touched(idx) => { root.pattern-node-touched(idx); }
@@ -2467,6 +2488,7 @@ export component FlickShell inherits Window {
         password-field-tapped => { root.password-field-tapped(); }
         password-submit => { root.password-submit(); }
         reveal-unlock => { root.lock-screen-revealed(); }
+        wake-screen => { root.wake-lock-screen(); }
     }
 
     // Pick default app view

@@ -284,6 +284,10 @@ pub struct Shell {
     pub lock_screen_active: bool,
     /// Time of last unlock (to prevent spurious App view switches)
     pub last_unlock_time: Option<std::time::Instant>,
+    /// Time of last activity on lock screen (for auto-dim)
+    pub lock_screen_last_activity: std::time::Instant,
+    /// Whether lock screen is dimmed (power saving mode)
+    pub lock_screen_dimmed: bool,
 }
 
 impl Shell {
@@ -369,6 +373,8 @@ impl Shell {
             // Set lock_screen_active based on whether we start with a lock screen
             lock_screen_active: lock_config.method != lock_screen::LockMethod::None,
             last_unlock_time: None,
+            lock_screen_last_activity: std::time::Instant::now(),
+            lock_screen_dimmed: false,
         };
 
         // Preload icons for all categories
@@ -485,9 +491,13 @@ impl Shell {
             self.lock_screen_active = true;
             self.set_view(ShellView::LockScreen);
             self.lock_state = lock_screen::LockScreenState::new(&self.lock_config);
+            // Reset activity time and dimmed state
+            self.lock_screen_last_activity = std::time::Instant::now();
+            self.lock_screen_dimmed = false;
             // Reset to clock view (unlock UI hidden) when locking
             if let Some(ref slint_ui) = self.slint_ui {
                 slint_ui.set_unlock_revealed(false);
+                slint_ui.set_lock_screen_dimmed(false);
             }
             // Clear any stale unlock signal
             let signal_path = unlock_signal_path();
@@ -515,6 +525,43 @@ impl Shell {
         } else {
             false
         }
+    }
+
+    /// Reset lock screen activity timer (called on any touch/power button)
+    pub fn reset_lock_screen_activity(&mut self) {
+        self.lock_screen_last_activity = std::time::Instant::now();
+    }
+
+    /// Wake the lock screen from dimmed state
+    pub fn wake_lock_screen(&mut self) {
+        if self.lock_screen_dimmed {
+            tracing::info!("Waking lock screen from dimmed state");
+            self.lock_screen_dimmed = false;
+            self.lock_screen_last_activity = std::time::Instant::now();
+            if let Some(ref slint_ui) = self.slint_ui {
+                slint_ui.set_lock_screen_dimmed(false);
+            }
+        }
+    }
+
+    /// Check if lock screen should be dimmed (after timeout)
+    /// Returns true if state changed
+    pub fn check_lock_screen_dim(&mut self) -> bool {
+        const DIM_TIMEOUT_SECS: u64 = 10; // Dim after 10 seconds of inactivity
+
+        if !self.lock_screen_active || self.lock_screen_dimmed {
+            return false;
+        }
+
+        if self.lock_screen_last_activity.elapsed() > std::time::Duration::from_secs(DIM_TIMEOUT_SECS) {
+            tracing::info!("Lock screen dimming after {}s inactivity", DIM_TIMEOUT_SECS);
+            self.lock_screen_dimmed = true;
+            if let Some(ref slint_ui) = self.slint_ui {
+                slint_ui.set_lock_screen_dimmed(true);
+            }
+            return true;
+        }
+        false
     }
 
     /// Launch the external lock screen app (called by compositor)

@@ -77,6 +77,8 @@ pub enum LockScreenAction {
     PasswordFieldTapped,
     /// Password submit button pressed
     PasswordSubmit,
+    /// Wake screen from dimmed state (user tapped)
+    WakeScreen,
 }
 
 /// Slint UI state for the shell
@@ -322,6 +324,13 @@ impl SlintShell {
             info!("Slint lock screen revealed (user swiped to unlock UI)");
         });
 
+        // Wake lock screen callback (user tapped to wake from dimmed state)
+        let lock_clone = pending_lock_actions.clone();
+        shell.on_wake_lock_screen(move || {
+            info!("Slint lock screen wake requested");
+            lock_clone.borrow_mut().push(LockScreenAction::WakeScreen);
+        });
+
         Self {
             window,
             shell,
@@ -490,6 +499,16 @@ impl SlintShell {
     /// Set star twinkling animation time (updated each frame during lock screen)
     pub fn set_star_time(&self, time: f32) {
         self.shell.set_star_time(time);
+    }
+
+    /// Set lock screen dimmed state (power saving - black screen, no animations)
+    pub fn set_lock_screen_dimmed(&self, dimmed: bool) {
+        self.shell.set_lock_screen_dimmed(dimmed);
+    }
+
+    /// Check if lock screen is dimmed
+    pub fn is_lock_screen_dimmed(&self) -> bool {
+        self.shell.get_lock_screen_dimmed()
     }
 
     /// Set the index of the tile being dragged (-1 if none)
