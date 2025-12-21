@@ -485,6 +485,10 @@ impl Shell {
             self.lock_screen_active = true;
             self.set_view(ShellView::LockScreen);
             self.lock_state = lock_screen::LockScreenState::new(&self.lock_config);
+            // Reset to clock view (unlock UI hidden) when locking
+            if let Some(ref slint_ui) = self.slint_ui {
+                slint_ui.set_unlock_revealed(false);
+            }
             // Clear any stale unlock signal
             let signal_path = unlock_signal_path();
             if signal_path.exists() {

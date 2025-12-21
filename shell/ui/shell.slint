@@ -841,9 +841,7 @@ component PatternGrid inherits Rectangle {
     }
 }
 
-// Lock screen view - simple background placeholder
-// The actual lock screen UI is handled by an external Python/Kivy app
-// This component just provides a background while the Python app launches
+// Lock screen view - two-stage: clock first, swipe to unlock
 component LockScreen inherits Rectangle {
     in property <string> time: "12:00";
     in property <string> date: "Saturday, December 7";
@@ -853,6 +851,8 @@ component LockScreen inherits Rectangle {
     in property <[bool]> pattern-nodes: [false, false, false, false, false, false, false, false, false];
     in property <string> lockout-message: "";
     in property <int> password-length: 0;
+    in-out property <bool> unlock-revealed: false;  // Whether unlock UI is shown
+    in property <bool> keyboard-showing: false;  // Whether on-screen keyboard is up
 
     callback digit-pressed(string);
     callback backspace-pressed();
@@ -862,20 +862,104 @@ component LockScreen inherits Rectangle {
     callback use-password-pressed();
     callback password-field-tapped();
     callback password-submit();
+    callback reveal-unlock();  // Called when user swipes to reveal unlock
 
     width: 100%;
     height: 100%;
     background: Theme.background;
 
-    // Pattern mode: show pattern grid as full-screen overlay (outside VerticalLayout)
-    if lock-mode == "pattern": Rectangle {
+    // Track swipe for revealing unlock UI
+    property <length> swipe-start-y: 0px;
+    property <bool> swiping: false;
+
+    // Clock view (shown when unlock not revealed)
+    if !unlock-revealed: Rectangle {
+        width: 100%;
+        height: 100%;
+        background: Theme.background;
+
+        // Large centered time
+        Text {
+            x: 0;
+            y: parent.height / 3 - 60px;
+            width: 100%;
+            text: time;
+            color: Theme.on-surface;
+            font-size: 96px;
+            font-weight: 200;
+            horizontal-alignment: center;
+        }
+
+        // Date below time
+        Text {
+            x: 0;
+            y: parent.height / 3 + 50px;
+            width: 100%;
+            text: date;
+            color: Theme.on-surface-variant;
+            font-size: 20px;
+            horizontal-alignment: center;
+        }
+
+        // Swipe hint at bottom
+        Text {
+            x: 0;
+            y: parent.height - 120px;
+            width: 100%;
+            text: "⌃";
+            color: Theme.on-surface-variant;
+            font-size: 32px;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            x: 0;
+            y: parent.height - 80px;
+            width: 100%;
+            text: "Swipe up to unlock";
+            color: Theme.on-surface-variant;
+            font-size: 16px;
+            horizontal-alignment: center;
+        }
+
+        // Touch area for swipe detection
+        TouchArea {
+            width: 100%;
+            height: 100%;
+
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down {
+                    root.swipe-start-y = self.mouse-y;
+                    root.swiping = true;
+                } else if event.kind == PointerEventKind.up {
+                    if root.swiping {
+                        // Check if swiped up significantly (100px)
+                        if root.swipe-start-y - self.mouse-y > 100px {
+                            root.unlock-revealed = true;
+                            root.reveal-unlock();
+                        }
+                    }
+                    root.swiping = false;
+                }
+            }
+
+            // Also allow tap to reveal
+            clicked => {
+                root.unlock-revealed = true;
+                root.reveal-unlock();
+            }
+        }
+    }
+
+    // Unlock UI (shown after swipe)
+    if unlock-revealed && lock-mode == "pattern": Rectangle {
         x: 0;
         y: 0;
         width: 100%;
         height: 100%;
         background: Theme.background;
 
-        // Time at top
+        // Time at top (smaller)
         Text {
             x: 0;
             y: 40px;
@@ -951,13 +1035,13 @@ component LockScreen inherits Rectangle {
         }
     }
 
-    // Non-pattern modes use VerticalLayout
-    if lock-mode != "pattern": VerticalLayout {
+    // Non-pattern unlock modes (PIN or Password)
+    if unlock-revealed && lock-mode != "pattern": VerticalLayout {
         alignment: center;
         spacing: 24px;
         padding: 32px;
 
-        // Time display
+        // Time display (smaller when unlocking)
         Text {
             text: time;
             color: Theme.on-surface;
@@ -2192,8 +2276,10 @@ export component FlickShell inherits Window {
     in property <[bool]> pattern-nodes: [false, false, false, false, false, false, false, false, false];
     in property <string> lockout-message: "";  // Shows when locked out
     in property <int> password-length: 0;  // Length of entered password
+    in-out property <bool> unlock-revealed: false;  // Whether unlock UI is shown (vs clock screen)
 
     callback pin-digit-pressed(string);
+    callback lock-screen-revealed();  // Called when user swipes/taps to reveal unlock UI
     callback pin-backspace-pressed();
     callback pin-enter-pressed();
     callback pattern-node-touched(int);
@@ -2313,6 +2399,8 @@ export component FlickShell inherits Window {
         pattern-nodes: root.pattern-nodes;
         lockout-message: root.lockout-message;
         password-length: root.password-length;
+        unlock-revealed <=> root.unlock-revealed;
+        keyboard-showing: root.keyboard-visible;
         digit-pressed(d) => { pin-digit-pressed(d); }
         backspace-pressed => { pin-backspace-pressed(); }
         pattern-node-touched(idx) => { root.pattern-node-touched(idx); }
@@ -2321,6 +2409,7 @@ export component FlickShell inherits Window {
         use-password-pressed => { root.use-password-pressed(); }
         password-field-tapped => { root.password-field-tapped(); }
         password-submit => { root.password-submit(); }
+        reveal-unlock => { root.lock-screen-revealed(); }
     }
 
     // Pick default app view

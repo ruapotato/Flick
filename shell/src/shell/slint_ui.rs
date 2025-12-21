@@ -317,6 +317,11 @@ impl SlintShell {
             lock_clone.borrow_mut().push(LockScreenAction::PasswordSubmit);
         });
 
+        // Lock screen revealed callback (user swiped/tapped to show unlock UI)
+        shell.on_lock_screen_revealed(move || {
+            info!("Slint lock screen revealed (user swiped to unlock UI)");
+        });
+
         Self {
             window,
             shell,
@@ -392,6 +397,11 @@ impl SlintShell {
     /// Set password length (for dots display)
     pub fn set_password_length(&self, len: i32) {
         self.shell.set_password_length(len);
+    }
+
+    /// Reset unlock revealed state (called when locking to show clock first)
+    pub fn set_unlock_revealed(&self, revealed: bool) {
+        self.shell.set_unlock_revealed(revealed);
     }
 
     /// Poll for pending lock screen actions
