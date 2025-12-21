@@ -30,8 +30,8 @@ Page {
     }
 
     function saveScaleConfig() {
-        // Log the scale value - shell script will capture and save to config
-        console.log("Saving text scale: " + textScale.toFixed(2))
+        // Print to stderr which won't be filtered
+        console.warn("SCALE_SAVE:" + textScale.toFixed(2))
     }
 
     background: Rectangle {

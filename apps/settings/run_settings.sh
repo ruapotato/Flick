@@ -31,9 +31,11 @@ if [ -f "$DISPLAY_CONFIG" ]; then
 fi
 echo "Using text scale: $TEXT_SCALE" >> "$LOG_FILE"
 
-# Suppress Qt debug output (can corrupt terminal)
-export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false;qt.accessibility.*=false"
+# Suppress Qt debug output but keep qml messages for config capture
+export QT_LOGGING_RULES="qt.qpa.*=false;qt.accessibility.*=false;qml=true"
 export QT_MESSAGE_PATTERN=""
+# Allow QML to read local files (for config loading)
+export QML_XHR_ALLOW_FILE_READ=1
 # Force software rendering completely
 export QT_QUICK_BACKEND=software
 export QT_OPENGL=software
@@ -49,8 +51,8 @@ export QT_SCALE_FACTOR="$TEXT_SCALE"
 export QT_FONT_DPI=$(echo "$TEXT_SCALE * 96" | bc)
 export QT_AUTO_SCREEN_SCALE_FACTOR=0
 
-# Run qmlscene and capture output
-/usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" | while read line; do
+# Run qmlscene and capture output (use stdbuf to prevent buffering)
+stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" | while IFS= read -r line; do
     # Check for lock config save messages
     if [[ "$line" == *"Saving lock method:"* ]]; then
         METHOD=$(echo "$line" | sed 's/.*Saving lock method: //')
@@ -64,8 +66,8 @@ export QT_AUTO_SCREEN_SCALE_FACTOR=0
         echo "$PATTERN" > "$PATTERN_FILE"
     fi
     # Check for text scale save messages - save immediately
-    if [[ "$line" == *"Saving text scale:"* ]]; then
-        SCALE=$(echo "$line" | sed 's/.*Saving text scale: //')
+    if [[ "$line" == *"SCALE_SAVE:"* ]]; then
+        SCALE=$(echo "$line" | sed 's/.*SCALE_SAVE://')
         echo "Detected text scale change: $SCALE" >> "$LOG_FILE"
         echo "{\"text_scale\": $SCALE}" > "$DISPLAY_CONFIG"
         echo "Display config saved to $DISPLAY_CONFIG" >> "$LOG_FILE"
