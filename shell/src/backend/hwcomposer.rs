@@ -334,7 +334,8 @@ fn handle_input_event(
     // Log all input events (brief)
     match &event {
         InputEvent::DeviceAdded { device } => {
-            info!("INPUT: DeviceAdded: {:?}, has_keyboard={}", device.name(), device.has_capability(smithay::backend::input::DeviceCapability::Keyboard));
+            use smithay::backend::input::Device;
+            info!("INPUT: DeviceAdded: {:?}", device.name());
         }
         InputEvent::DeviceRemoved { device } => {
             info!("INPUT: DeviceRemoved: {:?}", device.name());
