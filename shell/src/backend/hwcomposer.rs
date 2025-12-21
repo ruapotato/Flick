@@ -528,7 +528,8 @@ fn handle_input_event(
             };
 
             // Forward touch to Wayland client if connected (but not if touching keyboard)
-            if has_wayland_window && !touch_on_keyboard && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
+            // Never forward to Wayland when lock screen is active - Slint handles lock screen touch
+            if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
@@ -671,7 +672,8 @@ fn handle_input_event(
             };
 
             // Forward touch to Wayland client if connected (but not if touching keyboard)
-            if has_wayland_window && !touch_on_keyboard && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
+            // Never forward to Wayland when lock screen is active - Slint handles lock screen touch
+            if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
                 if let Some(touch) = state.seat.get_touch() {
                     // For mobile fullscreen apps, use keyboard focus to determine which window gets touch
                     let focus = state.seat.get_keyboard()
@@ -936,7 +938,8 @@ fn handle_input_event(
             };
 
             // Forward touch to Wayland client if connected (but not if touching keyboard)
-            if has_wayland_window && !touch_on_keyboard && (shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::App) {
+            // Never forward to Wayland when lock screen is active - Slint handles lock screen touch
+            if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
