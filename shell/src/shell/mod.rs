@@ -395,6 +395,11 @@ impl Shell {
                 }
             }
             lock_screen::LockInputMode::Pattern => {
+                let pattern_str = self.lock_state.pattern_nodes.iter()
+                    .map(|n| n.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                tracing::info!("Pattern entered: [{}] (nodes: {:?})", pattern_str, self.lock_state.pattern_nodes);
                 if self.lock_config.verify_pattern(&self.lock_state.pattern_nodes) {
                     self.unlock();
                     return true;
