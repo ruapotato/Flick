@@ -7,13 +7,14 @@ Page {
 
     property real brightness: 0.75
     property bool autoBrightness: false
-    property int selectedTimeout: 1
+    property int selectedTimeout: 1  // Index into timeout list (default 30s)
+    property var timeoutValues: [15, 30, 60, 300, 0]  // Seconds for each option
     property real textScale: 2.0  // Text scale factor (0.5 to 3.0, default 2.0)
     property string scaleConfigPath: "/home/droidian/.local/state/flick/display_config.json"
 
-    Component.onCompleted: loadScaleConfig()
+    Component.onCompleted: loadConfig()
 
-    function loadScaleConfig() {
+    function loadConfig() {
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + scaleConfigPath, false)
         try {
@@ -23,15 +24,30 @@ Page {
                 if (config.text_scale !== undefined) {
                     textScale = config.text_scale
                 }
+                if (config.screen_timeout !== undefined) {
+                    // Find index for this timeout value
+                    var timeout = config.screen_timeout
+                    for (var i = 0; i < timeoutValues.length; i++) {
+                        if (timeoutValues[i] === timeout) {
+                            selectedTimeout = i
+                            break
+                        }
+                    }
+                }
             }
         } catch (e) {
-            console.log("Using default text scale: 2.0")
+            console.log("Using default config")
         }
     }
 
     function saveScaleConfig() {
         // Print to stderr which won't be filtered
         console.warn("SCALE_SAVE:" + textScale.toFixed(2))
+    }
+
+    function saveTimeoutConfig() {
+        var timeoutSecs = timeoutValues[selectedTimeout]
+        console.warn("TIMEOUT_SAVE:" + timeoutSecs)
     }
 
     background: Rectangle {
@@ -339,7 +355,10 @@ Page {
                     MouseArea {
                         id: timeoutMouse
                         anchors.fill: parent
-                        onClicked: selectedTimeout = index
+                        onClicked: {
+                            selectedTimeout = index
+                            saveTimeoutConfig()
+                        }
                     }
                 }
             }

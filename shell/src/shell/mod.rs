@@ -290,6 +290,8 @@ pub struct Shell {
     pub lock_screen_dimmed: bool,
     /// Time of last tap on dimmed lock screen (for double-tap detection)
     pub lock_screen_last_tap: Option<std::time::Instant>,
+    /// Screen timeout in seconds (0 = never, from display settings)
+    pub screen_timeout_secs: u64,
 }
 
 impl Shell {
@@ -378,6 +380,7 @@ impl Shell {
             lock_screen_last_activity: std::time::Instant::now(),
             lock_screen_dimmed: false,
             lock_screen_last_tap: None,
+            screen_timeout_secs: Self::load_screen_timeout(),
         };
 
         // Preload icons for all categories
@@ -391,6 +394,26 @@ impl Shell {
         }
 
         shell
+    }
+
+    /// Load screen timeout from display config file
+    fn load_screen_timeout() -> u64 {
+        let config_path = std::path::Path::new("/home/droidian/.local/state/flick/display_config.json");
+        if let Ok(content) = std::fs::read_to_string(config_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(timeout) = json.get("screen_timeout").and_then(|v| v.as_u64()) {
+                    tracing::info!("Loaded screen timeout: {}s", timeout);
+                    return timeout;
+                }
+            }
+        }
+        tracing::info!("Using default screen timeout: 30s");
+        30 // Default 30 seconds
+    }
+
+    /// Reload screen timeout from config (called when settings may have changed)
+    pub fn reload_screen_timeout(&mut self) {
+        self.screen_timeout_secs = Self::load_screen_timeout();
     }
 
     /// Attempt to unlock with the current input

@@ -69,7 +69,34 @@ stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" |
     if [[ "$line" == *"SCALE_SAVE:"* ]]; then
         SCALE=$(echo "$line" | sed 's/.*SCALE_SAVE://')
         echo "Detected text scale change: $SCALE" >> "$LOG_FILE"
-        echo "{\"text_scale\": $SCALE}" > "$DISPLAY_CONFIG"
+        # Read existing config and merge
+        if [ -f "$DISPLAY_CONFIG" ]; then
+            TIMEOUT=$(cat "$DISPLAY_CONFIG" | grep -o '"screen_timeout"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
+            if [ -n "$TIMEOUT" ]; then
+                echo "{\"text_scale\": $SCALE, \"screen_timeout\": $TIMEOUT}" > "$DISPLAY_CONFIG"
+            else
+                echo "{\"text_scale\": $SCALE, \"screen_timeout\": 30}" > "$DISPLAY_CONFIG"
+            fi
+        else
+            echo "{\"text_scale\": $SCALE, \"screen_timeout\": 30}" > "$DISPLAY_CONFIG"
+        fi
+        echo "Display config saved to $DISPLAY_CONFIG" >> "$LOG_FILE"
+    fi
+    # Check for timeout save messages - save immediately
+    if [[ "$line" == *"TIMEOUT_SAVE:"* ]]; then
+        TIMEOUT=$(echo "$line" | sed 's/.*TIMEOUT_SAVE://')
+        echo "Detected timeout change: $TIMEOUT" >> "$LOG_FILE"
+        # Read existing config and merge
+        if [ -f "$DISPLAY_CONFIG" ]; then
+            SCALE=$(cat "$DISPLAY_CONFIG" | grep -o '"text_scale"[[:space:]]*:[[:space:]]*[0-9.]*' | grep -o '[0-9.]*$')
+            if [ -n "$SCALE" ]; then
+                echo "{\"text_scale\": $SCALE, \"screen_timeout\": $TIMEOUT}" > "$DISPLAY_CONFIG"
+            else
+                echo "{\"text_scale\": 2.0, \"screen_timeout\": $TIMEOUT}" > "$DISPLAY_CONFIG"
+            fi
+        else
+            echo "{\"text_scale\": 2.0, \"screen_timeout\": $TIMEOUT}" > "$DISPLAY_CONFIG"
+        fi
         echo "Display config saved to $DISPLAY_CONFIG" >> "$LOG_FILE"
     fi
 done

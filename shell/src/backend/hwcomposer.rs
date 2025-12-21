@@ -1706,12 +1706,12 @@ pub fn run() -> Result<()> {
             info!("After unlock: view={:?}, lock_screen_active={}", state.shell.view, state.shell.lock_screen_active);
         }
 
-        // Auto-lock check - only when not already locked and timeout is positive
-        if !state.shell.lock_screen_active && state.shell.lock_config.timeout_seconds > 0 {
+        // Auto-lock check - only when not already locked and timeout is set (0 = never)
+        if !state.shell.lock_screen_active && state.shell.screen_timeout_secs > 0 {
             let idle_duration = state.last_activity.elapsed();
-            let timeout = Duration::from_secs(state.shell.lock_config.timeout_seconds as u64);
+            let timeout = Duration::from_secs(state.shell.screen_timeout_secs);
             if idle_duration >= timeout {
-                info!("Auto-lock triggered after {:?} idle", idle_duration);
+                info!("Auto-lock triggered after {:?} idle (timeout={}s)", idle_duration, state.shell.screen_timeout_secs);
                 state.shell.lock();
                 if let Some(socket) = state.socket_name.to_str() {
                     state.shell.launch_lock_screen_app(socket);
