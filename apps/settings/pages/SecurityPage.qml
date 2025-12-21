@@ -350,13 +350,49 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
             }
 
-            // Pattern grid - much larger
+            // Pattern grid - much larger with drag support
             Item {
+                id: patternGridContainer
                 width: 320
                 height: 320
                 anchors.horizontalCenter: parent.horizontalCenter
 
+                // Store dot positions for hit testing during drag
+                property var dotCenters: []
+                property real dotSize: 80
+                property real gridSpacing: 24
+                property real gridStartX: (width - (3 * dotSize + 2 * gridSpacing)) / 2
+                property real gridStartY: (height - (3 * dotSize + 2 * gridSpacing)) / 2
+
+                Component.onCompleted: {
+                    // Calculate dot centers for hit testing
+                    var centers = []
+                    for (var row = 0; row < 3; row++) {
+                        for (var col = 0; col < 3; col++) {
+                            var cx = gridStartX + col * (dotSize + gridSpacing) + dotSize / 2
+                            var cy = gridStartY + row * (dotSize + gridSpacing) + dotSize / 2
+                            centers.push({x: cx, y: cy, index: row * 3 + col})
+                        }
+                    }
+                    dotCenters = centers
+                }
+
+                // Check if a point is inside a dot (with tolerance)
+                function hitTest(px, py) {
+                    var hitRadius = dotSize / 2 + 10  // Extra tolerance
+                    for (var i = 0; i < dotCenters.length; i++) {
+                        var dot = dotCenters[i]
+                        var dx = px - dot.x
+                        var dy = py - dot.y
+                        if (dx * dx + dy * dy <= hitRadius * hitRadius) {
+                            return dot.index
+                        }
+                    }
+                    return -1
+                }
+
                 Grid {
+                    id: patternGrid
                     anchors.centerIn: parent
                     columns: 3
                     spacing: 24
@@ -386,17 +422,28 @@ Page {
                                 color: "#ffffff"
                             }
 
-                            MouseArea {
-                                anchors.fill: parent
-                                anchors.margins: -10  // Larger touch target
-                                onClicked: {
-                                    patternSetupDialog.addToPattern(index)
-                                }
-                            }
-
                             // Visual feedback on selection
                             Behavior on color { ColorAnimation { duration: 100 } }
                             Behavior on border.color { ColorAnimation { duration: 100 } }
+                        }
+                    }
+                }
+
+                // Drag-enabled MouseArea covering the entire grid
+                MouseArea {
+                    anchors.fill: parent
+
+                    onPressed: {
+                        var hitIdx = patternGridContainer.hitTest(mouse.x, mouse.y)
+                        if (hitIdx >= 0) {
+                            patternSetupDialog.addToPattern(hitIdx)
+                        }
+                    }
+
+                    onPositionChanged: {
+                        var hitIdx = patternGridContainer.hitTest(mouse.x, mouse.y)
+                        if (hitIdx >= 0) {
+                            patternSetupDialog.addToPattern(hitIdx)
                         }
                     }
                 }
