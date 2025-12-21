@@ -332,6 +332,7 @@ fn handle_input_event(
     use smithay::input::keyboard::FilterResult;
 
     // Log all input events (brief)
+    info!("INPUT EVENT: {:?}", std::mem::discriminant(&event));
     match &event {
         InputEvent::DeviceAdded { device } => {
             use smithay::backend::input::Device;
