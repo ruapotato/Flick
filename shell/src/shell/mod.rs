@@ -553,7 +553,7 @@ impl Shell {
         match std::process::Command::new("sh")
             .arg("-c")
             .arg(&shell_cmd)
-            .env("WAYLAND_DISPLAY", socket_name)
+            .env("WAYLAND_DISPLAY", _socket_name)
             .env("QT_QPA_PLATFORM", "wayland")
             .env("QT_WAYLAND_CLIENT_BUFFER_INTEGRATION", "shm")
             .env("FLICK_STATE_DIR", &state_dir)
