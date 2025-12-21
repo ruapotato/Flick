@@ -697,6 +697,36 @@ fn handle_input_event(
                     crate::shell::ShellView::LockScreen => {
                         if let Some(ref slint_ui) = state.shell.slint_ui {
                             slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+
+                            // Poll and process lock screen actions during motion (for pattern drawing)
+                            use crate::shell::slint_ui::LockScreenAction;
+                            let actions = slint_ui.poll_lock_actions();
+                            for action in &actions {
+                                match action {
+                                    LockScreenAction::PatternNode(idx) => {
+                                        let idx_u8 = *idx as u8;
+                                        if !state.shell.lock_state.pattern_nodes.contains(&idx_u8) {
+                                            state.shell.lock_state.pattern_nodes.push(idx_u8);
+                                        }
+                                    }
+                                    LockScreenAction::PatternStarted => {
+                                        state.shell.lock_state.pattern_active = true;
+                                        state.shell.lock_state.pattern_nodes.clear();
+                                    }
+                                    _ => {} // Other actions handled on touch up
+                                }
+                            }
+
+                            // Update pattern nodes UI immediately
+                            if !actions.is_empty() {
+                                let mut nodes = [false; 9];
+                                for &n in &state.shell.lock_state.pattern_nodes {
+                                    if (n as usize) < 9 {
+                                        nodes[n as usize] = true;
+                                    }
+                                }
+                                slint_ui.set_pattern_nodes(&nodes);
+                            }
                         }
                     }
                     crate::shell::ShellView::QuickSettings => {
