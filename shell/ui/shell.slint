@@ -872,54 +872,107 @@ component LockScreen inherits Rectangle {
     property <length> swipe-start-y: 0px;
     property <bool> swiping: false;
 
-    // Clock view (shown when unlock not revealed)
+    // Clock view (shown when unlock not revealed) - beautiful starry night sky
     if !unlock-revealed: Rectangle {
         width: 100%;
         height: 100%;
-        background: Theme.background;
+        // Deep space gradient background
+        background: #050510;
 
-        // Large centered time
+        // Stars layer - decorative circles scattered across the screen
+        // Large bright stars
+        Rectangle { x: 15%; y: 8%; width: 4px; height: 4px; border-radius: 2px; background: #ffffff; }
+        Rectangle { x: 78%; y: 12%; width: 5px; height: 5px; border-radius: 2.5px; background: #ffffee; }
+        Rectangle { x: 45%; y: 5%; width: 3px; height: 3px; border-radius: 1.5px; background: #ffffff; }
+        Rectangle { x: 88%; y: 25%; width: 4px; height: 4px; border-radius: 2px; background: #eeeeff; }
+        Rectangle { x: 8%; y: 35%; width: 5px; height: 5px; border-radius: 2.5px; background: #ffffff; }
+        Rectangle { x: 92%; y: 45%; width: 3px; height: 3px; border-radius: 1.5px; background: #ffffee; }
+        Rectangle { x: 25%; y: 55%; width: 4px; height: 4px; border-radius: 2px; background: #ffffff; }
+        Rectangle { x: 70%; y: 60%; width: 5px; height: 5px; border-radius: 2.5px; background: #eeeeff; }
+        Rectangle { x: 55%; y: 75%; width: 4px; height: 4px; border-radius: 2px; background: #ffffff; }
+        Rectangle { x: 12%; y: 82%; width: 3px; height: 3px; border-radius: 1.5px; background: #ffffee; }
+        Rectangle { x: 85%; y: 78%; width: 4px; height: 4px; border-radius: 2px; background: #ffffff; }
+        Rectangle { x: 35%; y: 88%; width: 5px; height: 5px; border-radius: 2.5px; background: #eeeeff; }
+
+        // Medium stars
+        Rectangle { x: 22%; y: 15%; width: 2px; height: 2px; border-radius: 1px; background: #ccccff; }
+        Rectangle { x: 62%; y: 18%; width: 2px; height: 2px; border-radius: 1px; background: #ddddee; }
+        Rectangle { x: 38%; y: 22%; width: 2px; height: 2px; border-radius: 1px; background: #ccccff; }
+        Rectangle { x: 82%; y: 32%; width: 2px; height: 2px; border-radius: 1px; background: #ddddee; }
+        Rectangle { x: 18%; y: 48%; width: 2px; height: 2px; border-radius: 1px; background: #ccccff; }
+        Rectangle { x: 58%; y: 42%; width: 2px; height: 2px; border-radius: 1px; background: #ddddee; }
+        Rectangle { x: 42%; y: 65%; width: 2px; height: 2px; border-radius: 1px; background: #ccccff; }
+        Rectangle { x: 75%; y: 72%; width: 2px; height: 2px; border-radius: 1px; background: #ddddee; }
+        Rectangle { x: 28%; y: 78%; width: 2px; height: 2px; border-radius: 1px; background: #ccccff; }
+        Rectangle { x: 65%; y: 85%; width: 2px; height: 2px; border-radius: 1px; background: #ddddee; }
+
+        // Small dim stars
+        Rectangle { x: 5%; y: 20%; width: 1px; height: 1px; border-radius: 0.5px; background: #888899; }
+        Rectangle { x: 95%; y: 15%; width: 1px; height: 1px; border-radius: 0.5px; background: #777788; }
+        Rectangle { x: 30%; y: 30%; width: 1px; height: 1px; border-radius: 0.5px; background: #888899; }
+        Rectangle { x: 50%; y: 35%; width: 1px; height: 1px; border-radius: 0.5px; background: #777788; }
+        Rectangle { x: 72%; y: 40%; width: 1px; height: 1px; border-radius: 0.5px; background: #888899; }
+        Rectangle { x: 15%; y: 58%; width: 1px; height: 1px; border-radius: 0.5px; background: #777788; }
+        Rectangle { x: 48%; y: 52%; width: 1px; height: 1px; border-radius: 0.5px; background: #888899; }
+        Rectangle { x: 80%; y: 55%; width: 1px; height: 1px; border-radius: 0.5px; background: #777788; }
+        Rectangle { x: 32%; y: 70%; width: 1px; height: 1px; border-radius: 0.5px; background: #888899; }
+        Rectangle { x: 60%; y: 68%; width: 1px; height: 1px; border-radius: 0.5px; background: #777788; }
+        Rectangle { x: 90%; y: 65%; width: 1px; height: 1px; border-radius: 0.5px; background: #888899; }
+        Rectangle { x: 20%; y: 90%; width: 1px; height: 1px; border-radius: 0.5px; background: #777788; }
+        Rectangle { x: 52%; y: 92%; width: 1px; height: 1px; border-radius: 0.5px; background: #888899; }
+        Rectangle { x: 78%; y: 88%; width: 1px; height: 1px; border-radius: 0.5px; background: #777788; }
+
+        // Large centered time - big and beautiful
         Text {
             x: 0;
-            y: parent.height / 3 - 60px;
+            y: parent.height / 3 - 80px;
             width: 100%;
             text: time;
-            color: Theme.on-surface;
-            font-size: 96px;
-            font-weight: 200;
+            color: #ffffff;
+            font-size: 144px;
+            font-weight: 100;
             horizontal-alignment: center;
         }
 
         // Date below time
         Text {
             x: 0;
-            y: parent.height / 3 + 50px;
+            y: parent.height / 3 + 80px;
             width: 100%;
             text: date;
-            color: Theme.on-surface-variant;
-            font-size: 20px;
+            color: #aaaacc;
+            font-size: 24px;
             horizontal-alignment: center;
         }
 
-        // Swipe hint at bottom
-        Text {
-            x: 0;
-            y: parent.height - 120px;
-            width: 100%;
-            text: "⌃";
-            color: Theme.on-surface-variant;
-            font-size: 32px;
-            horizontal-alignment: center;
-        }
+        // Swipe hint at bottom with subtle glow effect
+        Rectangle {
+            x: (parent.width - 200px) / 2;
+            y: parent.height - 130px;
+            width: 200px;
+            height: 80px;
+            background: transparent;
 
-        Text {
-            x: 0;
-            y: parent.height - 80px;
-            width: 100%;
-            text: "Swipe up to unlock";
-            color: Theme.on-surface-variant;
-            font-size: 16px;
-            horizontal-alignment: center;
+            // Up arrow
+            Text {
+                x: 0;
+                y: 0;
+                width: 100%;
+                text: "^";
+                color: #6688aa;
+                font-size: 36px;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                x: 0;
+                y: 35px;
+                width: 100%;
+                text: "Swipe up to unlock";
+                color: #6688aa;
+                font-size: 16px;
+                horizontal-alignment: center;
+            }
         }
 
         // Touch area for swipe detection

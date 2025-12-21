@@ -2034,9 +2034,9 @@ fn render_frame(
             }
         }
 
-        // Render Wayland windows for App view OR QML lockscreen
-        // But NOT during switcher gesture preview (the Slint card handles the preview)
-        if (shell_view == ShellView::App && !switcher_gesture_preview) || qml_lockscreen_connected {
+        // Render Wayland windows ONLY for App view (not during switcher gesture preview)
+        // NEVER render client windows when lock screen is active - Slint handles the lock UI
+        if shell_view == ShellView::App && !switcher_gesture_preview && !state.shell.lock_screen_active {
             // Render Wayland client surfaces (windows)
             let windows: Vec<_> = state.space.elements().cloned().collect();
             debug!("Rendering {} Wayland windows", windows.len());
