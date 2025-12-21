@@ -292,14 +292,37 @@ Page {
     Popup {
         id: patternSetupDialog
         anchors.centerIn: parent
-        width: parent.width * 0.9
-        height: 550
+        width: parent.width * 0.95
+        height: parent.height * 0.85
         modal: true
         closePolicy: Popup.CloseOnEscape
 
         property var enteredPattern: []
         property var confirmPattern: []
         property bool confirming: false
+        property int patternCount: 0  // Force UI updates
+
+        function addToPattern(idx) {
+            var pattern = confirming ? confirmPattern.slice() : enteredPattern.slice()
+            if (pattern.indexOf(idx) < 0 && pattern.length < 9) {
+                pattern.push(idx)
+                if (confirming) {
+                    confirmPattern = pattern
+                } else {
+                    enteredPattern = pattern
+                }
+                patternCount = pattern.length  // Trigger UI update
+            }
+        }
+
+        function isSelected(idx) {
+            var pattern = confirming ? confirmPattern : enteredPattern
+            return pattern.indexOf(idx) >= 0
+        }
+
+        function currentLength() {
+            return confirming ? confirmPattern.length : enteredPattern.length
+        }
 
         background: Rectangle {
             color: "#1a1a24"
@@ -309,82 +332,92 @@ Page {
         }
 
         contentItem: Column {
-            spacing: 24
-            padding: 24
+            spacing: 32
+            padding: 32
 
             Text {
                 text: patternSetupDialog.confirming ? "Confirm Pattern" : "Draw New Pattern"
-                font.pixelSize: 24
+                font.pixelSize: 28
                 font.weight: Font.Medium
                 color: "#ffffff"
                 anchors.horizontalCenter: parent.horizontalCenter
             }
 
             Text {
-                text: patternSetupDialog.confirming ? "Draw the same pattern again" : "Connect at least 4 dots"
-                font.pixelSize: 14
+                text: patternSetupDialog.confirming ? "Tap the same dots again" : "Tap at least 4 dots"
+                font.pixelSize: 16
                 color: "#888899"
                 anchors.horizontalCenter: parent.horizontalCenter
             }
 
-            // Pattern grid
+            // Pattern grid - much larger
             Item {
-                width: 240
-                height: 240
+                width: 320
+                height: 320
                 anchors.horizontalCenter: parent.horizontalCenter
 
                 Grid {
                     anchors.centerIn: parent
                     columns: 3
-                    spacing: 40
+                    spacing: 24
 
                     Repeater {
                         model: 9
+
                         Rectangle {
-                            width: 40
-                            height: 40
-                            radius: 20
-                            color: {
-                                var pattern = patternSetupDialog.confirming ? patternSetupDialog.confirmPattern : patternSetupDialog.enteredPattern
-                                return pattern.indexOf(index) >= 0 ? "#e94560" : "#3a3a4e"
+                            id: patternDot
+                            width: 80
+                            height: 80
+                            radius: 40
+                            color: patternSetupDialog.isSelected(index) ? "#e94560" : "#3a3a4e"
+                            border.width: 4
+                            border.color: patternSetupDialog.isSelected(index) ? "#ff6b8a" : "#555566"
+
+                            // Dot number indicator
+                            Text {
+                                anchors.centerIn: parent
+                                text: {
+                                    var pattern = patternSetupDialog.confirming ? patternSetupDialog.confirmPattern : patternSetupDialog.enteredPattern
+                                    var pos = pattern.indexOf(index)
+                                    return pos >= 0 ? (pos + 1).toString() : ""
+                                }
+                                font.pixelSize: 24
+                                font.weight: Font.Bold
+                                color: "#ffffff"
                             }
-                            border.width: 3
-                            border.color: "#666677"
 
                             MouseArea {
                                 anchors.fill: parent
+                                anchors.margins: -10  // Larger touch target
                                 onClicked: {
-                                    var pattern = patternSetupDialog.confirming ? patternSetupDialog.confirmPattern : patternSetupDialog.enteredPattern
-                                    if (pattern.indexOf(index) < 0 && pattern.length < 9) {
-                                        pattern.push(index)
-                                        if (patternSetupDialog.confirming) {
-                                            patternSetupDialog.confirmPattern = pattern
-                                        } else {
-                                            patternSetupDialog.enteredPattern = pattern
-                                        }
-                                    }
+                                    patternSetupDialog.addToPattern(index)
                                 }
                             }
+
+                            // Visual feedback on selection
+                            Behavior on color { ColorAnimation { duration: 100 } }
+                            Behavior on border.color { ColorAnimation { duration: 100 } }
                         }
                     }
                 }
             }
 
             Text {
-                text: "Dots: " + (patternSetupDialog.confirming ? patternSetupDialog.confirmPattern.length : patternSetupDialog.enteredPattern.length)
-                font.pixelSize: 14
-                color: "#666677"
+                text: "Dots selected: " + patternSetupDialog.currentLength() + " / 9"
+                font.pixelSize: 18
+                color: patternSetupDialog.currentLength() >= 4 ? "#4ade80" : "#888899"
                 anchors.horizontalCenter: parent.horizontalCenter
             }
 
+            // Buttons row
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 16
+                spacing: 20
 
                 Rectangle {
-                    width: 100
-                    height: 44
-                    radius: 22
+                    width: 90
+                    height: 50
+                    radius: 25
                     color: clearPatternMouse.pressed ? "#3a3a4e" : "#2a2a3e"
 
                     Text {
@@ -403,14 +436,15 @@ Page {
                             } else {
                                 patternSetupDialog.enteredPattern = []
                             }
+                            patternSetupDialog.patternCount = 0
                         }
                     }
                 }
 
                 Rectangle {
-                    width: 100
-                    height: 44
-                    radius: 22
+                    width: 90
+                    height: 50
+                    radius: 25
                     color: cancelPatternMouse.pressed ? "#3a3a4e" : "#2a2a3e"
 
                     Text {
@@ -427,17 +461,18 @@ Page {
                             patternSetupDialog.enteredPattern = []
                             patternSetupDialog.confirmPattern = []
                             patternSetupDialog.confirming = false
+                            patternSetupDialog.patternCount = 0
                             patternSetupDialog.close()
                         }
                     }
                 }
 
                 Rectangle {
-                    width: 100
-                    height: 44
-                    radius: 22
+                    width: 90
+                    height: 50
+                    radius: 25
                     color: confirmPatternMouse.pressed ? "#c23a50" : "#e94560"
-                    opacity: (patternSetupDialog.confirming ? patternSetupDialog.confirmPattern.length : patternSetupDialog.enteredPattern.length) >= 4 ? 1.0 : 0.5
+                    opacity: patternSetupDialog.currentLength() >= 4 ? 1.0 : 0.4
 
                     Text {
                         anchors.centerIn: parent
@@ -450,10 +485,11 @@ Page {
                     MouseArea {
                         id: confirmPatternMouse
                         anchors.fill: parent
-                        enabled: (patternSetupDialog.confirming ? patternSetupDialog.confirmPattern.length : patternSetupDialog.enteredPattern.length) >= 4
+                        enabled: patternSetupDialog.currentLength() >= 4
                         onClicked: {
                             if (!patternSetupDialog.confirming) {
                                 patternSetupDialog.confirming = true
+                                patternSetupDialog.patternCount = 0
                             } else {
                                 if (JSON.stringify(patternSetupDialog.enteredPattern) === JSON.stringify(patternSetupDialog.confirmPattern)) {
                                     // Patterns match - save config
@@ -462,11 +498,13 @@ Page {
                                     patternSetupDialog.enteredPattern = []
                                     patternSetupDialog.confirmPattern = []
                                     patternSetupDialog.confirming = false
+                                    patternSetupDialog.patternCount = 0
                                     patternSetupDialog.close()
                                 } else {
-                                    // Patterns don't match - reset
+                                    // Patterns don't match - show error and reset confirm
                                     patternSetupDialog.confirmPattern = []
                                     patternSetupDialog.confirming = false
+                                    patternSetupDialog.patternCount = 0
                                 }
                             }
                         }
