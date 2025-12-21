@@ -487,6 +487,11 @@ impl SlintShell {
         self.shell.set_wiggle_time(time);
     }
 
+    /// Set star twinkling animation time (updated each frame during lock screen)
+    pub fn set_star_time(&self, time: f32) {
+        self.shell.set_star_time(time);
+    }
+
     /// Set the index of the tile being dragged (-1 if none)
     pub fn set_dragging_index(&self, index: i32) {
         self.shell.set_dragging_index(index);

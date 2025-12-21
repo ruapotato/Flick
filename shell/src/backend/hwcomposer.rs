@@ -1848,6 +1848,10 @@ fn render_frame(
                                 let now = chrono::Local::now();
                                 slint_ui.set_lock_time(&now.format("%H:%M").to_string());
                                 slint_ui.set_lock_date(&now.format("%A, %B %d").to_string());
+
+                                // Update star twinkling animation time
+                                let elapsed = state.start_time.elapsed().as_secs_f32();
+                                slint_ui.set_star_time(elapsed);
                             }
                             ShellView::Home => {
                                 slint_ui.set_view("home");
