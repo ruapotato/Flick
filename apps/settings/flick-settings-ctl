@@ -4,6 +4,8 @@
 
 set -e
 
+LOCK_CONFIG_PATH="${HOME}/.local/state/flick/lock_config.json"
+
 usage() {
     echo "Usage: $0 <command> [args...]"
     echo "Commands:"
@@ -13,6 +15,8 @@ usage() {
     echo "  volume set <val>      - Set volume (0-100)"
     echo "  mute get              - Get mute status (0/1)"
     echo "  mute set <0|1>        - Set mute status"
+    echo "  lock get              - Get lock method (pin/password/pattern/none)"
+    echo "  lock set <method>     - Set lock method"
     exit 1
 }
 
@@ -110,6 +114,36 @@ case "$CMD" in
                 elif command -v wpctl &>/dev/null; then
                     [ "$VALUE" = "1" ] && wpctl set-mute @DEFAULT_AUDIO_SINK@ 1 || wpctl set-mute @DEFAULT_AUDIO_SINK@ 0
                 fi
+                ;;
+            *)
+                usage
+                ;;
+        esac
+        ;;
+    lock)
+        case "$ACTION" in
+            get)
+                if [ -f "$LOCK_CONFIG_PATH" ]; then
+                    # Extract method from JSON
+                    grep -oP '"method"\s*:\s*"\K[^"]+' "$LOCK_CONFIG_PATH" 2>/dev/null || echo "password"
+                else
+                    echo "password"
+                fi
+                ;;
+            set)
+                [ -z "$VALUE" ] && usage
+                # Validate method
+                case "$VALUE" in
+                    pin|password|pattern|none)
+                        mkdir -p "$(dirname "$LOCK_CONFIG_PATH")"
+                        echo "{\"method\": \"$VALUE\"}" > "$LOCK_CONFIG_PATH"
+                        echo "Lock method set to: $VALUE"
+                        ;;
+                    *)
+                        echo "Invalid method: $VALUE (use pin/password/pattern/none)"
+                        exit 1
+                        ;;
+                esac
                 ;;
             *)
                 usage

@@ -1,14 +1,19 @@
 #!/bin/bash
 # Wrapper script for QML settings app
 
-QML_FILE="$(dirname "$0")/main.qml"
+SCRIPT_DIR="$(dirname "$0")"
+QML_FILE="${SCRIPT_DIR}/main.qml"
 LOG_FILE="${HOME}/.local/state/flick/qml_settings.log"
+LOCK_CONFIG="${HOME}/.local/state/flick/lock_config.json"
+PENDING_FILE="/tmp/flick-lock-config-pending"
 
 # Ensure state directory exists
 mkdir -p "$(dirname "$LOG_FILE")"
+mkdir -p "$(dirname "$LOCK_CONFIG")"
 
-# Clear old log
+# Clear old log and pending file
 > "$LOG_FILE"
+rm -f "$PENDING_FILE"
 
 echo "Starting QML settings, QML_FILE=$QML_FILE" >> "$LOG_FILE"
 
@@ -25,8 +30,26 @@ export LIBGL_ALWAYS_SOFTWARE=1
 # Try wayland-egl integration
 export QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=wayland-egl
 
-# Run qmlscene
-/usr/lib/qt5/bin/qmlscene "$QML_FILE" >> "$LOG_FILE" 2>&1
-EXIT_CODE=$?
+# Run qmlscene and capture output
+/usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" | while read line; do
+    # Check for lock config save messages
+    if [[ "$line" == *"Saving lock method:"* ]]; then
+        METHOD=$(echo "$line" | sed 's/.*Saving lock method: //')
+        echo "Detected lock method change: $METHOD" >> "$LOG_FILE"
+        echo "$METHOD" > "$PENDING_FILE"
+    fi
+done
+EXIT_CODE=${PIPESTATUS[0]}
 
 echo "QML settings exited with code $EXIT_CODE" >> "$LOG_FILE"
+
+# Process any pending lock config
+if [ -f "$PENDING_FILE" ]; then
+    METHOD=$(cat "$PENDING_FILE")
+    if [ -n "$METHOD" ]; then
+        echo "Applying pending lock method: $METHOD" >> "$LOG_FILE"
+        echo "{\"method\": \"$METHOD\"}" > "$LOCK_CONFIG"
+        echo "Lock config saved to $LOCK_CONFIG" >> "$LOG_FILE"
+    fi
+    rm -f "$PENDING_FILE"
+fi
