@@ -1296,9 +1296,16 @@ pub fn run() -> Result<()> {
     // Initialize libinput
     let libinput_session = LibinputSessionInterface::from(session.borrow().clone());
     let mut libinput_context = Libinput::new_with_udev(libinput_session);
+    info!("Libinput context created with udev");
     libinput_context.udev_assign_seat(&session.borrow().seat()).unwrap();
+    info!("Libinput seat assigned: {}", session.borrow().seat());
+
+    // Initial dispatch to pick up devices
+    libinput_context.dispatch().unwrap();
+    info!("Libinput dispatched initially");
 
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
+    info!("Libinput backend created");
 
     // Create Wayland display
     let display: Display<Flick> = Display::new()?;
