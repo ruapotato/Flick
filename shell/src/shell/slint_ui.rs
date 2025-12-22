@@ -473,6 +473,11 @@ impl SlintShell {
         self.shell.set_battery_percent(percent);
     }
 
+    /// Set text scale factor for UI elements
+    pub fn set_text_scale(&self, scale: f32) {
+        self.shell.set_text_scale(scale);
+    }
+
     /// Show/hide the long press popup menu
     pub fn set_show_popup(&self, show: bool) {
         *self.popup_showing.borrow_mut() = show;

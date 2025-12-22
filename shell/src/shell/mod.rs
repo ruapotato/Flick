@@ -292,6 +292,8 @@ pub struct Shell {
     pub lock_screen_last_tap: Option<std::time::Instant>,
     /// Screen timeout in seconds (0 = never, from display settings)
     pub screen_timeout_secs: u64,
+    /// Text scale factor (1.0 = normal, 2.0 = double size, etc.)
+    pub text_scale: f32,
 }
 
 impl Shell {
@@ -381,6 +383,7 @@ impl Shell {
             lock_screen_dimmed: false,
             lock_screen_last_tap: None,
             screen_timeout_secs: Self::load_screen_timeout(),
+            text_scale: Self::load_text_scale(),
         };
 
         // Preload icons for all categories
@@ -411,9 +414,29 @@ impl Shell {
         30 // Default 30 seconds
     }
 
+    /// Load text scale from display config file
+    fn load_text_scale() -> f32 {
+        let config_path = std::path::Path::new("/home/droidian/.local/state/flick/display_config.json");
+        if let Ok(content) = std::fs::read_to_string(config_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(scale) = json.get("text_scale").and_then(|v| v.as_f64()) {
+                    tracing::info!("Loaded text scale: {}", scale);
+                    return scale as f32;
+                }
+            }
+        }
+        tracing::info!("Using default text scale: 2.0");
+        2.0 // Default scale for mobile
+    }
+
     /// Reload screen timeout from config (called when settings may have changed)
     pub fn reload_screen_timeout(&mut self) {
         self.screen_timeout_secs = Self::load_screen_timeout();
+    }
+
+    /// Reload text scale from config
+    pub fn reload_text_scale(&mut self) {
+        self.text_scale = Self::load_text_scale();
     }
 
     /// Attempt to unlock with the current input
@@ -652,6 +675,8 @@ impl Shell {
                 .unwrap_or_else(|_| "/tmp".to_string())
         };
 
+        let qt_scale = format!("{}", self.text_scale);
+        let gdk_scale = format!("{}", self.text_scale.round() as i32);
         match std::process::Command::new("sh")
             .arg("-c")
             .arg(&shell_cmd)
@@ -660,6 +685,11 @@ impl Shell {
             .env("QT_WAYLAND_CLIENT_BUFFER_INTEGRATION", "shm")
             .env("FLICK_STATE_DIR", &state_dir)
             .env("XDG_RUNTIME_DIR", std::env::var("XDG_RUNTIME_DIR").unwrap_or_default())
+            // Text/UI scaling for lock screen app
+            .env("QT_SCALE_FACTOR", &qt_scale)
+            .env("QT_FONT_DPI", format!("{}", (96.0 * self.text_scale) as i32))
+            .env("GDK_SCALE", &gdk_scale)
+            .env("GDK_DPI_SCALE", &qt_scale)
             .spawn()
         {
             Ok(_) => {

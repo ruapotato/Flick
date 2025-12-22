@@ -1011,6 +1011,10 @@ fn handle_input_event(
                             info!("Launching app from home touch: {}", exec);
                             // Get socket name for WAYLAND_DISPLAY
                             let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
+                            // Get text scale for app scaling
+                            let text_scale = state.shell.text_scale;
+                            let qt_scale = format!("{}", text_scale);
+                            let gdk_scale = format!("{}", text_scale.round() as i32);
                             std::process::Command::new("sh")
                                 .arg("-c")
                                 .arg(&exec)
@@ -1028,6 +1032,11 @@ fn handle_input_event(
                                 // Also set for Qt apps
                                 .env("QT_QUICK_BACKEND", "software")
                                 .env("QT_OPENGL", "software")
+                                // Text/UI scaling for apps from settings
+                                .env("QT_SCALE_FACTOR", &qt_scale)
+                                .env("QT_FONT_DPI", format!("{}", (96.0 * text_scale) as i32))
+                                .env("GDK_SCALE", &gdk_scale)
+                                .env("GDK_DPI_SCALE", &qt_scale)
                                 .spawn()
                                 .ok();
 
@@ -1267,10 +1276,19 @@ fn handle_input_event(
                                             if let Some(exec) = state.shell.app_manager.get_exec(AppCategory::Settings) {
                                                 state.shell.set_view(crate::shell::ShellView::App);
                                                 let exec_clone = exec.clone();
+                                                let text_scale = state.shell.text_scale;
+                                                let socket = state.socket_name.to_str().unwrap_or("wayland-1").to_string();
                                                 std::thread::spawn(move || {
+                                                    let qt_scale = format!("{}", text_scale);
+                                                    let gdk_scale = format!("{}", text_scale.round() as i32);
                                                     if let Err(e) = std::process::Command::new("/bin/sh")
                                                         .arg("-c")
                                                         .arg(&exec_clone)
+                                                        .env("WAYLAND_DISPLAY", &socket)
+                                                        .env("QT_SCALE_FACTOR", &qt_scale)
+                                                        .env("QT_FONT_DPI", format!("{}", (96.0 * text_scale) as i32))
+                                                        .env("GDK_SCALE", &gdk_scale)
+                                                        .env("GDK_DPI_SCALE", &qt_scale)
                                                         .spawn()
                                                     {
                                                         error!("Failed to launch settings app: {}", e);
@@ -1907,6 +1925,10 @@ fn render_frame(
                                     slint_ui.set_lock_error("");
                                 }
 
+                                // Update battery and text scale for lock screen
+                                slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
+                                slint_ui.set_text_scale(state.shell.text_scale);
+
                                 // Only update animations and time when not dimmed (power saving)
                                 if !state.shell.lock_screen_dimmed {
                                     // Update time/date for lock screen
@@ -1930,6 +1952,8 @@ fn render_frame(
                                 slint_ui.set_time(&now.format("%H:%M").to_string());
                                 // Update battery from system info
                                 slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
+                                // Update text scale from settings
+                                slint_ui.set_text_scale(state.shell.text_scale);
                             }
                             ShellView::QuickSettings => {
                                 slint_ui.set_view("quick-settings");
