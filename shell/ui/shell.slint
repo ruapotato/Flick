@@ -2302,6 +2302,7 @@ export component FlickShell inherits Window {
     in property <[AppCategory]> categories: [];
     in property <string> lock-time: "12:00";
     in property <string> lock-date: "Saturday, December 7";
+    in property <string> time: "12:00";  // Current time for status bar
     in property <int> pin-length: 0;
     in property <string> lock-error: "";
     in property <float> brightness: 0.7;
@@ -2411,7 +2412,7 @@ export component FlickShell inherits Window {
         width: 100%;
         height: 100%;
         categories: categories;
-        time: lock-time;
+        time: root.time;
         battery: battery-percent;
         wiggle-mode: root.wiggle-mode;
         wiggle-time: root.wiggle-time;

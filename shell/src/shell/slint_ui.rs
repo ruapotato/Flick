@@ -370,6 +370,11 @@ impl SlintShell {
         self.shell.set_lock_time(time.into());
     }
 
+    /// Set status bar time (for home screen)
+    pub fn set_time(&self, time: &str) {
+        self.shell.set_time(time.into());
+    }
+
     /// Set lock screen date
     pub fn set_lock_date(&self, date: &str) {
         self.shell.set_lock_date(date.into());
