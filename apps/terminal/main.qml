@@ -12,7 +12,7 @@ Window {
 
     // Settings from Flick config
     property real textScale: 2.0
-    property int baseFontSize: 56
+    property int baseFontSize: 24
 
     Component.onCompleted: {
         loadConfig()

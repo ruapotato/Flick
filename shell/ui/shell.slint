@@ -939,47 +939,47 @@ component LockScreen inherits Rectangle {
         Rectangle { x: parent.width * 0.52; y: parent.height * 0.92; width: 1px; height: 1px; border-radius: 0.5px; background: #888899; opacity: 0.7 + 0.3 * sin((star-time * 1.0 + 2.4) * 1rad); }
         Rectangle { x: parent.width * 0.78; y: parent.height * 0.88; width: 1px; height: 1px; border-radius: 0.5px; background: #777788; opacity: 0.7 + 0.3 * sin((star-time * 1.1 + 3.4) * 1rad); }
 
-        // Battery indicator at top - scaled (base 28px for 3x at 2x scale)
+        // Battery indicator at top - fixed large size
         Text {
             x: 0;
             y: 40px;
             width: 100%;
             text: battery-percent + "%";
             color: battery-percent > 20 ? #aaaacc : #ff6666;
-            font-size: 28px * text-scale;
+            font-size: 56px;
             font-weight: 500;
             horizontal-alignment: center;
         }
 
-        // Large centered time - big and beautiful, scaled (base 96px for 3x at 2x scale)
+        // Large centered time - fixed maximum readable size
         Text {
             x: 0;
             y: parent.height / 3 - 120px;
             width: 100%;
             text: time;
             color: #ffffff;
-            font-size: 96px * text-scale;
+            font-size: 192px;
             font-weight: 200;
             horizontal-alignment: center;
         }
 
-        // Date below time - scaled (base 24px for 3x at 2x scale)
+        // Date below time - fixed large size
         Text {
             x: 0;
-            y: parent.height / 3 + 120px;
+            y: parent.height / 3 + 140px;
             width: 100%;
             text: date;
             color: #aaaacc;
-            font-size: 24px * text-scale;
+            font-size: 48px;
             horizontal-alignment: center;
         }
 
-        // Swipe hint at bottom with subtle glow effect - scaled
+        // Swipe hint at bottom - fixed sizes
         Rectangle {
-            x: (parent.width - 300px * text-scale) / 2;
-            y: parent.height - 100px * text-scale;
-            width: 300px * text-scale;
-            height: 80px * text-scale;
+            x: (parent.width - 400px) / 2;
+            y: parent.height - 180px;
+            width: 400px;
+            height: 140px;
             background: transparent;
 
             // Up arrow
@@ -989,17 +989,17 @@ component LockScreen inherits Rectangle {
                 width: 100%;
                 text: "^";
                 color: #6688aa;
-                font-size: 36px * text-scale;
+                font-size: 72px;
                 horizontal-alignment: center;
             }
 
             Text {
                 x: 0;
-                y: 40px * text-scale;
+                y: 70px;
                 width: 100%;
                 text: "Swipe up to unlock";
                 color: #6688aa;
-                font-size: 18px * text-scale;
+                font-size: 36px;
                 horizontal-alignment: center;
             }
         }
@@ -1041,48 +1041,48 @@ component LockScreen inherits Rectangle {
         height: 100%;
         background: Theme.background;
 
-        // Time at top - scaled (base 48px for 3x at 2x scale)
+        // Time at top - fixed large size
         Text {
             x: 0;
             y: 40px;
             width: 100%;
             text: time;
             color: Theme.on-surface;
-            font-size: 48px * text-scale;
+            font-size: 96px;
             font-weight: 300;
             horizontal-alignment: center;
         }
 
-        // Date below time - scaled (base 18px for 3x at 2x scale)
+        // Date below time - fixed size
         Text {
             x: 0;
-            y: 40px + 55px * text-scale;
+            y: 150px;
             width: 100%;
             text: date;
             color: Theme.on-surface-variant;
-            font-size: 18px * text-scale;
+            font-size: 36px;
             horizontal-alignment: center;
         }
 
-        // Error message if any - scaled
+        // Error message if any - fixed size
         if error-message != "": Text {
             x: 0;
-            y: 160px * text-scale;
+            y: 220px;
             width: 100%;
             text: error-message;
             color: Theme.error;
-            font-size: 16px * text-scale;
+            font-size: 32px;
             horizontal-alignment: center;
         }
 
-        // Instruction text
+        // Instruction text - fixed size
         Text {
             x: 0;
-            y: 180px;
+            y: 280px;
             width: 100%;
             text: "Draw your pattern";
             color: Theme.on-surface-variant;
-            font-size: 18px;
+            font-size: 36px;
             horizontal-alignment: center;
         }
 
@@ -1096,12 +1096,12 @@ component LockScreen inherits Rectangle {
             pattern-started => { root.pattern-started(); }
         }
 
-        // Use Password link at bottom
+        // Use Password link at bottom - fixed size
         TouchArea {
-            x: (parent.width - 250px) / 2;
-            y: parent.height - 100px;
-            width: 250px;
-            height: 50px;
+            x: (parent.width - 400px) / 2;
+            y: parent.height - 120px;
+            width: 400px;
+            height: 80px;
 
             clicked => { root.use-password-pressed(); }
 
@@ -1110,7 +1110,7 @@ component LockScreen inherits Rectangle {
                 height: 100%;
                 text: "Use Password Instead";
                 color: Theme.primary;
-                font-size: 16px;
+                font-size: 32px;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -1123,38 +1123,38 @@ component LockScreen inherits Rectangle {
         spacing: 24px;
         padding: 32px;
 
-        // Time display - scaled (base 56px for 3x at 2x scale)
+        // Time display - fixed large size
         Text {
             text: time;
             color: Theme.on-surface;
-            font-size: 56px * text-scale;
+            font-size: 112px;
             font-weight: 300;
             horizontal-alignment: center;
         }
 
-        // Date display - scaled (base 18px for 3x at 2x scale)
+        // Date display - fixed size
         Text {
             text: date;
             color: Theme.on-surface-variant;
-            font-size: 18px * text-scale;
+            font-size: 36px;
             horizontal-alignment: center;
         }
 
         Rectangle { height: 32px; }
 
-        // Error message (if any) - scaled
+        // Error message (if any) - fixed size
         if error-message != "": Text {
             text: error-message;
             color: Theme.error;
-            font-size: 16px * text-scale;
+            font-size: 32px;
             horizontal-alignment: center;
         }
 
-        // Lockout message (if any)
+        // Lockout message (if any) - fixed size
         if lockout-message != "": Text {
             text: lockout-message;
             color: Theme.error;
-            font-size: 14px;
+            font-size: 28px;
             horizontal-alignment: center;
         }
 
