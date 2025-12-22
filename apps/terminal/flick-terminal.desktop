@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Flick Terminal
+Comment=First-party terminal for Flick shell
+Exec=/home/droidian/Flick/apps/terminal/run_terminal.sh
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=terminal;console;command;shell;
