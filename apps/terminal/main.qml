@@ -19,7 +19,7 @@ Window {
     }
 
     function loadConfig() {
-        // Try to read config from standard location
+        // Try to read config from standard location (uses droidian home)
         var configPath = "/home/droidian/.local/state/flick/display_config.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + configPath, false)

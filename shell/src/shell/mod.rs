@@ -324,6 +324,10 @@ impl Shell {
                 };
                 ui.set_lock_mode(lock_mode);
                 tracing::info!("Lock screen mode set to: {}", lock_mode);
+                // Initialize text scale from config
+                let text_scale = Self::load_text_scale();
+                ui.set_text_scale(text_scale);
+                tracing::info!("Text scale initialized to: {}", text_scale);
                 Some(ui)
             }
             Err(e) => {

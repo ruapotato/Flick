@@ -106,7 +106,7 @@ component StatusBar inherits Rectangle {
     in property <bool> wifi: true;
     in property <float> text-scale: 2.0;
 
-    height: 36px * text-scale;
+    height: 54px * text-scale;
     background: transparent;
 
     HorizontalLayout {
@@ -114,18 +114,18 @@ component StatusBar inherits Rectangle {
         padding-right: 20px;
         spacing: 12px;
 
-        // Time (left) - scaled (base 18px for 3x at 2x scale)
+        // Time (left) - base 54px (3x larger)
         Text {
             text: time;
             color: Theme.on-surface;
-            font-size: 18px * text-scale;
+            font-size: 54px * text-scale;
             font-weight: 600;
             vertical-alignment: center;
         }
 
         Rectangle { horizontal-stretch: 1; }
 
-        // Status icons (right) - scaled
+        // Status icons (right)
         HorizontalLayout {
             spacing: 16px;
 
@@ -133,16 +133,16 @@ component StatusBar inherits Rectangle {
             Text {
                 text: wifi ? "W" : "-";
                 color: wifi ? Theme.primary : Theme.on-surface-variant;
-                font-size: 16px * text-scale;
+                font-size: 48px * text-scale;
                 font-weight: 500;
                 vertical-alignment: center;
             }
 
-            // Battery - scaled (base 18px for 3x at 2x scale)
+            // Battery - base 54px (3x larger)
             Text {
                 text: battery + "%";
                 color: battery > 20 ? Theme.success : Theme.error;
-                font-size: 18px * text-scale;
+                font-size: 54px * text-scale;
                 font-weight: 600;
                 vertical-alignment: center;
             }
