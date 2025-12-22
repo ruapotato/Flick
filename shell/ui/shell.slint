@@ -857,6 +857,7 @@ component LockScreen inherits Rectangle {
     in property <bool> keyboard-showing: false;  // Whether on-screen keyboard is up
     in property <float> star-time: 0;  // Animation time for twinkling stars (set from Rust)
     in property <bool> screen-dimmed: false;  // Power saving: screen is off, wake on tap/power
+    in property <int> battery-percent: 100;  // Battery percentage to display
 
     callback digit-pressed(string);
     callback backspace-pressed();
@@ -935,6 +936,18 @@ component LockScreen inherits Rectangle {
         Rectangle { x: parent.width * 0.20; y: parent.height * 0.90; width: 1px; height: 1px; border-radius: 0.5px; background: #777788; opacity: 0.7 + 0.3 * sin((star-time * 1.2 + 1.4) * 1rad); }
         Rectangle { x: parent.width * 0.52; y: parent.height * 0.92; width: 1px; height: 1px; border-radius: 0.5px; background: #888899; opacity: 0.7 + 0.3 * sin((star-time * 1.0 + 2.4) * 1rad); }
         Rectangle { x: parent.width * 0.78; y: parent.height * 0.88; width: 1px; height: 1px; border-radius: 0.5px; background: #777788; opacity: 0.7 + 0.3 * sin((star-time * 1.1 + 3.4) * 1rad); }
+
+        // Battery indicator at top
+        Text {
+            x: 0;
+            y: 40px;
+            width: 100%;
+            text: battery-percent + "%";
+            color: battery-percent > 20 ? #aaaacc : #ff6666;
+            font-size: 28px;
+            font-weight: 400;
+            horizontal-alignment: center;
+        }
 
         // Large centered time - big and beautiful
         Text {
@@ -1026,14 +1039,14 @@ component LockScreen inherits Rectangle {
         height: 100%;
         background: Theme.background;
 
-        // Time at top (smaller)
+        // Time at top
         Text {
             x: 0;
             y: 40px;
             width: 100%;
             text: time;
             color: Theme.on-surface;
-            font-size: 48px;
+            font-size: 72px;
             font-weight: 300;
             horizontal-alignment: center;
         }
@@ -1041,11 +1054,11 @@ component LockScreen inherits Rectangle {
         // Date below time
         Text {
             x: 0;
-            y: 100px;
+            y: 120px;
             width: 100%;
             text: date;
             color: Theme.on-surface-variant;
-            font-size: 16px;
+            font-size: 20px;
             horizontal-alignment: center;
         }
 
@@ -1108,11 +1121,11 @@ component LockScreen inherits Rectangle {
         spacing: 24px;
         padding: 32px;
 
-        // Time display (smaller when unlocking)
+        // Time display
         Text {
             text: time;
             color: Theme.on-surface;
-            font-size: 72px;
+            font-size: 96px;
             font-weight: 300;
             horizontal-alignment: center;
         }
@@ -1121,7 +1134,7 @@ component LockScreen inherits Rectangle {
         Text {
             text: date;
             color: Theme.on-surface-variant;
-            font-size: 18px;
+            font-size: 22px;
             horizontal-alignment: center;
         }
 
@@ -2508,6 +2521,7 @@ export component FlickShell inherits Window {
         keyboard-showing: root.keyboard-visible;
         star-time: root.star-time;
         screen-dimmed: root.lock-screen-dimmed;
+        battery-percent: battery-percent;
         digit-pressed(d) => { pin-digit-pressed(d); }
         backspace-pressed => { pin-backspace-pressed(); }
         pattern-node-touched(idx) => { root.pattern-node-touched(idx); }

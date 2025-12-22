@@ -74,23 +74,27 @@ pub struct BatteryStatus {
 impl BatteryStatus {
     /// Read current battery status
     pub fn read() -> Option<Self> {
-        let power_dir = "/sys/class/power_supply";
-        if let Ok(entries) = fs::read_dir(power_dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with("BAT") {
-                    let path = entry.path();
-                    let capacity = fs::read_to_string(path.join("capacity"))
-                        .ok()
-                        .and_then(|s| s.trim().parse().ok())
-                        .unwrap_or(0);
-                    let status = fs::read_to_string(path.join("status"))
-                        .map(|s| s.trim().to_string())
-                        .unwrap_or_else(|_| "Unknown".to_string());
-                    let charging = status == "Charging" || status == "Full";
+        // Try common battery paths (Android uses "battery", Linux uses "BAT0"/"BAT1")
+        let battery_paths = [
+            "/sys/class/power_supply/battery",
+            "/sys/class/power_supply/Battery",
+            "/sys/class/power_supply/BAT0",
+            "/sys/class/power_supply/BAT1",
+        ];
 
-                    return Some(Self { capacity, charging, status });
-                }
+        for battery_path in &battery_paths {
+            let path = std::path::Path::new(battery_path);
+            if path.exists() {
+                let capacity = fs::read_to_string(path.join("capacity"))
+                    .ok()
+                    .and_then(|s| s.trim().parse().ok())
+                    .unwrap_or(0);
+                let status = fs::read_to_string(path.join("status"))
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|_| "Unknown".to_string());
+                let charging = status == "Charging" || status == "Full";
+
+                return Some(Self { capacity, charging, status });
             }
         }
         None
