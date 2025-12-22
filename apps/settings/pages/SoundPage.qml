@@ -6,9 +6,74 @@ Page {
     id: soundPage
 
     property real mediaVolume: 0.7
-    property real ringVolume: 0.8
-    property bool vibration: true
+    property real micVolume: 0.7
+    property bool muted: false
+    property bool micMuted: false
     property bool silentMode: false
+
+    Component.onCompleted: loadSoundSettings()
+
+    // Periodic refresh
+    Timer {
+        interval: 2000
+        running: true
+        repeat: true
+        onTriggered: loadSoundSettings()
+    }
+
+    function loadSoundSettings() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///tmp/flick-sound.json", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200) {
+                var data = JSON.parse(xhr.responseText)
+                if (data.volume !== undefined) {
+                    mediaVolume = data.volume / 100.0
+                }
+                if (data.muted !== undefined) {
+                    muted = data.muted
+                    silentMode = data.muted
+                }
+                if (data.mic_volume !== undefined) {
+                    micVolume = data.mic_volume / 100.0
+                }
+                if (data.mic_muted !== undefined) {
+                    micMuted = data.mic_muted
+                }
+            }
+        } catch (e) {
+            console.log("Could not read sound settings")
+        }
+    }
+
+    function saveMediaVolume() {
+        var percent = Math.round(mediaVolume * 100)
+        console.warn("SOUND_CMD:set-volume:" + percent)
+    }
+
+    function saveMicVolume() {
+        var percent = Math.round(micVolume * 100)
+        console.warn("SOUND_CMD:set-mic-volume:" + percent)
+    }
+
+    function toggleMute() {
+        silentMode = !silentMode
+        if (silentMode) {
+            console.warn("SOUND_CMD:mute")
+        } else {
+            console.warn("SOUND_CMD:unmute")
+        }
+    }
+
+    function toggleMicMute() {
+        micMuted = !micMuted
+        if (micMuted) {
+            console.warn("SOUND_CMD:mic-mute")
+        } else {
+            console.warn("SOUND_CMD:mic-unmute")
+        }
+    }
 
     background: Rectangle {
         color: "#0a0a0f"
@@ -85,7 +150,7 @@ Page {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: silentMode ? "SILENT MODE ACTIVE" : "VOLUME CONTROL"
+                text: silentMode ? "MUTED" : "VOLUME " + Math.round(mediaVolume * 100) + "%"
                 font.pixelSize: 12
                 font.letterSpacing: 2
                 color: silentMode ? "#e94560" : "#555566"
@@ -131,12 +196,12 @@ Page {
                         width: parent.width
 
                         Text {
-                            text: "🎵"
+                            text: "🔊"
                             font.pixelSize: 24
                         }
 
                         Text {
-                            text: "Media"
+                            text: "Volume"
                             font.pixelSize: 20
                             color: "#ffffff"
                             Layout.fillWidth: true
@@ -191,20 +256,21 @@ Page {
                             enabled: !silentMode
                             onPressed: mediaVolume = Math.max(0, Math.min(1, mouse.x / parent.width))
                             onPositionChanged: if (pressed) mediaVolume = Math.max(0, Math.min(1, mouse.x / parent.width))
+                            onReleased: saveMediaVolume()
                         }
                     }
                 }
             }
 
-            // Ring volume slider
+            // Microphone volume slider
             Rectangle {
                 width: controlsColumn.width
                 height: 120
                 radius: 24
                 color: "#14141e"
-                border.color: "#1a1a2e"
-                border.width: 1
-                opacity: silentMode ? 0.5 : 1
+                border.color: micMuted ? "#e94560" : "#1a1a2e"
+                border.width: micMuted ? 2 : 1
+                opacity: micMuted ? 0.5 : 1
 
                 Column {
                     anchors.fill: parent
@@ -215,12 +281,12 @@ Page {
                         width: parent.width
 
                         Text {
-                            text: "🔔"
+                            text: micMuted ? "🎙️" : "🎤"
                             font.pixelSize: 24
                         }
 
                         Text {
-                            text: "Ringtone"
+                            text: "Microphone"
                             font.pixelSize: 20
                             color: "#ffffff"
                             Layout.fillWidth: true
@@ -228,10 +294,10 @@ Page {
                         }
 
                         Text {
-                            text: Math.round(ringVolume * 100) + "%"
+                            text: micMuted ? "Muted" : Math.round(micVolume * 100) + "%"
                             font.pixelSize: 18
                             font.weight: Font.Medium
-                            color: "#e94560"
+                            color: micMuted ? "#e94560" : "#4a8abf"
                         }
                     }
 
@@ -248,23 +314,23 @@ Page {
                             color: "#2a2a3e"
 
                             Rectangle {
-                                width: parent.width * ringVolume
+                                width: parent.width * micVolume
                                 height: parent.height
                                 radius: 4
-                                color: "#e94560"
+                                color: "#4a8abf"
 
                                 Behavior on width { NumberAnimation { duration: 50 } }
                             }
                         }
 
                         Rectangle {
-                            x: (parent.width - 40) * ringVolume
+                            x: (parent.width - 40) * micVolume
                             anchors.verticalCenter: parent.verticalCenter
                             width: 40
                             height: 40
                             radius: 20
                             color: "#ffffff"
-                            border.color: "#e94560"
+                            border.color: "#4a8abf"
                             border.width: 3
 
                             Behavior on x { NumberAnimation { duration: 50 } }
@@ -272,10 +338,34 @@ Page {
 
                         MouseArea {
                             anchors.fill: parent
-                            enabled: !silentMode
-                            onPressed: ringVolume = Math.max(0, Math.min(1, mouse.x / parent.width))
-                            onPositionChanged: if (pressed) ringVolume = Math.max(0, Math.min(1, mouse.x / parent.width))
+                            enabled: !micMuted
+                            onPressed: micVolume = Math.max(0, Math.min(1, mouse.x / parent.width))
+                            onPositionChanged: if (pressed) micVolume = Math.max(0, Math.min(1, mouse.x / parent.width))
+                            onReleased: saveMicVolume()
                         }
+                    }
+                }
+
+                // Mic mute button overlay
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 12
+                    width: 36
+                    height: 36
+                    radius: 18
+                    color: micMuteMouse.pressed ? "#5a2a2a" : (micMuted ? "#3a1a1a" : "#1a3a2a")
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: micMuted ? "🔇" : "🔈"
+                        font.pixelSize: 16
+                    }
+
+                    MouseArea {
+                        id: micMuteMouse
+                        anchors.fill: parent
+                        onClicked: toggleMicMute()
                     }
                 }
             }
@@ -290,84 +380,12 @@ Page {
                 leftPadding: 8
             }
 
-            // Vibration toggle
+            // Mute toggle (replaces silent mode)
             Rectangle {
                 width: controlsColumn.width
                 height: 90
                 radius: 24
-                color: vibMouse.pressed ? "#1e1e2e" : "#14141e"
-                border.color: vibration ? "#4ade80" : "#1a1a2e"
-                border.width: vibration ? 2 : 1
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 16
-
-                    Rectangle {
-                        Layout.preferredWidth: 52
-                        Layout.preferredHeight: 52
-                        radius: 14
-                        color: vibration ? "#1a3a2a" : "#1a1a28"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "📳"
-                            font.pixelSize: 26
-                        }
-                    }
-
-                    Column {
-                        Layout.fillWidth: true
-                        spacing: 4
-
-                        Text {
-                            text: "Vibration"
-                            font.pixelSize: 20
-                            color: "#ffffff"
-                        }
-
-                        Text {
-                            text: "Vibrate for calls and notifications"
-                            font.pixelSize: 13
-                            color: "#666677"
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.preferredWidth: 64
-                        Layout.preferredHeight: 36
-                        radius: 18
-                        color: vibration ? "#4ade80" : "#2a2a3e"
-
-                        Behavior on color { ColorAnimation { duration: 200 } }
-
-                        Rectangle {
-                            x: vibration ? parent.width - width - 4 : 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 28
-                            height: 28
-                            radius: 14
-                            color: "#ffffff"
-
-                            Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
-                        }
-                    }
-                }
-
-                MouseArea {
-                    id: vibMouse
-                    anchors.fill: parent
-                    onClicked: vibration = !vibration
-                }
-            }
-
-            // Silent mode toggle
-            Rectangle {
-                width: controlsColumn.width
-                height: 90
-                radius: 24
-                color: silentMouse.pressed ? "#1e1e2e" : "#14141e"
+                color: muteMouse.pressed ? "#1e1e2e" : "#14141e"
                 border.color: silentMode ? "#e94560" : "#1a1a2e"
                 border.width: silentMode ? 2 : 1
 
@@ -384,7 +402,7 @@ Page {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "🔕"
+                            text: silentMode ? "🔇" : "🔊"
                             font.pixelSize: 26
                         }
                     }
@@ -394,15 +412,15 @@ Page {
                         spacing: 4
 
                         Text {
-                            text: "Silent Mode"
+                            text: "Mute All"
                             font.pixelSize: 20
                             color: "#ffffff"
                         }
 
                         Text {
-                            text: "Mute all sounds"
+                            text: silentMode ? "Audio is muted" : "Audio is on"
                             font.pixelSize: 13
-                            color: "#666677"
+                            color: silentMode ? "#e94560" : "#666677"
                         }
                     }
 
@@ -428,9 +446,9 @@ Page {
                 }
 
                 MouseArea {
-                    id: silentMouse
+                    id: muteMouse
                     anchors.fill: parent
-                    onClicked: silentMode = !silentMode
+                    onClicked: toggleMute()
                 }
             }
 

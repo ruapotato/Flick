@@ -300,29 +300,39 @@ impl LockScreenState {
     }
 }
 
-/// Authenticate with PAM
+/// Authenticate with PAM - tries multiple services for compatibility
 pub fn authenticate_pam(username: &str, password: &str) -> bool {
     use pam::Authenticator;
 
-    match Authenticator::with_password("flick") {
-        Ok(mut auth) => {
-            auth.get_handler().set_credentials(username, password);
-            match auth.authenticate() {
-                Ok(()) => {
-                    tracing::info!("PAM authentication successful for user {}", username);
-                    true
-                }
-                Err(e) => {
-                    tracing::warn!("PAM authentication failed: {:?}", e);
-                    false
+    // Try multiple PAM services for maximum compatibility
+    // Different distros use different service names
+    let pam_services = ["login", "system-auth", "common-auth", "flick", "passwd"];
+
+    for service in &pam_services {
+        tracing::debug!("Trying PAM service: {}", service);
+        match Authenticator::with_password(service) {
+            Ok(mut auth) => {
+                auth.get_handler().set_credentials(username, password);
+                match auth.authenticate() {
+                    Ok(()) => {
+                        tracing::info!("PAM authentication successful for user {} via service {}", username, service);
+                        return true;
+                    }
+                    Err(e) => {
+                        tracing::debug!("PAM service {} failed: {:?}", service, e);
+                        // Continue to next service
+                    }
                 }
             }
-        }
-        Err(e) => {
-            tracing::error!("Failed to create PAM authenticator: {:?}", e);
-            false
+            Err(e) => {
+                tracing::debug!("Could not open PAM service {}: {:?}", service, e);
+                // Continue to next service
+            }
         }
     }
+
+    tracing::warn!("PAM authentication failed for user {} - all services tried", username);
+    false
 }
 
 /// Get current username

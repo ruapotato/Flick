@@ -1740,6 +1740,13 @@ pub fn run() -> Result<()> {
             state.shell.check_lock_screen_dim();
         }
 
+        // Periodic system refresh (battery, wifi, etc.) - every 10 seconds
+        if state.system_last_refresh.elapsed().as_secs() >= 10 {
+            state.system.refresh();
+            state.shell.sync_quick_settings(&state.system);
+            state.system_last_refresh = std::time::Instant::now();
+        }
+
         debug!("Loop {}: calling render_frame", loop_count);
         // Render frame
         if let Err(e) = render_frame(&mut hwc_display, &state, &output) {
@@ -1918,6 +1925,11 @@ fn render_frame(
                                 slint_ui.set_categories(slint_categories);
                                 slint_ui.set_show_popup(state.shell.popup_showing);
                                 slint_ui.set_wiggle_mode(state.shell.wiggle_mode);
+                                // Update time for status bar
+                                let now = chrono::Local::now();
+                                slint_ui.set_time(&now.format("%H:%M").to_string());
+                                // Update battery from system info
+                                slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
                             }
                             ShellView::QuickSettings => {
                                 slint_ui.set_view("quick-settings");

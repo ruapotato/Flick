@@ -7,12 +7,46 @@ Page {
 
     property real brightness: 0.75
     property bool autoBrightness: false
+    property bool autoSupported: false
     property int selectedTimeout: 1  // Index into timeout list (default 30s)
     property var timeoutValues: [15, 30, 60, 300, 0]  // Seconds for each option
     property real textScale: 2.0  // Text scale factor (0.5 to 3.0, default 2.0)
     property string scaleConfigPath: "/home/droidian/.local/state/flick/display_config.json"
 
-    Component.onCompleted: loadConfig()
+    Component.onCompleted: {
+        loadConfig()
+        loadBrightness()
+    }
+
+    function loadBrightness() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///tmp/flick-brightness.json", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200) {
+                var data = JSON.parse(xhr.responseText)
+                if (data.brightness !== undefined) {
+                    brightness = data.brightness / 100.0
+                }
+                autoSupported = (data.auto_supported === true)
+                if (data.auto_enabled !== undefined) {
+                    autoBrightness = data.auto_enabled
+                }
+            }
+        } catch (e) {
+            console.log("Could not read brightness")
+        }
+    }
+
+    function saveBrightness() {
+        var percent = Math.round(brightness * 100)
+        console.warn("BRIGHTNESS_CMD:set:" + percent)
+    }
+
+    function toggleAutoBrightness() {
+        autoBrightness = !autoBrightness
+        console.warn("BRIGHTNESS_CMD:auto:" + (autoBrightness ? "on" : "off"))
+    }
 
     function loadConfig() {
         var xhr = new XMLHttpRequest()
@@ -184,6 +218,7 @@ Page {
                     anchors.fill: parent
                     onPressed: updateBrightness(mouse)
                     onPositionChanged: if (pressed) updateBrightness(mouse)
+                    onReleased: saveBrightness()
 
                     function updateBrightness(mouse) {
                         brightness = Math.max(0.05, Math.min(1, mouse.x / parent.width))
@@ -283,7 +318,7 @@ Page {
                 MouseArea {
                     id: autoMouse
                     anchors.fill: parent
-                    onClicked: autoBrightness = !autoBrightness
+                    onClicked: toggleAutoBrightness()
                 }
             }
 

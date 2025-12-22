@@ -6,6 +6,143 @@ Page {
     id: bluetoothPage
 
     property bool btEnabled: true
+    property bool isScanning: false
+
+    // Device models
+    ListModel {
+        id: pairedDevicesModel
+    }
+
+    ListModel {
+        id: availableDevicesModel
+    }
+
+    Component.onCompleted: {
+        loadBluetoothStatus()
+        loadPairedDevices()
+        loadAvailableDevices()
+    }
+
+    // Periodic refresh timer
+    Timer {
+        interval: 3000
+        running: btEnabled
+        repeat: true
+        onTriggered: {
+            loadBluetoothStatus()
+            loadPairedDevices()
+            if (isScanning) {
+                loadAvailableDevices()
+            }
+        }
+    }
+
+    // Auto-stop scan after 30 seconds
+    Timer {
+        id: scanTimer
+        interval: 30000
+        running: isScanning
+        onTriggered: {
+            isScanning = false
+            console.warn("BT_CMD:scan-stop")
+        }
+    }
+
+    function loadBluetoothStatus() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///tmp/flick-bt-status.json", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200) {
+                var status = JSON.parse(xhr.responseText)
+                btEnabled = status.enabled
+            }
+        } catch (e) {
+            console.log("Could not read BT status")
+        }
+    }
+
+    function loadPairedDevices() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///tmp/flick-bt-paired.json", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200) {
+                var devices = JSON.parse(xhr.responseText)
+                pairedDevicesModel.clear()
+                for (var i = 0; i < devices.length; i++) {
+                    pairedDevicesModel.append(devices[i])
+                }
+            }
+        } catch (e) {
+            console.log("Could not read paired devices")
+        }
+    }
+
+    function loadAvailableDevices() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///tmp/flick-bt-available.json", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200) {
+                var devices = JSON.parse(xhr.responseText)
+                availableDevicesModel.clear()
+                for (var i = 0; i < devices.length; i++) {
+                    availableDevicesModel.append(devices[i])
+                }
+            }
+        } catch (e) {
+            console.log("Could not read available devices")
+        }
+    }
+
+    function toggleBluetooth() {
+        if (btEnabled) {
+            console.warn("BT_CMD:disable")
+            btEnabled = false
+            isScanning = false
+        } else {
+            console.warn("BT_CMD:enable")
+            btEnabled = true
+        }
+    }
+
+    function startScan() {
+        console.warn("BT_CMD:scan-start")
+        isScanning = true
+        scanTimer.restart()
+    }
+
+    function connectDevice(mac) {
+        console.warn("BT_CMD:connect:" + mac)
+    }
+
+    function disconnectDevice(mac) {
+        console.warn("BT_CMD:disconnect:" + mac)
+    }
+
+    function pairDevice(mac) {
+        console.warn("BT_CMD:pair:" + mac)
+    }
+
+    function removeDevice(mac) {
+        console.warn("BT_CMD:remove:" + mac)
+    }
+
+    function getIconEmoji(icon) {
+        switch (icon) {
+            case "headphones": return "🎧"
+            case "speaker": return "🔊"
+            case "keyboard": return "⌨"
+            case "mouse": return "🖱"
+            case "phone": return "📱"
+            case "watch": return "⌚"
+            case "car": return "🚗"
+            case "tv": return "📺"
+            case "laptop": return "💻"
+            default: return "🔷"
+        }
+    }
 
     background: Rectangle {
         color: "#0a0a0f"
@@ -62,7 +199,7 @@ Page {
 
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: btEnabled = !btEnabled
+                    onClicked: toggleBluetooth()
                 }
 
                 // Pulse animation when enabled
@@ -136,155 +273,215 @@ Page {
                 font.letterSpacing: 2
                 color: "#555566"
                 leftPadding: 8
+                visible: pairedDevicesModel.count > 0
             }
 
-            // Connected device - highlighted card
-            Rectangle {
-                width: devicesColumn.width
-                height: 120
-                radius: 24
-
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#1a4a3a" }
-                    GradientStop { position: 1.0; color: "#0d251d" }
-                }
+            // Paired devices
+            Repeater {
+                model: pairedDevicesModel
 
                 Rectangle {
-                    anchors.fill: parent
-                    radius: 24
-                    color: "transparent"
-                    border.color: "#4ade80"
-                    border.width: 2
-                    opacity: 0.5
-                }
+                    width: devicesColumn.width
+                    height: model.connected ? 120 : 90
+                    radius: model.connected ? 24 : 20
+                    color: model.connected ? "transparent" : (pairedMouse.pressed ? "#1e1e2e" : "#14141e")
+                    border.color: model.connected ? "#4ade80" : "#1a1a2e"
+                    border.width: model.connected ? 2 : 1
 
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 16
+                    gradient: model.connected ? connectedGradient : null
 
-                    Rectangle {
-                        Layout.preferredWidth: 64
-                        Layout.preferredHeight: 64
-                        radius: 16
-                        color: "#1a5a4a"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "🎧"
-                            font.pixelSize: 32
-                        }
+                    Gradient {
+                        id: connectedGradient
+                        GradientStop { position: 0.0; color: "#1a4a3a" }
+                        GradientStop { position: 1.0; color: "#0d251d" }
                     }
 
-                    Column {
-                        Layout.fillWidth: true
-                        spacing: 6
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 20
+                        spacing: 16
 
-                        Text {
-                            text: "AirPods Pro"
-                            font.pixelSize: 22
-                            font.weight: Font.Medium
-                            color: "#ffffff"
-                        }
-
-                        Row {
-                            spacing: 8
-
-                            Rectangle {
-                                width: 8
-                                height: 8
-                                radius: 4
-                                color: "#4ade80"
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
+                        Rectangle {
+                            Layout.preferredWidth: model.connected ? 64 : 52
+                            Layout.preferredHeight: model.connected ? 64 : 52
+                            radius: model.connected ? 16 : 14
+                            color: model.connected ? "#1a5a4a" : "#1a1a28"
 
                             Text {
-                                text: "Connected  •  85%"
-                                font.pixelSize: 14
-                                color: "#4ade80"
+                                anchors.centerIn: parent
+                                text: getIconEmoji(model.icon)
+                                font.pixelSize: model.connected ? 32 : 26
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            spacing: model.connected ? 6 : 4
+
+                            Text {
+                                text: model.name
+                                font.pixelSize: model.connected ? 22 : 20
+                                font.weight: model.connected ? Font.Medium : Font.Normal
+                                color: "#ffffff"
+                            }
+
+                            Row {
+                                spacing: 8
+
+                                Rectangle {
+                                    width: 8
+                                    height: 8
+                                    radius: 4
+                                    color: model.connected ? "#4ade80" : "#444455"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    text: {
+                                        var status = model.connected ? "Connected" : "Not Connected"
+                                        if (model.battery !== undefined && model.battery > 0) {
+                                            status += "  •  " + model.battery + "%"
+                                        }
+                                        return status
+                                    }
+                                    font.pixelSize: model.connected ? 14 : 13
+                                    color: model.connected ? "#4ade80" : "#666677"
+                                }
+                            }
+                        }
+
+                        // Action button
+                        Rectangle {
+                            Layout.preferredWidth: 36
+                            Layout.preferredHeight: 36
+                            radius: 18
+                            color: actionMouse.pressed ? (model.connected ? "#5a2a2a" : "#2a4a3a") : (model.connected ? "#3a1a1a" : "#1a3a2a")
+                            visible: true
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: model.connected ? "✕" : "→"
+                                font.pixelSize: 18
+                                color: model.connected ? "#ff6666" : "#4ade80"
+                            }
+
+                            MouseArea {
+                                id: actionMouse
+                                anchors.fill: parent
+                                onClicked: {
+                                    if (model.connected) {
+                                        disconnectDevice(model.mac)
+                                    } else {
+                                        connectDevice(model.mac)
+                                    }
+                                }
                             }
                         }
                     }
-                }
 
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: console.log("Manage AirPods")
+                    MouseArea {
+                        id: pairedMouse
+                        anchors.fill: parent
+                        z: -1
+                        onPressAndHold: {
+                            // Long press to remove
+                            removeDevice(model.mac)
+                        }
+                    }
                 }
             }
 
-            // Other paired device
+            // Empty paired state
             Rectangle {
                 width: devicesColumn.width
-                height: 90
+                height: 80
                 radius: 20
-                color: deviceMouse.pressed ? "#1e1e2e" : "#14141e"
-                border.color: "#1a1a2e"
-                border.width: 1
+                color: "#14141e"
+                visible: pairedDevicesModel.count === 0
 
-                Behavior on color { ColorAnimation { duration: 100 } }
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 4
 
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 16
-
-                    Rectangle {
-                        Layout.preferredWidth: 52
-                        Layout.preferredHeight: 52
-                        radius: 14
-                        color: "#1a1a28"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "🔊"
-                            font.pixelSize: 26
-                        }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "No paired devices"
+                        font.pixelSize: 16
+                        color: "#555566"
                     }
 
-                    Column {
-                        Layout.fillWidth: true
-                        spacing: 4
-
-                        Text {
-                            text: "Car Stereo"
-                            font.pixelSize: 20
-                            color: "#ffffff"
-                        }
-
-                        Text {
-                            text: "Not Connected"
-                            font.pixelSize: 13
-                            color: "#666677"
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.preferredWidth: 8
-                        Layout.preferredHeight: 8
-                        radius: 4
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "Scan to find devices"
+                        font.pixelSize: 13
                         color: "#444455"
                     }
-                }
-
-                MouseArea {
-                    id: deviceMouse
-                    anchors.fill: parent
-                    onClicked: console.log("Connect to Car Stereo")
                 }
             }
 
             Item { height: 16 }
 
-            // Scanning section
-            Text {
-                text: "AVAILABLE DEVICES"
-                font.pixelSize: 12
-                font.letterSpacing: 2
-                color: "#555566"
-                leftPadding: 8
+            // Available devices section
+            Row {
+                width: parent.width
+                spacing: 12
+
+                Text {
+                    text: "AVAILABLE DEVICES"
+                    font.pixelSize: 12
+                    font.letterSpacing: 2
+                    color: "#555566"
+                    leftPadding: 8
+                }
+
+                // Scanning indicator
+                Text {
+                    text: isScanning ? "Scanning..." : ""
+                    font.pixelSize: 12
+                    color: "#6a6abf"
+                    visible: isScanning
+
+                    SequentialAnimation on opacity {
+                        running: isScanning
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.3; duration: 500 }
+                        NumberAnimation { to: 1; duration: 500 }
+                    }
+                }
+
+                Item { width: 1; height: 1; Layout.fillWidth: true }
+
+                // Scan button
+                Rectangle {
+                    width: 32
+                    height: 32
+                    radius: 16
+                    color: scanMouse.pressed ? "#2a2a4e" : "transparent"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "↻"
+                        font.pixelSize: 20
+                        color: "#6a6abf"
+                        rotation: isScanning ? 360 : 0
+
+                        Behavior on rotation {
+                            RotationAnimation {
+                                duration: 1000
+                                loops: isScanning ? Animation.Infinite : 1
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        id: scanMouse
+                        anchors.fill: parent
+                        onClicked: startScan()
+                    }
+                }
             }
 
+            // Scanning animation
             Rectangle {
                 width: devicesColumn.width
                 height: 80
@@ -292,6 +489,7 @@ Page {
                 color: "#14141e"
                 border.color: "#1a1a2e"
                 border.width: 1
+                visible: isScanning && availableDevicesModel.count === 0
 
                 RowLayout {
                     anchors.fill: parent
@@ -316,7 +514,7 @@ Page {
                                 opacity: 0
 
                                 SequentialAnimation on opacity {
-                                    running: true
+                                    running: isScanning
                                     loops: Animation.Infinite
                                     PauseAnimation { duration: index * 300 }
                                     NumberAnimation { to: 0.6; duration: 300 }
@@ -325,7 +523,7 @@ Page {
                                 }
 
                                 SequentialAnimation on scale {
-                                    running: true
+                                    running: isScanning
                                     loops: Animation.Infinite
                                     PauseAnimation { duration: index * 300 }
                                     NumberAnimation { from: 0.8; to: 1.5; duration: 1000 }
@@ -351,6 +549,86 @@ Page {
                     }
                 }
             }
+
+            // Available devices list
+            Repeater {
+                model: availableDevicesModel
+
+                Rectangle {
+                    width: devicesColumn.width
+                    height: 80
+                    radius: 20
+                    color: availMouse.pressed ? "#1e1e2e" : "#14141e"
+                    border.color: "#1a1a2e"
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 20
+                        spacing: 16
+
+                        Rectangle {
+                            Layout.preferredWidth: 48
+                            Layout.preferredHeight: 48
+                            radius: 12
+                            color: "#1a1a28"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: getIconEmoji(model.icon)
+                                font.pixelSize: 24
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Text {
+                                text: model.name
+                                font.pixelSize: 18
+                                color: "#ffffff"
+                            }
+
+                            Text {
+                                text: "Tap to pair"
+                                font.pixelSize: 12
+                                color: "#666677"
+                            }
+                        }
+
+                        Text {
+                            text: "+"
+                            font.pixelSize: 24
+                            color: "#6a6abf"
+                        }
+                    }
+
+                    MouseArea {
+                        id: availMouse
+                        anchors.fill: parent
+                        onClicked: pairDevice(model.mac)
+                    }
+                }
+            }
+
+            // No devices found
+            Rectangle {
+                width: devicesColumn.width
+                height: 60
+                radius: 16
+                color: "#14141e"
+                visible: !isScanning && availableDevicesModel.count === 0
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Tap ↻ to scan for devices"
+                    font.pixelSize: 14
+                    color: "#555566"
+                }
+            }
+
+            Item { height: 20 }
         }
     }
 

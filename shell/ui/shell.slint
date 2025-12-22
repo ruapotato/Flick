@@ -105,42 +105,44 @@ component StatusBar inherits Rectangle {
     in property <int> battery: 85;
     in property <bool> wifi: true;
 
-    height: 48px;
+    height: 56px;
     background: transparent;
 
     HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 16px;
-        spacing: 8px;
+        padding-left: 20px;
+        padding-right: 20px;
+        spacing: 12px;
 
-        // Time (left)
+        // Time (left) - larger and bolder
         Text {
             text: time;
             color: Theme.on-surface;
-            font-size: 16px;
+            font-size: 24px;
             font-weight: 600;
             vertical-alignment: center;
         }
 
         Rectangle { horizontal-stretch: 1; }
 
-        // Status icons (right)
+        // Status icons (right) - larger
         HorizontalLayout {
-            spacing: 12px;
+            spacing: 16px;
 
             // WiFi indicator
             Text {
                 text: wifi ? "W" : "-";
                 color: wifi ? Theme.primary : Theme.on-surface-variant;
-                font-size: 14px;
+                font-size: 20px;
+                font-weight: 500;
                 vertical-alignment: center;
             }
 
-            // Battery
+            // Battery - larger and more prominent
             Text {
                 text: battery + "%";
                 color: battery > 20 ? Theme.success : Theme.error;
-                font-size: 14px;
+                font-size: 22px;
+                font-weight: 600;
                 vertical-alignment: center;
             }
         }
@@ -1168,7 +1170,7 @@ component LockScreen inherits Rectangle {
             }
         }
 
-        // Password mode: show password field
+        // Password mode: show password field - centered layout
         if lock-mode == "password": VerticalLayout {
             alignment: center;
             spacing: 24px;
@@ -1177,66 +1179,75 @@ component LockScreen inherits Rectangle {
             Text {
                 text: "Enter your password";
                 color: Theme.on-surface-variant;
-                font-size: 16px;
+                font-size: 18px;
                 horizontal-alignment: center;
             }
 
-            // Password field (tap to show keyboard)
-            Rectangle {
-                width: 300px;
-                height: 56px;
-                border-radius: 12px;
-                background: Theme.surface;
-                border-width: 2px;
-                border-color: Theme.primary;
+            // Password field container (centered)
+            HorizontalLayout {
+                alignment: center;
 
-                TouchArea {
-                    clicked => { root.password-field-tapped(); }
-                }
+                // Password field (tap to show keyboard)
+                Rectangle {
+                    width: 320px;
+                    height: 60px;
+                    border-radius: 16px;
+                    background: Theme.surface;
+                    border-width: 2px;
+                    border-color: Theme.primary;
 
-                HorizontalLayout {
-                    padding-left: 16px;
-                    padding-right: 16px;
-                    alignment: start;
-                    spacing: 4px;
-
-                    // Password dots
-                    for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]: Rectangle {
-                        visible: i < password-length;
-                        width: 12px;
-                        height: 12px;
-                        border-radius: 6px;
-                        background: Theme.on-surface;
+                    TouchArea {
+                        clicked => { root.password-field-tapped(); }
                     }
 
-                    // Placeholder text when empty
-                    if password-length == 0: Text {
-                        text: "Tap to enter password";
-                        color: Theme.on-surface-variant;
-                        font-size: 16px;
-                        vertical-alignment: center;
+                    HorizontalLayout {
+                        padding-left: 20px;
+                        padding-right: 20px;
+                        alignment: start;
+                        spacing: 6px;
+
+                        // Password dots
+                        for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]: Rectangle {
+                            visible: i < password-length;
+                            width: 14px;
+                            height: 14px;
+                            border-radius: 7px;
+                            background: Theme.on-surface;
+                        }
+
+                        // Placeholder text when empty
+                        if password-length == 0: Text {
+                            text: "Tap to enter password";
+                            color: Theme.on-surface-variant;
+                            font-size: 16px;
+                            vertical-alignment: center;
+                        }
                     }
                 }
             }
 
-            // Submit button (visible when password entered)
-            if password-length > 0: Rectangle {
-                width: 200px;
-                height: 48px;
-                border-radius: 24px;
-                background: Theme.primary;
+            // Submit button container (centered)
+            if password-length > 0: HorizontalLayout {
+                alignment: center;
 
-                TouchArea {
-                    clicked => { root.password-submit(); }
-                }
+                Rectangle {
+                    width: 220px;
+                    height: 52px;
+                    border-radius: 26px;
+                    background: Theme.primary;
 
-                Text {
-                    text: "Unlock";
-                    color: Theme.on-surface;
-                    font-size: 16px;
-                    font-weight: 500;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+                    TouchArea {
+                        clicked => { root.password-submit(); }
+                    }
+
+                    Text {
+                        text: "Unlock";
+                        color: Theme.on-surface;
+                        font-size: 18px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
                 }
             }
         }

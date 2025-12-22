@@ -5,6 +5,62 @@ import QtQuick.Layouts 1.15
 Page {
     id: aboutPage
 
+    property string hostname: "flick"
+    property string osName: "Linux"
+    property string kernelVersion: "6.1.0"
+    property string arch: "aarch64"
+    property string uptime: "0m"
+    property string cpuModel: "Unknown"
+    property int cpuCores: 4
+    property real ramTotal: 4.0
+    property real storageTotal: 64.0
+    property real storageUsed: 32.0
+
+    Component.onCompleted: loadSystemInfo()
+
+    function loadSystemInfo() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///tmp/flick-system.json", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200) {
+                var data = JSON.parse(xhr.responseText)
+                hostname = data.hostname || "unknown"
+                osName = data.os || "Linux"
+                kernelVersion = data.kernel || "unknown"
+                arch = data.arch || "unknown"
+                uptime = data.uptime || "0m"
+                cpuModel = data.cpu || "Unknown"
+                cpuCores = data.cores || 1
+            }
+        } catch (e) {
+            console.log("Could not read system info")
+        }
+
+        // Load memory info
+        var xhr2 = new XMLHttpRequest()
+        xhr2.open("GET", "file:///tmp/flick-memory.json", false)
+        try {
+            xhr2.send()
+            if (xhr2.status === 200) {
+                var mem = JSON.parse(xhr2.responseText)
+                ramTotal = mem.total_gb || 0
+            }
+        } catch (e) {}
+
+        // Load storage info
+        var xhr3 = new XMLHttpRequest()
+        xhr3.open("GET", "file:///tmp/flick-storage.json", false)
+        try {
+            xhr3.send()
+            if (xhr3.status === 200) {
+                var stor = JSON.parse(xhr3.responseText)
+                storageTotal = stor.total_gb || 0
+                storageUsed = stor.used_gb || 0
+            }
+        } catch (e) {}
+    }
+
     background: Rectangle {
         color: "#0a0a0f"
     }
@@ -15,7 +71,7 @@ Page {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 340
+        height: 300
         color: "transparent"
 
         // Animated background particles
@@ -63,20 +119,20 @@ Page {
 
         Column {
             anchors.centerIn: parent
-            spacing: 20
+            spacing: 16
 
             // Large logo with pulsing glow
             Item {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 140
-                height: 140
+                width: 120
+                height: 120
 
                 // Outer glow ring
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 180
-                    height: 180
-                    radius: 90
+                    width: 160
+                    height: 160
+                    radius: 80
                     color: "transparent"
                     border.color: "#e94560"
                     border.width: 2
@@ -94,24 +150,12 @@ Page {
                     }
                 }
 
-                // Second glow ring
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 160
-                    height: 160
-                    radius: 80
-                    color: "transparent"
-                    border.color: "#e94560"
-                    border.width: 1
-                    opacity: 0.2
-                }
-
                 // Main logo
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 120
-                    height: 120
-                    radius: 30
+                    width: 100
+                    height: 100
+                    radius: 25
 
                     gradient: Gradient {
                         GradientStop { position: 0.0; color: "#e94560" }
@@ -121,7 +165,7 @@ Page {
                     Text {
                         anchors.centerIn: parent
                         text: "⚡"
-                        font.pixelSize: 60
+                        font.pixelSize: 50
                     }
                 }
             }
@@ -129,7 +173,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Flick"
-                font.pixelSize: 56
+                font.pixelSize: 48
                 font.weight: Font.ExtraLight
                 font.letterSpacing: 8
                 color: "#ffffff"
@@ -138,7 +182,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "MOBILE SHELL FOR LINUX"
-                font.pixelSize: 13
+                font.pixelSize: 12
                 font.letterSpacing: 3
                 color: "#555566"
             }
@@ -162,35 +206,44 @@ Page {
             anchors.right: parent.right
             spacing: 16
 
-            // System info card
+            // Device info card
             Rectangle {
                 width: infoColumn.width
-                height: infoListColumn.height + 32
+                height: deviceInfoColumn.height + 32
                 radius: 24
                 color: "#14141e"
                 border.color: "#1a1a2e"
                 border.width: 1
 
                 Column {
-                    id: infoListColumn
+                    id: deviceInfoColumn
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: 16
                     spacing: 0
 
+                    Text {
+                        text: "DEVICE"
+                        font.pixelSize: 12
+                        font.letterSpacing: 2
+                        color: "#555566"
+                        leftPadding: 8
+                        bottomPadding: 8
+                    }
+
                     Repeater {
                         model: ListModel {
-                            ListElement { label: "Version"; value: "0.1.0" }
-                            ListElement { label: "Build"; value: "2024.12.20" }
-                            ListElement { label: "Compositor"; value: "Smithay" }
-                            ListElement { label: "UI Framework"; value: "Slint + Qt5" }
-                            ListElement { label: "License"; value: "GPL-3.0" }
+                            ListElement { label: "Name"; prop: "hostname" }
+                            ListElement { label: "OS"; prop: "osName" }
+                            ListElement { label: "Kernel"; prop: "kernelVersion" }
+                            ListElement { label: "Architecture"; prop: "arch" }
+                            ListElement { label: "Uptime"; prop: "uptime" }
                         }
 
                         Item {
-                            width: infoListColumn.width
-                            height: 56
+                            width: deviceInfoColumn.width
+                            height: 48
 
                             RowLayout {
                                 anchors.fill: parent
@@ -199,14 +252,21 @@ Page {
 
                                 Text {
                                     text: model.label
-                                    font.pixelSize: 17
+                                    font.pixelSize: 16
                                     color: "#666677"
                                     Layout.fillWidth: true
                                 }
 
                                 Text {
-                                    text: model.value
-                                    font.pixelSize: 17
+                                    text: {
+                                        if (model.prop === "hostname") return hostname
+                                        if (model.prop === "osName") return osName
+                                        if (model.prop === "kernelVersion") return kernelVersion
+                                        if (model.prop === "arch") return arch
+                                        if (model.prop === "uptime") return uptime
+                                        return ""
+                                    }
+                                    font.pixelSize: 16
                                     font.weight: Font.Medium
                                     color: "#ffffff"
                                 }
@@ -227,73 +287,252 @@ Page {
                 }
             }
 
-            // Creator card
+            // Hardware card
             Rectangle {
                 width: infoColumn.width
-                height: 160
+                height: hardwareColumn.height + 32
                 radius: 24
                 color: "#14141e"
                 border.color: "#1a1a2e"
                 border.width: 1
 
                 Column {
+                    id: hardwareColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 0
+
+                    Text {
+                        text: "HARDWARE"
+                        font.pixelSize: 12
+                        font.letterSpacing: 2
+                        color: "#555566"
+                        leftPadding: 8
+                        bottomPadding: 8
+                    }
+
+                    // CPU
+                    Item {
+                        width: parent.width
+                        height: 48
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+
+                            Text {
+                                text: "CPU"
+                                font.pixelSize: 16
+                                color: "#666677"
+                                Layout.fillWidth: true
+                            }
+
+                            Text {
+                                text: cpuCores + " cores"
+                                font.pixelSize: 16
+                                font.weight: Font.Medium
+                                color: "#ffffff"
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.bottom: parent.bottom
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            height: 1
+                            color: "#1a1a2e"
+                        }
+                    }
+
+                    // RAM
+                    Item {
+                        width: parent.width
+                        height: 48
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+
+                            Text {
+                                text: "RAM"
+                                font.pixelSize: 16
+                                color: "#666677"
+                                Layout.fillWidth: true
+                            }
+
+                            Text {
+                                text: ramTotal.toFixed(1) + " GB"
+                                font.pixelSize: 16
+                                font.weight: Font.Medium
+                                color: "#ffffff"
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.bottom: parent.bottom
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            height: 1
+                            color: "#1a1a2e"
+                        }
+                    }
+
+                    // Storage
+                    Item {
+                        width: parent.width
+                        height: 48
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+
+                            Text {
+                                text: "Storage"
+                                font.pixelSize: 16
+                                color: "#666677"
+                                Layout.fillWidth: true
+                            }
+
+                            Text {
+                                text: storageUsed.toFixed(1) + " / " + storageTotal.toFixed(1) + " GB"
+                                font.pixelSize: 16
+                                font.weight: Font.Medium
+                                color: "#ffffff"
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Software card
+            Rectangle {
+                width: infoColumn.width
+                height: softwareColumn.height + 32
+                radius: 24
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                border.width: 1
+
+                Column {
+                    id: softwareColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 0
+
+                    Text {
+                        text: "SOFTWARE"
+                        font.pixelSize: 12
+                        font.letterSpacing: 2
+                        color: "#555566"
+                        leftPadding: 8
+                        bottomPadding: 8
+                    }
+
+                    Repeater {
+                        model: ListModel {
+                            ListElement { label: "Flick Version"; value: "0.1.0" }
+                            ListElement { label: "Compositor"; value: "Smithay" }
+                            ListElement { label: "UI Framework"; value: "Slint + Qt5" }
+                            ListElement { label: "License"; value: "GPL-3.0" }
+                        }
+
+                        Item {
+                            width: softwareColumn.width
+                            height: 48
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+
+                                Text {
+                                    text: model.label
+                                    font.pixelSize: 16
+                                    color: "#666677"
+                                    Layout.fillWidth: true
+                                }
+
+                                Text {
+                                    text: model.value
+                                    font.pixelSize: 16
+                                    font.weight: Font.Medium
+                                    color: model.label === "Flick Version" ? "#e94560" : "#ffffff"
+                                }
+                            }
+
+                            Rectangle {
+                                anchors.bottom: parent.bottom
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                height: 1
+                                color: "#1a1a2e"
+                                visible: index < 3
+                            }
+                        }
+                    }
+                }
+            }
+
+            // GitHub link
+            Rectangle {
+                width: infoColumn.width
+                height: 70
+                radius: 24
+                color: githubMouse.pressed ? "#2a2a3e" : "#14141e"
+                border.color: "#1a1a2e"
+                border.width: 1
+
+                RowLayout {
                     anchors.fill: parent
                     anchors.margins: 20
                     spacing: 16
 
                     Text {
-                        text: "CREATED BY"
-                        font.pixelSize: 12
-                        font.letterSpacing: 2
-                        color: "#555566"
+                        text: "🔗"
+                        font.pixelSize: 24
+                    }
+
+                    Column {
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        Text {
+                            text: "Source Code"
+                            font.pixelSize: 17
+                            color: "#ffffff"
+                        }
+
+                        Text {
+                            text: "github.com/ruapotato/Flick"
+                            font.pixelSize: 13
+                            color: "#e94560"
+                        }
                     }
 
                     Text {
-                        text: "David Hamner"
-                        font.pixelSize: 26
-                        font.weight: Font.Medium
-                        color: "#ffffff"
+                        text: "→"
+                        font.pixelSize: 24
+                        color: "#444455"
                     }
+                }
 
-                    // GitHub link
-                    Rectangle {
-                        width: parent.width
-                        height: 56
-                        radius: 16
-                        color: githubMouse.pressed ? "#2a2a3e" : "#1a1a28"
-
-                        Behavior on color { ColorAnimation { duration: 100 } }
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            spacing: 12
-
-                            Text {
-                                text: "🔗"
-                                font.pixelSize: 20
-                            }
-
-                            Text {
-                                text: "github.com/ruapotato/Flick"
-                                font.pixelSize: 16
-                                color: "#e94560"
-                                Layout.fillWidth: true
-                            }
-
-                            Text {
-                                text: "→"
-                                font.pixelSize: 24
-                                color: "#444455"
-                            }
-                        }
-
-                        MouseArea {
-                            id: githubMouse
-                            anchors.fill: parent
-                            onClicked: Qt.openUrlExternally("https://github.com/ruapotato/Flick")
-                        }
-                    }
+                MouseArea {
+                    id: githubMouse
+                    anchors.fill: parent
+                    onClicked: Qt.openUrlExternally("https://github.com/ruapotato/Flick")
                 }
             }
 
@@ -301,7 +540,7 @@ Page {
         }
     }
 
-    // Back button - prominent floating action button
+    // Back button
     Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom

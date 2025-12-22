@@ -419,11 +419,27 @@ impl Shell {
     /// Attempt to unlock with the current input
     /// Returns true if unlock succeeded
     pub fn try_unlock(&mut self) -> bool {
+        // Check if lock method is "none" - always unlock immediately
+        if self.lock_config.method == lock_screen::LockMethod::None {
+            tracing::info!("Lock method is None - unlocking immediately");
+            self.unlock();
+            return true;
+        }
+
         match self.lock_state.input_mode {
             lock_screen::LockInputMode::Pin => {
+                // First try the configured PIN
                 if self.lock_config.verify_pin(&self.lock_state.entered_pin) {
                     self.unlock();
                     return true;
+                }
+                // PIN failed - try PAM as fallback (in case user entered PAM password)
+                if let Some(username) = lock_screen::get_current_user() {
+                    if lock_screen::authenticate_pam(&username, &self.lock_state.entered_pin) {
+                        tracing::info!("PAM fallback successful for PIN mode");
+                        self.unlock();
+                        return true;
+                    }
                 }
             }
             lock_screen::LockInputMode::Pattern => {
@@ -438,11 +454,15 @@ impl Shell {
                 }
             }
             lock_screen::LockInputMode::Password => {
+                // Password mode always uses PAM authentication
                 if let Some(username) = lock_screen::get_current_user() {
+                    tracing::info!("Trying PAM auth for user {} with password len={}", username, self.lock_state.entered_password.len());
                     if lock_screen::authenticate_pam(&username, &self.lock_state.entered_password) {
                         self.unlock();
                         return true;
                     }
+                } else {
+                    tracing::error!("Could not get current username for PAM auth");
                 }
             }
         }

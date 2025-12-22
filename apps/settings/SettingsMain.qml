@@ -78,7 +78,7 @@ Page {
         }
     }
 
-    // Settings grid - large tiles that fill the screen
+    // Settings grid - scrollable tiles
     GridView {
         id: settingsGrid
         anchors.top: headerArea.bottom
@@ -89,8 +89,10 @@ Page {
         anchors.bottomMargin: 100
 
         cellWidth: width / 2
-        cellHeight: (height - 20) / 3
+        cellHeight: 140
         clip: true
+        interactive: true
+        flickableDirection: Flickable.VerticalFlick
 
         model: ListModel {
             ListElement {
@@ -120,6 +122,34 @@ Page {
                 gradStart: "#1a4a3a"
                 gradEnd: "#0d251d"
                 pageName: "SoundPage"
+            }
+            ListElement {
+                title: "Battery"
+                icon: "🔋"
+                gradStart: "#2a4a1a"
+                gradEnd: "#15250d"
+                pageName: "BatteryPage"
+            }
+            ListElement {
+                title: "Storage"
+                icon: "💾"
+                gradStart: "#1a3a4a"
+                gradEnd: "#0d1d25"
+                pageName: "StoragePage"
+            }
+            ListElement {
+                title: "Notify"
+                icon: "🔔"
+                gradStart: "#4a3a2a"
+                gradEnd: "#251d15"
+                pageName: "NotificationsPage"
+            }
+            ListElement {
+                title: "Time"
+                icon: "🕐"
+                gradStart: "#2a2a4a"
+                gradEnd: "#151525"
+                pageName: "DateTimePage"
             }
             ListElement {
                 title: "Security"

@@ -166,6 +166,9 @@ pub struct Flick {
     pub touch_effects_enabled: bool,
     pub settings_last_check: std::time::Instant,
 
+    // System status refresh timer (battery, wifi, etc.)
+    pub system_last_refresh: std::time::Instant,
+
     // Auto-lock timer - tracks last user input for idle detection
     pub last_activity: std::time::Instant,
 
@@ -279,6 +282,7 @@ impl Flick {
             touch_effects: Vec::new(),
             touch_effects_enabled: Self::load_compositor_settings(),  // Load from config
             settings_last_check: Instant::now(),
+            system_last_refresh: Instant::now(),
             last_activity: Instant::now(),
             last_touch_pos: HashMap::new(),
             shell: Shell::new(screen_size),
