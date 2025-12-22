@@ -399,33 +399,47 @@ impl Shell {
         shell
     }
 
+    /// Get display config path (handles both normal and sudo cases)
+    fn get_display_config_path() -> std::path::PathBuf {
+        // Try SUDO_USER first (for when running as root via sudo)
+        if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+            return std::path::PathBuf::from(format!("/home/{}/.local/state/flick/display_config.json", sudo_user));
+        }
+        // Try HOME environment variable
+        if let Ok(home) = std::env::var("HOME") {
+            return std::path::PathBuf::from(format!("{}/.local/state/flick/display_config.json", home));
+        }
+        // Fallback to droidian
+        std::path::PathBuf::from("/home/droidian/.local/state/flick/display_config.json")
+    }
+
     /// Load screen timeout from display config file
     fn load_screen_timeout() -> u64 {
-        let config_path = std::path::Path::new("/home/droidian/.local/state/flick/display_config.json");
-        if let Ok(content) = std::fs::read_to_string(config_path) {
+        let config_path = Self::get_display_config_path();
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
                 if let Some(timeout) = json.get("screen_timeout").and_then(|v| v.as_u64()) {
-                    tracing::info!("Loaded screen timeout: {}s", timeout);
+                    tracing::info!("Loaded screen timeout: {}s from {:?}", timeout, config_path);
                     return timeout;
                 }
             }
         }
-        tracing::info!("Using default screen timeout: 30s");
+        tracing::info!("Using default screen timeout: 30s (config: {:?})", config_path);
         30 // Default 30 seconds
     }
 
     /// Load text scale from display config file
     fn load_text_scale() -> f32 {
-        let config_path = std::path::Path::new("/home/droidian/.local/state/flick/display_config.json");
-        if let Ok(content) = std::fs::read_to_string(config_path) {
+        let config_path = Self::get_display_config_path();
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
                 if let Some(scale) = json.get("text_scale").and_then(|v| v.as_f64()) {
-                    tracing::info!("Loaded text scale: {}", scale);
+                    tracing::info!("Loaded text scale: {} from {:?}", scale, config_path);
                     return scale as f32;
                 }
             }
         }
-        tracing::info!("Using default text scale: 2.0");
+        tracing::info!("Using default text scale: 2.0 (config: {:?})", config_path);
         2.0 // Default scale for mobile
     }
 

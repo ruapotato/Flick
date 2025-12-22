@@ -1762,6 +1762,8 @@ pub fn run() -> Result<()> {
         if state.system_last_refresh.elapsed().as_secs() >= 10 {
             state.system.refresh();
             state.shell.sync_quick_settings(&state.system);
+            // Reload text scale from settings (allows live changes)
+            state.shell.reload_text_scale();
             state.system_last_refresh = std::time::Instant::now();
         }
 
