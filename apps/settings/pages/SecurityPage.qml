@@ -67,7 +67,7 @@ Page {
         }
     }
 
-    function saveConfigDirect(method, patternNodes) {
+    function saveConfigDirect(method, secretData) {
         var methodStr = "password"
         if (method === 0) methodStr = "pin"
         else if (method === 1) methodStr = "password"
@@ -78,11 +78,12 @@ Page {
 
         // Use Qt.callLater to ensure we're not blocking
         Qt.callLater(function() {
-            var helperPath = "/home/droidian/Flick/apps/settings/flick-settings-ctl"
-
-            if (method === 2 && patternNodes && patternNodes.length >= 4) {
+            if (method === 0 && secretData && secretData.length >= 4) {
+                // PIN mode - emit command for run_settings.sh to handle
+                console.warn("SECURITY_CMD:set-pin:" + secretData)
+            } else if (method === 2 && secretData && secretData.length >= 4) {
                 // Pattern mode - use set-pattern command with the pattern
-                var patternStr = patternNodes.join(",")
+                var patternStr = secretData.join(",")
                 console.log("Saving pattern: " + patternStr)
 
                 // Write pattern to temp file for helper to read
@@ -95,7 +96,7 @@ Page {
                     console.log("Could not write pattern: " + e)
                 }
             } else {
-                // Non-pattern mode - write method marker
+                // Non-pattern/non-PIN mode - write method marker
                 var xhr = new XMLHttpRequest()
                 xhr.open("PUT", "file:///tmp/flick-lock-config-pending", false)
                 try {
@@ -272,9 +273,9 @@ Page {
                                 pinSetupDialog.confirming = true
                             } else {
                                 if (pinSetupDialog.enteredPin === pinSetupDialog.confirmPin) {
-                                    // PINs match - save config
+                                    // PINs match - save config with the PIN value
                                     selectedMethod = 0
-                                    saveConfigDirect(0)
+                                    saveConfigDirect(0, pinSetupDialog.enteredPin)
                                     pinSetupDialog.enteredPin = ""
                                     pinSetupDialog.confirmPin = ""
                                     pinSetupDialog.confirming = false

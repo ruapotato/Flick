@@ -466,6 +466,23 @@ stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" |
                 ;;
         esac
     fi
+    # Check for security commands (PIN/pattern setup)
+    if [[ "$line" == *"SECURITY_CMD:"* ]]; then
+        SECURITY_CMD=$(echo "$line" | sed 's/.*SECURITY_CMD://')
+        echo "Detected security command: $SECURITY_CMD" >> "$LOG_FILE"
+        case "$SECURITY_CMD" in
+            set-pin:*)
+                PIN="${SECURITY_CMD#set-pin:}"
+                echo "Setting PIN (length: ${#PIN})" >> "$LOG_FILE"
+                "$SETTINGS_CTL" lock set-pin "$PIN" >> "$LOG_FILE" 2>&1
+                ;;
+            set-pattern:*)
+                PATTERN="${SECURITY_CMD#set-pattern:}"
+                echo "Setting pattern: $PATTERN" >> "$LOG_FILE"
+                "$SETTINGS_CTL" lock set-pattern "$PATTERN" >> "$LOG_FILE" 2>&1
+                ;;
+        esac
+    fi
 done
 EXIT_CODE=${PIPESTATUS[0]}
 

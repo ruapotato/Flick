@@ -145,6 +145,42 @@ case "$CMD" in
                         ;;
                 esac
                 ;;
+            set-pin)
+                # VALUE should be the PIN (4-6 digits)
+                [ -z "$VALUE" ] && { echo "Usage: $0 lock set-pin <pin>"; echo "PIN format: 4-6 digits"; exit 1; }
+
+                # Validate PIN format (only digits, 4-6 chars)
+                if ! echo "$VALUE" | grep -qE '^[0-9]{4,6}$'; then
+                    echo "Invalid PIN format. Use 4-6 digits"
+                    exit 1
+                fi
+
+                # Generate bcrypt hash using Python
+                HASH=$(python3 -c "
+import bcrypt
+pin = '$VALUE'
+hash = bcrypt.hashpw(pin.encode(), bcrypt.gensalt()).decode()
+print(hash)
+" 2>/dev/null)
+
+                if [ -z "$HASH" ]; then
+                    echo "Error: Could not generate bcrypt hash (install python3-bcrypt)"
+                    exit 1
+                fi
+
+                # Save config with hash
+                mkdir -p "$(dirname "$LOCK_CONFIG_PATH")"
+                cat > "$LOCK_CONFIG_PATH" << EOF
+{
+  "method": "pin",
+  "pin_hash": "$HASH",
+  "pattern_hash": null,
+  "timeout_seconds": 300,
+  "max_attempts": 5
+}
+EOF
+                echo "PIN saved successfully"
+                ;;
             set-pattern)
                 # VALUE should be comma-separated node indices like "0,3,6,7,8"
                 [ -z "$VALUE" ] && { echo "Usage: $0 lock set-pattern <pattern>"; echo "Pattern format: comma-separated node indices (0-8), e.g., 0,3,6,7,8"; exit 1; }

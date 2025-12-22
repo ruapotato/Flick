@@ -1143,30 +1143,42 @@ component LockScreen inherits Rectangle {
             horizontal-alignment: center;
         }
 
-        // PIN mode: show dots and PIN pad
+        // PIN mode: show dots and PIN pad - fully centered
         if lock-mode == "pin": VerticalLayout {
             alignment: center;
-            spacing: 24px;
+            spacing: 32px;
 
-            // PIN dots
+            // PIN instruction
+            Text {
+                text: "Enter PIN";
+                color: Theme.on-surface-variant;
+                font-size: 20px;
+                horizontal-alignment: center;
+            }
+
+            // PIN dots - centered
             HorizontalLayout {
                 alignment: center;
-                spacing: 16px;
+                spacing: 20px;
 
                 for i in [0, 1, 2, 3, 4, 5]: Rectangle {
-                    width: 16px;
-                    height: 16px;
-                    border-radius: 8px;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 10px;
                     background: i < pin-length ? Theme.primary : transparent;
-                    border-width: i < pin-length ? 0px : 2px;
+                    border-width: i < pin-length ? 0px : 3px;
                     border-color: Theme.on-surface-variant;
                 }
             }
 
-            // PIN pad
-            PinPad {
-                digit-pressed(d) => { root.digit-pressed(d); }
-                backspace-pressed => { root.backspace-pressed(); }
+            // PIN pad - centered
+            HorizontalLayout {
+                alignment: center;
+
+                PinPad {
+                    digit-pressed(d) => { root.digit-pressed(d); }
+                    backspace-pressed => { root.backspace-pressed(); }
+                }
             }
         }
 
@@ -1252,21 +1264,34 @@ component LockScreen inherits Rectangle {
             }
         }
 
-        Rectangle { height: 16px; }
+        Rectangle { height: 24px; }
 
-        // "Use Password" fallback link (for PIN mode only)
-        if lock-mode == "pin": TouchArea {
-            width: 200px;
-            height: 40px;
+        // "Use Password" fallback button (for PIN mode only) - large and prominent
+        if lock-mode == "pin": HorizontalLayout {
+            alignment: center;
 
-            clicked => { root.use-password-pressed(); }
+            Rectangle {
+                width: 320px;
+                height: 64px;
+                border-radius: 32px;
+                background: Theme.surface;
+                border-width: 2px;
+                border-color: Theme.primary;
 
-            Text {
-                text: "Use Password Instead";
-                color: Theme.primary;
-                font-size: 14px;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+                TouchArea {
+                    clicked => { root.use-password-pressed(); }
+                }
+
+                Text {
+                    width: 100%;
+                    height: 100%;
+                    text: "Use System Password";
+                    color: Theme.primary;
+                    font-size: 20px;
+                    font-weight: 500;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
             }
         }
     }
