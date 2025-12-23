@@ -417,11 +417,57 @@ Window {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Add audiobooks to:\n~/Audiobooks or\n/home/droidian/Audiobooks"
+                text: "To add audiobooks:\n\n1. Create ~/Audiobooks folder\n2. Add a subfolder for each book\n3. Put audio files (mp3, m4b, etc) inside"
                 font.pixelSize: 16 * textScale
-                color: "#444455"
+                color: "#888899"
                 horizontalAlignment: Text.AlignHCenter
+                lineHeight: 1.3
             }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Example:\n~/Audiobooks/My Book/chapter1.mp3"
+                font.pixelSize: 14 * textScale
+                color: "#666677"
+                horizontalAlignment: Text.AlignHCenter
+                font.family: "monospace"
+            }
+
+            // Create folder button
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 280
+                height: 56
+                radius: 28
+                color: createFolderMouse.pressed ? "#c23a50" : "#e94560"
+
+                Behavior on color { ColorAnimation { duration: 150 } }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Create ~/Audiobooks"
+                    font.pixelSize: 18 * textScale
+                    font.weight: Font.Medium
+                    color: "#ffffff"
+                }
+
+                MouseArea {
+                    id: createFolderMouse
+                    anchors.fill: parent
+                    onClicked: {
+                        // Log command for shell to create folder
+                        console.log("CREATE_DIR:/home/droidian/Audiobooks")
+                        // Rescan after a delay
+                        rescanTimer.start()
+                    }
+                }
+            }
+        }
+
+        Timer {
+            id: rescanTimer
+            interval: 500
+            onTriggered: scanAudiobooks()
         }
 
         // Back button
