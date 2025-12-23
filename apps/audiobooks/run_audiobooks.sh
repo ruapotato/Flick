@@ -20,6 +20,12 @@ export LIBGL_ALWAYS_SOFTWARE=1
 export QT_QUICK_BACKEND=software
 export QT_OPENGL=software
 
+# Allow QML to read local files
+export QML_XHR_ALLOW_FILE_READ=1
+
+# Settings file
+SETTINGS_FILE="${STATE_DIR}/audiobooks_settings.json"
+
 # Run the audiobooks app and handle commands
 qmlscene "$SCRIPT_DIR/main.qml" 2>&1 | while IFS= read -r line; do
     if [[ "$line" == *CREATE_DIR:* ]]; then
@@ -27,6 +33,11 @@ qmlscene "$SCRIPT_DIR/main.qml" 2>&1 | while IFS= read -r line; do
         dir="${line#*CREATE_DIR:}"
         mkdir -p "$dir" 2>/dev/null
         echo "Created directory: $dir" >> "$LOG_FILE"
+    elif [[ "$line" == *SAVE_SETTINGS:* ]]; then
+        # Extract JSON settings after SAVE_SETTINGS: prefix
+        settings="${line#*SAVE_SETTINGS:}"
+        echo "$settings" > "$SETTINGS_FILE"
+        echo "Saved settings: $settings" >> "$LOG_FILE"
     else
         echo "$line" >> "$LOG_FILE"
     fi

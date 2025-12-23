@@ -16,9 +16,13 @@ Window {
     property real textScale: 1.0
     property var booksList: []
     property var progressData: ({})
-    property string currentView: "library" // "library", "chapters", "player"
+    property string currentView: "library" // "library", "chapters", "player", "settings"
     property var currentBook: null
     property int currentChapterIndex: 0
+
+    // Settings
+    property var libraryPaths: ["/home/droidian/Audiobooks"]
+    property string settingsFile: "/home/droidian/.local/state/flick/audiobooks_settings.json"
 
     // Audio player
     Audio {
@@ -43,8 +47,69 @@ Window {
 
     Component.onCompleted: {
         loadTextScale()
+        loadSettings()
         loadProgress()
         scanAudiobooks()
+    }
+
+    function loadSettings() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + settingsFile)
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                if (xhr.status === 200 || xhr.status === 0) {
+                    try {
+                        var settings = JSON.parse(xhr.responseText)
+                        if (settings.libraryPaths && settings.libraryPaths.length > 0) {
+                            libraryPaths = settings.libraryPaths
+                        }
+                        libraryPathsModel.sync()
+                        scanAudiobooks()
+                    } catch (e) {
+                        console.log("Failed to parse settings:", e)
+                    }
+                }
+            }
+        }
+        xhr.send()
+    }
+
+    function saveSettings() {
+        var settings = {
+            libraryPaths: libraryPaths
+        }
+        console.log("SAVE_SETTINGS:" + JSON.stringify(settings))
+    }
+
+    function addLibraryPath(path) {
+        if (path && libraryPaths.indexOf(path) === -1) {
+            libraryPaths.push(path)
+            libraryPathsModel.sync()
+            saveSettings()
+            scanAudiobooks()
+        }
+    }
+
+    function removeLibraryPath(index) {
+        if (index >= 0 && index < libraryPaths.length) {
+            libraryPaths.splice(index, 1)
+            libraryPathsModel.sync()
+            saveSettings()
+            scanAudiobooks()
+        }
+    }
+
+    ListModel {
+        id: libraryPathsModel
+
+        function sync() {
+            clear()
+            for (var i = 0; i < libraryPaths.length; i++) {
+                append({ path: libraryPaths[i] })
+            }
+        }
+
+        Component.onCompleted: sync()
     }
 
     function loadTextScale() {
@@ -99,13 +164,8 @@ Window {
 
     function scanAudiobooks() {
         booksList = []
-        var paths = [
-            "/home/droidian/Audiobooks",
-            Qt.resolvedUrl("~/Audiobooks").toString().replace("file://", "")
-        ]
-
-        for (var i = 0; i < paths.length; i++) {
-            scanDirectory(paths[i])
+        for (var i = 0; i < libraryPaths.length; i++) {
+            scanDirectory(libraryPaths[i])
         }
     }
 
@@ -282,6 +342,31 @@ Window {
                     font.weight: Font.Medium
                     font.letterSpacing: 4
                     color: "#555566"
+                }
+            }
+
+            // Settings button
+            Rectangle {
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.topMargin: 16
+                anchors.rightMargin: 16
+                width: 48
+                height: 48
+                radius: 24
+                color: settingsMouse.pressed ? "#333344" : "#252530"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "⚙"
+                    font.pixelSize: 24
+                    color: "#aaaacc"
+                }
+
+                MouseArea {
+                    id: settingsMouse
+                    anchors.fill: parent
+                    onClicked: currentView = "settings"
                 }
             }
 
@@ -949,6 +1034,305 @@ Window {
                 id: playerBackMouse
                 anchors.fill: parent
                 onClicked: currentView = "chapters"
+            }
+        }
+
+        // Home indicator
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 8
+            width: 120
+            height: 4
+            radius: 2
+            color: "#333344"
+        }
+    }
+
+    // Settings View
+    Item {
+        anchors.fill: parent
+        visible: currentView === "settings"
+
+        // Header
+        Rectangle {
+            id: settingsHeader
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 140
+            color: "transparent"
+
+            Column {
+                anchors.centerIn: parent
+                spacing: 12
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Settings"
+                    font.pixelSize: 36 * textScale
+                    font.weight: Font.Medium
+                    color: "#ffffff"
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "LIBRARY LOCATIONS"
+                    font.pixelSize: 14 * textScale
+                    font.weight: Font.Medium
+                    font.letterSpacing: 4
+                    color: "#555566"
+                }
+            }
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 1
+                color: "#333344"
+                opacity: 0.5
+            }
+        }
+
+        // Library paths list
+        ListView {
+            id: pathsList
+            anchors.top: settingsHeader.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: addPathSection.top
+            anchors.margins: 16
+            spacing: 12
+            clip: true
+
+            model: libraryPathsModel
+
+            delegate: Rectangle {
+                width: pathsList.width
+                height: 72
+                radius: 12
+                color: "#151520"
+                border.color: "#333344"
+                border.width: 1
+
+                Row {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 16
+
+                    // Folder icon
+                    Rectangle {
+                        width: 40
+                        height: 40
+                        radius: 8
+                        color: "#333344"
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "📁"
+                            font.pixelSize: 20
+                        }
+                    }
+
+                    // Path text
+                    Text {
+                        width: parent.width - 40 - 48 - 32
+                        text: model.path
+                        color: "#ffffff"
+                        font.pixelSize: 16 * textScale
+                        elide: Text.ElideMiddle
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    // Delete button
+                    Rectangle {
+                        width: 40
+                        height: 40
+                        radius: 20
+                        color: deletePathMouse.pressed ? "#3a1a1a" : "transparent"
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: libraryPaths.length > 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "✕"
+                            font.pixelSize: 18
+                            color: "#e94560"
+                        }
+
+                        MouseArea {
+                            id: deletePathMouse
+                            anchors.fill: parent
+                            onClicked: removeLibraryPath(index)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add path section
+        Rectangle {
+            id: addPathSection
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 100
+            height: 180
+            color: "#151520"
+
+            Column {
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 12
+
+                Text {
+                    text: "Add Library Path"
+                    color: "#aaaacc"
+                    font.pixelSize: 14 * textScale
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 50
+                    radius: 12
+                    color: "#0a0a0f"
+                    border.color: newPathInput.activeFocus ? "#e94560" : "#333344"
+                    border.width: newPathInput.activeFocus ? 2 : 1
+
+                    TextInput {
+                        id: newPathInput
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        color: "#ffffff"
+                        font.pixelSize: 16
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        text: "/home/droidian/"
+
+                        property string placeholderText: "/home/droidian/MyAudiobooks"
+                    }
+
+                    Text {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        text: newPathInput.placeholderText
+                        color: "#555566"
+                        font.pixelSize: 16
+                        verticalAlignment: Text.AlignVCenter
+                        visible: newPathInput.text.length === 0 && !newPathInput.activeFocus
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: newPathInput.forceActiveFocus()
+                    }
+                }
+
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 16
+
+                    // Common locations
+                    Rectangle {
+                        width: 140
+                        height: 44
+                        radius: 22
+                        color: quickPath1Mouse.pressed ? "#252538" : "#333344"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "~/Audiobooks"
+                            color: "#ffffff"
+                            font.pixelSize: 14
+                        }
+
+                        MouseArea {
+                            id: quickPath1Mouse
+                            anchors.fill: parent
+                            onClicked: addLibraryPath("/home/droidian/Audiobooks")
+                        }
+                    }
+
+                    Rectangle {
+                        width: 120
+                        height: 44
+                        radius: 22
+                        color: quickPath2Mouse.pressed ? "#252538" : "#333344"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "~/Music"
+                            color: "#ffffff"
+                            font.pixelSize: 14
+                        }
+
+                        MouseArea {
+                            id: quickPath2Mouse
+                            anchors.fill: parent
+                            onClicked: addLibraryPath("/home/droidian/Music")
+                        }
+                    }
+                }
+
+                // Add button
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 200
+                    height: 48
+                    radius: 24
+                    color: addPathMouse.pressed ? "#c23a50" : "#e94560"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Add Path"
+                        color: "#ffffff"
+                        font.pixelSize: 16
+                        font.weight: Font.Medium
+                    }
+
+                    MouseArea {
+                        id: addPathMouse
+                        anchors.fill: parent
+                        onClicked: {
+                            if (newPathInput.text.length > 0) {
+                                addLibraryPath(newPathInput.text)
+                                newPathInput.text = "/home/droidian/"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Back button
+        Rectangle {
+            id: settingsBackButton
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.rightMargin: 24
+            anchors.bottomMargin: 120
+            width: 72
+            height: 72
+            radius: 36
+            color: settingsBackMouse.pressed ? "#c23a50" : "#e94560"
+            z: 10
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            Text {
+                anchors.centerIn: parent
+                text: "←"
+                font.pixelSize: 32
+                font.weight: Font.Medium
+                color: "#ffffff"
+            }
+
+            MouseArea {
+                id: settingsBackMouse
+                anchors.fill: parent
+                onClicked: currentView = "library"
             }
         }
 

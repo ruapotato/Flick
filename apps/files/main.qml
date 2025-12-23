@@ -16,6 +16,11 @@ Window {
     property string currentPath: "/home/droidian"
     property color accentColor: "#e94560"
 
+    // Context menu state
+    property var selectedFile: null
+    property string clipboardPath: ""
+    property string clipboardAction: "" // "copy" or "cut"
+
     Component.onCompleted: {
         loadConfig()
     }
@@ -70,6 +75,68 @@ Window {
         var command = "xdg-open \"" + path + "\" &"
         // Log command for shell script to execute
         console.log("FILE_OPEN:" + path)
+    }
+
+    function showContextMenu(filePath, fileName, isDir) {
+        selectedFile = {
+            path: filePath,
+            name: fileName,
+            isDir: isDir
+        }
+        contextMenu.visible = true
+    }
+
+    function copyFile() {
+        if (selectedFile) {
+            clipboardPath = selectedFile.path
+            clipboardAction = "copy"
+            console.log("FILE_COPY:" + selectedFile.path)
+        }
+        contextMenu.visible = false
+    }
+
+    function cutFile() {
+        if (selectedFile) {
+            clipboardPath = selectedFile.path
+            clipboardAction = "cut"
+            console.log("FILE_CUT:" + selectedFile.path)
+        }
+        contextMenu.visible = false
+    }
+
+    function pasteFile() {
+        if (clipboardPath && clipboardAction) {
+            var cmd = clipboardAction === "copy" ? "FILE_PASTE_COPY" : "FILE_PASTE_MOVE"
+            console.log(cmd + ":" + clipboardPath + ":" + currentPath)
+            if (clipboardAction === "cut") {
+                clipboardPath = ""
+                clipboardAction = ""
+            }
+        }
+    }
+
+    function deleteFile() {
+        if (selectedFile) {
+            console.log("FILE_DELETE:" + selectedFile.path)
+        }
+        contextMenu.visible = false
+    }
+
+    function renameFile() {
+        if (selectedFile) {
+            renameInput.text = selectedFile.name
+            renameDialog.visible = true
+        }
+        contextMenu.visible = false
+    }
+
+    function confirmRename() {
+        if (selectedFile && renameInput.text.length > 0) {
+            var dir = selectedFile.path.substring(0, selectedFile.path.lastIndexOf("/"))
+            var newPath = dir + "/" + renameInput.text
+            console.log("FILE_RENAME:" + selectedFile.path + ":" + newPath)
+        }
+        renameDialog.visible = false
     }
 
     // Title bar with current path
@@ -174,12 +241,18 @@ Window {
             MouseArea {
                 id: mouseArea
                 anchors.fill: parent
+                pressAndHoldInterval: 500
+
                 onClicked: {
                     if (model.fileIsDir) {
                         navigateTo(model.filePath)
                     } else {
                         openFile(model.filePath)
                     }
+                }
+
+                onPressAndHold: {
+                    showContextMenu(model.filePath, model.fileName, model.fileIsDir)
                 }
             }
         }
@@ -198,32 +271,29 @@ Window {
     Rectangle {
         id: backButton
         anchors.right: parent.right
-        anchors.bottom: homeIndicator.top
-        anchors.rightMargin: 16 * textScale
-        anchors.bottomMargin: 16 * textScale
-        width: 72 * textScale
-        height: 72 * textScale
-        radius: 36 * textScale
-        color: accentColor
-        z: 3
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 120
+        width: 72
+        height: 72
+        radius: 36
+        color: backMouse.pressed ? "#c23a50" : accentColor
+        z: 10
+
+        Behavior on color { ColorAnimation { duration: 150 } }
 
         Text {
             anchors.centerIn: parent
-            text: "\u{2190}"
+            text: currentPath === "/" ? "✕" : "←"
             color: "#ffffff"
-            font.pixelSize: 32 * textScale
-            font.weight: Font.Bold
+            font.pixelSize: 32
+            font.weight: Font.Medium
         }
 
         MouseArea {
+            id: backMouse
             anchors.fill: parent
             onClicked: goUp()
-        }
-
-        // Shadow effect
-        layer.enabled: true
-        layer.effect: ShaderEffect {
-            property color shadowColor: "#40000000"
         }
     }
 
@@ -238,5 +308,305 @@ Window {
         radius: 2 * textScale
         color: "#444466"
         z: 2
+    }
+
+    // Paste button (visible when clipboard has content)
+    Rectangle {
+        id: pasteButton
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 24
+        anchors.bottomMargin: 120
+        width: 72
+        height: 72
+        radius: 36
+        color: pasteMouse.pressed ? "#2a8a4a" : "#3ca55c"
+        visible: clipboardPath !== ""
+        z: 10
+
+        Behavior on color { ColorAnimation { duration: 150 } }
+
+        Text {
+            anchors.centerIn: parent
+            text: "📋"
+            font.pixelSize: 28
+        }
+
+        MouseArea {
+            id: pasteMouse
+            anchors.fill: parent
+            onClicked: pasteFile()
+        }
+    }
+
+    // Context menu overlay
+    Rectangle {
+        id: contextMenu
+        anchors.fill: parent
+        color: "#80000000"
+        visible: false
+        z: 100
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: contextMenu.visible = false
+        }
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: 320
+            height: menuColumn.height + 32
+            radius: 20
+            color: "#1a1a2e"
+            border.color: "#333344"
+            border.width: 1
+
+            Column {
+                id: menuColumn
+                anchors.centerIn: parent
+                width: parent.width - 32
+                spacing: 4
+
+                // Selected file name
+                Text {
+                    width: parent.width
+                    text: selectedFile ? selectedFile.name : ""
+                    color: "#aaaacc"
+                    font.pixelSize: 14
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideMiddle
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 1
+                    color: "#333344"
+                }
+
+                // Copy
+                Rectangle {
+                    width: parent.width
+                    height: 56
+                    radius: 12
+                    color: copyMouse.pressed ? "#252538" : "transparent"
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 12
+
+                        Text {
+                            text: "📄"
+                            font.pixelSize: 20
+                        }
+                        Text {
+                            text: "Copy"
+                            color: "#ffffff"
+                            font.pixelSize: 18
+                        }
+                    }
+
+                    MouseArea {
+                        id: copyMouse
+                        anchors.fill: parent
+                        onClicked: copyFile()
+                    }
+                }
+
+                // Cut (Move)
+                Rectangle {
+                    width: parent.width
+                    height: 56
+                    radius: 12
+                    color: cutMouse.pressed ? "#252538" : "transparent"
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 12
+
+                        Text {
+                            text: "✂️"
+                            font.pixelSize: 20
+                        }
+                        Text {
+                            text: "Cut"
+                            color: "#ffffff"
+                            font.pixelSize: 18
+                        }
+                    }
+
+                    MouseArea {
+                        id: cutMouse
+                        anchors.fill: parent
+                        onClicked: cutFile()
+                    }
+                }
+
+                // Rename
+                Rectangle {
+                    width: parent.width
+                    height: 56
+                    radius: 12
+                    color: renameMouse.pressed ? "#252538" : "transparent"
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 12
+
+                        Text {
+                            text: "✏️"
+                            font.pixelSize: 20
+                        }
+                        Text {
+                            text: "Rename"
+                            color: "#ffffff"
+                            font.pixelSize: 18
+                        }
+                    }
+
+                    MouseArea {
+                        id: renameMouse
+                        anchors.fill: parent
+                        onClicked: renameFile()
+                    }
+                }
+
+                // Delete
+                Rectangle {
+                    width: parent.width
+                    height: 56
+                    radius: 12
+                    color: deleteMouse.pressed ? "#3a1a1a" : "transparent"
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 12
+
+                        Text {
+                            text: "🗑️"
+                            font.pixelSize: 20
+                        }
+                        Text {
+                            text: "Delete"
+                            color: "#e94560"
+                            font.pixelSize: 18
+                        }
+                    }
+
+                    MouseArea {
+                        id: deleteMouse
+                        anchors.fill: parent
+                        onClicked: deleteFile()
+                    }
+                }
+            }
+        }
+    }
+
+    // Rename dialog
+    Rectangle {
+        id: renameDialog
+        anchors.fill: parent
+        color: "#80000000"
+        visible: false
+        z: 101
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: renameDialog.visible = false
+        }
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: 360
+            height: renameColumn.height + 32
+            radius: 20
+            color: "#1a1a2e"
+            border.color: "#333344"
+            border.width: 1
+
+            Column {
+                id: renameColumn
+                anchors.centerIn: parent
+                width: parent.width - 32
+                spacing: 16
+
+                Text {
+                    text: "Rename"
+                    color: "#ffffff"
+                    font.pixelSize: 20
+                    font.weight: Font.Medium
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 50
+                    radius: 12
+                    color: "#0a0a0f"
+                    border.color: renameInput.activeFocus ? accentColor : "#333344"
+                    border.width: renameInput.activeFocus ? 2 : 1
+
+                    TextInput {
+                        id: renameInput
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        color: "#ffffff"
+                        font.pixelSize: 16
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        selectByMouse: true
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: renameInput.forceActiveFocus()
+                    }
+                }
+
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 16
+
+                    Rectangle {
+                        width: 120
+                        height: 48
+                        radius: 24
+                        color: cancelMouse.pressed ? "#252538" : "#333344"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Cancel"
+                            color: "#ffffff"
+                            font.pixelSize: 16
+                        }
+
+                        MouseArea {
+                            id: cancelMouse
+                            anchors.fill: parent
+                            onClicked: renameDialog.visible = false
+                        }
+                    }
+
+                    Rectangle {
+                        width: 120
+                        height: 48
+                        radius: 24
+                        color: confirmMouse.pressed ? "#c23a50" : accentColor
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Rename"
+                            color: "#ffffff"
+                            font.pixelSize: 16
+                        }
+
+                        MouseArea {
+                            id: confirmMouse
+                            anchors.fill: parent
+                            onClicked: confirmRename()
+                        }
+                    }
+                }
+            }
+        }
     }
 }
