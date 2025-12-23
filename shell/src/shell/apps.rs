@@ -367,6 +367,7 @@ impl AppManager {
         };
         manager.scan_apps();
         manager.set_defaults();
+        manager.config.save(); // Save defaults so they persist
         manager.rebuild_cache();
         manager
     }
@@ -488,18 +489,27 @@ impl AppManager {
 
             // Only set default if user hasn't selected anything
             if self.config.get_selected(category).is_some() {
+                tracing::debug!("{} already has selection, skipping", category.display_name());
                 continue;
             }
 
             let apps = self.apps_for_category(category);
             if apps.is_empty() {
+                tracing::debug!("No apps found for {}", category.display_name());
                 continue;
             }
 
-            // Use the highest scoring app (Flick apps get +100 boost from match_score)
-            // but since apps_for_category already sorts by score, first is best
+            // Log all candidates for debugging
+            for (i, app) in apps.iter().take(3).enumerate() {
+                let score = app.match_score(category);
+                tracing::info!("  {} candidate {}: {} (score={}, flick={})",
+                    category.display_name(), i, app.name, score, app.is_flick_native_app());
+            }
+
+            // Use the highest scoring app (first in sorted list)
             if let Some(entry) = apps.first() {
-                tracing::info!("Setting default {} to: {}", category.display_name(), entry.exec);
+                tracing::info!("Setting default {} to: {} ({})",
+                    category.display_name(), entry.name, entry.exec);
                 self.config.set_selected(category, entry.exec.clone());
             }
         }
