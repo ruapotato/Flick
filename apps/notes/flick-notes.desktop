@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Flick Notes
+Comment=First-party notes app for Flick shell
+Exec=sh -c "$HOME/Flick/apps/notes/run_notes.sh"
+Icon=accessories-text-editor
+Terminal=false
+Categories=Office;TextEditor;
+Keywords=notes;text;memo;writing;

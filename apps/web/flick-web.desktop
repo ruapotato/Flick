@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Web
+Comment=Web browser placeholder for Flick shell
+Exec=sh -c "$HOME/Flick/apps/web/run_web.sh"
+Icon=web-browser
+Terminal=false
+Categories=Network;WebBrowser;
+Keywords=web;browser;internet;www;

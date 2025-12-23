@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Calculator
+Comment=Calculator app for Flick shell
+Exec=sh -c "$HOME/Flick/apps/calculator/run_calculator.sh"
+Icon=accessories-calculator
+Terminal=false
+Categories=Utility;Calculator;
+Keywords=calculator;math;arithmetic;

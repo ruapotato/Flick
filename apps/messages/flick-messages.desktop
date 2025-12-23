@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Messages
+Comment=Messages app placeholder for Flick shell
+Exec=sh -c "$HOME/Flick/apps/messages/run_messages.sh"
+Icon=mail-message
+Terminal=false
+Categories=Network;Chat;
+Keywords=messages;sms;chat;text;

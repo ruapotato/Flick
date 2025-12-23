@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Email
+Comment=Email app placeholder for Flick shell
+Exec=sh -c "$HOME/Flick/apps/email/run_email.sh"
+Icon=mail-client
+Terminal=false
+Categories=Network;Email;
+Keywords=email;mail;inbox;

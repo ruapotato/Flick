@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Flick Calendar
+Comment=First-party calendar app for Flick shell
+Exec=sh -c "$HOME/Flick/apps/calendar/run_calendar.sh"
+Icon=x-office-calendar
+Terminal=false
+Categories=Office;Calendar;
+Keywords=calendar;events;schedule;appointments;

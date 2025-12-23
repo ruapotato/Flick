@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Phone
+Comment=Phone app placeholder for Flick shell
+Exec=sh -c "$HOME/Flick/apps/phone/run_phone.sh"
+Icon=phone
+Terminal=false
+Categories=Network;Telephony;
+Keywords=phone;call;dialer;

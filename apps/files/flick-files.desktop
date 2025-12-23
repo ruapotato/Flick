@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Flick Files
+Comment=File browser for Flick shell
+Exec=sh -c "$HOME/Flick/apps/files/run_files.sh"
+Icon=system-file-manager
+Terminal=false
+Categories=System;FileManager;
+Keywords=files;browser;folder;directory;explorer;

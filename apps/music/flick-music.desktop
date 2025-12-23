@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Flick Music
+Comment=First-party music player for Flick shell
+Exec=sh -c "$HOME/Flick/apps/music/run_music.sh"
+Icon=multimedia-audio-player
+Terminal=false
+Categories=Audio;Music;Player;
+Keywords=music;audio;player;mp3;flac;ogg;

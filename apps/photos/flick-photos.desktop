@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Photos
+Comment=Browse and view photos
+Icon=camera
+Exec=/home/david/Flick/apps/photos/run_photos.sh
+Terminal=false
+Categories=Graphics;Photography;
