@@ -1026,6 +1026,8 @@ fn handle_input_event(
                                 // GTK4 specific - force Cairo rendering instead of GPU
                                 .env("GSK_RENDERER", "cairo")
                                 .env("GDK_RENDERING", "image")
+                                // Suppress dconf warnings (no D-Bus session in our environment)
+                                .env("GSETTINGS_BACKEND", "memory")
                                 // Disable hardware acceleration hints
                                 .env("GALLIUM_DRIVER", "llvmpipe")
                                 .env("__EGL_VENDOR_LIBRARY_FILENAMES", "")

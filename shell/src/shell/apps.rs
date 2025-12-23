@@ -268,8 +268,23 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
+        // Default to Flick native apps
+        let mut selections = HashMap::new();
+        selections.insert(AppCategory::Phone, r#"sh -c "$HOME/Flick/apps/phone/run_phone.sh""#.to_string());
+        selections.insert(AppCategory::Messages, r#"sh -c "$HOME/Flick/apps/messages/run_messages.sh""#.to_string());
+        selections.insert(AppCategory::Web, r#"sh -c "$HOME/Flick/apps/web/run_web.sh""#.to_string());
+        selections.insert(AppCategory::Email, r#"sh -c "$HOME/Flick/apps/email/run_email.sh""#.to_string());
+        selections.insert(AppCategory::Camera, "/usr/bin/droidian-camera".to_string());
+        selections.insert(AppCategory::Photos, r#"sh -c "$HOME/Flick/apps/photos/run_photos.sh""#.to_string());
+        selections.insert(AppCategory::Music, r#"sh -c "$HOME/Flick/apps/music/run_music.sh""#.to_string());
+        selections.insert(AppCategory::Files, r#"sh -c "$HOME/Flick/apps/files/run_files.sh""#.to_string());
+        selections.insert(AppCategory::Calendar, r#"sh -c "$HOME/Flick/apps/calendar/run_calendar.sh""#.to_string());
+        selections.insert(AppCategory::Notes, r#"sh -c "$HOME/Flick/apps/notes/run_notes.sh""#.to_string());
+        selections.insert(AppCategory::Calculator, r#"sh -c "$HOME/Flick/apps/calculator/run_calculator.sh""#.to_string());
+        selections.insert(AppCategory::Terminal, r#"sh -c "$HOME/Flick/apps/terminal/run_terminal.sh""#.to_string());
+
         Self {
-            selections: HashMap::new(),
+            selections,
             grid_order: AppCategory::all(),
         }
     }
