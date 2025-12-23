@@ -56,9 +56,29 @@ The hwcomposer backend uses a C shim library (`hwc-shim/`) that wraps Android's 
 - **Lock screen with PIN unlock** - QML lock screen with swipe-to-unlock and PIN entry, successfully transitions to app grid
 
 **In Progress:**
-- App launching from home screen grid
-- Settings app (QML app)
 - PAM integration for lock screen (currently uses static PIN)
+- Running apps as normal user (currently requires root)
+
+## Included Apps
+
+Flick comes with a set of QML apps. Status of each:
+
+| App | Status | Notes |
+|-----|--------|-------|
+| **Settings** | ✅ Working | WiFi, Bluetooth, Display, Sound, Battery, Storage, Date/Time, About |
+| **Calculator** | ✅ Working | Basic calculator with standard operations |
+| **Notes** | ✅ Working | Simple note-taking app with audio recording |
+| **Files** | ✅ Working | File browser with context menu |
+| **Audiobooks** | ✅ Working | Audiobook player with chapter support |
+| **Phone** | ✅ Working | Dialer and call interface (requires modem) |
+| **Photos** | ✅ Working | Photo gallery viewer |
+| **Calendar** | ✅ Working | Basic calendar view |
+| **Terminal** | ✅ Working | Terminal emulator |
+| **Lock Screen** | ✅ Working | PIN entry, swipe to unlock |
+| **Music** | ⚠️ Basic | Music player (UI only, needs backend work) |
+| **Messages** | ⚠️ Basic | SMS interface (requires modem integration) |
+| **Email** | ⚠️ Basic | Email client (UI only, needs backend) |
+| **Web** | ⚠️ Basic | Web browser (UI only, needs browser engine) |
 
 ## Architecture
 
