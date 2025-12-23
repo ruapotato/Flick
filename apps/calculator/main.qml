@@ -1,19 +1,15 @@
 import QtQuick 2.15
 import QtQuick.Window 2.15
-import QtQuick.Controls 2.15
 
 Window {
     id: root
     visible: true
+    visibility: Window.FullScreen
     width: 1080
     height: 2400
     title: "Calculator"
     color: "#0a0a0f"
 
-    // Calculator uses fixed scaling - designed for standard screen
-    property real textScale: 1.0
-
-    // Calculator state
     property string display: "0"
     property real currentValue: 0
     property real storedValue: 0
@@ -21,15 +17,6 @@ Window {
     property bool newNumber: true
     property int maxDigits: 12
 
-    Component.onCompleted: {
-        loadConfig()
-    }
-
-    function loadConfig() {
-        // Calculator uses fixed scaling - no config reload needed
-    }
-
-    // Calculator logic
     function appendDigit(digit) {
         if (newNumber) {
             display = digit
@@ -88,17 +75,10 @@ Window {
 
     function calculate() {
         var result = 0
-
         switch (currentOperation) {
-            case "+":
-                result = storedValue + currentValue
-                break
-            case "-":
-                result = storedValue - currentValue
-                break
-            case "*":
-                result = storedValue * currentValue
-                break
+            case "+": result = storedValue + currentValue; break
+            case "-": result = storedValue - currentValue; break
+            case "*": result = storedValue * currentValue; break
             case "/":
                 if (currentValue !== 0) {
                     result = storedValue / currentValue
@@ -109,16 +89,12 @@ Window {
                     return
                 }
                 break
-            default:
-                result = currentValue
+            default: result = currentValue
         }
 
-        // Format the result
         var resultStr = result.toString()
         if (resultStr.length > maxDigits) {
-            // Try scientific notation or truncate
-            if (Math.abs(result) >= Math.pow(10, maxDigits) ||
-                (Math.abs(result) < 1 && Math.abs(result) > 0 && resultStr.length > maxDigits)) {
+            if (Math.abs(result) >= Math.pow(10, maxDigits)) {
                 resultStr = result.toExponential(6)
             } else {
                 resultStr = result.toPrecision(maxDigits)
@@ -132,30 +108,26 @@ Window {
         newNumber = true
     }
 
-    // Main display
+    // Display
     Rectangle {
         id: displayArea
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 320 * textScale
+        height: 280
         color: "#0f0f14"
-        border.color: "#1a1a2e"
-        border.width: 2
 
         Text {
-            id: displayText
             anchors.fill: parent
-            anchors.margins: 40 * textScale
+            anchors.margins: 32
             text: display
             color: "#ffffff"
-            font.pixelSize: 60 * textScale
+            font.pixelSize: 72
             font.weight: Font.Bold
             horizontalAlignment: Text.AlignRight
             verticalAlignment: Text.AlignVCenter
             fontSizeMode: Text.Fit
-            minimumPixelSize: 30 * textScale
-            elide: Text.ElideLeft
+            minimumPixelSize: 32
         }
     }
 
@@ -165,234 +137,171 @@ Window {
         anchors.top: displayArea.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: homeIndicator.top
-        anchors.margins: 20 * textScale
-        anchors.topMargin: 30 * textScale
-        anchors.bottomMargin: 120 * textScale
+        anchors.bottom: parent.bottom
+        anchors.margins: 16
+        anchors.bottomMargin: 200
 
         columns: 4
-        rowSpacing: 15 * textScale
-        columnSpacing: 15 * textScale
+        rowSpacing: 12
+        columnSpacing: 12
 
-        property real buttonWidth: (width - columnSpacing * (columns - 1)) / columns
-        property real buttonHeight: (height - rowSpacing * 4) / 5
+        property real btnW: (width - columnSpacing * 3) / 4
+        property real btnH: (height - rowSpacing * 4) / 5
 
-        // Row 1: C, +/-, /, *
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "C"
-            textScale: root.textScale
-            isOperation: true
-            onClicked: clear()
+        // Row 1
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r1c.pressed ? "#555577" : "#3a3a4e"
+            Text { anchors.centerIn: parent; text: "C"; color: "#fff"; font.pixelSize: 36; font.bold: true }
+            MouseArea { id: r1c; anchors.fill: parent; onClicked: clear() }
         }
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "+/-"
-            textScale: root.textScale
-            isOperation: true
-            onClicked: toggleSign()
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r1pm.pressed ? "#555577" : "#3a3a4e"
+            Text { anchors.centerIn: parent; text: "+/-"; color: "#fff"; font.pixelSize: 32; font.bold: true }
+            MouseArea { id: r1pm; anchors.fill: parent; onClicked: toggleSign() }
         }
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "/"
-            textScale: root.textScale
-            isOperation: true
-            onClicked: setOperation("/")
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r1d.pressed ? "#555577" : "#3a3a4e"
+            Text { anchors.centerIn: parent; text: "/"; color: "#fff"; font.pixelSize: 40; font.bold: true }
+            MouseArea { id: r1d; anchors.fill: parent; onClicked: setOperation("/") }
         }
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "*"
-            textScale: root.textScale
-            isOperation: true
-            onClicked: setOperation("*")
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r1m.pressed ? "#555577" : "#3a3a4e"
+            Text { anchors.centerIn: parent; text: "*"; color: "#fff"; font.pixelSize: 40; font.bold: true }
+            MouseArea { id: r1m; anchors.fill: parent; onClicked: setOperation("*") }
         }
 
-        // Row 2: 7, 8, 9, -
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "7"
-            textScale: root.textScale
-            onClicked: appendDigit("7")
+        // Row 2
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r27.pressed ? "#2a2a3e" : "#1a1a2e"
+            Text { anchors.centerIn: parent; text: "7"; color: "#fff"; font.pixelSize: 40; font.bold: true }
+            MouseArea { id: r27; anchors.fill: parent; onClicked: appendDigit("7") }
         }
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "8"
-            textScale: root.textScale
-            onClicked: appendDigit("8")
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r28.pressed ? "#2a2a3e" : "#1a1a2e"
+            Text { anchors.centerIn: parent; text: "8"; color: "#fff"; font.pixelSize: 40; font.bold: true }
+            MouseArea { id: r28; anchors.fill: parent; onClicked: appendDigit("8") }
         }
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "9"
-            textScale: root.textScale
-            onClicked: appendDigit("9")
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r29.pressed ? "#2a2a3e" : "#1a1a2e"
+            Text { anchors.centerIn: parent; text: "9"; color: "#fff"; font.pixelSize: 40; font.bold: true }
+            MouseArea { id: r29; anchors.fill: parent; onClicked: appendDigit("9") }
         }
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "-"
-            textScale: root.textScale
-            isOperation: true
-            onClicked: setOperation("-")
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r2s.pressed ? "#555577" : "#3a3a4e"
+            Text { anchors.centerIn: parent; text: "-"; color: "#fff"; font.pixelSize: 48; font.bold: true }
+            MouseArea { id: r2s; anchors.fill: parent; onClicked: setOperation("-") }
         }
 
-        // Row 3: 4, 5, 6, +
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "4"
-            textScale: root.textScale
-            onClicked: appendDigit("4")
+        // Row 3
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r34.pressed ? "#2a2a3e" : "#1a1a2e"
+            Text { anchors.centerIn: parent; text: "4"; color: "#fff"; font.pixelSize: 40; font.bold: true }
+            MouseArea { id: r34; anchors.fill: parent; onClicked: appendDigit("4") }
         }
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "5"
-            textScale: root.textScale
-            onClicked: appendDigit("5")
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r35.pressed ? "#2a2a3e" : "#1a1a2e"
+            Text { anchors.centerIn: parent; text: "5"; color: "#fff"; font.pixelSize: 40; font.bold: true }
+            MouseArea { id: r35; anchors.fill: parent; onClicked: appendDigit("5") }
         }
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "6"
-            textScale: root.textScale
-            onClicked: appendDigit("6")
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r36.pressed ? "#2a2a3e" : "#1a1a2e"
+            Text { anchors.centerIn: parent; text: "6"; color: "#fff"; font.pixelSize: 40; font.bold: true }
+            MouseArea { id: r36; anchors.fill: parent; onClicked: appendDigit("6") }
         }
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "+"
-            textScale: root.textScale
-            isOperation: true
-            onClicked: setOperation("+")
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r3p.pressed ? "#555577" : "#3a3a4e"
+            Text { anchors.centerIn: parent; text: "+"; color: "#fff"; font.pixelSize: 44; font.bold: true }
+            MouseArea { id: r3p; anchors.fill: parent; onClicked: setOperation("+") }
         }
 
-        // Row 4: 1, 2, 3, (blank for layout)
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "1"
-            textScale: root.textScale
-            onClicked: appendDigit("1")
+        // Row 4
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r41.pressed ? "#2a2a3e" : "#1a1a2e"
+            Text { anchors.centerIn: parent; text: "1"; color: "#fff"; font.pixelSize: 40; font.bold: true }
+            MouseArea { id: r41; anchors.fill: parent; onClicked: appendDigit("1") }
         }
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "2"
-            textScale: root.textScale
-            onClicked: appendDigit("2")
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r42.pressed ? "#2a2a3e" : "#1a1a2e"
+            Text { anchors.centerIn: parent; text: "2"; color: "#fff"; font.pixelSize: 40; font.bold: true }
+            MouseArea { id: r42; anchors.fill: parent; onClicked: appendDigit("2") }
         }
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "3"
-            textScale: root.textScale
-            onClicked: appendDigit("3")
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r43.pressed ? "#2a2a3e" : "#1a1a2e"
+            Text { anchors.centerIn: parent; text: "3"; color: "#fff"; font.pixelSize: 40; font.bold: true }
+            MouseArea { id: r43; anchors.fill: parent; onClicked: appendDigit("3") }
         }
-
-        // Equals button (spans 2 rows visually)
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight * 2 + buttonGrid.rowSpacing
-            text: "="
-            textScale: root.textScale
-            isOperation: true
-            isEquals: true
-            onClicked: calculate()
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH * 2 + buttonGrid.rowSpacing; radius: 16
+            color: r4eq.pressed ? "#c23a50" : "#e94560"
+            Text { anchors.centerIn: parent; text: "="; color: "#fff"; font.pixelSize: 48; font.bold: true }
+            MouseArea { id: r4eq; anchors.fill: parent; onClicked: calculate() }
         }
 
-        // Row 5: 0 (2 cols), .
-        CalcButton {
-            width: buttonGrid.buttonWidth * 2 + buttonGrid.columnSpacing
-            height: buttonGrid.buttonHeight
-            text: "0"
-            textScale: root.textScale
-            onClicked: appendDigit("0")
+        // Row 5
+        Rectangle {
+            width: buttonGrid.btnW * 2 + buttonGrid.columnSpacing; height: buttonGrid.btnH; radius: 16
+            color: r50.pressed ? "#2a2a3e" : "#1a1a2e"
+            Text { anchors.centerIn: parent; text: "0"; color: "#fff"; font.pixelSize: 40; font.bold: true }
+            MouseArea { id: r50; anchors.fill: parent; onClicked: appendDigit("0") }
         }
-        CalcButton {
-            width: buttonGrid.buttonWidth
-            height: buttonGrid.buttonHeight
-            text: "."
-            textScale: root.textScale
-            onClicked: appendDecimal()
+        Rectangle {
+            width: buttonGrid.btnW; height: buttonGrid.btnH; radius: 16
+            color: r5dot.pressed ? "#2a2a3e" : "#1a1a2e"
+            Text { anchors.centerIn: parent; text: "."; color: "#fff"; font.pixelSize: 48; font.bold: true }
+            MouseArea { id: r5dot; anchors.fill: parent; onClicked: appendDecimal() }
         }
     }
 
-    // Floating back button
+    // Back button
     Rectangle {
-        id: backButton
         anchors.right: parent.right
-        anchors.bottom: homeIndicator.top
-        anchors.margins: 30 * textScale
-        width: 72 * textScale
-        height: 72 * textScale
-        radius: 36 * textScale
-        color: backButtonArea.pressed ? "#d93550" : "#e94560"
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 120
+        width: 72
+        height: 72
+        radius: 36
+        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        z: 10
 
         Text {
             anchors.centerIn: parent
-            text: "<"
-            font.pixelSize: 32 * textScale
+            text: "X"
+            font.pixelSize: 28
             font.weight: Font.Bold
-            color: "white"
+            color: "#ffffff"
         }
 
         MouseArea {
-            id: backButtonArea
+            id: backMouse
             anchors.fill: parent
             onClicked: Qt.quit()
         }
     }
 
-    // Home indicator bar
+    // Home indicator
     Rectangle {
-        id: homeIndicator
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottomMargin: 10 * textScale
-        width: 200 * textScale
-        height: 8 * textScale
-        radius: 4 * textScale
+        anchors.bottomMargin: 8
+        width: 120
+        height: 4
+        radius: 2
         color: "#333344"
-    }
-}
-
-// Calculator button component
-component CalcButton: Rectangle {
-    id: button
-    required property string text
-    required property real textScale
-    property bool isOperation: false
-    property bool isEquals: false
-    signal clicked()
-
-    color: {
-        if (buttonArea.pressed) {
-            return isEquals ? "#d93550" : (isOperation ? "#555577" : "#2a2a3e")
-        }
-        return isEquals ? "#e94560" : (isOperation ? "#3a3a4e" : "#1a1a2e")
-    }
-    radius: 12 * textScale
-    border.color: "#2a2a4e"
-    border.width: 2
-
-    Text {
-        anchors.centerIn: parent
-        text: button.text
-        color: "white"
-        font.pixelSize: 36 * textScale
-        font.weight: Font.Bold
-    }
-
-    MouseArea {
-        id: buttonArea
-        anchors.fill: parent
-        onClicked: button.clicked()
     }
 }

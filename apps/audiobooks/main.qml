@@ -164,75 +164,105 @@ Window {
 
     function scanAudiobooks() {
         booksList = []
-        for (var i = 0; i < libraryPaths.length; i++) {
-            scanDirectory(libraryPaths[i])
+        booksListModel.clear()
+        // Trigger the main folder model to rescan
+        mainLibraryModel.folder = ""
+        mainLibraryModel.folder = "file://" + libraryPaths[0]
+    }
+
+    // Main library folder model - scans for book folders
+    FolderListModel {
+        id: mainLibraryModel
+        folder: "file://" + libraryPaths[0]
+        showDirs: true
+        showFiles: false
+        showDotAndDotDot: false
+
+        onStatusChanged: {
+            if (status === FolderListModel.Ready) {
+                scanTimer.start()
+            }
         }
     }
 
-    function scanDirectory(path) {
-        // Use FolderListModel to scan directories
-        var component = Qt.createQmlObject('
-            import QtQuick 2.15
-            import Qt.labs.folderlistmodel 2.15
-            FolderListModel {
-                showDirs: true
-                showFiles: false
-            }
-        ', root)
-
-        component.folder = "file://" + path
-
-        // Wait for folder to load
-        Qt.callLater(function() {
-            for (var i = 0; i < component.count; i++) {
-                var folderName = component.get(i, "fileName")
-                var folderPath = component.get(i, "filePath")
+    Timer {
+        id: scanTimer
+        interval: 200
+        onTriggered: {
+            booksList = []
+            console.log("Scanning " + mainLibraryModel.count + " folders in library")
+            for (var i = 0; i < mainLibraryModel.count; i++) {
+                var folderName = mainLibraryModel.get(i, "fileName")
+                var folderPath = mainLibraryModel.get(i, "filePath")
+                console.log("Found folder: " + folderName + " at " + folderPath)
                 if (folderName && folderName !== "." && folderName !== "..") {
-                    var chapters = scanBookFolder(folderPath)
-                    if (chapters.length > 0) {
-                        booksList.push({
-                            title: folderName,
-                            path: folderPath,
-                            chapters: chapters
-                        })
-                    }
+                    // Scan this folder for audio files
+                    scanBookFolderAsync(folderPath, folderName)
                 }
             }
-            booksListModel.sync()
-        })
+            // Final sync after a delay
+            syncTimer.start()
+        }
     }
 
-    function scanBookFolder(folderPath) {
-        var chapters = []
-        var component = Qt.createQmlObject('
+    Timer {
+        id: syncTimer
+        interval: 500
+        onTriggered: {
+            booksListModel.sync()
+            console.log("Found " + booksList.length + " audiobooks")
+        }
+    }
+
+    function scanBookFolderAsync(folderPath, folderName) {
+        // Create a temporary folder model to scan for audio files
+        var scanModel = Qt.createQmlObject('
             import QtQuick 2.15
             import Qt.labs.folderlistmodel 2.15
             FolderListModel {
                 showDirs: false
                 showFiles: true
-                nameFilters: ["*.mp3", "*.m4a", "*.m4b", "*.ogg", "*.flac", "*.wav", "*.aac"]
+                nameFilters: ["*.mp3", "*.m4a", "*.m4b", "*.ogg", "*.flac", "*.wav", "*.aac", "*.MP3", "*.M4A", "*.M4B", "*.OGG", "*.FLAC", "*.WAV", "*.AAC"]
             }
         ', root)
 
-        component.folder = folderPath
+        scanModel.folder = "file://" + folderPath
 
-        for (var i = 0; i < component.count; i++) {
-            var fileName = component.get(i, "fileName")
-            var filePath = component.get(i, "filePath")
-            if (fileName) {
-                chapters.push({
-                    title: fileName,
-                    path: filePath
-                })
+        // Use a timer to wait for the model to populate
+        var checkTimer = Qt.createQmlObject('import QtQuick 2.15; Timer { interval: 100; repeat: true }', root)
+
+        var checkCount = 0
+        checkTimer.triggered.connect(function() {
+            checkCount++
+            if (scanModel.status === 2 || checkCount > 10) { // Ready or timeout
+                checkTimer.stop()
+                var chapters = []
+                for (var i = 0; i < scanModel.count; i++) {
+                    var fileName = scanModel.get(i, "fileName")
+                    var filePath = scanModel.get(i, "filePath")
+                    if (fileName) {
+                        chapters.push({
+                            title: fileName,
+                            path: filePath
+                        })
+                    }
+                }
+                if (chapters.length > 0) {
+                    chapters.sort(function(a, b) {
+                        return a.title.localeCompare(b.title)
+                    })
+                    booksList.push({
+                        title: folderName,
+                        path: folderPath,
+                        chapters: chapters
+                    })
+                    console.log("Added book: " + folderName + " with " + chapters.length + " chapters")
+                }
+                scanModel.destroy()
+                checkTimer.destroy()
             }
-        }
-
-        // Sort chapters alphabetically
-        chapters.sort(function(a, b) {
-            return a.title.localeCompare(b.title)
         })
-
-        return chapters
+        checkTimer.start()
     }
 
     ListModel {

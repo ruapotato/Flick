@@ -12,33 +12,13 @@ Window {
     title: "Notes"
     color: "#0a0a0f"
 
-    property string notesDir: standardPaths.homePath + "/.local/state/flick/notes"
-    property string displayConfigPath: standardPaths.homePath + "/.local/state/flick/display_config.json"
-    // Notes uses fixed scaling
+    property string notesDir: "/home/droidian/.local/state/flick/notes"
     property real textScale: 1.0
     property bool editMode: false
     property string currentNoteFile: ""
-
-    QtObject {
-        id: standardPaths
-        property string homePath: {
-            var home = Qt.getenv("HOME");
-            return home ? home : "/home/droidian";
-        }
-    }
+    property string currentNoteContent: ""
 
     Component.onCompleted: {
-        loadDisplayConfig()
-        ensureNotesDir()
-        notesModel.refresh()
-    }
-
-    function loadDisplayConfig() {
-        // Notes uses fixed scaling - no config needed
-    }
-
-    function ensureNotesDir() {
-        // Log to shell for directory creation
         console.log("NOTES_INIT:" + notesDir)
     }
 
@@ -48,37 +28,26 @@ Window {
 
     function deleteNote(filename) {
         console.log("DELETE_NOTE:" + filename)
-        notesModel.refresh()
     }
 
     function createNewNote() {
         var timestamp = Date.now()
-        var filename = "note_" + timestamp + ".txt"
-        currentNoteFile = filename
-        noteEditor.text = ""
+        currentNoteFile = "note_" + timestamp + ".txt"
+        currentNoteContent = ""
         editMode = true
     }
 
-    function openNote(filename) {
+    function openNote(filename, content) {
         currentNoteFile = filename
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + notesDir + "/" + filename, true)
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === XMLHttpRequest.DONE) {
-                if (xhr.status === 200 || xhr.status === 0) {
-                    noteEditor.text = xhr.responseText
-                    editMode = true
-                }
-            }
-        }
-        xhr.send()
+        currentNoteContent = content
+        editMode = true
     }
 
     function getNoteTitle(content) {
         if (!content) return "New Note"
         var lines = content.split('\n')
         var title = lines[0].trim()
-        return title ? title : "Untitled"
+        return title ? title.substring(0, 50) : "Untitled"
     }
 
     function getNotePreview(content) {
@@ -90,15 +59,6 @@ Window {
         return ""
     }
 
-    ListModel {
-        id: notesModel
-
-        function refresh() {
-            clear()
-            folderModel.folder = "file://" + notesDir
-        }
-    }
-
     FolderListModel {
         id: folderModel
         folder: "file://" + notesDir
@@ -106,37 +66,11 @@ Window {
         showDirs: false
         sortField: FolderListModel.Time
         sortReversed: true
-
-        onCountChanged: {
-            notesModel.clear()
-            for (var i = 0; i < count; i++) {
-                var filepath = get(i, "fileURL").toString().replace("file://", "")
-                var filename = get(i, "fileName")
-
-                // Load file content to get title and preview
-                var xhr = new XMLHttpRequest()
-                xhr.open("GET", get(i, "fileURL"), false)
-                xhr.send()
-
-                var content = xhr.responseText
-                var title = getNoteTitle(content)
-                var preview = getNotePreview(content)
-
-                notesModel.append({
-                    filename: filename,
-                    title: title,
-                    preview: preview,
-                    filepath: filepath
-                })
-            }
-        }
     }
 
     // Notes List View
-    Rectangle {
-        id: listView
+    Item {
         anchors.fill: parent
-        color: "#0a0a0f"
         visible: !editMode
 
         // Header
@@ -145,64 +79,27 @@ Window {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 200
-            color: "transparent"
-
-            // Ambient glow effect
-            Rectangle {
-                anchors.centerIn: parent
-                width: 280
-                height: 180
-                radius: 140
-                color: "#e94560"
-                opacity: 0.08
-
-                NumberAnimation on opacity {
-                    from: 0.05
-                    to: 0.12
-                    duration: 3000
-                    loops: Animation.Infinite
-                    easing.type: Easing.InOutSine
-                }
-            }
+            height: 160
+            color: "#1a1a2e"
 
             Column {
                 anchors.centerIn: parent
-                spacing: 12
+                spacing: 8
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "Notes"
-                    font.pixelSize: 48
-                    font.weight: Font.ExtraLight
-                    font.letterSpacing: 6
+                    font.pixelSize: 36
+                    font.weight: Font.Medium
                     color: "#ffffff"
                 }
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: notesModel.count + " NOTES"
-                    font.pixelSize: 13
-                    font.weight: Font.Medium
-                    font.letterSpacing: 3
-                    color: "#555566"
+                    text: folderModel.count + " notes"
+                    font.pixelSize: 14
+                    color: "#888899"
                 }
-            }
-
-            // Bottom fade line
-            Rectangle {
-                anchors.bottom: parent.bottom
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: 1
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0.0; color: "transparent" }
-                    GradientStop { position: 0.2; color: "#e94560" }
-                    GradientStop { position: 0.8; color: "#e94560" }
-                    GradientStop { position: 1.0; color: "transparent" }
-                }
-                opacity: 0.3
             }
         }
 
@@ -214,36 +111,38 @@ Window {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.margins: 16
-            anchors.bottomMargin: 160
+            anchors.bottomMargin: 180
             spacing: 12
             clip: true
 
-            model: notesModel
+            model: folderModel
 
             delegate: Rectangle {
+                id: noteItem
                 width: notesList.width
-                height: 120
-                color: "#15151f"
+                height: 100
+                color: noteMouse.pressed ? "#252538" : "#15151f"
                 radius: 12
-                border.color: "#e94560"
-                border.width: 0
 
-                Rectangle {
-                    anchors.fill: parent
-                    color: "#e94560"
-                    opacity: mouseArea.pressed ? 0.15 : 0.05
-                    radius: parent.radius
+                property string noteContent: ""
+
+                Component.onCompleted: {
+                    // Load content
+                    var xhr = new XMLHttpRequest()
+                    xhr.open("GET", model.fileURL, false)
+                    xhr.send()
+                    noteContent = xhr.responseText
                 }
 
                 Column {
                     anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 8
+                    anchors.margins: 16
+                    spacing: 6
 
                     Text {
                         width: parent.width
-                        text: model.title
-                        font.pixelSize: 20
+                        text: getNoteTitle(noteItem.noteContent)
+                        font.pixelSize: 18
                         font.weight: Font.Medium
                         color: "#ffffff"
                         elide: Text.ElideRight
@@ -251,456 +150,345 @@ Window {
 
                     Text {
                         width: parent.width
-                        text: model.preview
-                        font.pixelSize: 15
+                        text: getNotePreview(noteItem.noteContent)
+                        font.pixelSize: 14
                         color: "#888899"
                         elide: Text.ElideRight
-                        wrapMode: Text.WordWrap
                         maximumLineCount: 2
+                        wrapMode: Text.WordWrap
                     }
                 }
 
                 MouseArea {
-                    id: mouseArea
+                    id: noteMouse
                     anchors.fill: parent
-                    onClicked: openNote(model.filename)
+                    pressAndHoldInterval: 500
+                    onClicked: openNote(model.fileName, noteItem.noteContent)
                     onPressAndHold: {
-                        deleteConfirmDialog.noteToDelete = model.filename
-                        deleteConfirmDialog.visible = true
-                    }
-                }
-
-                // Swipe to delete
-                property real swipeThreshold: 200
-                property real startX: 0
-
-                MouseArea {
-                    id: swipeArea
-                    anchors.fill: parent
-                    propagateComposedEvents: true
-
-                    property real swipeDistance: 0
-
-                    onPressed: {
-                        startX = mouse.x
-                        swipeDistance = 0
-                    }
-
-                    onPositionChanged: {
-                        swipeDistance = mouse.x - startX
-                        if (Math.abs(swipeDistance) > 10) {
-                            parent.x = swipeDistance
-                        }
-                    }
-
-                    onReleased: {
-                        if (Math.abs(swipeDistance) > swipeThreshold) {
-                            deleteConfirmDialog.noteToDelete = model.filename
-                            deleteConfirmDialog.visible = true
-                        }
-                        parent.x = 0
+                        deleteDialog.noteToDelete = model.fileName
+                        deleteDialog.visible = true
                     }
                 }
             }
 
+            // Empty state
             Text {
                 anchors.centerIn: parent
-                text: "No notes yet\n\nTap + to create your first note"
+                text: "No notes yet\n\nTap + to create one"
                 font.pixelSize: 18
                 color: "#555566"
                 horizontalAlignment: Text.AlignHCenter
-                lineHeight: 1.5
-                visible: notesModel.count === 0
+                visible: folderModel.count === 0
             }
         }
 
-        // Floating + button
+        // Add button
         Rectangle {
-            id: addButton
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.rightMargin: 32
-            anchors.bottomMargin: 160
-            width: 80
-            height: 80
-            radius: 40
-            color: "#e94560"
-
-            Rectangle {
-                anchors.fill: parent
-                radius: parent.radius
-                color: "#ffffff"
-                opacity: addButtonArea.pressed ? 0.3 : 0
-            }
+            anchors.rightMargin: 100
+            anchors.bottomMargin: 120
+            width: 72
+            height: 72
+            radius: 36
+            color: addMouse.pressed ? "#c23a50" : "#e94560"
+            z: 10
 
             Text {
                 anchors.centerIn: parent
                 text: "+"
-                font.pixelSize: 48
-                font.weight: Font.Light
-                color: "#ffffff"
-            }
-
-            MouseArea {
-                id: addButtonArea
-                anchors.fill: parent
-                onClicked: createNewNote()
-            }
-
-            layer.enabled: true
-            layer.effect: Component {
-                Item {
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: 40
-                        color: "#e94560"
-                        opacity: 0.3
-                    }
-                }
-            }
-        }
-
-        // Back button
-        Rectangle {
-            anchors.bottom: parent.bottom
-            anchors.right: parent.right
-            anchors.margins: 32
-            anchors.bottomMargin: 60
-            width: 72
-            height: 72
-            radius: 36
-            color: "#e94560"
-
-            Rectangle {
-                anchors.fill: parent
-                radius: parent.radius
-                color: "#ffffff"
-                opacity: backButtonArea.pressed ? 0.3 : 0
-            }
-
-            Text {
-                anchors.centerIn: parent
-                text: "←"
-                font.pixelSize: 32
-                color: "#ffffff"
-            }
-
-            MouseArea {
-                id: backButtonArea
-                anchors.fill: parent
-                onClicked: Qt.quit()
-            }
-        }
-
-        // Home indicator bar
-        Rectangle {
-            anchors.bottom: parent.bottom
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottomMargin: 8
-            width: 200
-            height: 4
-            radius: 2
-            color: "#ffffff"
-            opacity: 0.3
-        }
-    }
-
-    // Note Editor View
-    Rectangle {
-        id: editorView
-        anchors.fill: parent
-        color: "#0a0a0f"
-        visible: editMode
-
-        // Header with title
-        Rectangle {
-            id: editorHeader
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: 100
-            color: "#15151f"
-
-            Row {
-                anchors.centerIn: parent
-                spacing: 20
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: currentNoteFile ? "Edit Note" : "New Note"
-                    font.pixelSize: 24
-                    font.weight: Font.Medium
-                    color: "#ffffff"
-                }
-            }
-
-            Rectangle {
-                anchors.bottom: parent.bottom
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: 1
-                color: "#e94560"
-                opacity: 0.3
-            }
-        }
-
-        // Text editor - using ScrollView for better touch handling
-        ScrollView {
-            id: editorScrollView
-            anchors.top: editorHeader.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.margins: 24
-            anchors.bottomMargin: 160
-            clip: true
-
-            TextArea {
-                id: noteEditor
-                width: editorScrollView.width
-                wrapMode: TextArea.Wrap
-                font.pixelSize: 18
-                color: "#ffffff"
-                background: Rectangle {
-                    color: "transparent"
-                }
-                placeholderText: "Title\n\nStart typing your note here..."
-                placeholderTextColor: "#555566"
-
-                // Focus on click for touch
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        noteEditor.forceActiveFocus()
-                        // Position cursor at click location
-                        var pos = noteEditor.positionAt(mouse.x, mouse.y)
-                        noteEditor.cursorPosition = pos
-                    }
-                    propagateComposedEvents: true
-                }
-
-                onTextChanged: {
-                    if (currentNoteFile) {
-                        saveNote(currentNoteFile, text)
-                    }
-                }
-            }
-
-            ScrollBar.vertical: ScrollBar {
-                policy: ScrollBar.AsNeeded
-                width: 8
-                contentItem: Rectangle {
-                    radius: 4
-                    color: "#e94560"
-                    opacity: 0.5
-                }
-            }
-        }
-
-        // Done button
-        Rectangle {
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.rightMargin: 32
-            anchors.bottomMargin: 160
-            width: 80
-            height: 80
-            radius: 40
-            color: "#e94560"
-
-            Rectangle {
-                anchors.fill: parent
-                radius: parent.radius
-                color: "#ffffff"
-                opacity: doneButtonArea.pressed ? 0.3 : 0
-            }
-
-            Text {
-                anchors.centerIn: parent
-                text: "✓"
                 font.pixelSize: 40
                 color: "#ffffff"
             }
 
             MouseArea {
-                id: doneButtonArea
+                id: addMouse
+                anchors.fill: parent
+                onClicked: createNewNote()
+            }
+        }
+
+        // Back button
+        Rectangle {
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.rightMargin: 24
+            anchors.bottomMargin: 120
+            width: 72
+            height: 72
+            radius: 36
+            color: listBackMouse.pressed ? "#c23a50" : "#e94560"
+            z: 10
+
+            Text {
+                anchors.centerIn: parent
+                text: "X"
+                font.pixelSize: 28
+                font.weight: Font.Bold
+                color: "#ffffff"
+            }
+
+            MouseArea {
+                id: listBackMouse
+                anchors.fill: parent
+                onClicked: Qt.quit()
+            }
+        }
+
+        // Home indicator
+        Rectangle {
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottomMargin: 8
+            width: 120
+            height: 4
+            radius: 2
+            color: "#333344"
+        }
+    }
+
+    // Note Editor View
+    Item {
+        anchors.fill: parent
+        visible: editMode
+
+        // Header
+        Rectangle {
+            id: editorHeader
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 80
+            color: "#1a1a2e"
+
+            Text {
+                anchors.centerIn: parent
+                text: currentNoteContent === "" ? "New Note" : "Edit Note"
+                font.pixelSize: 20
+                font.weight: Font.Medium
+                color: "#ffffff"
+            }
+        }
+
+        // Simple text input area
+        Rectangle {
+            anchors.top: editorHeader.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 16
+            anchors.bottomMargin: 180
+            color: "#15151f"
+            radius: 12
+
+            Flickable {
+                id: textFlick
+                anchors.fill: parent
+                anchors.margins: 16
+                contentWidth: width
+                contentHeight: Math.max(textEdit.contentHeight + 50, height)
+                clip: true
+                flickableDirection: Flickable.VerticalFlick
+                boundsBehavior: Flickable.StopAtBounds
+
+                function ensureVisible(r) {
+                    if (contentY >= r.y)
+                        contentY = r.y
+                    else if (contentY + height <= r.y + r.height)
+                        contentY = r.y + r.height - height
+                }
+
+                TextEdit {
+                    id: textEdit
+                    width: textFlick.width
+                    height: Math.max(contentHeight, textFlick.height)
+                    text: currentNoteContent
+                    font.pixelSize: 18
+                    color: "#ffffff"
+                    wrapMode: TextEdit.Wrap
+                    selectByMouse: true
+                    focus: editMode
+
+                    onCursorRectangleChanged: textFlick.ensureVisible(cursorRectangle)
+                }
+            }
+
+            // Tap anywhere to focus
+            MouseArea {
+                anchors.fill: parent
+                propagateComposedEvents: true
+                onClicked: {
+                    textEdit.forceActiveFocus()
+                    mouse.accepted = false
+                }
+                onPressed: mouse.accepted = false
+                onReleased: mouse.accepted = false
+            }
+        }
+
+        // Save button
+        Rectangle {
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.rightMargin: 100
+            anchors.bottomMargin: 120
+            width: 72
+            height: 72
+            radius: 36
+            color: saveMouse.pressed ? "#2a8a4a" : "#3ca55c"
+            z: 10
+
+            Text {
+                anchors.centerIn: parent
+                text: "OK"
+                font.pixelSize: 20
+                font.weight: Font.Bold
+                color: "#ffffff"
+            }
+
+            MouseArea {
+                id: saveMouse
                 anchors.fill: parent
                 onClicked: {
-                    if (noteEditor.text.trim() !== "") {
-                        if (!currentNoteFile) {
-                            var timestamp = Date.now()
-                            currentNoteFile = "note_" + timestamp + ".txt"
-                        }
-                        saveNote(currentNoteFile, noteEditor.text)
+                    if (textEdit.text.trim() !== "") {
+                        saveNote(currentNoteFile, textEdit.text)
                     }
                     editMode = false
                     currentNoteFile = ""
-                    notesModel.refresh()
+                    currentNoteContent = ""
+                    folderModel.folder = ""
+                    folderModel.folder = "file://" + notesDir
                 }
             }
         }
 
         // Back button
         Rectangle {
-            anchors.bottom: parent.bottom
             anchors.right: parent.right
-            anchors.margins: 32
-            anchors.bottomMargin: 60
+            anchors.bottom: parent.bottom
+            anchors.rightMargin: 24
+            anchors.bottomMargin: 120
             width: 72
             height: 72
             radius: 36
-            color: "#e94560"
-
-            Rectangle {
-                anchors.fill: parent
-                radius: parent.radius
-                color: "#ffffff"
-                opacity: editorBackButtonArea.pressed ? 0.3 : 0
-            }
+            color: editorBackMouse.pressed ? "#c23a50" : "#e94560"
+            z: 10
 
             Text {
                 anchors.centerIn: parent
-                text: "←"
+                text: "<"
                 font.pixelSize: 32
+                font.weight: Font.Bold
                 color: "#ffffff"
             }
 
             MouseArea {
-                id: editorBackButtonArea
+                id: editorBackMouse
                 anchors.fill: parent
                 onClicked: {
-                    if (noteEditor.text.trim() !== "") {
-                        if (!currentNoteFile) {
-                            var timestamp = Date.now()
-                            currentNoteFile = "note_" + timestamp + ".txt"
-                        }
-                        saveNote(currentNoteFile, noteEditor.text)
+                    // Auto-save on back
+                    if (textEdit.text.trim() !== "") {
+                        saveNote(currentNoteFile, textEdit.text)
                     }
                     editMode = false
                     currentNoteFile = ""
-                    notesModel.refresh()
+                    currentNoteContent = ""
+                    folderModel.folder = ""
+                    folderModel.folder = "file://" + notesDir
                 }
             }
         }
 
-        // Home indicator bar
+        // Home indicator
         Rectangle {
             anchors.bottom: parent.bottom
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottomMargin: 8
-            width: 200
+            width: 120
             height: 4
             radius: 2
-            color: "#ffffff"
-            opacity: 0.3
+            color: "#333344"
         }
     }
 
-    // Delete Confirmation Dialog
+    // Delete dialog
     Rectangle {
-        id: deleteConfirmDialog
+        id: deleteDialog
         anchors.fill: parent
-        color: "#000000"
-        opacity: 0.95
+        color: "#c0000000"
         visible: false
-        z: 1000
+        z: 100
 
         property string noteToDelete: ""
 
         MouseArea {
             anchors.fill: parent
-            onClicked: parent.visible = false
+            onClicked: deleteDialog.visible = false
         }
 
         Rectangle {
             anchors.centerIn: parent
-            width: 600
-            height: 400
+            width: 320
+            height: 200
             radius: 20
-            color: "#15151f"
-            border.color: "#e94560"
-            border.width: 2
+            color: "#1a1a2e"
 
             Column {
                 anchors.centerIn: parent
-                spacing: 40
+                spacing: 24
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Delete Note?"
-                    font.pixelSize: 28
-                    font.weight: Font.Medium
+                    text: "Delete note?"
+                    font.pixelSize: 20
                     color: "#ffffff"
-                }
-
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "This action cannot be undone"
-                    font.pixelSize: 16
-                    color: "#888899"
                 }
 
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: 30
+                    spacing: 20
 
-                    // Cancel button
                     Rectangle {
-                        width: 200
-                        height: 70
-                        radius: 12
-                        color: "#2a2a3a"
-
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: parent.radius
-                            color: "#ffffff"
-                            opacity: cancelArea.pressed ? 0.2 : 0
-                        }
+                        width: 120
+                        height: 48
+                        radius: 24
+                        color: cancelMouse.pressed ? "#333344" : "#252538"
 
                         Text {
                             anchors.centerIn: parent
                             text: "Cancel"
-                            font.pixelSize: 18
-                            font.weight: Font.Medium
+                            font.pixelSize: 16
                             color: "#ffffff"
                         }
 
                         MouseArea {
-                            id: cancelArea
+                            id: cancelMouse
                             anchors.fill: parent
-                            onClicked: deleteConfirmDialog.visible = false
+                            onClicked: deleteDialog.visible = false
                         }
                     }
 
-                    // Delete button
                     Rectangle {
-                        width: 200
-                        height: 70
-                        radius: 12
-                        color: "#e94560"
-
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: parent.radius
-                            color: "#ffffff"
-                            opacity: deleteArea.pressed ? 0.3 : 0
-                        }
+                        width: 120
+                        height: 48
+                        radius: 24
+                        color: deleteMouse.pressed ? "#c23a50" : "#e94560"
 
                         Text {
                             anchors.centerIn: parent
                             text: "Delete"
-                            font.pixelSize: 18
-                            font.weight: Font.Medium
+                            font.pixelSize: 16
                             color: "#ffffff"
                         }
 
                         MouseArea {
-                            id: deleteArea
+                            id: deleteMouse
                             anchors.fill: parent
                             onClicked: {
-                                deleteNote(deleteConfirmDialog.noteToDelete)
-                                deleteConfirmDialog.visible = false
+                                deleteNote(deleteDialog.noteToDelete)
+                                deleteDialog.visible = false
+                                folderModel.folder = ""
+                                folderModel.folder = "file://" + notesDir
                             }
                         }
                     }

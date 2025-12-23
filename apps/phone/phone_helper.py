@@ -14,6 +14,7 @@ import sys
 import os
 import json
 import time
+import subprocess
 from datetime import datetime
 
 # D-Bus imports
@@ -31,6 +32,49 @@ STATUS_FILE = "/tmp/flick_phone_status"
 CMD_FILE = "/tmp/flick_phone_cmd"
 
 os.makedirs(STATE_DIR, exist_ok=True)
+
+
+def setup_call_audio():
+    """Setup audio routing for voice call"""
+    try:
+        # Try to set voice call audio profile on PulseAudio
+        # This works on many Droidian/Android-based devices
+        cmds = [
+            # Set earpiece as default output
+            "pactl set-default-sink alsa_output.platform-soc_sound.stereo-fallback",
+            # Unmute
+            "pactl set-sink-mute @DEFAULT_SINK@ 0",
+            # Set volume
+            "pactl set-sink-volume @DEFAULT_SINK@ 80%",
+            # Set microphone
+            "pactl set-source-mute @DEFAULT_SOURCE@ 0",
+            "pactl set-source-volume @DEFAULT_SOURCE@ 100%",
+        ]
+        for cmd in cmds:
+            subprocess.run(cmd.split(), capture_output=True, timeout=5)
+
+        # Try droid-specific audio routing
+        subprocess.run(
+            ["dbus-send", "--system", "--dest=org.ofono",
+             "--print-reply", "/ril_0",
+             "org.ofono.VoiceCallManager.SetProperty",
+             "string:SpeakerMode", "variant:boolean:false"],
+            capture_output=True, timeout=5
+        )
+        print("Audio routing configured for call")
+    except Exception as e:
+        print(f"Audio setup error: {e}")
+
+
+def teardown_call_audio():
+    """Reset audio routing after call"""
+    try:
+        # Reset to normal audio
+        subprocess.run(["pactl", "set-sink-mute", "@DEFAULT_SINK@", "0"],
+                       capture_output=True, timeout=5)
+        print("Audio routing reset")
+    except Exception as e:
+        print(f"Audio teardown error: {e}")
 
 
 class OfonoManager:
@@ -269,6 +313,11 @@ def daemon_mode():
             status = ofono.get_status()
             current_state = status.get("state", "idle")
 
+            # Detect call becoming active - setup audio
+            if current_state == "active" and last_state != "active":
+                print("Call became active - setting up audio")
+                setup_call_audio()
+
             # Detect call end
             if last_state in ["active", "alerting", "dialing"] and current_state == "idle":
                 duration = int(time.time() - call_start) if call_start else 0
@@ -276,6 +325,7 @@ def daemon_mode():
                 add_to_history(call_number, direction, duration)
                 call_start = None
                 call_number = ""
+                teardown_call_audio()
 
             # Detect incoming call
             if current_state == "incoming" and last_state == "idle":
