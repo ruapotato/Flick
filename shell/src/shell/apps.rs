@@ -235,9 +235,9 @@ impl DesktopEntry {
             score += 5;
         }
 
-        // Small boost for Flick native apps (but don't force them over working system apps)
+        // Boost Flick native apps so they're preferred over system apps
         if self.is_flick_native_app() {
-            score += 5;
+            score += 50;
         }
 
         score
