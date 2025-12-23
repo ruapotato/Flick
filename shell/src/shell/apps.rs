@@ -235,7 +235,17 @@ impl DesktopEntry {
             score += 5;
         }
 
+        // Heavily boost Flick's native apps so they're always preferred
+        if self.is_flick_native_app() {
+            score += 100;
+        }
+
         score
+    }
+
+    /// Check if this is a Flick native app (lives in ~/Flick/apps/)
+    pub fn is_flick_native_app(&self) -> bool {
+        self.path.to_string_lossy().contains("Flick/apps/")
     }
 
     /// Check if this entry matches a category
@@ -397,6 +407,18 @@ impl AppManager {
         if let Some(home) = std::env::var_os("HOME") {
             let home = PathBuf::from(home);
             paths.push(home.join(".local/share/applications"));
+            // Flick's native apps - scan each app subdirectory
+            let flick_apps = home.join("Flick/apps");
+            if flick_apps.exists() {
+                if let Ok(entries) = fs::read_dir(&flick_apps) {
+                    for entry in entries.filter_map(|e| e.ok()) {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            paths.push(path);
+                        }
+                    }
+                }
+            }
         }
 
         // XDG data dirs
@@ -456,11 +478,33 @@ impl AppManager {
         matches.into_iter().map(|(e, _)| e).collect()
     }
 
-    /// Set default apps for each category (first matching app)
+    /// Set default apps for each category (first matching app, preferring Flick native apps)
     fn set_defaults(&mut self) {
         for category in AppCategory::all() {
-            if self.config.get_selected(category).is_none() {
-                if let Some(entry) = self.apps_for_category(category).first() {
+            // Skip Settings - it's always Flick's built-in settings
+            if category == AppCategory::Settings {
+                continue;
+            }
+
+            let apps = self.apps_for_category(category);
+            if apps.is_empty() {
+                continue;
+            }
+
+            // Check if there's a Flick native app available
+            let flick_app = apps.iter().find(|e| e.is_flick_native_app());
+
+            // If a Flick app exists, use it (even if user had a different selection)
+            if let Some(flick) = flick_app {
+                let current = self.config.get_selected(category);
+                // Only override if no selection or current selection isn't this Flick app
+                if current.map(|c| c != flick.exec.as_str()).unwrap_or(true) {
+                    tracing::info!("Setting {} to Flick native app: {}", category.display_name(), flick.exec);
+                    self.config.set_selected(category, flick.exec.clone());
+                }
+            } else if self.config.get_selected(category).is_none() {
+                // No Flick app, use first matching system app
+                if let Some(entry) = apps.first() {
                     self.config.set_selected(category, entry.exec.clone());
                 }
             }
