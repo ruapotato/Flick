@@ -33,6 +33,10 @@ struct Args {
     /// Run in windowed mode (for development)
     #[arg(short, long)]
     windowed: bool,
+
+    /// Enable verbose debug output
+    #[arg(short, long)]
+    debug: bool,
 }
 
 fn main() -> Result<()> {
@@ -62,13 +66,21 @@ fn main() -> Result<()> {
 
     std::fs::create_dir_all(&log_dir).ok();
 
+    // Parse args early to check for debug flag
+    let args = Args::parse();
+
     // File appender - keeps last 3 log files, rotates daily
     let file_appender = rolling::daily(&log_dir, "compositor.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
-    // Initialize logging - both stderr and file
+    // Initialize logging - quiet by default, verbose with --debug
+    let default_filter = if args.debug {
+        "debug,flick=debug"
+    } else {
+        "warn,flick=info"
+    };
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,flick=debug"));
+        .unwrap_or_else(|_| EnvFilter::new(default_filter));
 
     tracing_subscriber::registry()
         .with(env_filter)
@@ -77,8 +89,6 @@ fn main() -> Result<()> {
         .init();
 
     info!(log_path = %log_dir.display(), "Flick compositor starting");
-
-    let args = Args::parse();
 
     if args.windowed {
         info!("Running in windowed mode (winit backend)");

@@ -10,7 +10,7 @@ Window {
     title: "Phone"
     color: "#0a0a0f"
 
-    property real textScale: 2.0
+    property real textScale: 1.0
     property string phoneNumber: ""
     property bool inCall: false
     property string callState: "idle"  // idle, dialing, incoming, active
