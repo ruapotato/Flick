@@ -235,9 +235,9 @@ impl DesktopEntry {
             score += 5;
         }
 
-        // Heavily boost Flick's native apps so they're always preferred
+        // Small boost for Flick native apps (but don't force them over working system apps)
         if self.is_flick_native_app() {
-            score += 100;
+            score += 5;
         }
 
         score
@@ -478,11 +478,16 @@ impl AppManager {
         matches.into_iter().map(|(e, _)| e).collect()
     }
 
-    /// Set default apps for each category (first matching app, preferring Flick native apps)
+    /// Set default apps for each category (only if no selection exists)
     fn set_defaults(&mut self) {
         for category in AppCategory::all() {
             // Skip Settings - it's always Flick's built-in settings
             if category == AppCategory::Settings {
+                continue;
+            }
+
+            // Only set default if user hasn't selected anything
+            if self.config.get_selected(category).is_some() {
                 continue;
             }
 
@@ -491,22 +496,11 @@ impl AppManager {
                 continue;
             }
 
-            // Check if there's a Flick native app available
-            let flick_app = apps.iter().find(|e| e.is_flick_native_app());
-
-            // If a Flick app exists, use it (even if user had a different selection)
-            if let Some(flick) = flick_app {
-                let current = self.config.get_selected(category);
-                // Only override if no selection or current selection isn't this Flick app
-                if current.map(|c| c != flick.exec.as_str()).unwrap_or(true) {
-                    tracing::info!("Setting {} to Flick native app: {}", category.display_name(), flick.exec);
-                    self.config.set_selected(category, flick.exec.clone());
-                }
-            } else if self.config.get_selected(category).is_none() {
-                // No Flick app, use first matching system app
-                if let Some(entry) = apps.first() {
-                    self.config.set_selected(category, entry.exec.clone());
-                }
+            // Use the highest scoring app (Flick apps get +100 boost from match_score)
+            // but since apps_for_category already sorts by score, first is best
+            if let Some(entry) = apps.first() {
+                tracing::info!("Setting default {} to: {}", category.display_name(), entry.exec);
+                self.config.set_selected(category, entry.exec.clone());
             }
         }
     }
