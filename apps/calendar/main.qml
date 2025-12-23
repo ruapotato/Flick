@@ -10,7 +10,8 @@ Window {
     title: "Flick Calendar"
     color: "#0a0a0f"
 
-    property real textScale: 2.0
+    // Calendar uses fixed scaling
+    property real textScale: 1.0
     property var currentDate: new Date()
     property int currentMonth: currentDate.getMonth()
     property int currentYear: currentDate.getFullYear()
@@ -23,21 +24,7 @@ Window {
     }
 
     function loadConfig() {
-        var configPath = "/home/droidian/.local/state/flick/display_config.json"
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + configPath, false)
-        try {
-            xhr.send()
-            if (xhr.status === 200 || xhr.status === 0) {
-                var config = JSON.parse(xhr.responseText)
-                if (config.text_scale !== undefined) {
-                    textScale = config.text_scale
-                    console.log("Loaded text scale: " + textScale)
-                }
-            }
-        } catch (e) {
-            console.log("Using default text scale: " + textScale)
-        }
+        // Calendar uses fixed scaling - no config needed
     }
 
     function loadEvents() {
@@ -115,13 +102,6 @@ Window {
         calendarGrid.model = getDaysInMonth(currentMonth, currentYear) + getFirstDayOfMonth(currentMonth, currentYear)
     }
 
-    // Reload events periodically
-    Timer {
-        interval: 3000
-        running: true
-        repeat: true
-        onTriggered: loadConfig()
-    }
 
     // Header
     Rectangle {
@@ -606,8 +586,8 @@ Window {
                         height: 50
                         radius: 12
                         color: "#0a0a0f"
-                        border.color: "#333344"
-                        border.width: 1
+                        border.color: titleInput.activeFocus ? "#e94560" : "#333344"
+                        border.width: titleInput.activeFocus ? 2 : 1
 
                         TextInput {
                             id: titleInput
@@ -616,6 +596,12 @@ Window {
                             font.pixelSize: 18
                             color: "#ffffff"
                             verticalAlignment: TextInput.AlignVCenter
+                            clip: true
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: titleInput.forceActiveFocus()
                         }
                     }
                 }
@@ -635,8 +621,8 @@ Window {
                         height: 50
                         radius: 12
                         color: "#0a0a0f"
-                        border.color: "#333344"
-                        border.width: 1
+                        border.color: timeInput.activeFocus ? "#e94560" : "#333344"
+                        border.width: timeInput.activeFocus ? 2 : 1
 
                         TextInput {
                             id: timeInput
@@ -646,6 +632,12 @@ Window {
                             color: "#ffffff"
                             verticalAlignment: TextInput.AlignVCenter
                             inputMethodHints: Qt.ImhTime
+                            clip: true
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: timeInput.forceActiveFocus()
                         }
                     }
                 }

@@ -14,7 +14,8 @@ Window {
 
     property string notesDir: standardPaths.homePath + "/.local/state/flick/notes"
     property string displayConfigPath: standardPaths.homePath + "/.local/state/flick/display_config.json"
-    property real textScale: 2.0
+    // Notes uses fixed scaling
+    property real textScale: 1.0
     property bool editMode: false
     property string currentNoteFile: ""
 
@@ -33,23 +34,7 @@ Window {
     }
 
     function loadDisplayConfig() {
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + displayConfigPath, true)
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === XMLHttpRequest.DONE) {
-                if (xhr.status === 200 || xhr.status === 0) {
-                    try {
-                        var config = JSON.parse(xhr.responseText)
-                        if (config.text_scale) {
-                            textScale = config.text_scale
-                        }
-                    } catch (e) {
-                        console.log("Error parsing display config:", e)
-                    }
-                }
-            }
-        }
-        xhr.send()
+        // Notes uses fixed scaling - no config needed
     }
 
     function ensureNotesDir() {
@@ -459,9 +444,9 @@ Window {
             }
         }
 
-        // Text editor
-        Flickable {
-            id: editorFlickable
+        // Text editor - using ScrollView for better touch handling
+        ScrollView {
+            id: editorScrollView
             anchors.top: editorHeader.bottom
             anchors.left: parent.left
             anchors.right: parent.right
@@ -470,8 +455,9 @@ Window {
             anchors.bottomMargin: 160
             clip: true
 
-            TextArea.flickable: TextArea {
+            TextArea {
                 id: noteEditor
+                width: editorScrollView.width
                 wrapMode: TextArea.Wrap
                 font.pixelSize: 18
                 color: "#ffffff"
@@ -480,6 +466,18 @@ Window {
                 }
                 placeholderText: "Title\n\nStart typing your note here..."
                 placeholderTextColor: "#555566"
+
+                // Focus on click for touch
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        noteEditor.forceActiveFocus()
+                        // Position cursor at click location
+                        var pos = noteEditor.positionAt(mouse.x, mouse.y)
+                        noteEditor.cursorPosition = pos
+                    }
+                    propagateComposedEvents: true
+                }
 
                 onTextChanged: {
                     if (currentNoteFile) {

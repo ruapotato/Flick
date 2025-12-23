@@ -10,7 +10,8 @@ Window {
     title: "Phone"
     color: "#0a0a0f"
 
-    property real textScale: 1.0
+    // Don't use shell textScale - phone dialpad has fixed dimensions
+    property real textScale: 1.0  // Fixed, don't load from config
     property string phoneNumber: ""
     property bool inCall: false
     property string callState: "idle"  // idle, dialing, incoming, active
@@ -29,20 +30,8 @@ Window {
     }
 
     function loadConfig() {
-        var configPath = "/home/droidian/.local/state/flick/display_config.json"
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + configPath, false)
-        try {
-            xhr.send()
-            if (xhr.status === 200 || xhr.status === 0) {
-                var config = JSON.parse(xhr.responseText)
-                if (config.text_scale !== undefined) {
-                    textScale = config.text_scale
-                }
-            }
-        } catch (e) {
-            console.log("Using default text scale: " + textScale)
-        }
+        // Phone app uses fixed scaling - don't load textScale from shell config
+        // The dialpad is designed for a fixed layout
     }
 
     function loadHistory() {
@@ -175,13 +164,7 @@ Window {
         }
     }
 
-    // Config reload timer
-    Timer {
-        interval: 3000
-        running: true
-        repeat: true
-        onTriggered: loadConfig()
-    }
+    // Phone app doesn't need config reload - fixed layout
 
     // Status poll timer
     Timer {

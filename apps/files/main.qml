@@ -11,8 +11,8 @@ Window {
     title: "Flick Files"
     color: "#0a0a0f"
 
-    // Settings from Flick config
-    property real textScale: 2.0
+    // Files uses fixed scaling
+    property real textScale: 1.0
     property string currentPath: "/home/droidian"
     property color accentColor: "#e94560"
 
@@ -21,30 +21,7 @@ Window {
     }
 
     function loadConfig() {
-        // Try to read config from standard location
-        var configPath = "/home/droidian/.local/state/flick/display_config.json"
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + configPath, false)
-        try {
-            xhr.send()
-            if (xhr.status === 200 || xhr.status === 0) {
-                var config = JSON.parse(xhr.responseText)
-                if (config.text_scale !== undefined) {
-                    textScale = config.text_scale
-                    console.log("Loaded text scale: " + textScale)
-                }
-            }
-        } catch (e) {
-            console.log("Using default text scale: " + textScale)
-        }
-    }
-
-    // Reload config periodically
-    Timer {
-        interval: 3000
-        running: true
-        repeat: true
-        onTriggered: loadConfig()
+        // Files uses fixed scaling - no config needed
     }
 
     FolderListModel {

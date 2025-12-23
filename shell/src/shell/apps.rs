@@ -41,6 +41,7 @@ pub enum AppCategory {
     Camera,
     Photos,
     Music,
+    Audiobooks,
     Video,
     Files,
     Terminal,
@@ -61,6 +62,7 @@ impl AppCategory {
             Self::Camera,
             Self::Photos,
             Self::Music,
+            Self::Audiobooks,
             Self::Files,
             Self::Calendar,
             Self::Notes,
@@ -80,6 +82,7 @@ impl AppCategory {
             Self::Camera => "Camera",
             Self::Photos => "Photos",
             Self::Music => "Music",
+            Self::Audiobooks => "Audiobooks",
             Self::Video => "Video",
             Self::Files => "Files",
             Self::Terminal => "Terminal",
@@ -101,6 +104,7 @@ impl AppCategory {
             Self::Camera => (vec!["Camera"], vec!["Photography", "Recorder"]),
             Self::Photos => (vec!["Photography", "Viewer"], vec!["Graphics", "2DGraphics"]),
             Self::Music => (vec!["Music", "Audio"], vec!["Player"]),
+            Self::Audiobooks => (vec!["AudioBook"], vec!["Audio", "AudioVideo"]),
             Self::Video => (vec!["Video"], vec!["AudioVideo"]),
             Self::Files => (vec!["FileManager"], vec!["FileTools", "Filesystem"]),
             Self::Terminal => (vec!["TerminalEmulator"], vec![]), // Only exact terminal matches
@@ -127,6 +131,7 @@ impl AppCategory {
             Self::Camera => [0.5, 0.5, 0.5, 1.0],    // Gray
             Self::Photos => [0.8, 0.4, 0.8, 1.0],    // Purple
             Self::Music => [0.9, 0.4, 0.2, 1.0],     // Orange
+            Self::Audiobooks => [0.6, 0.4, 0.2, 1.0], // Brown
             Self::Video => [0.8, 0.2, 0.2, 1.0],     // Dark Red
             Self::Files => [0.8, 0.7, 0.3, 1.0],     // Yellow
             Self::Terminal => [0.2, 0.2, 0.2, 1.0],  // Dark Gray
@@ -277,6 +282,7 @@ impl Default for AppConfig {
         selections.insert(AppCategory::Camera, "/usr/bin/droidian-camera".to_string());
         selections.insert(AppCategory::Photos, r#"sh -c "$HOME/Flick/apps/photos/run_photos.sh""#.to_string());
         selections.insert(AppCategory::Music, r#"sh -c "$HOME/Flick/apps/music/run_music.sh""#.to_string());
+        selections.insert(AppCategory::Audiobooks, r#"sh -c "$HOME/Flick/apps/audiobooks/run_audiobooks.sh""#.to_string());
         selections.insert(AppCategory::Files, r#"sh -c "$HOME/Flick/apps/files/run_files.sh""#.to_string());
         selections.insert(AppCategory::Calendar, r#"sh -c "$HOME/Flick/apps/calendar/run_calendar.sh""#.to_string());
         selections.insert(AppCategory::Notes, r#"sh -c "$HOME/Flick/apps/notes/run_notes.sh""#.to_string());

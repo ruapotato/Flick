@@ -11,8 +11,8 @@ Window {
     title: "Photos"
     color: "#0a0a0f"
 
-    // Settings from Flick config
-    property real textScale: 2.0
+    // Photos uses fixed scaling
+    property real textScale: 1.0
     property int baseFontSize: 8
 
     Component.onCompleted: {
@@ -20,71 +20,94 @@ Window {
     }
 
     function loadConfig() {
-        // Try to read config from standard location (uses droidian home)
-        var configPath = "/home/droidian/.local/state/flick/display_config.json"
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + configPath, false)
-        try {
-            xhr.send()
-            if (xhr.status === 200 || xhr.status === 0) {
-                var config = JSON.parse(xhr.responseText)
-                if (config.text_scale !== undefined) {
-                    textScale = config.text_scale
-                    console.log("Loaded text scale: " + textScale)
-                }
-            }
-        } catch (e) {
-            console.log("Using default text scale: " + textScale)
-        }
+        // Photos uses fixed scaling - no config needed
     }
 
-    // Reload config periodically to pick up settings changes
-    Timer {
-        interval: 3000
-        running: true
-        repeat: true
-        onTriggered: loadConfig()
-    }
-
-    // Photo model combining both directories
+    // Combined photo model from all scanned directories
     ListModel {
         id: photoModel
-
-        Component.onCompleted: {
-            loadPhotos()
-        }
-
-        function loadPhotos() {
-            clear()
-
-            // Load from ~/Pictures (using droidian home)
-            var dirs = ["/home/droidian/Pictures", Qt.resolvedUrl("~/Pictures")]
-
-            for (var d = 0; d < dirs.length; d++) {
-                var dir = dirs[d]
-                var xhr = new XMLHttpRequest()
-                xhr.open("GET", "file://" + dir, false)
-                try {
-                    xhr.send()
-                    console.log("Scanning directory: " + dir)
-                } catch (e) {
-                    console.log("Could not access: " + dir)
-                }
-            }
-        }
     }
 
-    // Folder model for loading photos
+    // Track total photos found
+    property int totalPhotos: 0
+
+    // List of directories to scan (including subdirs)
+    property var dirsToScan: [
+        "/home/droidian/Pictures",
+        "/home/droidian/Pictures/Camera",
+        "/home/droidian/Pictures/Screenshots",
+        "/home/droidian/Pictures/DCIM",
+        "/home/droidian/DCIM",
+        "/home/droidian/DCIM/Camera"
+    ]
+
+    // Folder models for each directory (we'll create them dynamically)
     FolderListModel {
-        id: folderModel
+        id: folderModel1
         folder: "file:///home/droidian/Pictures"
         nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.JPG", "*.JPEG", "*.PNG", "*.GIF", "*.BMP"]
         showDirs: false
-
-        onCountChanged: {
-            console.log("Found " + count + " photos in Pictures")
-        }
+        onCountChanged: rebuildPhotoModel()
     }
+
+    FolderListModel {
+        id: folderModel2
+        folder: "file:///home/droidian/Pictures/Camera"
+        nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.JPG", "*.JPEG", "*.PNG", "*.GIF", "*.BMP"]
+        showDirs: false
+        onCountChanged: rebuildPhotoModel()
+    }
+
+    FolderListModel {
+        id: folderModel3
+        folder: "file:///home/droidian/Pictures/Screenshots"
+        nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.JPG", "*.JPEG", "*.PNG", "*.GIF", "*.BMP"]
+        showDirs: false
+        onCountChanged: rebuildPhotoModel()
+    }
+
+    FolderListModel {
+        id: folderModel4
+        folder: "file:///home/droidian/DCIM"
+        nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.JPG", "*.JPEG", "*.PNG", "*.GIF", "*.BMP"]
+        showDirs: false
+        onCountChanged: rebuildPhotoModel()
+    }
+
+    FolderListModel {
+        id: folderModel5
+        folder: "file:///home/droidian/DCIM/Camera"
+        nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.JPG", "*.JPEG", "*.PNG", "*.GIF", "*.BMP"]
+        showDirs: false
+        onCountChanged: rebuildPhotoModel()
+    }
+
+    // Combine all folder models into photoModel
+    function rebuildPhotoModel() {
+        photoModel.clear()
+        var models = [folderModel1, folderModel2, folderModel3, folderModel4, folderModel5]
+        var seen = {}  // Track seen files to avoid duplicates
+
+        for (var m = 0; m < models.length; m++) {
+            var model = models[m]
+            for (var i = 0; i < model.count; i++) {
+                var fileUrl = model.get(i, "fileURL").toString()
+                if (!seen[fileUrl]) {
+                    seen[fileUrl] = true
+                    photoModel.append({
+                        "fileURL": fileUrl,
+                        "fileName": model.get(i, "fileName"),
+                        "filePath": model.get(i, "filePath")
+                    })
+                }
+            }
+        }
+        totalPhotos = photoModel.count
+        console.log("Total photos found: " + totalPhotos)
+    }
+
+    // Legacy compatibility alias
+    property alias folderModel: photoModel
 
     StackView {
         id: stackView
@@ -121,7 +144,7 @@ Window {
                     anchors.right: parent.right
                     anchors.rightMargin: 20
                     anchors.verticalCenter: parent.verticalCenter
-                    text: folderModel.count + " photos"
+                    text: totalPhotos + " photos"
                     color: "#aaaacc"
                     font.pixelSize: 14 * textScale
                 }
@@ -199,7 +222,7 @@ Window {
             // Empty state
             Item {
                 anchors.centerIn: parent
-                visible: folderModel.count === 0
+                visible: totalPhotos === 0
 
                 Column {
                     anchors.centerIn: parent
@@ -400,7 +423,7 @@ Window {
                 Text {
                     id: counterText
                     anchors.centerIn: parent
-                    text: (photoList.currentIndex + 1) + " / " + folderModel.count
+                    text: (photoList.currentIndex + 1) + " / " + totalPhotos
                     color: "#ffffff"
                     font.pixelSize: 16 * textScale
                     font.weight: Font.Medium

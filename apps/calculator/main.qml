@@ -10,8 +10,8 @@ Window {
     title: "Calculator"
     color: "#0a0a0f"
 
-    // Settings from Flick config
-    property real textScale: 2.0
+    // Calculator uses fixed scaling - designed for standard screen
+    property real textScale: 1.0
 
     // Calculator state
     property string display: "0"
@@ -26,30 +26,7 @@ Window {
     }
 
     function loadConfig() {
-        // Try to read config from standard location (uses droidian home)
-        var configPath = "/home/droidian/.local/state/flick/display_config.json"
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + configPath, false)
-        try {
-            xhr.send()
-            if (xhr.status === 200 || xhr.status === 0) {
-                var config = JSON.parse(xhr.responseText)
-                if (config.text_scale !== undefined) {
-                    textScale = config.text_scale
-                    console.log("Loaded text scale: " + textScale)
-                }
-            }
-        } catch (e) {
-            console.log("Using default text scale: " + textScale)
-        }
-    }
-
-    // Reload config periodically to pick up settings changes
-    Timer {
-        interval: 3000
-        running: true
-        repeat: true
-        onTriggered: loadConfig()
+        // Calculator uses fixed scaling - no config reload needed
     }
 
     // Calculator logic
