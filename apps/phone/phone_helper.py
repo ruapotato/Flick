@@ -67,6 +67,21 @@ def setup_call_audio():
         print(f"Audio setup error: {e}")
 
 
+def set_speaker_mode(enabled):
+    """Toggle speakerphone during call"""
+    try:
+        if enabled:
+            print("Enabling speakerphone...")
+            subprocess.run(["pactl", "set-sink-port", "sink.primary_output", "output-speaker"],
+                          capture_output=True, timeout=5)
+        else:
+            print("Disabling speakerphone (earpiece)...")
+            subprocess.run(["pactl", "set-sink-port", "sink.primary_output", "output-earpiece"],
+                          capture_output=True, timeout=5)
+    except Exception as e:
+        print(f"Speaker mode error: {e}")
+
+
 def teardown_call_audio():
     """Reset audio routing after call"""
     try:
@@ -322,6 +337,10 @@ def daemon_mode():
                     elif action == "answer":
                         ofono.answer()
                         call_start = time.time()
+                    elif action == "speaker":
+                        # Toggle speakerphone
+                        speaker_on = cmd.get("enabled", False)
+                        set_speaker_mode(speaker_on)
                 except Exception as e:
                     print(f"Command error: {e}")
 

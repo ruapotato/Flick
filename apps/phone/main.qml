@@ -18,6 +18,7 @@ Window {
     property string callerNumber: ""
     property int callDuration: 0
     property int currentTab: 0  // 0 = dialpad, 1 = history
+    property bool speakerOn: false
 
     // Call history model
     ListModel {
@@ -135,11 +136,18 @@ Window {
         writeCommand("hangup", "")
         inCall = false
         callState = "idle"
+        speakerOn = false
     }
 
     function answer() {
         writeCommand("answer", "")
         callState = "active"
+    }
+
+    function toggleSpeaker() {
+        speakerOn = !speakerOn
+        var cmd = JSON.stringify({action: "speaker", enabled: speakerOn})
+        console.log("CMD:" + cmd)
     }
 
     function formatDuration(seconds) {
@@ -546,13 +554,13 @@ Window {
             // Call actions
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 80 * textScale
+                spacing: 40 * textScale
 
                 // Answer (for incoming)
                 Rectangle {
-                    width: 100 * textScale
-                    height: 100 * textScale
-                    radius: 50 * textScale
+                    width: 90 * textScale
+                    height: 90 * textScale
+                    radius: 45 * textScale
                     color: answerArea.pressed ? "#2ecc50" : "#27ae60"
                     visible: callState === "incoming"
 
@@ -560,7 +568,7 @@ Window {
                         anchors.centerIn: parent
                         text: "Yes"
                         color: "white"
-                        font.pixelSize: 24 * textScale
+                        font.pixelSize: 22 * textScale
                         font.weight: Font.Bold
                     }
 
@@ -571,18 +579,52 @@ Window {
                     }
                 }
 
+                // Speaker toggle (visible during active call)
+                Rectangle {
+                    width: 90 * textScale
+                    height: 90 * textScale
+                    radius: 45 * textScale
+                    color: speakerOn ? "#3498db" : (speakerArea.pressed ? "#3a3a4e" : "#2a2a3e")
+                    visible: callState === "active" || callState === "dialing"
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 4
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "🔊"
+                            font.pixelSize: 28
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: speakerOn ? "ON" : "OFF"
+                            color: speakerOn ? "white" : "#888"
+                            font.pixelSize: 12 * textScale
+                            font.weight: Font.Bold
+                        }
+                    }
+
+                    MouseArea {
+                        id: speakerArea
+                        anchors.fill: parent
+                        onClicked: toggleSpeaker()
+                    }
+                }
+
                 // Hangup
                 Rectangle {
-                    width: 100 * textScale
-                    height: 100 * textScale
-                    radius: 50 * textScale
+                    width: 90 * textScale
+                    height: 90 * textScale
+                    radius: 45 * textScale
                     color: hangupArea.pressed ? "#c0392b" : "#e74c3c"
 
                     Text {
                         anchors.centerIn: parent
                         text: "End"
                         color: "white"
-                        font.pixelSize: 24 * textScale
+                        font.pixelSize: 22 * textScale
                         font.weight: Font.Bold
                     }
 
