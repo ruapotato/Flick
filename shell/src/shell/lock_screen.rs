@@ -12,6 +12,39 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use smithay::utils::{Logical, Point};
 
+/// Get the real user's home directory (same logic as apps.rs)
+fn get_real_user_home() -> PathBuf {
+    // First try FLICK_USER (set by start_hwcomposer.sh)
+    if let Ok(user) = std::env::var("FLICK_USER") {
+        if !user.is_empty() && user != "root" {
+            let home = format!("/home/{}", user);
+            if std::path::Path::new(&home).exists() {
+                return PathBuf::from(home);
+            }
+        }
+    }
+
+    // Then try SUDO_USER
+    if let Ok(user) = std::env::var("SUDO_USER") {
+        if !user.is_empty() && user != "root" {
+            let home = format!("/home/{}", user);
+            if std::path::Path::new(&home).exists() {
+                return PathBuf::from(home);
+            }
+        }
+    }
+
+    // Fallback to droidian if it exists
+    if std::path::Path::new("/home/droidian").exists() {
+        return PathBuf::from("/home/droidian");
+    }
+
+    // Last resort: use HOME env var
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/root"))
+}
+
 /// Lock screen authentication method
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -68,11 +101,10 @@ impl Default for LockConfig {
 }
 
 impl LockConfig {
-    /// Get the config file path
+    /// Get the config file path (uses real user's home, not root)
     fn config_path() -> Option<PathBuf> {
-        std::env::var("HOME").ok().map(|home| {
-            PathBuf::from(home).join(".local/state/flick/lock_config.json")
-        })
+        let home = get_real_user_home();
+        Some(home.join(".local/state/flick/lock_config.json"))
     }
 
     /// Load config from file, or return default if not found
