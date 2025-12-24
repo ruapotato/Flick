@@ -17,6 +17,7 @@ mod touch_effects;
 pub mod system;
 pub mod text_input;
 pub mod android_wlegl;
+pub mod spawn_user;
 
 use std::path::PathBuf;
 

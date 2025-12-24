@@ -3734,11 +3734,11 @@ fn handle_input_event(
                                 } else {
                                     // No existing window found, launch new instance
                                     info!("Launching app: {}", exec);
-                                    std::process::Command::new("sh")
-                                        .arg("-c")
-                                        .arg(&exec)
-                                        .spawn()
-                                        .ok();
+                                    let socket = state.socket_name.to_str().unwrap_or("wayland-1");
+                                    let text_scale = state.shell.text_scale;
+                                    if let Err(e) = crate::spawn_user::spawn_as_user(&exec, socket, text_scale) {
+                                        error!("Failed to launch app: {}", e);
+                                    }
                                     // Don't call app_launched() here - stay on Home until window appears
                                     // The view will switch to App when the window is actually mapped
                                 }
@@ -3856,14 +3856,10 @@ fn handle_input_event(
                                             // Close quick settings (need to check if any windows exist)
                                             let has_windows = state.space.elements().count() > 0;
                                             state.shell.close_quick_settings(has_windows);
-                                            // Launch the settings app
-                                            // Don't call switch_to_app() - view will switch when window is mapped
-                                            if let Err(e) = std::process::Command::new("sh")
-                                                .arg("-c")
-                                                .arg(&exec_clone)
-                                                .env("WAYLAND_DISPLAY", &state.socket_name)
-                                                .spawn()
-                                            {
+                                            // Launch the settings app as user
+                                            let socket = state.socket_name.to_str().unwrap_or("wayland-1");
+                                            let text_scale = state.shell.text_scale;
+                                            if let Err(e) = crate::spawn_user::spawn_as_user(&exec_clone, socket, text_scale) {
                                                 tracing::error!("Failed to launch settings app '{}': {}", exec_clone, e);
                                             }
                                         }

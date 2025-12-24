@@ -1012,35 +1012,11 @@ fn handle_input_event(
                             // Get socket name for WAYLAND_DISPLAY
                             let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
                             // Get text scale for app scaling
-                            let text_scale = state.shell.text_scale;
-                            let qt_scale = format!("{}", text_scale);
-                            let gdk_scale = format!("{}", text_scale.round() as i32);
-                            std::process::Command::new("sh")
-                                .arg("-c")
-                                .arg(&exec)
-                                .env("WAYLAND_DISPLAY", socket_name)
-                                // Force software rendering so apps use SHM buffers
-                                // hwcomposer can't handle EGL/DMA-BUF buffers from apps
-                                .env("LIBGL_ALWAYS_SOFTWARE", "1")
-                                .env("GDK_BACKEND", "wayland")
-                                // GTK4 specific - force Cairo rendering instead of GPU
-                                .env("GSK_RENDERER", "cairo")
-                                .env("GDK_RENDERING", "image")
-                                // Suppress dconf warnings (no D-Bus session in our environment)
-                                .env("GSETTINGS_BACKEND", "memory")
-                                // Disable hardware acceleration hints
-                                .env("GALLIUM_DRIVER", "llvmpipe")
-                                .env("__EGL_VENDOR_LIBRARY_FILENAMES", "")
-                                // Also set for Qt apps
-                                .env("QT_QUICK_BACKEND", "software")
-                                .env("QT_OPENGL", "software")
-                                // Text/UI scaling for apps from settings
-                                .env("QT_SCALE_FACTOR", &qt_scale)
-                                .env("QT_FONT_DPI", format!("{}", (96.0 * text_scale) as i32))
-                                .env("GDK_SCALE", &gdk_scale)
-                                .env("GDK_DPI_SCALE", &qt_scale)
-                                .spawn()
-                                .ok();
+                            let text_scale = state.shell.text_scale as f64;
+                            // Launch app as user with hwcomposer-specific settings
+                            if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(&exec, socket_name, text_scale) {
+                                error!("Failed to launch app: {}", e);
+                            }
 
                             // Switch to App view to show the window
                             state.shell.view = crate::shell::ShellView::App;
@@ -1277,25 +1253,12 @@ fn handle_input_event(
                                             use crate::shell::apps::AppCategory;
                                             if let Some(exec) = state.shell.app_manager.get_exec(AppCategory::Settings) {
                                                 state.shell.set_view(crate::shell::ShellView::App);
-                                                let exec_clone = exec.clone();
-                                                let text_scale = state.shell.text_scale;
-                                                let socket = state.socket_name.to_str().unwrap_or("wayland-1").to_string();
-                                                std::thread::spawn(move || {
-                                                    let qt_scale = format!("{}", text_scale);
-                                                    let gdk_scale = format!("{}", text_scale.round() as i32);
-                                                    if let Err(e) = std::process::Command::new("/bin/sh")
-                                                        .arg("-c")
-                                                        .arg(&exec_clone)
-                                                        .env("WAYLAND_DISPLAY", &socket)
-                                                        .env("QT_SCALE_FACTOR", &qt_scale)
-                                                        .env("QT_FONT_DPI", format!("{}", (96.0 * text_scale) as i32))
-                                                        .env("GDK_SCALE", &gdk_scale)
-                                                        .env("GDK_DPI_SCALE", &qt_scale)
-                                                        .spawn()
-                                                    {
-                                                        error!("Failed to launch settings app: {}", e);
-                                                    }
-                                                });
+                                                let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
+                                                let text_scale = state.shell.text_scale as f64;
+                                                // Launch as user with hwcomposer-specific settings
+                                                if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(&exec, socket_name, text_scale) {
+                                                    error!("Failed to launch settings app: {}", e);
+                                                }
                                             }
                                         }
                                         QuickSettingsAction::BrightnessChanged(value) => {
