@@ -114,6 +114,9 @@ pub struct GestureConfig {
     /// Distance required to complete/trigger a swipe action
     pub swipe_complete_threshold: f64,
 
+    /// Minimum drag distance before edge swipe is activated (to avoid accidental swipes)
+    pub edge_swipe_min_distance: f64,
+
     /// Time threshold for long press (ms)
     pub long_press_duration: Duration,
 
@@ -133,6 +136,7 @@ impl Default for GestureConfig {
             edge_threshold: 80.0,  // 80px edge zone for easier touch on phone screens
             swipe_threshold: 300.0, // 300px for smooth finger-following animation
             swipe_complete_threshold: 100.0, // 100px to trigger/complete the action
+            edge_swipe_min_distance: 30.0, // 30px minimum drag before edge swipe activates
             long_press_duration: Duration::from_millis(500),
             tap_duration: Duration::from_millis(200),
             pinch_threshold: 50.0,
@@ -199,7 +203,9 @@ pub enum SlotGesture {
     PotentialTap,
     /// Long press detected
     LongPress,
-    /// Edge swipe in progress
+    /// Touch started in edge zone, but hasn't moved enough to be a swipe yet
+    PotentialEdgeSwipe { edge: Edge },
+    /// Edge swipe in progress (activated after min drag distance)
     EdgeSwipe { edge: Edge },
     /// Regular swipe (not from edge)
     Swipe,
@@ -297,15 +303,11 @@ impl GestureRecognizer {
         let point = TouchPoint::new(id, pos);
         self.points.insert(id, point);
 
-        // Check for edge swipe for this slot
+        // Check for edge zone - but don't start swipe yet, wait for movement
         if let Some(edge) = self.detect_edge(pos) {
-            self.slot_gestures.insert(id, SlotGesture::EdgeSwipe { edge });
-            // Set global active gesture for backwards compatibility
-            self.active_gesture = Some(ActiveGesture::EdgeSwipe { edge });
-            return Some(GestureEvent::EdgeSwipeStart {
-                edge,
-                fingers: 1,
-            });
+            // Mark as potential edge swipe, will activate after min drag distance
+            self.slot_gestures.insert(id, SlotGesture::PotentialEdgeSwipe { edge });
+            // Don't fire EdgeSwipeStart yet - wait for movement
         } else {
             self.slot_gestures.insert(id, SlotGesture::PotentialTap);
             // Only set global active gesture if this is the first touch
@@ -346,6 +348,30 @@ impl GestureRecognizer {
         let slot_gesture = self.slot_gestures.get(&id).cloned();
 
         match slot_gesture {
+            Some(SlotGesture::PotentialEdgeSwipe { edge }) => {
+                // Check if we've moved enough in the swipe direction to activate
+                let point = self.points.get(&id)?;
+                let swipe_distance = match edge {
+                    Edge::Left => point.delta().x,  // Moving right (positive) for left edge swipe
+                    Edge::Right => -point.delta().x, // Moving left (negative) for right edge swipe
+                    Edge::Top => point.delta().y,   // Moving down (positive) for top edge swipe
+                    Edge::Bottom => -point.delta().y, // Moving up (negative) for bottom edge swipe
+                };
+
+                if swipe_distance >= self.config.edge_swipe_min_distance {
+                    // Activate the edge swipe
+                    self.slot_gestures.insert(id, SlotGesture::EdgeSwipe { edge });
+                    self.active_gesture = Some(ActiveGesture::EdgeSwipe { edge });
+
+                    let progress = swipe_distance / self.config.swipe_threshold;
+                    return Some(GestureEvent::EdgeSwipeStart {
+                        edge,
+                        fingers: 1,
+                    });
+                }
+                // Not enough movement yet - don't return an event
+                return None;
+            }
             Some(SlotGesture::EdgeSwipe { edge }) => {
                 let point = self.points.get(&id)?;
                 let progress = match edge {
@@ -477,6 +503,20 @@ impl GestureRecognizer {
                     completed,
                     velocity,
                 })
+            }
+
+            Some(SlotGesture::PotentialEdgeSwipe { .. }) => {
+                // Touch ended in edge zone without enough movement to be a swipe
+                // Treat as a tap instead
+                let duration = point.start_time.elapsed();
+                if duration < self.config.tap_duration && point.distance() < 20.0 {
+                    Some(GestureEvent::Tap {
+                        position: point.start_pos,
+                    })
+                } else {
+                    // Ended but not a tap - cancelled gesture
+                    None
+                }
             }
 
             Some(SlotGesture::PotentialTap) => {

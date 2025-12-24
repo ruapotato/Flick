@@ -593,9 +593,9 @@ fn handle_input_event(
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
-                    // For mobile fullscreen apps, always send touch to the topmost window
-                    // Get the topmost window's surface (handles both Wayland and X11)
-                    let topmost_surface = state.space.elements().next()
+                    // For mobile fullscreen apps, send touch to the topmost (last) window
+                    // elements() returns back-to-front order, so last() is the topmost visible window
+                    let topmost_surface = state.space.elements().last()
                         .and_then(|window| {
                             // Try Wayland toplevel first
                             if let Some(toplevel) = window.toplevel() {
@@ -608,16 +608,16 @@ fn handle_input_event(
                             }
                         });
 
-                    // Also ensure keyboard focus is correct (for keyboard input)
-                    let has_correct_focus = state.seat.get_keyboard()
+                    // Only restore keyboard focus if there's NO focus at all
+                    // Don't "correct" focus - that can trigger unwanted text input
+                    let has_any_focus = state.seat.get_keyboard()
                         .and_then(|kb| kb.current_focus())
-                        .map(|current| topmost_surface.as_ref().map_or(false, |top| current.id() == top.id()))
-                        .unwrap_or(false);
+                        .is_some();
 
-                    if !has_correct_focus {
+                    if !has_any_focus {
                         if let Some(ref wl_surface) = topmost_surface {
                             if let Some(keyboard) = state.seat.get_keyboard() {
-                                info!("Restoring/correcting keyboard focus to topmost window on touch");
+                                info!("Restoring keyboard focus to topmost window (was None)");
                                 keyboard.set_focus(state, Some(wl_surface.clone()), serial);
                             }
                         }
@@ -689,9 +689,12 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::App => {
-                        // Touch on keyboard overlay - forward to Slint
+                        // Touch on keyboard overlay - track for swipe-down dismiss
                         if touch_on_keyboard {
                             info!("Keyboard TouchDown at ({}, {})", touch_pos.x, touch_pos.y);
+                            // Start tracking for potential swipe-down to dismiss
+                            state.keyboard_swipe_start_y = Some(touch_pos.y);
+                            state.keyboard_swipe_active = false;
                             if let Some(ref slint_ui) = state.shell.slint_ui {
                                 slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
                             }
@@ -767,9 +770,8 @@ fn handle_input_event(
             // Never forward to Wayland when lock screen is active - Slint handles lock screen touch
             if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
                 if let Some(touch) = state.seat.get_touch() {
-                    // For mobile fullscreen apps, send touch motion to the topmost window
-                    // Get the topmost window's surface (handles both Wayland and X11)
-                    let focus = state.space.elements().next()
+                    // For mobile fullscreen apps, send touch motion to the topmost (last) window
+                    let focus = state.space.elements().last()
                         .and_then(|window| {
                             if let Some(toplevel) = window.toplevel() {
                                 Some(toplevel.wl_surface().clone())
@@ -873,10 +875,22 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::App => {
-                        // Touch motion on keyboard overlay - forward to Slint
+                        // Touch motion on keyboard overlay - check for swipe down
                         if touch_on_keyboard {
-                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                            // Check for swipe-down gesture to dismiss keyboard
+                            if let Some(start_y) = state.keyboard_swipe_start_y {
+                                let delta_y = touch_pos.y - start_y;
+                                // If moved down by 50+ pixels, activate swipe dismiss
+                                if delta_y > 50.0 && !state.keyboard_swipe_active {
+                                    state.keyboard_swipe_active = true;
+                                    info!("Keyboard swipe-down detected, will dismiss on release");
+                                }
+                            }
+                            // Only forward to Slint if not in swipe mode
+                            if !state.keyboard_swipe_active {
+                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                                }
                             }
                         }
                     }
@@ -1427,10 +1441,24 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::App => {
-                        // Touch up on keyboard overlay - forward to Slint
+                        // Touch up on keyboard overlay
                         if touch_on_keyboard {
-                            if let Some(pos) = last_pos {
+                            // Check if this was a swipe-down to dismiss
+                            if state.keyboard_swipe_active {
+                                info!("Keyboard swipe-down complete - dismissing keyboard");
+                                // Reset swipe state
+                                state.keyboard_swipe_start_y = None;
+                                state.keyboard_swipe_active = false;
+                                // Dismiss keyboard and resize app
+                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    slint_ui.set_keyboard_visible(false);
+                                }
+                                state.resize_windows_for_keyboard(false);
+                                // Don't process as key press
+                            } else if let Some(pos) = last_pos {
                                 info!("Keyboard TouchUp at ({}, {})", pos.x, pos.y);
+                                // Reset swipe state
+                                state.keyboard_swipe_start_y = None;
 
                                 // Dispatch to Slint and get pending keyboard actions
                                 use crate::shell::slint_ui::KeyboardAction;
@@ -1517,6 +1545,7 @@ fn handle_input_event(
                                             if let Some(ref slint_ui) = state.shell.slint_ui {
                                                 slint_ui.set_keyboard_visible(false);
                                             }
+                                            state.resize_windows_for_keyboard(false);
                                         }
                                     }
                                 }

@@ -175,6 +175,10 @@ pub struct Flick {
     // Touch position tracking for hwcomposer backend
     pub last_touch_pos: HashMap<i32, smithay::utils::Point<f64, smithay::utils::Logical>>,
 
+    // Keyboard swipe-down dismiss tracking
+    pub keyboard_swipe_start_y: Option<f64>,
+    pub keyboard_swipe_active: bool,
+
     // Integrated shell UI
     pub shell: Shell,
 
@@ -309,6 +313,8 @@ impl Flick {
             system_last_refresh: Instant::now(),
             last_activity: Instant::now(),
             last_touch_pos: HashMap::new(),
+            keyboard_swipe_start_y: None,
+            keyboard_swipe_active: false,
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
         }
@@ -679,6 +685,8 @@ impl Flick {
                     slint_ui.set_keyboard_y_offset(0.0);  // Reset offset
                     slint_ui.set_keyboard_visible(false);
                 }
+                // Resize windows to full screen
+                self.resize_windows_for_keyboard(false);
             }
         }
 
