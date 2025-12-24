@@ -1277,6 +1277,13 @@ impl XdgShellHandler for Flick {
         tracing::info!("  Surface: {:?}", surface.wl_surface().id());
         tracing::info!("  Number of outputs: {}", self.outputs.len());
 
+        // Cancel any ongoing touch sequences on existing windows
+        // This is critical - without this, the old app might still receive touch events
+        if let Some(touch) = self.seat.get_touch() {
+            touch.cancel(self);
+            tracing::info!("Cancelled touch sequences for existing windows");
+        }
+
         // DEACTIVATE all existing windows first
         for existing_window in self.space.elements() {
             if let Some(toplevel) = existing_window.toplevel() {
