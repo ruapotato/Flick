@@ -618,8 +618,9 @@ fn handle_input_event(
                     }
 
                     // For mobile fullscreen apps, send touch to the topmost window
-                    // elements() returns front-to-back order, so next() is the topmost visible window
-                    let topmost_surface = state.space.elements().next()
+                    // elements() returns back-to-front order, so last() is the topmost visible window
+                    // (after raise_element, the raised window is at the end)
+                    let topmost_surface = state.space.elements().last()
                         .and_then(|window| {
                             // Try Wayland toplevel first
                             if let Some(toplevel) = window.toplevel() {
@@ -822,8 +823,8 @@ fn handle_input_event(
             if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
                 if let Some(touch) = state.seat.get_touch() {
                     // For mobile fullscreen apps, send touch motion to the topmost window
-                    // elements() returns front-to-back order, so next() is the topmost visible window
-                    let focus = state.space.elements().next()
+                    // elements() returns back-to-front order, so last() is the topmost visible window
+                    let focus = state.space.elements().last()
                         .and_then(|window| {
                             if let Some(toplevel) = window.toplevel() {
                                 Some(toplevel.wl_surface().clone())
@@ -1465,9 +1466,9 @@ fn handle_input_event(
                                         info!("Switcher tap: tapped window index {} at ({}, {})", window_id, pos.x, pos.y);
                                         let windows: Vec<_> = state.space.elements().cloned().collect();
                                         if let Some(window) = windows.get(window_id) {
-                                            // Raise window to top
-                                            let loc = state.space.element_location(window).unwrap_or_default();
-                                            state.space.map_element(window.clone(), loc, true);
+                                            // Raise window to top of stacking order
+                                            info!("Raising window {} to top", window_id);
+                                            state.space.raise_element(window, true);
 
                                             // Set keyboard focus
                                             if let Some(toplevel) = window.toplevel() {
