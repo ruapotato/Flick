@@ -332,7 +332,13 @@ Window {
         if (!currentBook || !currentBook.chapters || index < 0 || index >= currentBook.chapters.length) return
 
         var chapter = currentBook.chapters[index]
-        audioPlayer.source = chapter.path
+        // FolderListModel's filePath returns a local path, Audio needs file:// URL
+        var sourcePath = chapter.path
+        if (!sourcePath.startsWith("file://")) {
+            sourcePath = "file://" + sourcePath
+        }
+        audioPlayer.source = sourcePath
+        console.log("Loading audio: " + sourcePath)
 
         // Restore position if available
         if (progressData[currentBook.path] && progressData[currentBook.path].chapter === index) {
