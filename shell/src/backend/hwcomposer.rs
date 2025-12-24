@@ -599,22 +599,24 @@ fn handle_input_event(
                     for (i, window) in state.space.elements().enumerate() {
                         let is_wayland = window.toplevel().is_some();
                         let is_x11 = window.x11_surface().is_some();
-                        let has_surface = if is_wayland {
-                            true
+                        let (surface_id, client_info) = if let Some(toplevel) = window.toplevel() {
+                            let surface = toplevel.wl_surface();
+                            let id = format!("{:?}", surface.id());
+                            let client = surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                            (id, client)
                         } else if let Some(x11) = window.x11_surface() {
-                            x11.wl_surface().is_some()
+                            if let Some(s) = x11.wl_surface() {
+                                let id = format!("{:?}", s.id());
+                                let client = s.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                                (id, client)
+                            } else {
+                                ("no-surface".to_string(), "no-client".to_string())
+                            }
                         } else {
-                            false
+                            ("no-surface".to_string(), "no-client".to_string())
                         };
-                        let app_id = if let Some(x11) = window.x11_surface() {
-                            x11.class().to_string()
-                        } else if is_wayland {
-                            "wayland-app".to_string()
-                        } else {
-                            "unknown".to_string()
-                        };
-                        info!("  Window {}: wayland={}, x11={}, has_surface={}, app_id={}",
-                              i, is_wayland, is_x11, has_surface, app_id);
+                        info!("  Window {}: {} (client: {}), wayland={}, x11={}",
+                              i, surface_id, client_info, is_wayland, is_x11);
                     }
 
                     // Use keyboard focus for touch input - this is the most reliable
