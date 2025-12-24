@@ -381,6 +381,24 @@ fn handle_input_event(
             // Update last activity time for auto-lock
             state.last_activity = std::time::Instant::now();
 
+            // Volume buttons (evdev keycodes: 114=down, 115=up)
+            if evdev_keycode == 115 && pressed {
+                info!("Volume up pressed");
+                // Use pactl to increase volume
+                std::process::Command::new("pactl")
+                    .args(["set-sink-volume", "@DEFAULT_SINK@", "+5%"])
+                    .spawn()
+                    .ok();
+            }
+            if evdev_keycode == 114 && pressed {
+                info!("Volume down pressed");
+                // Use pactl to decrease volume
+                std::process::Command::new("pactl")
+                    .args(["set-sink-volume", "@DEFAULT_SINK@", "-5%"])
+                    .spawn()
+                    .ok();
+            }
+
             // Power button (evdev keycode 116) - toggle dim/wake on lock screen, or lock
             if evdev_keycode == 116 && pressed {
                 if state.shell.lock_screen_active {
