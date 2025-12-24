@@ -593,44 +593,55 @@ fn handle_input_event(
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
-                    // For mobile fullscreen apps, use keyboard focus to determine which window gets touch
-                    // Check if we have focus first
-                    let has_focus = state.seat.get_keyboard()
+                    // For mobile fullscreen apps, always send touch to the topmost window
+                    // Get the topmost window's surface (handles both Wayland and X11)
+                    let topmost_surface = state.space.elements().next()
+                        .and_then(|window| {
+                            // Try Wayland toplevel first
+                            if let Some(toplevel) = window.toplevel() {
+                                Some(toplevel.wl_surface().clone())
+                            } else if let Some(x11) = window.x11_surface() {
+                                // Fall back to X11 surface
+                                x11.wl_surface().map(|s| s.clone())
+                            } else {
+                                None
+                            }
+                        });
+
+                    // Also ensure keyboard focus is correct (for keyboard input)
+                    let has_correct_focus = state.seat.get_keyboard()
                         .and_then(|kb| kb.current_focus())
-                        .is_some();
+                        .map(|current| topmost_surface.as_ref().map_or(false, |top| current.id() == top.id()))
+                        .unwrap_or(false);
 
-                    // If no focus (e.g., after returning from home screen), restore focus to topmost window
-                    if !has_focus {
-                        // Get the topmost window's surface first (to avoid borrow issues)
-                        let surface_to_focus = state.space.elements().next()
-                            .and_then(|window| window.toplevel())
-                            .map(|toplevel| toplevel.wl_surface().clone());
-
-                        // Now set focus (borrows state mutably, which is fine now)
-                        if let Some(wl_surface) = surface_to_focus {
+                    if !has_correct_focus {
+                        if let Some(ref wl_surface) = topmost_surface {
                             if let Some(keyboard) = state.seat.get_keyboard() {
-                                info!("Restoring keyboard focus to window on touch");
-                                keyboard.set_focus(state, Some(wl_surface), serial);
+                                info!("Restoring/correcting keyboard focus to topmost window on touch");
+                                keyboard.set_focus(state, Some(wl_surface.clone()), serial);
                             }
                         }
                     }
 
-                    // Get focus for touch event (now that we've potentially restored it)
-                    let focus = state.seat.get_keyboard()
-                        .and_then(|kb| kb.current_focus())
+                    // Use topmost surface for touch focus
+                    let focus = topmost_surface
                         .map(|surface| (surface, smithay::utils::Point::from((0.0, 0.0))));
 
-                    touch.down(
-                        state,
-                        focus,
-                        &smithay::input::touch::DownEvent {
-                            slot: event.slot(),
-                            location: touch_pos.to_f64(),
-                            serial,
-                            time: event.time_msec(),
-                        },
-                    );
-                    touch.frame(state);
+                    if focus.is_some() {
+                        touch.down(
+                            state,
+                            focus,
+                            &smithay::input::touch::DownEvent {
+                                slot: event.slot(),
+                                location: touch_pos.to_f64(),
+                                serial,
+                                time: event.time_msec(),
+                            },
+                        );
+                        touch.frame(state);
+                    } else {
+                        info!("TouchDown: No surface found for touch event");
+                    }
                 }
             } else {
                 // Forward to Slint UI based on current view
@@ -756,21 +767,32 @@ fn handle_input_event(
             // Never forward to Wayland when lock screen is active - Slint handles lock screen touch
             if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
                 if let Some(touch) = state.seat.get_touch() {
-                    // For mobile fullscreen apps, use keyboard focus to determine which window gets touch
-                    let focus = state.seat.get_keyboard()
-                        .and_then(|kb| kb.current_focus())
+                    // For mobile fullscreen apps, send touch motion to the topmost window
+                    // Get the topmost window's surface (handles both Wayland and X11)
+                    let focus = state.space.elements().next()
+                        .and_then(|window| {
+                            if let Some(toplevel) = window.toplevel() {
+                                Some(toplevel.wl_surface().clone())
+                            } else if let Some(x11) = window.x11_surface() {
+                                x11.wl_surface().map(|s| s.clone())
+                            } else {
+                                None
+                            }
+                        })
                         .map(|surface| (surface, smithay::utils::Point::from((0.0, 0.0))));
 
-                    touch.motion(
-                        state,
-                        focus,
-                        &smithay::input::touch::MotionEvent {
-                            slot: event.slot(),
-                            location: touch_pos.to_f64(),
-                            time: event.time_msec(),
-                        },
-                    );
-                    touch.frame(state);
+                    if focus.is_some() {
+                        touch.motion(
+                            state,
+                            focus,
+                            &smithay::input::touch::MotionEvent {
+                                slot: event.slot(),
+                                location: touch_pos.to_f64(),
+                                time: event.time_msec(),
+                            },
+                        );
+                        touch.frame(state);
+                    }
                 }
             } else {
                 // Forward to Slint UI based on current view
