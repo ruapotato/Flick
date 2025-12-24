@@ -593,17 +593,45 @@ fn handle_input_event(
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
+                    // Debug: log all windows in the space
+                    let element_count = state.space.elements().count();
+                    info!("TouchDown: {} windows in space", element_count);
+                    for (i, window) in state.space.elements().enumerate() {
+                        let is_wayland = window.toplevel().is_some();
+                        let is_x11 = window.x11_surface().is_some();
+                        let has_surface = if is_wayland {
+                            true
+                        } else if let Some(x11) = window.x11_surface() {
+                            x11.wl_surface().is_some()
+                        } else {
+                            false
+                        };
+                        let app_id = if let Some(x11) = window.x11_surface() {
+                            x11.class().to_string()
+                        } else if is_wayland {
+                            "wayland-app".to_string()
+                        } else {
+                            "unknown".to_string()
+                        };
+                        info!("  Window {}: wayland={}, x11={}, has_surface={}, app_id={}",
+                              i, is_wayland, is_x11, has_surface, app_id);
+                    }
+
                     // For mobile fullscreen apps, send touch to the topmost window
                     // elements() returns front-to-back order, so next() is the topmost visible window
                     let topmost_surface = state.space.elements().next()
                         .and_then(|window| {
                             // Try Wayland toplevel first
                             if let Some(toplevel) = window.toplevel() {
+                                info!("TouchDown: Using Wayland toplevel surface");
                                 Some(toplevel.wl_surface().clone())
                             } else if let Some(x11) = window.x11_surface() {
                                 // Fall back to X11 surface
-                                x11.wl_surface().map(|s| s.clone())
+                                let surface = x11.wl_surface().map(|s| s.clone());
+                                info!("TouchDown: Using X11 surface, found={}", surface.is_some());
+                                surface
                             } else {
+                                info!("TouchDown: Window has neither Wayland nor X11 surface");
                                 None
                             }
                         });
