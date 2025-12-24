@@ -576,7 +576,28 @@ fn handle_input_event(
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
                     // For mobile fullscreen apps, use keyboard focus to determine which window gets touch
-                    // This ensures the focused/topmost window receives touch events
+                    // Check if we have focus first
+                    let has_focus = state.seat.get_keyboard()
+                        .and_then(|kb| kb.current_focus())
+                        .is_some();
+
+                    // If no focus (e.g., after returning from home screen), restore focus to topmost window
+                    if !has_focus {
+                        // Get the topmost window's surface first (to avoid borrow issues)
+                        let surface_to_focus = state.space.elements().next()
+                            .and_then(|window| window.toplevel())
+                            .map(|toplevel| toplevel.wl_surface().clone());
+
+                        // Now set focus (borrows state mutably, which is fine now)
+                        if let Some(wl_surface) = surface_to_focus {
+                            if let Some(keyboard) = state.seat.get_keyboard() {
+                                info!("Restoring keyboard focus to window on touch");
+                                keyboard.set_focus(state, Some(wl_surface), serial);
+                            }
+                        }
+                    }
+
+                    // Get focus for touch event (now that we've potentially restored it)
                     let focus = state.seat.get_keyboard()
                         .and_then(|kb| kb.current_focus())
                         .map(|surface| (surface, smithay::utils::Point::from((0.0, 0.0))));
