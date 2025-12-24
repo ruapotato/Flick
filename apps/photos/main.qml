@@ -395,15 +395,12 @@ Window {
                         property real initialScale: 1.0
 
                         onPinchStarted: {
-                            initialScale = photoFlickable.contentWidth / photoImage.implicitWidth
+                            initialScale = photoFlickable.photoScale
                         }
 
                         onPinchUpdated: {
                             var newScale = initialScale * pinch.scale
-                            newScale = Math.max(1.0, Math.min(newScale, 4.0))
-
-                            photoFlickable.contentWidth = photoImage.implicitWidth * newScale
-                            photoFlickable.contentHeight = photoImage.implicitHeight * newScale
+                            photoFlickable.photoScale = Math.max(1.0, Math.min(newScale, 4.0))
                         }
 
                         onPinchFinished: {
@@ -413,41 +410,58 @@ Window {
                         Flickable {
                             id: photoFlickable
                             anchors.fill: parent
-                            contentWidth: photoImage.implicitWidth
-                            contentHeight: photoImage.implicitHeight
+                            contentWidth: width
+                            contentHeight: height
                             boundsBehavior: Flickable.StopAtBounds
                             clip: true
 
+                            property real photoScale: 1.0
+
                             Image {
                                 id: photoImage
-                                anchors.centerIn: parent
                                 source: model.fileURL
                                 fillMode: Image.PreserveAspectFit
                                 asynchronous: true
                                 cache: true
 
-                                width: {
+                                // Calculate size to fit screen, then apply zoom scale
+                                property real fitWidth: {
                                     if (implicitWidth > 0 && implicitHeight > 0) {
-                                        var ratio = implicitWidth / implicitHeight
+                                        var imgRatio = implicitWidth / implicitHeight
                                         var viewRatio = photoFlickable.width / photoFlickable.height
-                                        return ratio > viewRatio ? photoFlickable.width : photoFlickable.height * ratio
+                                        return imgRatio > viewRatio ? photoFlickable.width : photoFlickable.height * imgRatio
                                     }
                                     return photoFlickable.width
                                 }
 
-                                height: {
+                                property real fitHeight: {
                                     if (implicitWidth > 0 && implicitHeight > 0) {
-                                        var ratio = implicitWidth / implicitHeight
+                                        var imgRatio = implicitWidth / implicitHeight
                                         var viewRatio = photoFlickable.width / photoFlickable.height
-                                        return ratio > viewRatio ? photoFlickable.width / ratio : photoFlickable.height
+                                        return imgRatio > viewRatio ? photoFlickable.width / imgRatio : photoFlickable.height
                                     }
                                     return photoFlickable.height
+                                }
+
+                                width: fitWidth * photoFlickable.photoScale
+                                height: fitHeight * photoFlickable.photoScale
+
+                                // Center in flickable when at 1x, top-left when zoomed
+                                x: width > photoFlickable.width ? 0 : (photoFlickable.width - width) / 2
+                                y: height > photoFlickable.height ? 0 : (photoFlickable.height - height) / 2
+
+                                onWidthChanged: {
+                                    photoFlickable.contentWidth = Math.max(width, photoFlickable.width)
+                                }
+                                onHeightChanged: {
+                                    photoFlickable.contentHeight = Math.max(height, photoFlickable.height)
                                 }
 
                                 Rectangle {
                                     anchors.fill: parent
                                     color: "#0a0a0f"
                                     visible: photoImage.status === Image.Loading
+                                    z: -1
 
                                     BusyIndicator {
                                         anchors.centerIn: parent
@@ -460,14 +474,12 @@ Window {
                             MouseArea {
                                 anchors.fill: parent
                                 onDoubleClicked: {
-                                    if (photoFlickable.contentWidth > photoImage.implicitWidth) {
+                                    if (photoFlickable.photoScale > 1.0) {
                                         // Reset zoom
-                                        photoFlickable.contentWidth = photoImage.implicitWidth
-                                        photoFlickable.contentHeight = photoImage.implicitHeight
+                                        photoFlickable.photoScale = 1.0
                                     } else {
                                         // Zoom to 2x
-                                        photoFlickable.contentWidth = photoImage.implicitWidth * 2
-                                        photoFlickable.contentHeight = photoImage.implicitHeight * 2
+                                        photoFlickable.photoScale = 2.0
                                     }
                                 }
                             }
