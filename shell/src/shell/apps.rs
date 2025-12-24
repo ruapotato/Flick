@@ -8,6 +8,40 @@ use std::fs;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
+/// Get the real user's home directory
+/// When running as root via sudo, this returns the original user's home
+fn get_real_user_home() -> PathBuf {
+    // First try FLICK_USER (set by start_hwcomposer.sh)
+    if let Ok(user) = std::env::var("FLICK_USER") {
+        if !user.is_empty() && user != "root" {
+            let home = format!("/home/{}", user);
+            if std::path::Path::new(&home).exists() {
+                return PathBuf::from(home);
+            }
+        }
+    }
+
+    // Then try SUDO_USER
+    if let Ok(user) = std::env::var("SUDO_USER") {
+        if !user.is_empty() && user != "root" {
+            let home = format!("/home/{}", user);
+            if std::path::Path::new(&home).exists() {
+                return PathBuf::from(home);
+            }
+        }
+    }
+
+    // Fallback to droidian if it exists
+    if std::path::Path::new("/home/droidian").exists() {
+        return PathBuf::from("/home/droidian");
+    }
+
+    // Last resort: use HOME env var
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/root"))
+}
+
 /// Get the path to Flick's built-in Settings app (QML)
 /// Searches in common locations based on the running user
 pub fn get_flick_settings_exec() -> String {
@@ -297,11 +331,10 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
-    /// Get the config file path
+    /// Get the config file path (uses real user's home, not root)
     fn config_path() -> Option<PathBuf> {
-        std::env::var("HOME").ok().map(|home| {
-            PathBuf::from(home).join(".local/state/flick/app_config.json")
-        })
+        let home = get_real_user_home();
+        Some(home.join(".local/state/flick/app_config.json"))
     }
 
     /// Load config from file, or return default if not found
@@ -425,22 +458,25 @@ impl AppManager {
         paths.push(PathBuf::from("/usr/share/applications"));
         paths.push(PathBuf::from("/usr/local/share/applications"));
 
-        // User applications
-        if let Some(home) = std::env::var_os("HOME") {
-            let home = PathBuf::from(home);
-            paths.push(home.join(".local/share/applications"));
-            // Flick's native apps - scan each app subdirectory
-            let flick_apps = home.join("Flick/apps");
-            if flick_apps.exists() {
-                if let Ok(entries) = fs::read_dir(&flick_apps) {
-                    for entry in entries.filter_map(|e| e.ok()) {
-                        let path = entry.path();
-                        if path.is_dir() {
-                            paths.push(path);
-                        }
+        // User applications (use real user's home, not root)
+        let home = get_real_user_home();
+        paths.push(home.join(".local/share/applications"));
+
+        // Flick's native apps - scan each app subdirectory
+        let flick_apps = home.join("Flick/apps");
+        tracing::info!("Scanning for Flick apps in: {:?}", flick_apps);
+        if flick_apps.exists() {
+            if let Ok(entries) = fs::read_dir(&flick_apps) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        tracing::info!("  Found app dir: {:?}", path);
+                        paths.push(path);
                     }
                 }
             }
+        } else {
+            tracing::warn!("Flick apps directory not found: {:?}", flick_apps);
         }
 
         // XDG data dirs
