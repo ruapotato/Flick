@@ -593,9 +593,9 @@ fn handle_input_event(
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
-                    // For mobile fullscreen apps, send touch to the topmost (last) window
-                    // elements() returns back-to-front order, so last() is the topmost visible window
-                    let topmost_surface = state.space.elements().last()
+                    // For mobile fullscreen apps, send touch to the topmost window
+                    // elements() returns front-to-back order, so next() is the topmost visible window
+                    let topmost_surface = state.space.elements().next()
                         .and_then(|window| {
                             // Try Wayland toplevel first
                             if let Some(toplevel) = window.toplevel() {
@@ -770,8 +770,9 @@ fn handle_input_event(
             // Never forward to Wayland when lock screen is active - Slint handles lock screen touch
             if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
                 if let Some(touch) = state.seat.get_touch() {
-                    // For mobile fullscreen apps, send touch motion to the topmost (last) window
-                    let focus = state.space.elements().last()
+                    // For mobile fullscreen apps, send touch motion to the topmost window
+                    // elements() returns front-to-back order, so next() is the topmost visible window
+                    let focus = state.space.elements().next()
                         .and_then(|window| {
                             if let Some(toplevel) = window.toplevel() {
                                 Some(toplevel.wl_surface().clone())
