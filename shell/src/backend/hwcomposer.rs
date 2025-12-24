@@ -617,22 +617,20 @@ fn handle_input_event(
                               i, is_wayland, is_x11, has_surface, app_id);
                     }
 
-                    // For mobile fullscreen apps, send touch to the topmost window
-                    // elements() returns back-to-front order, so last() is the topmost visible window
-                    // (after raise_element or map_element with activate=true, the window is at the end)
-                    let topmost_surface = state.space.elements().enumerate().last()
-                        .and_then(|(idx, window)| {
+                    // Use explicitly tracked active window for touch input
+                    let topmost_surface = state.active_window.as_ref()
+                        .and_then(|window| {
                             // Try Wayland toplevel first
                             if let Some(toplevel) = window.toplevel() {
-                                info!("TouchDown: Sending to window {} of {} (Wayland)", idx, element_count);
+                                info!("TouchDown: Sending to active window (Wayland)");
                                 Some(toplevel.wl_surface().clone())
                             } else if let Some(x11) = window.x11_surface() {
                                 // Fall back to X11 surface
                                 let surface = x11.wl_surface().map(|s| s.clone());
-                                info!("TouchDown: Sending to window {} of {} (X11, found={})", idx, element_count, surface.is_some());
+                                info!("TouchDown: Sending to active window (X11, found={})", surface.is_some());
                                 surface
                             } else {
-                                info!("TouchDown: Window {} has neither Wayland nor X11 surface", idx);
+                                info!("TouchDown: Active window has neither Wayland nor X11 surface");
                                 None
                             }
                         });
@@ -822,9 +820,8 @@ fn handle_input_event(
             // Never forward to Wayland when lock screen is active - Slint handles lock screen touch
             if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
                 if let Some(touch) = state.seat.get_touch() {
-                    // For mobile fullscreen apps, send touch motion to the topmost window
-                    // elements() returns back-to-front order, so last() is the topmost visible window
-                    let focus = state.space.elements().last()
+                    // Use explicitly tracked active window for touch motion
+                    let focus = state.active_window.as_ref()
                         .and_then(|window| {
                             if let Some(toplevel) = window.toplevel() {
                                 Some(toplevel.wl_surface().clone())
@@ -1469,6 +1466,10 @@ fn handle_input_event(
                                             // Raise window to top of stacking order
                                             info!("Raising window {} to top", window_id);
                                             state.space.raise_element(window, true);
+
+                                            // Set as active window for touch input
+                                            state.active_window = Some(window.clone());
+                                            info!("Active window set to window {}", window_id);
 
                                             // Set keyboard focus
                                             if let Some(toplevel) = window.toplevel() {

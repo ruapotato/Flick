@@ -60,7 +60,11 @@ impl XwmHandler for Flick {
         let win = Window::new_x11_window(window.clone());
 
         // Use activate=true to bring X11 window to front (on top of shell)
-        self.space.map_element(win, (0, 0), true);
+        self.space.map_element(win.clone(), (0, 0), true);
+
+        // Track this as the active window for touch input
+        self.active_window = Some(win);
+        tracing::info!("Active window set to X11 window");
 
         // Switch to App view now that we have a real window
         // This avoids flashing to a random old app when launching from Home

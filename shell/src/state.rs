@@ -179,6 +179,9 @@ pub struct Flick {
     pub keyboard_swipe_start_y: Option<f64>,
     pub keyboard_swipe_active: bool,
 
+    // Active window for touch input (explicitly tracked for reliability)
+    pub active_window: Option<Window>,
+
     // Integrated shell UI
     pub shell: Shell,
 
@@ -315,6 +318,7 @@ impl Flick {
             last_touch_pos: HashMap::new(),
             keyboard_swipe_start_y: None,
             keyboard_swipe_active: false,
+            active_window: None,
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
         }
@@ -1292,7 +1296,11 @@ impl XdgShellHandler for Flick {
         surface.send_configure();
 
         // Add to space at origin and raise to top (activate=true)
-        self.space.map_element(window, (0, 0), true);
+        self.space.map_element(window.clone(), (0, 0), true);
+
+        // Track this as the active window for touch input
+        self.active_window = Some(window);
+        tracing::info!("Active window set to new toplevel");
 
         // Switch to App view now that we have a real window
         // UNLESS we're on the lock screen OR we recently unlocked (dying lock screen app)
