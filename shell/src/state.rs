@@ -1299,8 +1299,9 @@ impl XdgShellHandler for Flick {
         self.space.map_element(window.clone(), (0, 0), true);
 
         // Track this as the active window for touch input
+        let surface_id = surface.wl_surface().id();
         self.active_window = Some(window);
-        tracing::info!("Active window set to new toplevel");
+        tracing::info!("Active window set to new toplevel: {:?}", surface_id);
 
         // Switch to App view now that we have a real window
         // UNLESS we're on the lock screen OR we recently unlocked (dying lock screen app)

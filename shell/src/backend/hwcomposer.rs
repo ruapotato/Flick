@@ -622,7 +622,8 @@ fn handle_input_event(
                         .and_then(|window| {
                             // Try Wayland toplevel first
                             if let Some(toplevel) = window.toplevel() {
-                                info!("TouchDown: Sending to active window (Wayland)");
+                                let surface_id = toplevel.wl_surface().id();
+                                info!("TouchDown: Sending to active window {:?} (Wayland)", surface_id);
                                 Some(toplevel.wl_surface().clone())
                             } else if let Some(x11) = window.x11_surface() {
                                 // Fall back to X11 surface
@@ -634,6 +635,10 @@ fn handle_input_event(
                                 None
                             }
                         });
+
+                    if topmost_surface.is_none() {
+                        info!("TouchDown: WARNING - No active window set!");
+                    }
 
                     // Only restore keyboard focus if there's NO focus at all
                     // Don't "correct" focus - that can trigger unwanted text input
