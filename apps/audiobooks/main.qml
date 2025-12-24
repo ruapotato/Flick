@@ -165,52 +165,85 @@ Window {
     function scanAudiobooks() {
         booksList = []
         booksListModel.clear()
-        // Trigger the main folder model to rescan
-        mainLibraryModel.folder = ""
-        mainLibraryModel.folder = "file://" + libraryPaths[0]
+        currentLibraryIndex = 0
+        console.log("Starting audiobook scan, " + libraryPaths.length + " library paths")
+        scanNextLibrary()
     }
 
-    // Main library folder model - scans for book folders
-    FolderListModel {
-        id: mainLibraryModel
-        folder: "file://" + libraryPaths[0]
-        showDirs: true
-        showFiles: false
-        showDotAndDotDot: false
+    property int currentLibraryIndex: 0
 
-        onStatusChanged: {
-            if (status === FolderListModel.Ready) {
-                scanTimer.start()
-            }
+    function scanNextLibrary() {
+        if (currentLibraryIndex >= libraryPaths.length) {
+            // Done scanning all libraries
+            syncTimer.start()
+            return
         }
+
+        var libPath = libraryPaths[currentLibraryIndex]
+        console.log("Scanning library: " + libPath)
+
+        // First, scan for audio files directly in the library folder
+        scanBookFolderAsync(libPath, "Loose Files in " + libPath.split("/").pop())
+
+        // Then scan for subdirectories (book folders)
+        scanLibraryForBookFolders(libPath)
+
+        currentLibraryIndex++
+    }
+
+    function scanLibraryForBookFolders(libPath) {
+        var dirModel = Qt.createQmlObject('
+            import QtQuick 2.15
+            import Qt.labs.folderlistmodel 2.15
+            FolderListModel {
+                showDirs: true
+                showFiles: false
+                showDotAndDotDot: false
+            }
+        ', root)
+
+        dirModel.folder = "file://" + libPath
+
+        var checkTimer = Qt.createQmlObject('import QtQuick 2.15; Timer { interval: 100; repeat: true }', root)
+        var checkCount = 0
+
+        checkTimer.triggered.connect(function() {
+            checkCount++
+            if (dirModel.status === 2 || checkCount > 20) {
+                checkTimer.stop()
+
+                console.log("Found " + dirModel.count + " folders in " + libPath)
+                for (var i = 0; i < dirModel.count; i++) {
+                    var folderName = dirModel.get(i, "fileName")
+                    var folderPath = dirModel.get(i, "filePath")
+                    if (folderName && folderName !== "." && folderName !== "..") {
+                        console.log("Found book folder: " + folderName)
+                        scanBookFolderAsync(folderPath, folderName)
+                    }
+                }
+
+                dirModel.destroy()
+                checkTimer.destroy()
+
+                // Continue to next library after a short delay
+                scanNextLibraryTimer.start()
+            }
+        })
+        checkTimer.start()
     }
 
     Timer {
-        id: scanTimer
+        id: scanNextLibraryTimer
         interval: 200
-        onTriggered: {
-            booksList = []
-            console.log("Scanning " + mainLibraryModel.count + " folders in library")
-            for (var i = 0; i < mainLibraryModel.count; i++) {
-                var folderName = mainLibraryModel.get(i, "fileName")
-                var folderPath = mainLibraryModel.get(i, "filePath")
-                console.log("Found folder: " + folderName + " at " + folderPath)
-                if (folderName && folderName !== "." && folderName !== "..") {
-                    // Scan this folder for audio files
-                    scanBookFolderAsync(folderPath, folderName)
-                }
-            }
-            // Final sync after a delay
-            syncTimer.start()
-        }
+        onTriggered: scanNextLibrary()
     }
 
     Timer {
         id: syncTimer
-        interval: 500
+        interval: 1000
         onTriggered: {
             booksListModel.sync()
-            console.log("Found " + booksList.length + " audiobooks")
+            console.log("Found " + booksList.length + " audiobooks total")
         }
     }
 

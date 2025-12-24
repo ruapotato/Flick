@@ -31,79 +31,150 @@ Window {
     // Track total photos found
     property int totalPhotos: 0
 
-    // List of directories to scan (including subdirs)
-    property var dirsToScan: [
+    // Base directories to scan for photos
+    property var baseDirs: [
         "/home/droidian/Pictures",
-        "/home/droidian/Pictures/Camera",
-        "/home/droidian/Pictures/Screenshots",
-        "/home/droidian/Pictures/DCIM",
-        "/home/droidian/DCIM",
-        "/home/droidian/DCIM/Camera"
+        "/home/droidian/DCIM"
     ]
 
-    // Folder models for each directory (we'll create them dynamically)
-    FolderListModel {
-        id: folderModel1
-        folder: "file:///home/droidian/Pictures"
-        nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.JPG", "*.JPEG", "*.PNG", "*.GIF", "*.BMP"]
-        showDirs: false
-        onCountChanged: rebuildPhotoModel()
+    // Discovered directories (including subfolders)
+    property var allDirs: []
+
+    // Active folder models
+    property var folderModels: []
+
+    Component.onCompleted: {
+        loadConfig()
+        scanDirectories()
     }
 
-    FolderListModel {
-        id: folderModel2
-        folder: "file:///home/droidian/Pictures/Camera"
-        nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.JPG", "*.JPEG", "*.PNG", "*.GIF", "*.BMP"]
-        showDirs: false
-        onCountChanged: rebuildPhotoModel()
-    }
-
-    FolderListModel {
-        id: folderModel3
-        folder: "file:///home/droidian/Pictures/Screenshots"
-        nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.JPG", "*.JPEG", "*.PNG", "*.GIF", "*.BMP"]
-        showDirs: false
-        onCountChanged: rebuildPhotoModel()
-    }
-
-    FolderListModel {
-        id: folderModel4
-        folder: "file:///home/droidian/DCIM"
-        nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.JPG", "*.JPEG", "*.PNG", "*.GIF", "*.BMP"]
-        showDirs: false
-        onCountChanged: rebuildPhotoModel()
-    }
-
-    FolderListModel {
-        id: folderModel5
-        folder: "file:///home/droidian/DCIM/Camera"
-        nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.JPG", "*.JPEG", "*.PNG", "*.GIF", "*.BMP"]
-        showDirs: false
-        onCountChanged: rebuildPhotoModel()
-    }
-
-    // Combine all folder models into photoModel
-    function rebuildPhotoModel() {
-        photoModel.clear()
-        var models = [folderModel1, folderModel2, folderModel3, folderModel4, folderModel5]
-        var seen = {}  // Track seen files to avoid duplicates
-
-        for (var m = 0; m < models.length; m++) {
-            var model = models[m]
-            for (var i = 0; i < model.count; i++) {
-                var fileUrl = model.get(i, "fileURL").toString()
-                if (!seen[fileUrl]) {
-                    seen[fileUrl] = true
-                    photoModel.append({
-                        "fileURL": fileUrl,
-                        "fileName": model.get(i, "fileName"),
-                        "filePath": model.get(i, "filePath")
-                    })
-                }
-            }
+    // Scan for subdirectories
+    function scanDirectories() {
+        allDirs = []
+        for (var i = 0; i < baseDirs.length; i++) {
+            scanDirRecursive(baseDirs[i])
         }
-        totalPhotos = photoModel.count
-        console.log("Total photos found: " + totalPhotos)
+        // Start scanning after a short delay
+        scanTimer.start()
+    }
+
+    // Use folder model to find subdirectories
+    FolderListModel {
+        id: dirScanner
+        showDirs: true
+        showFiles: false
+        showDotAndDotDot: false
+    }
+
+    function scanDirRecursive(path) {
+        // Add this directory
+        allDirs.push(path)
+        console.log("Will scan: " + path)
+    }
+
+    Timer {
+        id: scanTimer
+        interval: 100
+        onTriggered: {
+            // Create folder models for each directory and scan for subdirs
+            createFolderModels()
+        }
+    }
+
+    function createFolderModels() {
+        // Clear existing
+        photoModel.clear()
+
+        // Scan each base directory for subdirs, then scan for photos
+        for (var i = 0; i < baseDirs.length; i++) {
+            scanDirForPhotosAndSubdirs(baseDirs[i], 0)
+        }
+
+        // Rebuild after a delay to let all scans complete
+        rebuildTimer.start()
+    }
+
+    Timer {
+        id: rebuildTimer
+        interval: 1000
+        onTriggered: {
+            totalPhotos = photoModel.count
+            console.log("Total photos found: " + totalPhotos)
+        }
+    }
+
+    function scanDirForPhotosAndSubdirs(dirPath, depth) {
+        if (depth > 5) return  // Limit recursion depth
+
+        // Create a model to scan this directory for photos
+        var photoScanModel = Qt.createQmlObject('
+            import QtQuick 2.15
+            import Qt.labs.folderlistmodel 2.15
+            FolderListModel {
+                showDirs: false
+                showFiles: true
+                nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.JPG", "*.JPEG", "*.PNG", "*.GIF", "*.BMP", "*.webp", "*.WEBP"]
+            }
+        ', root)
+
+        photoScanModel.folder = "file://" + dirPath
+
+        // Create a model to find subdirectories
+        var dirScanModel = Qt.createQmlObject('
+            import QtQuick 2.15
+            import Qt.labs.folderlistmodel 2.15
+            FolderListModel {
+                showDirs: true
+                showFiles: false
+                showDotAndDotDot: false
+            }
+        ', root)
+
+        dirScanModel.folder = "file://" + dirPath
+
+        // Timer to wait for models to load
+        var checkTimer = Qt.createQmlObject('import QtQuick 2.15; Timer { interval: 100; repeat: true }', root)
+        var checkCount = 0
+
+        checkTimer.triggered.connect(function() {
+            checkCount++
+            var photoReady = (photoScanModel.status === 2 || checkCount > 20)
+            var dirReady = (dirScanModel.status === 2 || checkCount > 20)
+
+            if (photoReady && dirReady) {
+                checkTimer.stop()
+
+                // Add photos from this directory
+                for (var i = 0; i < photoScanModel.count; i++) {
+                    var fileUrl = photoScanModel.get(i, "fileURL")
+                    if (fileUrl) {
+                        photoModel.append({
+                            "fileURL": fileUrl.toString(),
+                            "fileName": photoScanModel.get(i, "fileName"),
+                            "filePath": photoScanModel.get(i, "filePath")
+                        })
+                    }
+                }
+
+                // Recursively scan subdirectories
+                for (var j = 0; j < dirScanModel.count; j++) {
+                    var subDirPath = dirScanModel.get(j, "filePath")
+                    var subDirName = dirScanModel.get(j, "fileName")
+                    if (subDirPath && subDirName && subDirName !== "." && subDirName !== "..") {
+                        console.log("Found subdir: " + subDirPath)
+                        scanDirForPhotosAndSubdirs(subDirPath, depth + 1)
+                    }
+                }
+
+                // Update count
+                totalPhotos = photoModel.count
+
+                photoScanModel.destroy()
+                dirScanModel.destroy()
+                checkTimer.destroy()
+            }
+        })
+        checkTimer.start()
     }
 
     // Legacy compatibility alias
