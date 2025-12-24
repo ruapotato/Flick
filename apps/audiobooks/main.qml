@@ -544,7 +544,9 @@ Window {
                 MouseArea {
                     id: bookMouse
                     anchors.fill: parent
-                    onClicked: openBook(model)
+                    // Use booksList[index] to get the full JS object with chapters array
+                    // The ListModel doesn't preserve nested arrays properly
+                    onClicked: openBook(booksList[index])
                 }
             }
         }

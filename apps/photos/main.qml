@@ -15,10 +15,6 @@ Window {
     property real textScale: 1.0
     property int baseFontSize: 8
 
-    Component.onCompleted: {
-        loadConfig()
-    }
-
     function loadConfig() {
         // Photos uses fixed scaling - no config needed
     }

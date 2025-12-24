@@ -11,7 +11,7 @@ Window {
     title: "Flick Files"
     color: "#0a0a0f"
 
-    // Files uses fixed scaling
+    // Use shell text scale
     property real textScale: 1.0
     property string currentPath: "/home/droidian"
     property color accentColor: "#e94560"
@@ -26,7 +26,21 @@ Window {
     }
 
     function loadConfig() {
-        // Files uses fixed scaling - no config needed
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                if (xhr.status === 200 || xhr.status === 0) {
+                    try {
+                        var config = JSON.parse(xhr.responseText)
+                        textScale = config.text_scale || 1.0
+                    } catch (e) {
+                        console.log("Failed to parse display config:", e)
+                    }
+                }
+            }
+        }
+        xhr.send()
     }
 
     FolderListModel {
