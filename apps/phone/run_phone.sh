@@ -21,17 +21,19 @@ export QT_QUICK_BACKEND=software
 export QT_OPENGL=software
 
 # Kill any existing phone helper daemon
-pkill -f "phone_helper.py daemon" 2>/dev/null
+sudo pkill -f "phone_helper.py daemon" 2>/dev/null
 
-# Start the helper daemon in background
-python3 "$SCRIPT_DIR/phone_helper.py" daemon >> "$LOG_FILE" 2>&1 &
+# Start the helper daemon in background AS ROOT (needed for oFono D-Bus access)
+# The default oFono D-Bus policy denies access to non-root users
+sudo python3 "$SCRIPT_DIR/phone_helper.py" daemon >> "$LOG_FILE" 2>&1 &
 HELPER_PID=$!
 echo "Started phone helper daemon (PID: $HELPER_PID)" >> "$LOG_FILE"
 
 # Cleanup on exit
 cleanup() {
     echo "Cleaning up..." >> "$LOG_FILE"
-    kill $HELPER_PID 2>/dev/null
+    sudo kill $HELPER_PID 2>/dev/null
+    sudo pkill -f "phone_helper.py daemon" 2>/dev/null
     rm -f "$CMD_FILE" /tmp/flick_phone_status
 }
 trap cleanup EXIT
