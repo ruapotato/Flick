@@ -619,20 +619,20 @@ fn handle_input_event(
 
                     // For mobile fullscreen apps, send touch to the topmost window
                     // elements() returns back-to-front order, so last() is the topmost visible window
-                    // (after raise_element, the raised window is at the end)
-                    let topmost_surface = state.space.elements().last()
-                        .and_then(|window| {
+                    // (after raise_element or map_element with activate=true, the window is at the end)
+                    let topmost_surface = state.space.elements().enumerate().last()
+                        .and_then(|(idx, window)| {
                             // Try Wayland toplevel first
                             if let Some(toplevel) = window.toplevel() {
-                                info!("TouchDown: Using Wayland toplevel surface");
+                                info!("TouchDown: Sending to window {} of {} (Wayland)", idx, element_count);
                                 Some(toplevel.wl_surface().clone())
                             } else if let Some(x11) = window.x11_surface() {
                                 // Fall back to X11 surface
                                 let surface = x11.wl_surface().map(|s| s.clone());
-                                info!("TouchDown: Using X11 surface, found={}", surface.is_some());
+                                info!("TouchDown: Sending to window {} of {} (X11, found={})", idx, element_count, surface.is_some());
                                 surface
                             } else {
-                                info!("TouchDown: Window has neither Wayland nor X11 surface");
+                                info!("TouchDown: Window {} has neither Wayland nor X11 surface", idx);
                                 None
                             }
                         });

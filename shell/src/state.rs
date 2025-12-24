@@ -1291,8 +1291,8 @@ impl XdgShellHandler for Flick {
 
         surface.send_configure();
 
-        // Add to space at origin
-        self.space.map_element(window, (0, 0), false);
+        // Add to space at origin and raise to top (activate=true)
+        self.space.map_element(window, (0, 0), true);
 
         // Switch to App view now that we have a real window
         // UNLESS we're on the lock screen OR we recently unlocked (dying lock screen app)
