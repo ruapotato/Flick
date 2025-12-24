@@ -1317,6 +1317,8 @@ impl XdgShellHandler for Flick {
 
         // Set keyboard focus to this window
         let wl_surface = surface.wl_surface().clone();
+        let client_info = wl_surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+        tracing::info!("new_toplevel: Setting keyboard focus to {:?} (client: {})", wl_surface.id(), client_info);
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.set_focus(self, Some(wl_surface), serial);

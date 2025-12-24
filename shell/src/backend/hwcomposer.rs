@@ -617,43 +617,50 @@ fn handle_input_event(
                               i, is_wayland, is_x11, has_surface, app_id);
                     }
 
-                    // Use explicitly tracked active window for touch input
-                    let topmost_surface = state.active_window.as_ref()
-                        .and_then(|window| {
-                            // Try Wayland toplevel first
-                            if let Some(toplevel) = window.toplevel() {
-                                let surface_id = toplevel.wl_surface().id();
-                                info!("TouchDown: Sending to active window {:?} (Wayland)", surface_id);
-                                Some(toplevel.wl_surface().clone())
-                            } else if let Some(x11) = window.x11_surface() {
-                                // Fall back to X11 surface
-                                let surface = x11.wl_surface().map(|s| s.clone());
-                                info!("TouchDown: Sending to active window (X11, found={})", surface.is_some());
-                                surface
-                            } else {
-                                info!("TouchDown: Active window has neither Wayland nor X11 surface");
-                                None
-                            }
+                    // Use keyboard focus for touch input - this is the most reliable
+                    // way to know which window should receive input, as Smithay
+                    // manages it correctly when windows are created/focused
+                    let topmost_surface = state.seat.get_keyboard()
+                        .and_then(|kb| kb.current_focus())
+                        .map(|focus| {
+                            // Log surface ID and client ID for debugging
+                            let client_info = focus.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                            info!("TouchDown: Using keyboard focus surface {:?} (client: {})", focus.id(), client_info);
+                            focus.clone()
                         });
 
                     if topmost_surface.is_none() {
-                        info!("TouchDown: WARNING - No active window set!");
-                    }
-
-                    // Only restore keyboard focus if there's NO focus at all
-                    // Don't "correct" focus - that can trigger unwanted text input
-                    let has_any_focus = state.seat.get_keyboard()
-                        .and_then(|kb| kb.current_focus())
-                        .is_some();
-
-                    if !has_any_focus {
-                        if let Some(ref wl_surface) = topmost_surface {
-                            if let Some(keyboard) = state.seat.get_keyboard() {
-                                info!("Restoring keyboard focus to topmost window (was None)");
-                                keyboard.set_focus(state, Some(wl_surface.clone()), serial);
+                        info!("TouchDown: WARNING - No keyboard focus!");
+                        // Log all windows and their surfaces for debugging
+                        for (i, window) in state.space.elements().enumerate() {
+                            if let Some(toplevel) = window.toplevel() {
+                                let surface = toplevel.wl_surface();
+                                let client_info = surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                                info!("  Window {}: surface {:?} (client: {})", i, surface.id(), client_info);
                             }
                         }
                     }
+
+                    // If no keyboard focus, try to find topmost window from space
+                    let topmost_surface = topmost_surface.or_else(|| {
+                        state.space.elements().last()
+                            .and_then(|window| {
+                                if let Some(toplevel) = window.toplevel() {
+                                    let surface = toplevel.wl_surface().clone();
+                                    let client_info = surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                                    info!("TouchDown: Fallback to space topmost: {:?} (client: {})", surface.id(), client_info);
+                                    Some(surface)
+                                } else if let Some(x11) = window.x11_surface() {
+                                    x11.wl_surface().map(|s| {
+                                        let client_info = s.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                                        info!("TouchDown: Fallback to X11 surface (client: {})", client_info);
+                                        s.clone()
+                                    })
+                                } else {
+                                    None
+                                }
+                            })
+                    });
 
                     // Use topmost surface for touch focus
                     let focus = topmost_surface
@@ -825,18 +832,10 @@ fn handle_input_event(
             // Never forward to Wayland when lock screen is active - Slint handles lock screen touch
             if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
                 if let Some(touch) = state.seat.get_touch() {
-                    // Use explicitly tracked active window for touch motion
-                    let focus = state.active_window.as_ref()
-                        .and_then(|window| {
-                            if let Some(toplevel) = window.toplevel() {
-                                Some(toplevel.wl_surface().clone())
-                            } else if let Some(x11) = window.x11_surface() {
-                                x11.wl_surface().map(|s| s.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .map(|surface| (surface, smithay::utils::Point::from((0.0, 0.0))));
+                    // Use keyboard focus for touch motion - same source as touch down
+                    let focus = state.seat.get_keyboard()
+                        .and_then(|kb| kb.current_focus())
+                        .map(|surface| (surface.clone(), smithay::utils::Point::from((0.0, 0.0))));
 
                     if focus.is_some() {
                         touch.motion(
@@ -1478,12 +1477,17 @@ fn handle_input_event(
 
                                             // Set keyboard focus
                                             if let Some(toplevel) = window.toplevel() {
+                                                let surface = toplevel.wl_surface();
+                                                let client_info = surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                                                info!("Switcher: Setting keyboard focus to {:?} (client: {})", surface.id(), client_info);
                                                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                                                 if let Some(keyboard) = state.seat.get_keyboard() {
-                                                    keyboard.set_focus(state, Some(toplevel.wl_surface().clone()), serial);
+                                                    keyboard.set_focus(state, Some(surface.clone()), serial);
                                                 }
                                             } else if let Some(x11) = window.x11_surface() {
                                                 if let Some(wl_surface) = x11.wl_surface() {
+                                                    let client_info = wl_surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                                                    info!("Switcher: Setting keyboard focus to X11 {:?} (client: {})", wl_surface.id(), client_info);
                                                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                                                     if let Some(keyboard) = state.seat.get_keyboard() {
                                                         keyboard.set_focus(state, Some(wl_surface), serial);
