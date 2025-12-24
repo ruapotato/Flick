@@ -720,6 +720,29 @@ fn handle_input_event(
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
                 debug!("Gesture touch_motion: {:?}", gesture_event);
 
+                // Handle edge swipe start (when PotentialEdgeSwipe activates after min drag distance)
+                if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
+                    let shell_view = state.shell.view;
+                    // Left edge = Quick Settings
+                    if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
+                        state.qs_gesture_active = true;
+                        state.qs_gesture_progress = 0.0;
+                    }
+                    // Right edge = App Switcher
+                    if *edge == crate::input::Edge::Right && shell_view != crate::shell::ShellView::LockScreen {
+                        state.switcher_gesture_active = true;
+                        state.switcher_gesture_progress = 0.0;
+                    }
+                    // Bottom edge = Home gesture (swipe up)
+                    if *edge == crate::input::Edge::Bottom && shell_view != crate::shell::ShellView::LockScreen {
+                        state.start_home_gesture();
+                    }
+                    // Top edge = Close gesture (swipe down)
+                    if *edge == crate::input::Edge::Top && shell_view == crate::shell::ShellView::App {
+                        state.start_close_gesture();
+                    }
+                }
+
                 // Handle edge swipe progress updates
                 if let crate::input::GestureEvent::EdgeSwipeUpdate { edge, progress, .. } = &gesture_event {
                     let shell_view = state.shell.view;
