@@ -55,9 +55,13 @@ echo "Starting Flick..."
 if [ "$1" = "--bg" ]; then
     sudo -E "$FLICK_BIN" > /tmp/flick.log 2>&1 &
     sleep 2
-    # Fix Wayland socket permissions
+    # Fix Wayland socket permissions so apps running as user can connect
+    REAL_USER="${SUDO_USER:-$USER}"
     for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
-        [ -S "$sock" ] && sudo chmod 0777 "$sock"
+        if [ -e "$sock" ]; then
+            sudo chown "$REAL_USER:$REAL_USER" "$sock"
+            sudo chmod 0770 "$sock"
+        fi
     done
     echo "Flick running in background. Logs: /tmp/flick.log"
 else
