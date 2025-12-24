@@ -138,6 +138,10 @@ Window {
                 if (xhr.status === 200 || xhr.status === 0) {
                     try {
                         progressData = JSON.parse(xhr.responseText)
+                        // Restore last played book path
+                        if (progressData._lastPlayed) {
+                            lastPlayedBookPath = progressData._lastPlayed
+                        }
                     } catch (e) {
                         progressData = {}
                     }
@@ -146,6 +150,9 @@ Window {
         }
         xhr.send()
     }
+
+    // Track the last played book for quick resume
+    property string lastPlayedBookPath: ""
 
     function saveProgress() {
         if (!currentBook || !currentBook.chapters || !currentBook.chapters[currentChapterIndex]) return
@@ -157,9 +164,36 @@ Window {
             timestamp: Date.now()
         }
 
+        // Also track this as the last played book
+        progressData._lastPlayed = bookId
+        lastPlayedBookPath = bookId
+
         var xhr = new XMLHttpRequest()
         xhr.open("PUT", "file:///home/droidian/.local/state/flick/audiobook_progress.json")
         xhr.send(JSON.stringify(progressData, null, 2))
+    }
+
+    function resumeLastBook() {
+        if (!lastPlayedBookPath) return
+
+        // Find the book in booksList
+        for (var i = 0; i < booksList.length; i++) {
+            if (booksList[i].path === lastPlayedBookPath) {
+                openBook(booksList[i])
+                // Resume from saved position
+                if (progressData[lastPlayedBookPath]) {
+                    currentChapterIndex = progressData[lastPlayedBookPath].chapter || 0
+                    loadChapter(currentChapterIndex)
+                    currentView = "player"
+                    // Seek to position after a short delay (let audio load)
+                    Qt.callLater(function() {
+                        audioPlayer.seek(progressData[lastPlayedBookPath].position || 0)
+                        audioPlayer.play()
+                    })
+                }
+                return
+            }
+        }
     }
 
     function scanAudiobooks() {
@@ -455,10 +489,70 @@ Window {
             }
         }
 
+        // Resume Last Book button - only visible when there's a last played book
+        Rectangle {
+            id: resumeButton
+            anchors.top: libraryHeader.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 16
+            height: lastPlayedBookPath && booksListModel.count > 0 ? 80 : 0
+            visible: lastPlayedBookPath && booksListModel.count > 0
+            radius: 16
+            color: resumeMouse.pressed ? "#c23a50" : "#e94560"
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 16
+
+                Text {
+                    text: "▶"
+                    font.pixelSize: 32
+                    color: "#ffffff"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+
+                    Text {
+                        text: "Resume Listening"
+                        font.pixelSize: 20 * textScale
+                        font.weight: Font.Bold
+                        color: "#ffffff"
+                    }
+
+                    Text {
+                        text: {
+                            // Get the last played book title
+                            for (var i = 0; i < booksList.length; i++) {
+                                if (booksList[i].path === lastPlayedBookPath) {
+                                    return booksList[i].title
+                                }
+                            }
+                            return ""
+                        }
+                        font.pixelSize: 14 * textScale
+                        color: "#ffcccc"
+                    }
+                }
+            }
+
+            MouseArea {
+                id: resumeMouse
+                anchors.fill: parent
+                onClicked: resumeLastBook()
+            }
+        }
+
         // Books list
         ListView {
             id: booksListView
-            anchors.top: libraryHeader.bottom
+            anchors.top: resumeButton.visible ? resumeButton.bottom : libraryHeader.bottom
+            anchors.topMargin: resumeButton.visible ? 12 : 0
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -1034,6 +1128,98 @@ Window {
                         id: skipForwardMouse
                         anchors.fill: parent
                         onClicked: audioPlayer.seek(Math.min(audioPlayer.duration, audioPlayer.position + 30000))
+                    }
+                }
+            }
+
+            // Chapter navigation
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 32
+
+                // Previous chapter
+                Rectangle {
+                    width: 120
+                    height: 48
+                    radius: 24
+                    color: prevChapterMouse.pressed ? "#333344" : "#252530"
+                    opacity: currentChapterIndex > 0 ? 1.0 : 0.3
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 8
+
+                        Text {
+                            text: "⏮"
+                            font.pixelSize: 20
+                            color: "#ffffff"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Text {
+                            text: "Prev"
+                            font.pixelSize: 16 * textScale
+                            color: "#ffffff"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        id: prevChapterMouse
+                        anchors.fill: parent
+                        enabled: currentChapterIndex > 0
+                        onClicked: {
+                            currentChapterIndex--
+                            loadChapter(currentChapterIndex)
+                            audioPlayer.play()
+                        }
+                    }
+                }
+
+                // Chapter indicator
+                Text {
+                    text: (currentChapterIndex + 1) + " / " + (currentBook ? currentBook.chapters.length : 0)
+                    font.pixelSize: 18 * textScale
+                    color: "#888899"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                // Next chapter
+                Rectangle {
+                    width: 120
+                    height: 48
+                    radius: 24
+                    color: nextChapterMouse.pressed ? "#333344" : "#252530"
+                    opacity: currentBook && currentChapterIndex < currentBook.chapters.length - 1 ? 1.0 : 0.3
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 8
+
+                        Text {
+                            text: "Next"
+                            font.pixelSize: 16 * textScale
+                            color: "#ffffff"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Text {
+                            text: "⏭"
+                            font.pixelSize: 20
+                            color: "#ffffff"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        id: nextChapterMouse
+                        anchors.fill: parent
+                        enabled: currentBook && currentChapterIndex < currentBook.chapters.length - 1
+                        onClicked: {
+                            currentChapterIndex++
+                            loadChapter(currentChapterIndex)
+                            audioPlayer.play()
+                        }
                     }
                 }
             }
