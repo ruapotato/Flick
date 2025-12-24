@@ -1469,6 +1469,17 @@ fn handle_input_event(
                                         info!("Switcher tap: tapped window index {} at ({}, {})", window_id, pos.x, pos.y);
                                         let windows: Vec<_> = state.space.elements().cloned().collect();
                                         if let Some(window) = windows.get(window_id) {
+                                            // DEACTIVATE all windows first
+                                            for (i, w) in windows.iter().enumerate() {
+                                                if let Some(toplevel) = w.toplevel() {
+                                                    toplevel.with_pending_state(|s| {
+                                                        s.states.unset(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Activated);
+                                                    });
+                                                    toplevel.send_configure();
+                                                    info!("Switcher: Deactivated window {}", i);
+                                                }
+                                            }
+
                                             // Raise window to top of stacking order
                                             info!("Raising window {} to top", window_id);
                                             state.space.raise_element(window, true);
@@ -1477,8 +1488,15 @@ fn handle_input_event(
                                             state.active_window = Some(window.clone());
                                             info!("Active window set to window {}", window_id);
 
-                                            // Set keyboard focus
+                                            // ACTIVATE the selected window and set keyboard focus
                                             if let Some(toplevel) = window.toplevel() {
+                                                // Send activated state
+                                                toplevel.with_pending_state(|s| {
+                                                    s.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Activated);
+                                                });
+                                                toplevel.send_configure();
+                                                info!("Switcher: Activated window {}", window_id);
+
                                                 let surface = toplevel.wl_surface();
                                                 let client_info = surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
                                                 info!("Switcher: Setting keyboard focus to {:?} (client: {})", surface.id(), client_info);

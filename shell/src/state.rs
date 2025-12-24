@@ -1277,6 +1277,17 @@ impl XdgShellHandler for Flick {
         tracing::info!("  Surface: {:?}", surface.wl_surface().id());
         tracing::info!("  Number of outputs: {}", self.outputs.len());
 
+        // DEACTIVATE all existing windows first
+        for existing_window in self.space.elements() {
+            if let Some(toplevel) = existing_window.toplevel() {
+                toplevel.with_pending_state(|state| {
+                    state.states.unset(xdg_toplevel::State::Activated);
+                });
+                toplevel.send_configure();
+                tracing::info!("Deactivated existing window: {:?}", toplevel.wl_surface().id());
+            }
+        }
+
         // Configure for fullscreen on our output
         if let Some(output) = self.outputs.first() {
             let output_size = output
