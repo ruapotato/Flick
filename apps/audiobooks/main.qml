@@ -451,7 +451,7 @@ Window {
 
         // Books list
         ListView {
-            id: booksList
+            id: booksListView
             anchors.top: libraryHeader.bottom
             anchors.left: parent.left
             anchors.right: parent.right
@@ -464,7 +464,7 @@ Window {
             model: booksListModel
 
             delegate: Rectangle {
-                width: booksList.width
+                width: booksListView.width
                 height: 120
                 radius: 16
                 color: "#151520"
