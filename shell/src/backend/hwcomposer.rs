@@ -2277,11 +2277,14 @@ fn render_frame(
         // Render Wayland windows ONLY for App view (not during switcher gesture preview)
         // NEVER render client windows when lock screen is active - Slint handles the lock UI
         if shell_view == ShellView::App && !switcher_gesture_preview && !state.shell.lock_screen_active {
-            // Render Wayland client surfaces (windows)
+            // Render ONLY the topmost Wayland client surface (last in elements order)
+            // This ensures only the active window is visible and receives input
             let windows: Vec<_> = state.space.elements().cloned().collect();
             debug!("Rendering {} Wayland windows", windows.len());
 
-            for (i, window) in windows.iter().enumerate() {
+            // Only render the LAST (topmost) window
+            let start_idx = if windows.len() > 0 { windows.len() - 1 } else { 0 };
+            for (i, window) in windows.iter().enumerate().skip(start_idx) {
                 debug!("Processing window {}", i);
 
                 // Get the wl_surface from either Wayland toplevel or X11 surface
