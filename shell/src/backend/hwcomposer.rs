@@ -619,50 +619,40 @@ fn handle_input_event(
                               i, surface_id, client_info, is_wayland, is_x11);
                     }
 
-                    // Use keyboard focus for touch input - this is the most reliable
-                    // way to know which window should receive input, as Smithay
-                    // manages it correctly when windows are created/focused
-                    let topmost_surface = state.seat.get_keyboard()
-                        .and_then(|kb| kb.current_focus())
-                        .map(|focus| {
-                            // Log surface ID and client ID for debugging
-                            let client_info = focus.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
-                            info!("TouchDown: Using keyboard focus surface {:?} (client: {})", focus.id(), client_info);
-                            focus.clone()
+                    // ALWAYS use the topmost window from the space - this is the window
+                    // that's actually being rendered on top. Don't rely on keyboard focus
+                    // as it may not be synchronized with the space stacking order.
+                    let topmost_surface = state.space.elements().last()
+                        .and_then(|window| {
+                            if let Some(toplevel) = window.toplevel() {
+                                let surface = toplevel.wl_surface().clone();
+                                let client_info = surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                                info!("TouchDown: Using SPACE TOPMOST surface {:?} (client: {})", surface.id(), client_info);
+                                Some(surface)
+                            } else if let Some(x11) = window.x11_surface() {
+                                x11.wl_surface().map(|s| {
+                                    let client_info = s.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                                    info!("TouchDown: Using SPACE TOPMOST X11 surface (client: {})", client_info);
+                                    s.clone()
+                                })
+                            } else {
+                                None
+                            }
                         });
 
-                    if topmost_surface.is_none() {
-                        info!("TouchDown: WARNING - No keyboard focus!");
-                        // Log all windows and their surfaces for debugging
-                        for (i, window) in state.space.elements().enumerate() {
-                            if let Some(toplevel) = window.toplevel() {
-                                let surface = toplevel.wl_surface();
-                                let client_info = surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
-                                info!("  Window {}: surface {:?} (client: {})", i, surface.id(), client_info);
-                            }
+                    // Also log keyboard focus for comparison
+                    if let Some(kb) = state.seat.get_keyboard() {
+                        if let Some(kb_focus) = kb.current_focus() {
+                            let kb_client = kb_focus.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                            info!("TouchDown: (keyboard focus is {:?}, client: {})", kb_focus.id(), kb_client);
+                        } else {
+                            info!("TouchDown: (keyboard focus is None)");
                         }
                     }
 
-                    // If no keyboard focus, try to find topmost window from space
-                    let topmost_surface = topmost_surface.or_else(|| {
-                        state.space.elements().last()
-                            .and_then(|window| {
-                                if let Some(toplevel) = window.toplevel() {
-                                    let surface = toplevel.wl_surface().clone();
-                                    let client_info = surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
-                                    info!("TouchDown: Fallback to space topmost: {:?} (client: {})", surface.id(), client_info);
-                                    Some(surface)
-                                } else if let Some(x11) = window.x11_surface() {
-                                    x11.wl_surface().map(|s| {
-                                        let client_info = s.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
-                                        info!("TouchDown: Fallback to X11 surface (client: {})", client_info);
-                                        s.clone()
-                                    })
-                                } else {
-                                    None
-                                }
-                            })
-                    });
+                    if topmost_surface.is_none() {
+                        info!("TouchDown: WARNING - No topmost surface!");
+                    }
 
                     // Use topmost surface for touch focus
                     let focus = topmost_surface
@@ -834,10 +824,17 @@ fn handle_input_event(
             // Never forward to Wayland when lock screen is active - Slint handles lock screen touch
             if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
                 if let Some(touch) = state.seat.get_touch() {
-                    // Use keyboard focus for touch motion - same source as touch down
-                    let focus = state.seat.get_keyboard()
-                        .and_then(|kb| kb.current_focus())
-                        .map(|surface| (surface.clone(), smithay::utils::Point::from((0.0, 0.0))));
+                    // Use space topmost for touch motion - same source as touch down
+                    let focus = state.space.elements().last()
+                        .and_then(|window| {
+                            if let Some(toplevel) = window.toplevel() {
+                                Some((toplevel.wl_surface().clone(), smithay::utils::Point::from((0.0, 0.0))))
+                            } else if let Some(x11) = window.x11_surface() {
+                                x11.wl_surface().map(|s| (s.clone(), smithay::utils::Point::from((0.0, 0.0))))
+                            } else {
+                                None
+                            }
+                        });
 
                     if focus.is_some() {
                         touch.motion(
@@ -1467,6 +1464,14 @@ fn handle_input_event(
 
                                     if let Some(window_id) = tapped_window {
                                         info!("Switcher tap: tapped window index {} at ({}, {})", window_id, pos.x, pos.y);
+
+                                        // Cancel any pending touch sequences before switching apps
+                                        // This clears any touch grab the previous app might have
+                                        if let Some(touch) = state.seat.get_touch() {
+                                            touch.cancel(state);
+                                            info!("Switcher: Cancelled pending touch sequences");
+                                        }
+
                                         let windows: Vec<_> = state.space.elements().cloned().collect();
                                         if let Some(window) = windows.get(window_id) {
                                             // DEACTIVATE all windows first
