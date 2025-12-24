@@ -222,6 +222,30 @@ impl Flick {
         let socket = ListeningSocketSource::new_auto().expect("Failed to create socket");
         let socket_name = socket.socket_name().to_os_string();
 
+        // Fix socket permissions so apps running as user can connect
+        // This is needed when the compositor runs as root but apps run as a normal user
+        if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+            let socket_path = std::path::Path::new(&runtime_dir).join(&socket_name);
+            if let Some(username) = crate::spawn_user::get_target_user() {
+                if let Some((uid, gid, _home)) = crate::spawn_user::get_user_info(&username) {
+                    // chown the socket to the real user
+                    unsafe {
+                        let path_cstr = std::ffi::CString::new(socket_path.to_string_lossy().as_bytes())
+                            .expect("Invalid socket path");
+                        if libc::chown(path_cstr.as_ptr(), uid, gid) == 0 {
+                            tracing::info!("Changed socket ownership to {}:{} ({})", uid, gid, username);
+                        } else {
+                            tracing::warn!("Failed to chown socket: {}", std::io::Error::last_os_error());
+                        }
+                        // Also chmod to allow group access
+                        if libc::chmod(path_cstr.as_ptr(), 0o770) == 0 {
+                            tracing::info!("Set socket permissions to 0770");
+                        }
+                    }
+                }
+            }
+        }
+
         loop_handle
             .insert_source(socket, move |client, _, state| {
                 tracing::info!("New Wayland client connected!");

@@ -41,7 +41,7 @@ pub fn should_drop_privileges() -> bool {
 }
 
 /// Get user info (uid, gid, home) for a username
-fn get_user_info(username: &str) -> Option<(u32, u32, String)> {
+pub fn get_user_info(username: &str) -> Option<(u32, u32, String)> {
     let c_username = CString::new(username).ok()?;
 
     unsafe {
