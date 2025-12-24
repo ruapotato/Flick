@@ -2312,7 +2312,7 @@ fn render_frame(
                         let window_pos = state.space.element_location(window)
                             .unwrap_or_default();
 
-                        // Log periodically - check center pixel
+                        // Log periodically - check center pixel and client ID
                         if log_frame && pixels.len() >= 4 {
                             let center_x = width / 2;
                             let center_y = height / 2; // Actual center
@@ -2323,10 +2323,9 @@ fn render_frame(
                                 (0, 0, 0, 0)
                             };
                             let window_type = if window.toplevel().is_some() { "Wayland" } else { "X11" };
-                            info!("{} RENDER frame {}: {}x{} at ({},{}) corner=RGBA({},{},{},{}) center=RGBA({},{},{},{})",
-                                window_type, frame_num, width, height, window_pos.x, window_pos.y,
-                                pixels[0], pixels[1], pixels[2], pixels[3],
-                                cr, cg, cb, ca);
+                            let client_info = wl_surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                            info!("{} RENDER[{}] frame {}: client={} (last rendered = on top)",
+                                window_type, i, frame_num, client_info);
                         }
 
                         // Use positioned rendering to support close gesture animation
