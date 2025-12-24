@@ -57,7 +57,9 @@ The hwcomposer backend uses a C shim library (`hwc-shim/`) that wraps Android's 
 
 **In Progress:**
 - PAM integration for lock screen (currently uses static PIN)
-- Running apps as normal user (currently requires root)
+
+**Security:**
+- **Privilege dropping** - The compositor runs as root for DRM/GPU access, but apps are spawned as the normal user (e.g., `droidian`). Uses `setuid`/`setgid` to drop privileges before exec, with proper `HOME`, `USER`, and `XDG_*` environment variables.
 
 ## Included Apps
 
