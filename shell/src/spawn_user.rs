@@ -82,7 +82,8 @@ pub fn spawn_as_user(cmd: &str, socket_name: &str, text_scale: f64) -> Result<()
     // Set Wayland environment
     command.env("WAYLAND_DISPLAY", socket_name);
     command.env("QT_QPA_PLATFORM", "wayland");
-    command.env("QT_WAYLAND_CLIENT_BUFFER_INTEGRATION", "shm");
+    // Use wayland-egl for buffer integration (shm plugin not available on Droidian)
+    command.env("QT_WAYLAND_CLIENT_BUFFER_INTEGRATION", "wayland-egl");
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
@@ -175,7 +176,8 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     // Set Wayland environment
     command.env("WAYLAND_DISPLAY", socket_name);
     command.env("QT_QPA_PLATFORM", "wayland");
-    command.env("QT_WAYLAND_CLIENT_BUFFER_INTEGRATION", "shm");
+    // Use wayland-egl for buffer integration (shm plugin not available on Droidian)
+    command.env("QT_WAYLAND_CLIENT_BUFFER_INTEGRATION", "wayland-egl");
 
     // Force software rendering so apps use SHM buffers
     // hwcomposer can't handle EGL/DMA-BUF buffers from apps
