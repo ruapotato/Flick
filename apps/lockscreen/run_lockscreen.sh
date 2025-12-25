@@ -33,7 +33,7 @@ export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 export LIBGL_ALWAYS_SOFTWARE=1
 export QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=wayland-egl
 
-# Create a FIFO for verification results
+# Verification result file
 VERIFY_RESULT="$STATE_DIR/verify_result"
 rm -f "$VERIFY_RESULT"
 
@@ -52,8 +52,12 @@ verify_pattern() {
     echo "$RESULT" > "$VERIFY_RESULT"
 }
 
-# Run qmlscene and process its output
-/usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | while IFS= read -r line; do
+# Use a temp file to capture exit code (pipes lose it in subshells)
+EXIT_CODE_FILE=$(mktemp)
+
+# Run qmlscene and process its output using process substitution
+# This keeps the main script in the parent shell so we can get exit code
+while IFS= read -r line; do
     echo "$line" >> "$LOG_FILE"
 
     # Check for pattern verification request
@@ -61,17 +65,20 @@ verify_pattern() {
         PATTERN="${line#*VERIFY_PATTERN:}"
         verify_pattern "$PATTERN"
     fi
+done < <(/usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1; echo $? > "$EXIT_CODE_FILE")
 
-    # Check for unlock signal
-    if [[ "$line" == *"FLICK_UNLOCK_SIGNAL:"* ]]; then
-        SIGNAL_FILE="${line#*FLICK_UNLOCK_SIGNAL:}"
-        echo "Creating unlock signal: $SIGNAL_FILE" >> "$LOG_FILE"
-        touch "$SIGNAL_FILE"
-    fi
-done
+EXIT_CODE=$(cat "$EXIT_CODE_FILE")
+rm -f "$EXIT_CODE_FILE"
 
-EXIT_CODE=${PIPESTATUS[0]}
 echo "QML lockscreen exited with code $EXIT_CODE" >> "$LOG_FILE"
+
+# If qmlscene exited normally (code 0), create unlock signal
+# Qt.quit() exits with 0, crashes/errors exit with non-zero
+if [ "$EXIT_CODE" -eq 0 ]; then
+    SIGNAL_FILE="$STATE_DIR/unlock_signal"
+    echo "Creating unlock signal: $SIGNAL_FILE" >> "$LOG_FILE"
+    touch "$SIGNAL_FILE"
+fi
 
 # Cleanup
 rm -f "$VERIFY_RESULT"
