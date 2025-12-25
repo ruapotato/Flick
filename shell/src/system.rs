@@ -63,6 +63,56 @@ impl Backlight {
     }
 }
 
+/// Haptic feedback controller (vibrator motor)
+pub struct Vibrator {
+    path: String,
+}
+
+impl Vibrator {
+    /// Find and initialize vibrator control
+    pub fn new() -> Option<Self> {
+        // Android/Droidian vibrator path
+        let vibrator_path = "/sys/class/leds/vibrator";
+        if std::path::Path::new(vibrator_path).exists() {
+            return Some(Self {
+                path: vibrator_path.to_string(),
+            });
+        }
+        None
+    }
+
+    /// Trigger a short vibration (duration in milliseconds)
+    pub fn vibrate(&self, duration_ms: u32) {
+        // Set duration
+        let duration_path = format!("{}/duration", self.path);
+        if fs::write(&duration_path, duration_ms.to_string()).is_err() {
+            tracing::warn!("Failed to set vibrator duration");
+            return;
+        }
+
+        // Activate
+        let activate_path = format!("{}/activate", self.path);
+        if fs::write(&activate_path, "1").is_err() {
+            tracing::warn!("Failed to activate vibrator");
+        }
+    }
+
+    /// Short tap feedback (for key presses)
+    pub fn tap(&self) {
+        self.vibrate(15);
+    }
+
+    /// Medium feedback (for actions like closing apps)
+    pub fn click(&self) {
+        self.vibrate(25);
+    }
+
+    /// Strong feedback (for important events)
+    pub fn heavy(&self) {
+        self.vibrate(50);
+    }
+}
+
 /// Battery status
 #[derive(Debug, Clone)]
 pub struct BatteryStatus {
@@ -727,10 +777,16 @@ pub struct SystemStatus {
     pub muted: bool,
     /// When to hide the volume overlay (set when volume buttons pressed)
     pub volume_overlay_until: Option<std::time::Instant>,
+    /// Haptic feedback controller
+    pub vibrator: Option<Vibrator>,
 }
 
 impl SystemStatus {
     pub fn new() -> Self {
+        let vibrator = Vibrator::new();
+        if vibrator.is_some() {
+            tracing::info!("Vibrator found and initialized");
+        }
         Self {
             backlight: Backlight::new(),
             battery: BatteryStatus::read(),
@@ -743,6 +799,28 @@ impl SystemStatus {
             volume: VolumeManager::get_volume(),
             muted: VolumeManager::is_muted(),
             volume_overlay_until: None,
+            vibrator,
+        }
+    }
+
+    /// Trigger haptic feedback (short tap)
+    pub fn haptic_tap(&self) {
+        if let Some(ref vib) = self.vibrator {
+            vib.tap();
+        }
+    }
+
+    /// Trigger haptic feedback (medium click)
+    pub fn haptic_click(&self) {
+        if let Some(ref vib) = self.vibrator {
+            vib.click();
+        }
+    }
+
+    /// Trigger haptic feedback (heavy)
+    pub fn haptic_heavy(&self) {
+        if let Some(ref vib) = self.vibrator {
+            vib.heavy();
         }
     }
 

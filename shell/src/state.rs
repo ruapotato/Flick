@@ -457,6 +457,9 @@ impl Flick {
     pub fn end_close_gesture(&mut self, completed: bool) {
         if let Some(window) = self.close_gesture_window.take() {
             if completed {
+                // Haptic feedback for app close
+                self.system.haptic_heavy();
+
                 // Close the window
                 if let Some(x11) = window.x11_surface() {
                     tracing::info!("Close gesture completed - closing X11 window");
@@ -646,6 +649,8 @@ impl Flick {
             if past_keyboard {
                 // User went past the buffer zone - keyboard is already hidden, go home
                 tracing::info!("Home gesture: past buffer zone (offset={}px) - going home", actual_offset);
+                // Haptic feedback for returning to home
+                self.system.haptic_click();
                 self.shell.set_view(crate::shell::ShellView::Home);
 
                 // Restore window to original position (it will be hidden anyway)
@@ -656,6 +661,9 @@ impl Flick {
                 // Released within keyboard/buffer zone with some movement - snap keyboard into place
                 tracing::info!("Home gesture: within buffer zone (offset={}px) - snapping keyboard into place",
                     actual_offset);
+
+                // Haptic feedback for keyboard opening
+                self.system.haptic_tap();
 
                 // Snap keyboard to fully visible (offset = 0)
                 if let Some(ref slint_ui) = self.shell.slint_ui {

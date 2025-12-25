@@ -385,11 +385,13 @@ fn handle_input_event(
             if evdev_keycode == 115 && pressed {
                 info!("Volume up pressed");
                 state.system.volume_up();
+                state.system.haptic_tap();
                 info!("Volume now: {}%", state.system.volume);
             }
             if evdev_keycode == 114 && pressed {
                 info!("Volume down pressed");
                 state.system.volume_down();
+                state.system.haptic_tap();
                 info!("Volume now: {}%", state.system.volume);
             }
 
@@ -1367,6 +1369,8 @@ fn handle_input_event(
 
                                 // Process keyboard actions (after dropping slint_ui borrow)
                                 for action in actions {
+                                    // Trigger haptic feedback for key presses
+                                    state.system.haptic_tap();
                                     info!("KB ACTION: {:?}", action);
                                     match action {
                                         KeyboardAction::Character(ch) => {
