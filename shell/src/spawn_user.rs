@@ -82,8 +82,14 @@ pub fn spawn_as_user(cmd: &str, socket_name: &str, text_scale: f64) -> Result<()
     // Set Wayland environment
     command.env("WAYLAND_DISPLAY", socket_name);
     command.env("QT_QPA_PLATFORM", "wayland");
-    // Use wayland-egl for buffer integration (shm plugin not available on Droidian)
-    command.env("QT_WAYLAND_CLIENT_BUFFER_INTEGRATION", "wayland-egl");
+
+    // Force software rendering for Qt apps
+    // EGL client buffer integration doesn't work with hwcomposer backend
+    // This ensures video frames get software-composited into SHM buffers
+    command.env("QT_QUICK_BACKEND", "software");
+    command.env("LIBGL_ALWAYS_SOFTWARE", "1");
+    command.env("QSG_RENDER_LOOP", "basic");
+    // Don't set buffer integration - let Qt figure it out with software rendering
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
@@ -176,11 +182,8 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     // Set Wayland environment
     command.env("WAYLAND_DISPLAY", socket_name);
     command.env("QT_QPA_PLATFORM", "wayland");
-    // Use wayland-egl for buffer integration (shm plugin not available on Droidian)
-    command.env("QT_WAYLAND_CLIENT_BUFFER_INTEGRATION", "wayland-egl");
 
-    // Force software rendering so apps use SHM buffers
-    // hwcomposer can't handle EGL/DMA-BUF buffers from apps
+    // Force full software rendering - EGL not available for clients on hwcomposer
     command.env("LIBGL_ALWAYS_SOFTWARE", "1");
     command.env("GDK_BACKEND", "wayland");
 
@@ -195,9 +198,10 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     command.env("GALLIUM_DRIVER", "llvmpipe");
     command.env("__EGL_VENDOR_LIBRARY_FILENAMES", "");
 
-    // Qt software rendering
+    // Qt full software rendering - critical for camera/video
     command.env("QT_QUICK_BACKEND", "software");
     command.env("QT_OPENGL", "software");
+    command.env("QSG_RENDER_LOOP", "basic");
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
