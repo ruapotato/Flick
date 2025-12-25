@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
 import Qt.labs.folderlistmodel 2.15
+import "../shared"
 
 Window {
     id: root
@@ -266,6 +267,7 @@ Window {
                         MouseArea {
                             anchors.fill: parent
                             onClicked: {
+                                Haptic.tap()
                                 stackView.push(fullScreenViewPage, {
                                     currentIndex: index
                                 })
@@ -335,26 +337,24 @@ Window {
                 width: 72
                 height: 72
                 radius: 36
-                color: "#e94560"
+                color: closeBtnMouse.pressed ? "#c23a50" : "#e94560"
                 z: 100
 
                 Text {
                     anchors.centerIn: parent
-                    text: "✕"
+                    text: "X"
                     color: "#ffffff"
-                    font.pixelSize: 32 * textScale
+                    font.pixelSize: 28
                     font.weight: Font.Bold
                 }
 
                 MouseArea {
+                    id: closeBtnMouse
                     anchors.fill: parent
-                    onClicked: Qt.quit()
-                }
-
-                // Subtle shadow effect
-                layer.enabled: true
-                layer.effect: ShaderEffect {
-                    property color shadowColor: "#80000000"
+                    onClicked: {
+                        Haptic.tap()
+                        Qt.quit()
+                    }
                 }
             }
         }
@@ -532,26 +532,24 @@ Window {
                 width: 72
                 height: 72
                 radius: 36
-                color: "#e94560"
+                color: backBtnMouse.pressed ? "#c23a50" : "#e94560"
                 z: 100
 
                 Text {
                     anchors.centerIn: parent
-                    text: "←"
+                    text: "<"
                     color: "#ffffff"
-                    font.pixelSize: 32 * textScale
+                    font.pixelSize: 36
                     font.weight: Font.Bold
                 }
 
                 MouseArea {
+                    id: backBtnMouse
                     anchors.fill: parent
-                    onClicked: stackView.pop()
-                }
-
-                // Subtle shadow effect
-                layer.enabled: true
-                layer.effect: ShaderEffect {
-                    property color shadowColor: "#80000000"
+                    onClicked: {
+                        Haptic.tap()
+                        stackView.pop()
+                    }
                 }
             }
         }
