@@ -333,12 +333,11 @@ impl VolumeManager {
     /// Run pactl command as the audio user
     fn run_pactl(args: &[&str]) -> Option<std::process::Output> {
         if let Some((uid, username)) = Self::get_audio_user() {
-            // Use su to execute as the correct user
-            let pactl_cmd = format!("pactl {}", args.join(" "));
+            // Set XDG_RUNTIME_DIR in the command itself since su doesn't pass env
+            let pactl_cmd = format!("XDG_RUNTIME_DIR=/run/user/{} pactl {}", uid, args.join(" "));
 
             Command::new("su")
-                .args(["-", &username, "-c", &pactl_cmd])
-                .env("XDG_RUNTIME_DIR", format!("/run/user/{}", uid))
+                .args([&username, "-c", &pactl_cmd])
                 .output()
                 .ok()
         } else {
@@ -353,12 +352,12 @@ impl VolumeManager {
     /// Run pactl command as the audio user (fire and forget)
     fn run_pactl_async(args: &[&str]) {
         if let Some((uid, username)) = Self::get_audio_user() {
-            let pactl_cmd = format!("pactl {}", args.join(" "));
+            // Set XDG_RUNTIME_DIR in the command itself since su doesn't pass env
+            let pactl_cmd = format!("XDG_RUNTIME_DIR=/run/user/{} pactl {}", uid, args.join(" "));
 
             tracing::info!("Running pactl as user {}: {:?}", username, args);
             let _ = Command::new("su")
-                .args(["-", &username, "-c", &pactl_cmd])
-                .env("XDG_RUNTIME_DIR", format!("/run/user/{}", uid))
+                .args([&username, "-c", &pactl_cmd])
                 .spawn();
         } else {
             tracing::info!("Running pactl directly: {:?}", args);
