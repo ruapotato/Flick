@@ -580,8 +580,11 @@ fn handle_input_event(
             };
 
             // Forward touch to Wayland client if connected (but not if touching keyboard)
-            // Never forward to Wayland when lock screen is active - Slint handles lock screen touch
-            if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
+            // Forward to QML lock screen when on lock screen, or to apps when not locked
+            let forward_to_wayland = has_wayland_window && !touch_on_keyboard &&
+                (shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active ||
+                 shell_view == crate::shell::ShellView::LockScreen);
+            if forward_to_wayland {
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
@@ -683,12 +686,6 @@ fn handle_input_event(
                         }
 
                         // Forward to Slint for visual feedback
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
-                        }
-                    }
-                    crate::shell::ShellView::LockScreen => {
-                        // Forward to Slint for lock screen interaction
                         if let Some(ref slint_ui) = state.shell.slint_ui {
                             slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
                         }
@@ -813,8 +810,11 @@ fn handle_input_event(
             };
 
             // Forward touch to Wayland client if connected (but not if touching keyboard)
-            // Never forward to Wayland when lock screen is active - Slint handles lock screen touch
-            if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
+            // Forward to QML lock screen when on lock screen, or to apps when not locked
+            let forward_to_wayland = has_wayland_window && !touch_on_keyboard &&
+                (shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active ||
+                 shell_view == crate::shell::ShellView::LockScreen);
+            if forward_to_wayland {
                 if let Some(touch) = state.seat.get_touch() {
                     // Use space topmost for touch motion - same source as touch down
                     let focus = state.space.elements().last()
@@ -849,9 +849,6 @@ fn handle_input_event(
                         if let Some(ref slint_ui) = state.shell.slint_ui {
                             slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
                         }
-                    }
-                    crate::shell::ShellView::LockScreen => {
-                        // Lock screen is QML-based, touch events are forwarded to QML app
                     }
                     crate::shell::ShellView::QuickSettings => {
                         if let Some(ref slint_ui) = state.shell.slint_ui {
@@ -1068,8 +1065,11 @@ fn handle_input_event(
             };
 
             // Forward touch to Wayland client if connected (but not if touching keyboard)
-            // Never forward to Wayland when lock screen is active - Slint handles lock screen touch
-            if has_wayland_window && !touch_on_keyboard && shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
+            // Forward to QML lock screen when on lock screen, or to apps when not locked
+            let forward_to_wayland = has_wayland_window && !touch_on_keyboard &&
+                (shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active ||
+                 shell_view == crate::shell::ShellView::LockScreen);
+            if forward_to_wayland {
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
@@ -1082,6 +1082,11 @@ fn handle_input_event(
                         },
                     );
                     touch.frame(state);
+                }
+
+                // Reset lock screen activity on touch
+                if shell_view == crate::shell::ShellView::LockScreen {
+                    state.shell.reset_lock_screen_activity();
                 }
             } else {
                 // Forward to Slint UI and handle app launching
@@ -1109,11 +1114,6 @@ fn handle_input_event(
                             // Switch to App view to show the window
                             state.shell.view = crate::shell::ShellView::App;
                         }
-                    }
-                    crate::shell::ShellView::LockScreen => {
-                        // Lock screen is QML-based, touch events are forwarded to QML app
-                        // Reset activity on any touch
-                        state.shell.reset_lock_screen_activity();
                     }
                     crate::shell::ShellView::QuickSettings => {
                         if let Some(pos) = last_pos {
