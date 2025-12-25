@@ -214,6 +214,11 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     command.env("GST_VAAPI_ALL_DRIVERS", "1"); // Force software decoders
     command.env("LIBVA_DRIVER_NAME", ""); // Disable VA-API
 
+    // Force Qt Multimedia to not use GL-based video output
+    command.env("QT_GSTREAMER_USE_PLAYBIN_VOLUME", "1");
+    // Try to force a software video sink
+    command.env("GST_VIDEO_CONVERT_USE_ARGB", "1");
+
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
     command.env("QT_FONT_DPI", format!("{}", (96.0 * text_scale) as i32));

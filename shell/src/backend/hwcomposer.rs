@@ -2680,8 +2680,8 @@ fn render_frame(
                             };
                             let window_type = if window.toplevel().is_some() { "Wayland" } else { "X11" };
                             let client_info = wl_surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
-                            info!("{} RENDER[{}] frame {}: client={} (last rendered = on top)",
-                                window_type, i, frame_num, client_info);
+                            info!("{} RENDER[{}] frame {}: {}x{} center_pixel=RGBA({},{},{},{}) client={}",
+                                window_type, i, frame_num, width, height, cr, cg, cb, ca, client_info);
                         }
 
                         // Use positioned rendering to support close gesture animation
