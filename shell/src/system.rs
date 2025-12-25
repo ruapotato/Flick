@@ -287,8 +287,8 @@ impl AirplaneMode {
 pub struct VolumeManager;
 
 impl VolumeManager {
-    /// Find the user ID that owns PulseAudio/PipeWire (from /run/user/*)
-    fn get_audio_user() -> Option<u32> {
+    /// Find the username that owns PulseAudio/PipeWire (from /run/user/*)
+    fn get_audio_user() -> Option<(u32, String)> {
         // Find first user runtime directory
         if let Ok(entries) = std::fs::read_dir("/run/user") {
             for entry in entries.flatten() {
@@ -299,8 +299,11 @@ impl VolumeManager {
                         let pipewire_path = format!("/run/user/{}/pipewire-0", uid);
                         if std::path::Path::new(&pulse_path).exists()
                             || std::path::Path::new(&pipewire_path).exists() {
-                            tracing::debug!("Found audio user: uid={}", uid);
-                            return Some(uid);
+                            // Look up username from uid via /etc/passwd
+                            if let Some(username) = Self::uid_to_username(uid) {
+                                tracing::debug!("Found audio user: uid={} username={}", uid, username);
+                                return Some((uid, username));
+                            }
                         }
                     }
                 }
@@ -310,16 +313,31 @@ impl VolumeManager {
         None
     }
 
+    /// Look up username from uid via /etc/passwd
+    fn uid_to_username(uid: u32) -> Option<String> {
+        if let Ok(contents) = std::fs::read_to_string("/etc/passwd") {
+            for line in contents.lines() {
+                let parts: Vec<&str> = line.split(':').collect();
+                if parts.len() >= 3 {
+                    if let Ok(file_uid) = parts[2].parse::<u32>() {
+                        if file_uid == uid {
+                            return Some(parts[0].to_string());
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// Run pactl command as the audio user
     fn run_pactl(args: &[&str]) -> Option<std::process::Output> {
-        if let Some(uid) = Self::get_audio_user() {
-            // Use runuser to execute as the correct user
-            let uid_arg = format!("#{}", uid);
-            let mut cmd_args: Vec<&str> = vec!["-u", &uid_arg, "--", "pactl"];
-            cmd_args.extend(args.iter().copied());
+        if let Some((uid, username)) = Self::get_audio_user() {
+            // Use su to execute as the correct user
+            let pactl_cmd = format!("pactl {}", args.join(" "));
 
-            Command::new("runuser")
-                .args(&cmd_args)
+            Command::new("su")
+                .args(["-", &username, "-c", &pactl_cmd])
                 .env("XDG_RUNTIME_DIR", format!("/run/user/{}", uid))
                 .output()
                 .ok()
@@ -334,13 +352,12 @@ impl VolumeManager {
 
     /// Run pactl command as the audio user (fire and forget)
     fn run_pactl_async(args: &[&str]) {
-        if let Some(uid) = Self::get_audio_user() {
-            let mut cmd_args = vec!["-u".to_string(), format!("#{}", uid), "--".to_string(), "pactl".to_string()];
-            cmd_args.extend(args.iter().map(|s| s.to_string()));
+        if let Some((uid, username)) = Self::get_audio_user() {
+            let pactl_cmd = format!("pactl {}", args.join(" "));
 
-            tracing::info!("Running pactl as user {}: {:?}", uid, args);
-            let _ = Command::new("runuser")
-                .args(&cmd_args)
+            tracing::info!("Running pactl as user {}: {:?}", username, args);
+            let _ = Command::new("su")
+                .args(["-", &username, "-c", &pactl_cmd])
                 .env("XDG_RUNTIME_DIR", format!("/run/user/{}", uid))
                 .spawn();
         } else {
