@@ -118,7 +118,7 @@ Item {
         anchors.topMargin: 40
         anchors.horizontalCenter: parent.horizontalCenter
         opacity: showingUnlock ? 0 : (1 - swipeProgress * 1.5)
-        visible: opacity > 0
+        visible: opacity > 0 && hasMedia
         stateDir: lockScreen.stateDir
 
         Behavior on opacity { NumberAnimation { duration: 150 } }
