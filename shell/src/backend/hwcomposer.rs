@@ -1649,15 +1649,10 @@ pub fn run() -> Result<()> {
             info!("=== UNLOCK SIGNAL DETECTED (hwcomposer) ===");
             info!("Before unlock: view={:?}, lock_screen_active={}", state.shell.view, state.shell.lock_screen_active);
 
-            // Close all windows (the QML lock screen) from the space
-            let windows_to_close: Vec<_> = state.space.elements().cloned().collect();
-            info!("Closing {} windows from space after unlock", windows_to_close.len());
-            for window in windows_to_close {
-                state.space.unmap_elem(&window);
-                if let Some(toplevel) = window.toplevel() {
-                    toplevel.send_close();
-                }
-            }
+            // Don't close windows here - the lock screen app closes itself via Qt.quit()
+            // and user app windows should remain open
+            let window_count = state.space.elements().count();
+            info!("Unlock: {} windows in space (preserving user apps)", window_count);
 
             state.shell.unlock();
             info!("After unlock: view={:?}, lock_screen_active={}", state.shell.view, state.shell.lock_screen_active);
