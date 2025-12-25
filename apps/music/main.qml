@@ -327,19 +327,44 @@ Window {
         autoPlay: false
 
         onStatusChanged: {
+            console.log("Music: Audio status changed to: " + status)
             if (status === Audio.EndOfMedia) {
-                nextTrack()
+                console.log("Music: End of media detected, queuing next track")
+                nextTrackTimer.start()
             }
         }
 
         onPlaybackStateChanged: {
             isPlaying = (playbackState === Audio.PlayingState)
+            console.log("Music: Playback state changed, isPlaying=" + isPlaying)
         }
 
         onPositionChanged: {
             if (duration > 0) {
                 progressBar.value = position / duration
             }
+        }
+    }
+
+    // Timer to play next track (avoids issues with immediate source change)
+    Timer {
+        id: nextTrackTimer
+        interval: 100
+        repeat: false
+        onTriggered: {
+            console.log("Music: Playing next track automatically")
+            playNextTrackAuto()
+        }
+    }
+
+    // Auto-advance without haptic feedback
+    function playNextTrackAuto() {
+        if (musicFiles.length > 0 && musicFiles[0].path !== "") {
+            var nextIndex = (currentTrackIndex + 1) % musicFiles.length
+            currentTrackIndex = nextIndex
+            audioPlayer.source = "file://" + musicFiles[nextIndex].path
+            audioPlayer.play()
+            console.log("Music: Now playing track " + nextIndex + ": " + musicFiles[nextIndex].title)
         }
     }
 
