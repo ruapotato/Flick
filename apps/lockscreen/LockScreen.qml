@@ -117,7 +117,8 @@ Item {
         anchors.top: clockContainer.bottom
         anchors.topMargin: 40
         anchors.horizontalCenter: parent.horizontalCenter
-        opacity: 1 - swipeProgress * 1.5
+        opacity: showingUnlock ? 0 : (1 - swipeProgress * 1.5)
+        visible: opacity > 0
         stateDir: lockScreen.stateDir
 
         Behavior on opacity { NumberAnimation { duration: 150 } }
