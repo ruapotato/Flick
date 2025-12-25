@@ -14,13 +14,58 @@ Window {
     color: "#0a0a0f"
 
     property string notesDir: "/home/droidian/.local/state/flick/notes"
-    property real textScale: 1.0
     property bool editMode: false
     property string currentNoteFile: ""
     property string currentNoteContent: ""
+    property string searchQuery: ""
 
     Component.onCompleted: {
         console.log("NOTES_INIT:" + notesDir)
+        loadNotes()
+    }
+
+    // Notes model for search/filtering
+    ListModel { id: notesModel }
+
+    function loadNotes() {
+        notesModel.clear()
+        // Request shell to scan notes
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + notesDir, false)
+        xhr.send()
+
+        // Load each note from folder model after it updates
+        loadNotesTimer.start()
+    }
+
+    Timer {
+        id: loadNotesTimer
+        interval: 100
+        onTriggered: {
+            notesModel.clear()
+            for (var i = 0; i < folderModel.count; i++) {
+                var fileUrl = folderModel.get(i, "fileURL")
+                var fileName = folderModel.get(i, "fileName")
+                var xhr = new XMLHttpRequest()
+                xhr.open("GET", fileUrl, false)
+                xhr.send()
+                var content = xhr.responseText
+                notesModel.append({
+                    fileName: fileName,
+                    fileURL: fileUrl,
+                    content: content,
+                    title: getNoteTitle(content),
+                    preview: getNotePreview(content)
+                })
+            }
+        }
+    }
+
+    function matchesSearch(content, title) {
+        if (searchQuery === "") return true
+        var query = searchQuery.toLowerCase()
+        return content.toLowerCase().indexOf(query) !== -1 ||
+               title.toLowerCase().indexOf(query) !== -1
     }
 
     function saveNote(filename, content) {
@@ -84,26 +129,96 @@ Window {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 160
+            height: 200
             color: "#1a1a2e"
 
             Column {
-                anchors.centerIn: parent
-                spacing: 8
+                anchors.fill: parent
+                anchors.margins: 16
+                anchors.topMargin: 24
+                spacing: 16
 
-                Text {
+                // Title row
+                Row {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Notes"
-                    font.pixelSize: 36
-                    font.weight: Font.Medium
-                    color: "#ffffff"
+                    spacing: 12
+
+                    Text {
+                        text: "Notes"
+                        font.pixelSize: 36
+                        font.weight: Font.Medium
+                        color: "#ffffff"
+                    }
+
+                    Text {
+                        anchors.baseline: parent.children[0].baseline
+                        text: "(" + notesModel.count + ")"
+                        font.pixelSize: 18
+                        color: "#888899"
+                    }
                 }
 
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: folderModel.count + " notes"
-                    font.pixelSize: 14
-                    color: "#888899"
+                // Search bar
+                Rectangle {
+                    width: parent.width
+                    height: 56
+                    radius: 28
+                    color: "#15151f"
+                    border.color: searchInput.activeFocus ? "#e94560" : "#333344"
+                    border.width: 1
+
+                    Row {
+                        anchors.fill: parent
+                        anchors.leftMargin: 20
+                        anchors.rightMargin: 20
+                        spacing: 12
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "🔍"
+                            font.pixelSize: 20
+                            opacity: 0.6
+                        }
+
+                        TextInput {
+                            id: searchInput
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 80
+                            text: searchQuery
+                            font.pixelSize: 18
+                            color: "#ffffff"
+                            clip: true
+
+                            onTextChanged: searchQuery = text
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Search notes..."
+                                font.pixelSize: 18
+                                color: "#555566"
+                                visible: parent.text === "" && !parent.activeFocus
+                            }
+                        }
+
+                        // Clear button
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "✕"
+                            font.pixelSize: 18
+                            color: "#888899"
+                            visible: searchQuery !== ""
+
+                            MouseArea {
+                                anchors.fill: parent
+                                anchors.margins: -10
+                                onClicked: {
+                                    Haptic.tap()
+                                    searchQuery = ""
+                                    searchInput.text = ""
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -120,24 +235,18 @@ Window {
             spacing: 12
             clip: true
 
-            model: folderModel
+            model: notesModel
 
             delegate: Rectangle {
                 id: noteItem
                 width: notesList.width
-                height: 100
+                height: matchesSearch(model.content, model.title) ? 100 : 0
+                visible: matchesSearch(model.content, model.title)
                 color: noteMouse.pressed ? "#252538" : "#15151f"
                 radius: 12
+                clip: true
 
-                property string noteContent: ""
-
-                Component.onCompleted: {
-                    // Load content
-                    var xhr = new XMLHttpRequest()
-                    xhr.open("GET", model.fileURL, false)
-                    xhr.send()
-                    noteContent = xhr.responseText
-                }
+                Behavior on height { NumberAnimation { duration: 150 } }
 
                 Column {
                     anchors.fill: parent
@@ -146,7 +255,7 @@ Window {
 
                     Text {
                         width: parent.width
-                        text: getNoteTitle(noteItem.noteContent)
+                        text: model.title
                         font.pixelSize: 18
                         font.weight: Font.Medium
                         color: "#ffffff"
@@ -155,7 +264,7 @@ Window {
 
                     Text {
                         width: parent.width
-                        text: getNotePreview(noteItem.noteContent)
+                        text: model.preview
                         font.pixelSize: 14
                         color: "#888899"
                         elide: Text.ElideRight
@@ -168,7 +277,7 @@ Window {
                     id: noteMouse
                     anchors.fill: parent
                     pressAndHoldInterval: 500
-                    onClicked: openNote(model.fileName, noteItem.noteContent)
+                    onClicked: openNote(model.fileName, model.content)
                     onPressAndHold: {
                         Haptic.heavy()
                         deleteDialog.noteToDelete = model.fileName
@@ -180,11 +289,19 @@ Window {
             // Empty state
             Text {
                 anchors.centerIn: parent
-                text: "No notes yet\n\nTap + to create one"
+                text: searchQuery !== "" ? "No matching notes" : "No notes yet\n\nTap + to create one"
                 font.pixelSize: 18
                 color: "#555566"
                 horizontalAlignment: Text.AlignHCenter
-                visible: folderModel.count === 0
+                visible: notesModel.count === 0 || (searchQuery !== "" && !hasVisibleNotes())
+            }
+
+            function hasVisibleNotes() {
+                for (var i = 0; i < notesModel.count; i++) {
+                    var note = notesModel.get(i)
+                    if (matchesSearch(note.content, note.title)) return true
+                }
+                return false
             }
         }
 
@@ -363,8 +480,11 @@ Window {
                     editMode = false
                     currentNoteFile = ""
                     currentNoteContent = ""
+                    searchQuery = ""
+                    searchInput.text = ""
                     folderModel.folder = ""
                     folderModel.folder = "file://" + notesDir
+                    loadNotesTimer.start()
                 }
             }
         }
@@ -401,8 +521,11 @@ Window {
                     editMode = false
                     currentNoteFile = ""
                     currentNoteContent = ""
+                    searchQuery = ""
+                    searchInput.text = ""
                     folderModel.folder = ""
                     folderModel.folder = "file://" + notesDir
+                    loadNotesTimer.start()
                 }
             }
         }
@@ -498,6 +621,7 @@ Window {
                                 deleteDialog.visible = false
                                 folderModel.folder = ""
                                 folderModel.folder = "file://" + notesDir
+                                loadNotesTimer.start()
                             }
                         }
                     }
