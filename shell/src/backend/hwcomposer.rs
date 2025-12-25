@@ -518,6 +518,7 @@ fn handle_input_event(
                         if now.duration_since(last_tap).as_millis() < DOUBLE_TAP_MS {
                             // Double tap detected - wake screen
                             info!("Double-tap detected, waking lock screen");
+                            state.system.haptic_click();
                             state.shell.wake_lock_screen();
                             state.shell.lock_screen_last_tap = None;
                         } else {
@@ -1756,6 +1757,9 @@ pub fn run() -> Result<()> {
             // Vibrate for incoming call (continuous pattern)
             state.system.haptic_heavy();
         }
+
+        // Check for haptic requests from apps (via /tmp/flick_haptic)
+        state.system.check_app_haptic();
 
         // Update Slint UI with phone status
         if let Some(ref slint_ui) = state.shell.slint_ui {

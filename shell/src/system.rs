@@ -1019,6 +1019,32 @@ impl SystemStatus {
         // Haptic feedback
         self.haptic_heavy();
     }
+
+    /// Check for haptic feedback requests from apps (via /tmp/flick_haptic)
+    /// Apps can write "tap", "click", or "heavy" to request haptic feedback
+    pub fn check_app_haptic(&mut self) {
+        const HAPTIC_FILE: &str = "/tmp/flick_haptic";
+        if let Ok(content) = fs::read_to_string(HAPTIC_FILE) {
+            let cmd = content.trim();
+            if !cmd.is_empty() {
+                match cmd {
+                    "tap" => self.haptic_tap(),
+                    "click" => self.haptic_click(),
+                    "heavy" => self.haptic_heavy(),
+                    _ => {
+                        // Try to parse as duration in ms
+                        if let Ok(ms) = cmd.parse::<u32>() {
+                            if let Some(ref vib) = self.vibrator {
+                                vib.vibrate(ms.min(100)); // Cap at 100ms for safety
+                            }
+                        }
+                    }
+                }
+                // Clear the file after processing
+                let _ = fs::write(HAPTIC_FILE, "");
+            }
+        }
+    }
 }
 
 impl Default for SystemStatus {

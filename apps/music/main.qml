@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
 import QtMultimedia 5.15
+import "../shared"
 
 Window {
     id: root
@@ -116,6 +117,7 @@ Window {
     }
 
     function togglePlayPause() {
+        Haptic.tap()
         if (currentTrackIndex < 0 && musicFiles.length > 0) {
             playTrack(0)
         } else if (isPlaying) {
@@ -126,6 +128,7 @@ Window {
     }
 
     function nextTrack() {
+        Haptic.tap()
         if (musicFiles.length > 0) {
             var nextIndex = (currentTrackIndex + 1) % musicFiles.length
             playTrack(nextIndex)
@@ -133,6 +136,7 @@ Window {
     }
 
     function prevTrack() {
+        Haptic.tap()
         if (musicFiles.length > 0) {
             var prevIndex = currentTrackIndex - 1
             if (prevIndex < 0) prevIndex = musicFiles.length - 1

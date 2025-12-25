@@ -3,6 +3,7 @@ import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
 import QtMultimedia 5.15
 import Qt.labs.folderlistmodel 2.15
+import "../shared"
 
 Window {
     id: root
@@ -1263,7 +1264,10 @@ Window {
                     MouseArea {
                         id: skipBackMouse
                         anchors.fill: parent
-                        onClicked: audioPlayer.seek(Math.max(0, audioPlayer.position - 30000))
+                        onClicked: {
+                            Haptic.tap()
+                            audioPlayer.seek(Math.max(0, audioPlayer.position - 30000))
+                        }
                     }
                 }
 
@@ -1287,6 +1291,7 @@ Window {
                         id: playPauseMouse
                         anchors.fill: parent
                         onClicked: {
+                            Haptic.tap()
                             if (audioPlayer.playbackState === Audio.PlayingState) {
                                 audioPlayer.pause()
                             } else {
@@ -1321,7 +1326,10 @@ Window {
                     MouseArea {
                         id: skipForwardMouse
                         anchors.fill: parent
-                        onClicked: audioPlayer.seek(Math.min(audioPlayer.duration, audioPlayer.position + 30000))
+                        onClicked: {
+                            Haptic.tap()
+                            audioPlayer.seek(Math.min(audioPlayer.duration, audioPlayer.position + 30000))
+                        }
                     }
                 }
             }
