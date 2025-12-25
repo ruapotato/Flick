@@ -214,10 +214,11 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     command.env("GST_VAAPI_ALL_DRIVERS", "1"); // Force software decoders
     command.env("LIBVA_DRIVER_NAME", ""); // Disable VA-API
 
-    // Force Qt Multimedia to not use GL-based video output
-    command.env("QT_GSTREAMER_USE_PLAYBIN_VOLUME", "1");
-    // Try to force a software video sink
-    command.env("GST_VIDEO_CONVERT_USE_ARGB", "1");
+    // Force GStreamer to use waylandsink which creates subsurfaces
+    // This bypasses Qt's shader-based video output
+    command.env("GST_PLUGIN_FEATURE_RANK", "waylandsink:MAX,glimagesink:0,gtkglsink:0");
+    // Tell Qt to prefer GStreamer's video output
+    command.env("QT_GSTREAMER_VIDEOSINK", "waylandsink");
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
