@@ -83,15 +83,9 @@ pub fn spawn_as_user(cmd: &str, socket_name: &str, text_scale: f64) -> Result<()
     command.env("WAYLAND_DISPLAY", socket_name);
     command.env("QT_QPA_PLATFORM", "wayland");
 
-    // Force software rendering for Qt apps
-    // EGL client buffer integration doesn't work with hwcomposer backend
-    // This ensures video frames get software-composited into SHM buffers
-    command.env("QT_QUICK_BACKEND", "software");
-    command.env("LIBGL_ALWAYS_SOFTWARE", "1");
+    // Allow EGL for buffer sharing (android_wlegl, dmabuf)
+    // Required for camera preview and video playback
     command.env("QSG_RENDER_LOOP", "basic");
-    command.env("QT_OPENGL", "software");
-
-    // NOTE: Camera preview is a known limitation on hwcomposer - see spawn_as_user_hwcomposer
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
@@ -185,8 +179,7 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     command.env("WAYLAND_DISPLAY", socket_name);
     command.env("QT_QPA_PLATFORM", "wayland");
 
-    // Force full software rendering - EGL not available for clients on hwcomposer
-    command.env("LIBGL_ALWAYS_SOFTWARE", "1");
+    // GDK/GTK settings
     command.env("GDK_BACKEND", "wayland");
 
     // GTK4 specific - force Cairo rendering instead of GPU
@@ -196,19 +189,10 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     // Suppress dconf warnings (no D-Bus session in our environment)
     command.env("GSETTINGS_BACKEND", "memory");
 
-    // Disable hardware acceleration hints
-    command.env("GALLIUM_DRIVER", "llvmpipe");
-    command.env("__EGL_VENDOR_LIBRARY_FILENAMES", "");
-
-    // Qt full software rendering - critical for camera/video
-    command.env("QT_QUICK_BACKEND", "software");
-    command.env("QT_OPENGL", "software");
+    // Allow EGL for buffer sharing (android_wlegl, dmabuf)
+    // This is required for camera preview and video playback
+    // UI rendering still uses software, but video frames are shared via EGL
     command.env("QSG_RENDER_LOOP", "basic");
-
-    // NOTE: Camera preview doesn't work on hwcomposer backend.
-    // This is a known limitation - Qt's VideoOutput requires EGL buffer sharing
-    // (wl_drm or linux-dmabuf protocol) which hwcomposer doesn't support.
-    // Camera photos still work, just not the live preview.
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
