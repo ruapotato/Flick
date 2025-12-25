@@ -1761,6 +1761,25 @@ pub fn run() -> Result<()> {
         // Check for haptic requests from apps (via /tmp/flick_haptic)
         state.system.check_app_haptic();
 
+        // Check for music scan requests from apps (via /tmp/flick_music_scan_request)
+        if let Ok(path) = std::fs::read_to_string("/tmp/flick_music_scan_request") {
+            let path = path.trim();
+            if !path.is_empty() {
+                // Scan the directory and write file listing
+                if let Ok(entries) = std::fs::read_dir(path) {
+                    let files: Vec<String> = entries
+                        .filter_map(|e| e.ok())
+                        .filter_map(|e| e.file_name().into_string().ok())
+                        .collect();
+                    let listing = files.join("\n");
+                    let _ = std::fs::write("/tmp/flick_music_files", listing);
+                    tracing::info!("Music scan: found {} files in {}", files.len(), path);
+                }
+                // Clear the request
+                let _ = std::fs::write("/tmp/flick_music_scan_request", "");
+            }
+        }
+
         // Update Slint UI with phone status
         if let Some(ref slint_ui) = state.shell.slint_ui {
             let has_incoming = state.system.has_incoming_call();

@@ -19,9 +19,15 @@ Window {
     property int currentTrackIndex: -1
     property var musicFiles: []
     property bool isPlaying: false
+    property bool isScanning: false
+
+    // Music folders to scan
+    property var musicPaths: ["/home/droidian/Music"]
+    property string cacheFile: "/home/droidian/.local/state/flick/music_cache.json"
 
     Component.onCompleted: {
         loadConfig()
+        loadCache()
         scanMusicFolders()
     }
 
@@ -35,11 +41,10 @@ Window {
                 var config = JSON.parse(xhr.responseText)
                 if (config.text_scale !== undefined) {
                     textScale = config.text_scale
-                    console.log("Loaded text scale: " + textScale)
                 }
             }
         } catch (e) {
-            console.log("Using default text scale: " + textScale)
+            console.log("Using default text scale")
         }
     }
 
@@ -51,34 +56,264 @@ Window {
         onTriggered: loadConfig()
     }
 
+    function loadCache() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + cacheFile, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var cached = JSON.parse(xhr.responseText)
+                if (cached.tracks && cached.tracks.length > 0) {
+                    musicFiles = cached.tracks
+                    updateListModel()
+                    console.log("Loaded " + musicFiles.length + " tracks from cache")
+                }
+            }
+        } catch (e) {
+            console.log("No cache found, will scan")
+        }
+    }
+
+    function saveCache() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file://" + cacheFile, false)
+        try {
+            var data = JSON.stringify({ tracks: musicFiles })
+            xhr.send(data)
+            console.log("Saved " + musicFiles.length + " tracks to cache")
+        } catch (e) {
+            console.log("Failed to save cache: " + e)
+        }
+    }
+
     function scanMusicFolders() {
-        musicFiles = []
-        var folders = ["/home/droidian/Music", Qt.resolvedUrl("~/Music").toString().replace("file://", "")]
-        var extensions = [".mp3", ".flac", ".ogg", ".m4a"]
+        isScanning = true
+        console.log("Scanning music folders...")
 
-        for (var i = 0; i < folders.length; i++) {
-            var folder = folders[i]
-            var command = "find '" + folder + "' -type f 2>/dev/null | grep -E '\\.(mp3|flac|ogg|m4a)$'"
+        var foundTracks = []
+        var extensions = [".mp3", ".flac", ".ogg", ".m4a", ".wav", ".opus"]
 
-            // Execute command using QProcess would be better, but for QML we'll use a simpler approach
-            // This is a demonstration - in production you'd want to use FolderListModel or C++ backend
-            console.log("Would scan: " + folder)
+        for (var p = 0; p < musicPaths.length; p++) {
+            var basePath = musicPaths[p]
+            console.log("Scanning: " + basePath)
+
+            // Read directory listing using XMLHttpRequest
+            var files = listDirectory(basePath)
+
+            for (var i = 0; i < files.length; i++) {
+                var file = files[i]
+                var lowerFile = file.toLowerCase()
+
+                // Check if it's an audio file
+                for (var e = 0; e < extensions.length; e++) {
+                    if (lowerFile.endsWith(extensions[e])) {
+                        var title = file
+                        // Remove extension for display
+                        for (var ee = 0; ee < extensions.length; ee++) {
+                            if (lowerFile.endsWith(extensions[ee])) {
+                                title = file.substring(0, file.length - extensions[ee].length)
+                                break
+                            }
+                        }
+
+                        foundTracks.push({
+                            title: title,
+                            artist: "Unknown Artist",
+                            path: basePath + "/" + file,
+                            albumArt: ""
+                        })
+                        break
+                    }
+                }
+            }
         }
 
-        // For demonstration, add some placeholder entries
-        // In a real implementation, you'd use FolderListModel or a C++ backend
-        musicFiles = [
-            {
-                title: "No music files found",
-                artist: "Please add music to ~/Music",
+        // Sort by title
+        foundTracks.sort(function(a, b) {
+            return a.title.localeCompare(b.title)
+        })
+
+        if (foundTracks.length > 0) {
+            musicFiles = foundTracks
+            saveCache()
+        } else if (musicFiles.length === 0) {
+            // No cached data and no files found
+            musicFiles = [{
+                title: "No music found",
+                artist: "Add music to ~/Music",
                 path: "",
                 albumArt: ""
-            }
-        ]
+            }]
+        }
 
+        updateListModel()
+        isScanning = false
+        console.log("Found " + foundTracks.length + " tracks")
+    }
+
+    function listDirectory(path) {
+        var files = []
+        var xhr = new XMLHttpRequest()
+
+        // Try to read the directory by fetching a listing
+        // This is a workaround - we'll use the file:// protocol to read files
+        // First, let's create a listing file
+        var listFile = "/tmp/flick_music_list_" + Date.now() + ".txt"
+
+        // Execute find command via a temp script approach
+        var cmdXhr = new XMLHttpRequest()
+        cmdXhr.open("PUT", "file:///tmp/flick_music_scan.sh", false)
+        try {
+            var script = '#!/bin/bash\nls -1 "' + path + '" 2>/dev/null > "' + listFile + '"'
+            cmdXhr.send(script)
+        } catch (e) {
+            console.log("Failed to write scan script")
+            return files
+        }
+
+        // Execute the script
+        var execXhr = new XMLHttpRequest()
+        execXhr.open("PUT", "file:///tmp/flick_music_exec", false)
+        try {
+            execXhr.send("exec")
+        } catch (e) {}
+
+        // Small delay for command to execute (use a synchronous approach)
+        var startTime = Date.now()
+        while (Date.now() - startTime < 100) {
+            // Busy wait
+        }
+
+        // Actually, let's just try to enumerate common filenames or use a different approach
+        // QML XMLHttpRequest can't execute commands, so let's scan by trying to access files directly
+
+        // Alternative: Try reading common files or use a pre-generated listing
+        // For now, let's try a direct file enumeration approach using Qt.resolvedUrl
+
+        // Try reading file listing from a generated temp file approach
+        // We'll rely on the shell creating a listing for us periodically
+
+        // Simpler approach: scan by reading /tmp/flick_music_files if it exists
+        var listingXhr = new XMLHttpRequest()
+        listingXhr.open("GET", "file:///tmp/flick_music_files", false)
+        try {
+            listingXhr.send()
+            if (listingXhr.status === 200 || listingXhr.status === 0) {
+                var listing = listingXhr.responseText.trim()
+                if (listing.length > 0) {
+                    files = listing.split("\n")
+                }
+            }
+        } catch (e) {}
+
+        // If no listing file, try to generate one
+        if (files.length === 0) {
+            // Request scan from shell by writing a trigger file
+            var triggerXhr = new XMLHttpRequest()
+            triggerXhr.open("PUT", "file:///tmp/flick_music_scan_request", false)
+            try {
+                triggerXhr.send(path)
+            } catch (e) {}
+
+            // Wait a bit and try again
+            var waitStart = Date.now()
+            while (Date.now() - waitStart < 500) {}
+
+            // Try reading the listing again
+            var retryXhr = new XMLHttpRequest()
+            retryXhr.open("GET", "file:///tmp/flick_music_files", false)
+            try {
+                retryXhr.send()
+                if (retryXhr.status === 200 || retryXhr.status === 0) {
+                    var retryListing = retryXhr.responseText.trim()
+                    if (retryListing.length > 0) {
+                        files = retryListing.split("\n")
+                    }
+                }
+            } catch (e) {}
+        }
+
+        return files
+    }
+
+    function updateListModel() {
         musicListModel.clear()
         for (var j = 0; j < musicFiles.length; j++) {
             musicListModel.append(musicFiles[j])
+        }
+    }
+
+    // Rescan timer - check for scan requests from shell
+    Timer {
+        interval: 2000
+        running: true
+        repeat: true
+        onTriggered: {
+            // Check if shell has updated the file listing
+            var xhr = new XMLHttpRequest()
+            xhr.open("GET", "file:///tmp/flick_music_files", false)
+            try {
+                xhr.send()
+                if (xhr.status === 200 || xhr.status === 0) {
+                    var content = xhr.responseText.trim()
+                    if (content.length > 0 && content !== "scanned") {
+                        var files = content.split("\n")
+                        if (files.length > 0 && files[0] !== "") {
+                            processScannedFiles(files)
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+    }
+
+    function processScannedFiles(files) {
+        var foundTracks = []
+        var extensions = [".mp3", ".flac", ".ogg", ".m4a", ".wav", ".opus"]
+        var basePath = musicPaths[0]
+
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i].trim()
+            if (file === "") continue
+
+            var lowerFile = file.toLowerCase()
+
+            for (var e = 0; e < extensions.length; e++) {
+                if (lowerFile.endsWith(extensions[e])) {
+                    var title = file
+                    for (var ee = 0; ee < extensions.length; ee++) {
+                        if (lowerFile.endsWith(extensions[ee])) {
+                            title = file.substring(0, file.length - extensions[ee].length)
+                            break
+                        }
+                    }
+
+                    foundTracks.push({
+                        title: title,
+                        artist: "Unknown Artist",
+                        path: basePath + "/" + file,
+                        albumArt: ""
+                    })
+                    break
+                }
+            }
+        }
+
+        if (foundTracks.length > 0) {
+            foundTracks.sort(function(a, b) {
+                return a.title.localeCompare(b.title)
+            })
+            musicFiles = foundTracks
+            updateListModel()
+            saveCache()
+            console.log("Updated with " + foundTracks.length + " tracks from scan")
+
+            // Clear the scan file
+            var clearXhr = new XMLHttpRequest()
+            clearXhr.open("PUT", "file:///tmp/flick_music_files", false)
+            try {
+                clearXhr.send("scanned")
+            } catch (e) {}
         }
     }
 
@@ -110,6 +345,7 @@ Window {
 
     function playTrack(index) {
         if (index >= 0 && index < musicFiles.length && musicFiles[index].path !== "") {
+            Haptic.tap()
             currentTrackIndex = index
             audioPlayer.source = "file://" + musicFiles[index].path
             audioPlayer.play()
@@ -118,7 +354,7 @@ Window {
 
     function togglePlayPause() {
         Haptic.tap()
-        if (currentTrackIndex < 0 && musicFiles.length > 0) {
+        if (currentTrackIndex < 0 && musicFiles.length > 0 && musicFiles[0].path !== "") {
             playTrack(0)
         } else if (isPlaying) {
             audioPlayer.pause()
@@ -129,7 +365,7 @@ Window {
 
     function nextTrack() {
         Haptic.tap()
-        if (musicFiles.length > 0) {
+        if (musicFiles.length > 0 && musicFiles[0].path !== "") {
             var nextIndex = (currentTrackIndex + 1) % musicFiles.length
             playTrack(nextIndex)
         }
@@ -137,7 +373,7 @@ Window {
 
     function prevTrack() {
         Haptic.tap()
-        if (musicFiles.length > 0) {
+        if (musicFiles.length > 0 && musicFiles[0].path !== "") {
             var prevIndex = currentTrackIndex - 1
             if (prevIndex < 0) prevIndex = musicFiles.length - 1
             playTrack(prevIndex)
@@ -146,6 +382,7 @@ Window {
 
     function seekToPosition(position) {
         if (audioPlayer.seekable && audioPlayer.duration > 0) {
+            Haptic.tap()
             audioPlayer.seek(position * audioPlayer.duration)
         }
     }
@@ -196,7 +433,7 @@ Window {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: isPlaying ? "NOW PLAYING" : "FLICK PLAYER"
+                text: isScanning ? "SCANNING..." : (isPlaying ? "NOW PLAYING" : (musicFiles.length + " TRACKS"))
                 font.pixelSize: 12 * textScale
                 font.weight: Font.Medium
                 font.letterSpacing: 3
@@ -218,6 +455,55 @@ Window {
                 GradientStop { position: 1.0; color: "transparent" }
             }
             opacity: 0.3
+        }
+
+        // Refresh button
+        Rectangle {
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.rightMargin: 20
+            anchors.topMargin: 60
+            width: 48
+            height: 48
+            radius: 24
+            color: refreshMouse.pressed ? "#333344" : "#222233"
+
+            Text {
+                anchors.centerIn: parent
+                text: "↻"
+                font.pixelSize: 24
+                color: "#888899"
+
+                RotationAnimation on rotation {
+                    from: 0
+                    to: 360
+                    duration: 1000
+                    loops: Animation.Infinite
+                    running: isScanning
+                }
+            }
+
+            MouseArea {
+                id: refreshMouse
+                anchors.fill: parent
+                onClicked: {
+                    Haptic.tap()
+                    // Request fresh scan from shell
+                    var xhr = new XMLHttpRequest()
+                    xhr.open("PUT", "file:///tmp/flick_music_scan_request", false)
+                    try {
+                        xhr.send(musicPaths[0])
+                    } catch (e) {}
+                    isScanning = true
+
+                    // Clear old listing to force rescan
+                    var clearXhr = new XMLHttpRequest()
+                    clearXhr.open("PUT", "file:///tmp/flick_music_files", false)
+                    try {
+                        clearXhr.send("")
+                    } catch (e) {}
+                }
+            }
         }
     }
 
