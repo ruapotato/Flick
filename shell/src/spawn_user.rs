@@ -87,6 +87,7 @@ pub fn spawn_as_user(cmd: &str, socket_name: &str, text_scale: f64) -> Result<()
     // for buffer sharing (android_wlegl, dmabuf) needed for camera/video
     command.env("QT_QUICK_BACKEND", "software");
     command.env("QSG_RENDER_LOOP", "basic");
+    command.env("LIBGL_ALWAYS_SOFTWARE", "1");
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
@@ -196,6 +197,7 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     // for buffer sharing (android_wlegl, dmabuf) needed for camera/video
     command.env("QT_QUICK_BACKEND", "software");
     command.env("QSG_RENDER_LOOP", "basic");
+    command.env("LIBGL_ALWAYS_SOFTWARE", "1");
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
