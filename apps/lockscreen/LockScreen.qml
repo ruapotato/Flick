@@ -209,41 +209,37 @@ Item {
             opacity: 0.92
         }
 
-        // Container for PIN entry and media controls
-        Column {
+        PinEntry {
+            id: pinEntry
             anchors.centerIn: parent
-            anchors.verticalCenterOffset: showingPin ? 0 : 200
-            spacing: 24
+            anchors.verticalCenterOffset: showingPin ? -80 : 200
+            correctPin: lockScreen.correctPin
 
             Behavior on anchors.verticalCenterOffset {
                 NumberAnimation { duration: 400; easing.type: Easing.OutBack }
             }
 
-            PinEntry {
-                id: pinEntry
-                anchors.horizontalCenter: parent.horizontalCenter
-                correctPin: lockScreen.correctPin
-
-                onPinCorrect: {
-                    // Success animation
-                    successAnim.start()
-                }
-
-                onPinIncorrect: {
-                    shakeAnimation.start()
-                }
-
-                onCancelled: {
-                    showingPin = false
-                }
+            onPinCorrect: {
+                // Success animation
+                successAnim.start()
             }
 
-            // Media controls below PIN entry
-            MediaControls {
-                id: pinMediaControls
-                anchors.horizontalCenter: parent.horizontalCenter
-                stateDir: lockScreen.stateDir
+            onPinIncorrect: {
+                shakeAnimation.start()
             }
+
+            onCancelled: {
+                showingPin = false
+            }
+        }
+
+        // Media controls below PIN entry
+        MediaControls {
+            id: pinMediaControls
+            anchors.top: pinEntry.bottom
+            anchors.topMargin: 16
+            anchors.horizontalCenter: parent.horizontalCenter
+            stateDir: lockScreen.stateDir
         }
 
         // Shake animation for wrong PIN

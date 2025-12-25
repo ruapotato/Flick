@@ -40,13 +40,15 @@ Window {
         }
 
         onPositionChanged: {
-            if (currentBook && currentBook.chapters && currentBook.chapters[currentChapterIndex]) {
-                saveProgress()
-            }
+            // Position change is handled by saveProgressTimer for efficiency
         }
 
         onPlaybackStateChanged: {
             writeMediaStatus()
+            // Save progress when pausing
+            if (playbackState === Audio.PausedState || playbackState === Audio.StoppedState) {
+                saveProgress()
+            }
         }
 
         onStopped: {
@@ -89,6 +91,20 @@ Window {
                 writeMediaStatus()
             }
             checkMediaCommand()
+        }
+    }
+
+    // Timer to save progress every 10 seconds during playback
+    Timer {
+        id: saveProgressTimer
+        interval: 10000  // 10 seconds
+        running: audioPlayer.playbackState === Audio.PlayingState
+        repeat: true
+        onTriggered: {
+            if (currentBook && currentBook.chapters && currentBook.chapters[currentChapterIndex]) {
+                saveProgress()
+                console.log("Auto-saved progress at position: " + audioPlayer.position)
+            }
         }
     }
 
