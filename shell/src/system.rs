@@ -282,6 +282,122 @@ impl AirplaneMode {
     }
 }
 
+/// Volume/Audio manager using pactl (PulseAudio/PipeWire)
+/// Runs commands as the user who owns the audio session (not root)
+pub struct VolumeManager;
+
+impl VolumeManager {
+    /// Find the user ID that owns PulseAudio/PipeWire (from /run/user/*)
+    fn get_audio_user() -> Option<u32> {
+        // Find first user runtime directory
+        if let Ok(entries) = std::fs::read_dir("/run/user") {
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    if let Ok(uid) = name.parse::<u32>() {
+                        // Check if this user has a pulse/pipewire socket
+                        let pulse_path = format!("/run/user/{}/pulse", uid);
+                        let pipewire_path = format!("/run/user/{}/pipewire-0", uid);
+                        if std::path::Path::new(&pulse_path).exists()
+                            || std::path::Path::new(&pipewire_path).exists() {
+                            tracing::debug!("Found audio user: uid={}", uid);
+                            return Some(uid);
+                        }
+                    }
+                }
+            }
+        }
+        tracing::warn!("No audio user found in /run/user");
+        None
+    }
+
+    /// Run pactl command as the audio user
+    fn run_pactl(args: &[&str]) -> Option<std::process::Output> {
+        if let Some(uid) = Self::get_audio_user() {
+            // Use runuser to execute as the correct user
+            let uid_arg = format!("#{}", uid);
+            let mut cmd_args: Vec<&str> = vec!["-u", &uid_arg, "--", "pactl"];
+            cmd_args.extend(args.iter().copied());
+
+            Command::new("runuser")
+                .args(&cmd_args)
+                .env("XDG_RUNTIME_DIR", format!("/run/user/{}", uid))
+                .output()
+                .ok()
+        } else {
+            // Fallback to direct call (works if not running as root)
+            Command::new("pactl")
+                .args(args)
+                .output()
+                .ok()
+        }
+    }
+
+    /// Run pactl command as the audio user (fire and forget)
+    fn run_pactl_async(args: &[&str]) {
+        if let Some(uid) = Self::get_audio_user() {
+            let mut cmd_args = vec!["-u".to_string(), format!("#{}", uid), "--".to_string(), "pactl".to_string()];
+            cmd_args.extend(args.iter().map(|s| s.to_string()));
+
+            tracing::info!("Running pactl as user {}: {:?}", uid, args);
+            let _ = Command::new("runuser")
+                .args(&cmd_args)
+                .env("XDG_RUNTIME_DIR", format!("/run/user/{}", uid))
+                .spawn();
+        } else {
+            tracing::info!("Running pactl directly: {:?}", args);
+            let _ = Command::new("pactl")
+                .args(args)
+                .spawn();
+        }
+    }
+
+    /// Get current volume (0-100)
+    pub fn get_volume() -> u8 {
+        Self::run_pactl(&["get-sink-volume", "@DEFAULT_SINK@"])
+            .and_then(|o| {
+                let output = String::from_utf8_lossy(&o.stdout);
+                // Parse "Volume: front-left: 65536 / 100% / 0.00 dB, ..."
+                output.split('/').nth(1)
+                    .and_then(|s| s.trim().trim_end_matches('%').parse().ok())
+            })
+            .unwrap_or(50)
+    }
+
+    /// Set volume (0-100)
+    pub fn set_volume(value: u8) {
+        let clamped = value.min(100);
+        Self::run_pactl_async(&["set-sink-volume", "@DEFAULT_SINK@", &format!("{}%", clamped)]);
+    }
+
+    /// Increase volume by 5%
+    pub fn volume_up() {
+        Self::run_pactl_async(&["set-sink-volume", "@DEFAULT_SINK@", "+5%"]);
+    }
+
+    /// Decrease volume by 5%
+    pub fn volume_down() {
+        Self::run_pactl_async(&["set-sink-volume", "@DEFAULT_SINK@", "-5%"]);
+    }
+
+    /// Check if muted
+    pub fn is_muted() -> bool {
+        Self::run_pactl(&["get-sink-mute", "@DEFAULT_SINK@"])
+            .map(|o| String::from_utf8_lossy(&o.stdout).contains("yes"))
+            .unwrap_or(false)
+    }
+
+    /// Set mute state
+    pub fn set_mute(muted: bool) {
+        let state = if muted { "1" } else { "0" };
+        Self::run_pactl_async(&["set-sink-mute", "@DEFAULT_SINK@", state]);
+    }
+
+    /// Toggle mute
+    pub fn toggle_mute() {
+        Self::run_pactl_async(&["set-sink-mute", "@DEFAULT_SINK@", "toggle"]);
+    }
+}
+
 /// Do Not Disturb mode (mutes notifications)
 pub struct DoNotDisturb {
     pub enabled: bool,
@@ -536,6 +652,10 @@ pub struct SystemStatus {
     pub dnd: DoNotDisturb,
     pub rotation_lock: RotationLock,
     pub process_stats: ProcessStatsCollector,
+    pub volume: u8,
+    pub muted: bool,
+    /// When to hide the volume overlay (set when volume buttons pressed)
+    pub volume_overlay_until: Option<std::time::Instant>,
 }
 
 impl SystemStatus {
@@ -549,6 +669,9 @@ impl SystemStatus {
             dnd: DoNotDisturb::new(),
             rotation_lock: RotationLock::new(),
             process_stats: ProcessStatsCollector::new(30), // 30 samples history
+            volume: VolumeManager::get_volume(),
+            muted: VolumeManager::is_muted(),
+            volume_overlay_until: None,
         }
     }
 
@@ -558,6 +681,8 @@ impl SystemStatus {
         self.wifi_enabled = WifiManager::is_enabled();
         self.wifi_ssid = WifiManager::current_connection();
         self.bluetooth_enabled = BluetoothManager::is_enabled();
+        self.volume = VolumeManager::get_volume();
+        self.muted = VolumeManager::is_muted();
     }
 
     /// Get brightness (0.0-1.0)
@@ -570,6 +695,53 @@ impl SystemStatus {
         if let Some(ref backlight) = self.backlight {
             backlight.set(value);
         }
+    }
+
+    /// Get volume (0-100)
+    pub fn get_volume(&self) -> u8 {
+        self.volume
+    }
+
+    /// Set volume (0-100)
+    pub fn set_volume(&mut self, value: u8) {
+        VolumeManager::set_volume(value);
+        self.volume = value.min(100);
+    }
+
+    /// Volume up by 5%
+    pub fn volume_up(&mut self) {
+        VolumeManager::volume_up();
+        self.volume = VolumeManager::get_volume();
+        self.show_volume_overlay();
+    }
+
+    /// Volume down by 5%
+    pub fn volume_down(&mut self) {
+        VolumeManager::volume_down();
+        self.volume = VolumeManager::get_volume();
+        self.show_volume_overlay();
+    }
+
+    /// Toggle mute
+    pub fn toggle_mute(&mut self) {
+        VolumeManager::toggle_mute();
+        self.muted = !self.muted;
+        self.show_volume_overlay();
+    }
+
+    /// Check if muted
+    pub fn is_muted(&self) -> bool {
+        self.muted
+    }
+
+    /// Show the volume overlay for 2 seconds
+    pub fn show_volume_overlay(&mut self) {
+        self.volume_overlay_until = Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
+    }
+
+    /// Check if volume overlay should be visible
+    pub fn should_show_volume_overlay(&self) -> bool {
+        self.volume_overlay_until.map(|t| std::time::Instant::now() < t).unwrap_or(false)
     }
 }
 

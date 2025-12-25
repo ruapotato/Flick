@@ -982,6 +982,8 @@ fn render_surface(
                         tracing::info!("Rendering QuickSettings view via Slint");
                         slint_ui.set_view("quick-settings");
                         slint_ui.set_brightness(state.shell.quick_settings.brightness);
+                        slint_ui.set_volume(state.system.volume as i32);
+                        slint_ui.set_muted(state.system.muted);
                         // Sync all toggle states from system
                         slint_ui.set_wifi_enabled(state.system.wifi_enabled);
                         slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
@@ -1908,6 +1910,8 @@ fn render_surface(
         if let Some(ref slint_ui) = state.shell.slint_ui {
             slint_ui.set_view("quick-settings");
             slint_ui.set_brightness(state.shell.quick_settings.brightness);
+            slint_ui.set_volume(state.system.volume as i32);
+            slint_ui.set_muted(state.system.muted);
             slint_ui.set_wifi_enabled(state.system.wifi_enabled);
             slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
             slint_ui.set_dnd_enabled(state.system.dnd.enabled);
@@ -2053,6 +2057,8 @@ fn render_surface(
         if let Some(ref slint_ui) = state.shell.slint_ui {
             slint_ui.set_view("quick-settings");
             slint_ui.set_brightness(state.shell.quick_settings.brightness);
+            slint_ui.set_volume(state.system.volume as i32);
+            slint_ui.set_muted(state.system.muted);
             slint_ui.set_wifi_enabled(state.system.wifi_enabled);
             slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
             slint_ui.set_dnd_enabled(state.system.dnd.enabled);

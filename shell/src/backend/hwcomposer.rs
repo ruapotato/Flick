@@ -384,19 +384,13 @@ fn handle_input_event(
             // Volume buttons (evdev keycodes: 114=down, 115=up)
             if evdev_keycode == 115 && pressed {
                 info!("Volume up pressed");
-                // Use pactl to increase volume
-                std::process::Command::new("pactl")
-                    .args(["set-sink-volume", "@DEFAULT_SINK@", "+5%"])
-                    .spawn()
-                    .ok();
+                state.system.volume_up();
+                info!("Volume now: {}%", state.system.volume);
             }
             if evdev_keycode == 114 && pressed {
                 info!("Volume down pressed");
-                // Use pactl to decrease volume
-                std::process::Command::new("pactl")
-                    .args(["set-sink-volume", "@DEFAULT_SINK@", "-5%"])
-                    .spawn()
-                    .ok();
+                state.system.volume_down();
+                info!("Volume now: {}%", state.system.volume);
             }
 
             // Power button (evdev keycode 116) - toggle dim/wake on lock screen, or lock
@@ -1393,6 +1387,10 @@ fn handle_input_event(
                                             state.system.set_brightness(value);
                                             info!("Brightness set to {:.0}%", value * 100.0);
                                         }
+                                        QuickSettingsAction::VolumeChanged(value) => {
+                                            state.system.set_volume(value);
+                                            info!("Volume set to {}%", value);
+                                        }
                                     }
                                 }
                             }
@@ -2103,6 +2101,8 @@ fn render_frame(
                             ShellView::QuickSettings => {
                                 slint_ui.set_view("quick-settings");
                                 slint_ui.set_brightness(state.shell.quick_settings.brightness);
+                                slint_ui.set_volume(state.system.volume as i32);
+                                slint_ui.set_muted(state.system.muted);
                                 slint_ui.set_wifi_enabled(state.system.wifi_enabled);
                                 slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
                             }
@@ -2179,6 +2179,11 @@ fn render_frame(
                             }
                             _ => {}
                         }
+
+                        // Volume overlay - shown on top of all views when hardware buttons pressed
+                        slint_ui.set_show_volume_overlay(state.system.should_show_volume_overlay());
+                        slint_ui.set_volume(state.system.volume as i32);
+                        slint_ui.set_muted(state.system.muted);
                     }
 
                     // Get Slint rendered pixels

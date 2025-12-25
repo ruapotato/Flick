@@ -166,6 +166,8 @@ pub struct QuickSettingsPanel {
     pub screen_size: Size<i32, Logical>,
     pub toggles: Vec<QuickToggle>,
     pub brightness: f32,
+    pub volume: u8,
+    pub muted: bool,
     pub scroll_offset: f64,
     // Cached system status for rendering
     pub battery_percent: u8,
@@ -180,6 +182,8 @@ impl QuickSettingsPanel {
             screen_size,
             toggles: default_toggles(),
             brightness: 0.7,
+            volume: 50,
+            muted: false,
             scroll_offset: 0.0,
             battery_percent: 0,
             battery_charging: false,
@@ -214,6 +218,10 @@ impl QuickSettingsPanel {
 
         // Sync brightness from system (read current value)
         self.brightness = system.get_brightness();
+
+        // Sync volume from system
+        self.volume = system.volume;
+        self.muted = system.muted;
     }
 
     /// Get list of rectangles to render
@@ -395,8 +403,62 @@ impl QuickSettingsPanel {
             rects.extend(sun_rects);
         }
 
+        // ============ VOLUME SLIDER ============
+        let volume_y = brightness_y + 90.0;
+
+        if volume_y < screen_h && volume_y + 60.0 > 0.0 {
+            let vol_label = text::render_text(
+                "VOLUME",
+                padding,
+                volume_y,
+                2.5,
+                [0.7, 0.7, 0.8, 1.0],
+            );
+            rects.extend(vol_label);
+
+            let vol_slider_y = volume_y + 32.0;
+            let slider_width = screen_w - padding * 2.0;
+            let slider_height = 40.0;
+
+            // Slider track
+            let track = Rect::new(padding, vol_slider_y, slider_width, slider_height);
+            rects.push((track, [0.3, 0.3, 0.35, 1.0]));
+
+            // Slider fill (use volume as 0-100)
+            let vol_fill_width = if self.muted { 0.0 } else { slider_width * (self.volume as f64 / 100.0) };
+            let vol_color = if self.muted {
+                [0.5, 0.5, 0.6, 1.0]  // Gray when muted
+            } else {
+                [0.4, 0.7, 1.0, 1.0]  // Blue for volume
+            };
+            let vol_fill = Rect::new(padding, vol_slider_y, vol_fill_width, slider_height);
+            rects.push((vol_fill, vol_color));
+
+            // Speaker icon (or muted icon)
+            let vol_icon = if self.muted { "X" } else { "V" };
+            let vol_icon_rects = text::render_text(
+                vol_icon,
+                padding + 14.0,
+                vol_slider_y + 10.0,
+                3.0,
+                [1.0, 1.0, 1.0, 1.0],
+            );
+            rects.extend(vol_icon_rects);
+
+            // Volume percentage on right side
+            let vol_pct = format!("{}%", self.volume);
+            let vol_pct_rects = text::render_text(
+                &vol_pct,
+                padding + slider_width - 50.0,
+                vol_slider_y + 10.0,
+                2.5,
+                [1.0, 1.0, 1.0, 1.0],
+            );
+            rects.extend(vol_pct_rects);
+        }
+
         // ============ NOTIFICATIONS ============
-        let notif_start_y = brightness_y + 100.0;
+        let notif_start_y = volume_y + 90.0;
 
         if notif_start_y < screen_h {
             let notif_header = text::render_text(
@@ -564,6 +626,27 @@ impl QuickSettingsPanel {
         None
     }
 
+    /// Hit test for volume slider - returns volume 0-100
+    pub fn hit_test_volume(&self, x: f64, y: f64) -> Option<u8> {
+        let padding = 20.0;
+        let screen_w = self.screen_size.w as f64;
+        let toggle_size = 72.0;
+        let toggles_per_row = 4;
+        let rows = (self.toggles.len() + toggles_per_row - 1) / toggles_per_row;
+        let toggles_grid_y = 56.0 + 20.0 + 32.0 - self.scroll_offset;
+        let brightness_y = toggles_grid_y + rows as f64 * (toggle_size + 28.0) + 24.0;
+        let volume_y = brightness_y + 90.0;
+        let slider_y = volume_y + 32.0;
+        let slider_height = 40.0;
+        let slider_width = screen_w - padding * 2.0;
+
+        if y >= slider_y && y < slider_y + slider_height && x >= padding && x < padding + slider_width {
+            let volume = (((x - padding) / slider_width) * 100.0).clamp(0.0, 100.0) as u8;
+            return Some(volume);
+        }
+        None
+    }
+
     /// Toggle a quick setting - returns the toggle ID for system action
     pub fn toggle(&mut self, index: usize) -> Option<String> {
         if let Some(toggle) = self.toggles.get_mut(index) {
@@ -579,6 +662,13 @@ impl QuickSettingsPanel {
     pub fn set_brightness(&mut self, value: f32) {
         self.brightness = value.clamp(0.0, 1.0);
         tracing::info!("Brightness set to {:.0}%", self.brightness * 100.0);
+    }
+
+    /// Set volume (0-100)
+    pub fn set_volume(&mut self, value: u8) {
+        self.volume = value.min(100);
+        self.muted = false;  // Unmute when adjusting volume
+        tracing::info!("Volume set to {}%", self.volume);
     }
 
     /// Get content height for scrolling
@@ -602,6 +692,7 @@ impl QuickSettingsPanel {
             + 32.0  // header
             + rows as f64 * (toggle_size + 28.0)  // toggles
             + 24.0 + 32.0 + 40.0  // brightness section
+            + 90.0  // volume section
             + 32.0  // notifications header
             + notifications.max(1) as f64 * (card_height + card_spacing)
             + 100.0  // bottom padding

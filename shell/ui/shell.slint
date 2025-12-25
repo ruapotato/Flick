@@ -67,6 +67,116 @@ component BrightnessSlider inherits Rectangle {
     }
 }
 
+// Volume slider with percentage display
+component VolumeSlider inherits Rectangle {
+    in property <int> value: 50;  // 0 to 100
+    in property <bool> muted: false;
+    callback changed(int);
+
+    height: 40px;
+    background: Theme.surface-variant;
+    border-radius: 8px;
+
+    // Track background
+    Rectangle {
+        x: 8px;
+        y: (parent.height - 8px) / 2;
+        width: parent.width - 16px;
+        height: 8px;
+        border-radius: 4px;
+        background: Theme.background;
+
+        // Filled portion (gray when muted, blue when active)
+        Rectangle {
+            width: root.muted ? 0px : parent.width * (root.value / 100.0);
+            height: 100%;
+            border-radius: 4px;
+            background: root.muted ? Theme.surface-variant : #60a0ff;
+        }
+    }
+
+    // Thumb
+    Rectangle {
+        x: 8px + (parent.width - 16px - 24px) * (root.value / 100.0);
+        y: (parent.height - 24px) / 2;
+        width: 24px;
+        height: 24px;
+        border-radius: 12px;
+        background: root.muted ? Theme.surface-variant : Theme.on-surface;
+    }
+
+    // Volume percentage text
+    Text {
+        x: parent.width - 50px;
+        y: (parent.height - self.height) / 2;
+        text: root.muted ? "Muted" : "\{root.value}%";
+        color: Theme.on-surface;
+        font-size: 12px;
+    }
+
+    touch := TouchArea {
+        moved => {
+            if self.pressed {
+                // Calculate new value: (mouse-x - 8px) / (width - 16px - 50px), clamped 0-100
+                root.changed(max(0, min(100, round((self.mouse-x - 8px) / (parent.width - 16px - 50px) * 100))));
+            }
+        }
+        clicked => {
+            // Calculate new value on click
+            root.changed(max(0, min(100, round((self.mouse-x - 8px) / (parent.width - 16px - 50px) * 100))));
+        }
+    }
+}
+
+// Volume overlay component - shown briefly when hardware volume buttons pressed
+component VolumeOverlay inherits Rectangle {
+    in property <int> volume: 50;  // 0 to 100
+    in property <bool> muted: false;
+
+    width: 60px;
+    height: 200px;
+    background: #000000cc;
+    border-radius: 16px;
+
+    VerticalLayout {
+        alignment: center;
+        padding: 12px;
+        spacing: 8px;
+
+        // Speaker icon
+        Text {
+            horizontal-alignment: center;
+            text: root.muted ? "🔇" : (root.volume > 50 ? "🔊" : (root.volume > 0 ? "🔉" : "🔈"));
+            font-size: 24px;
+        }
+
+        // Vertical volume bar container
+        Rectangle {
+            width: 12px;
+            height: 120px;
+            background: #ffffff33;
+            border-radius: 6px;
+
+            // Filled portion from bottom
+            Rectangle {
+                y: parent.height - self.height;
+                width: 100%;
+                height: root.muted ? 0px : parent.height * (root.volume / 100.0);
+                background: root.muted ? #ff4444 : #60a0ff;
+                border-radius: 6px;
+            }
+        }
+
+        // Volume percentage
+        Text {
+            horizontal-alignment: center;
+            text: root.muted ? "Muted" : "\{root.volume}%";
+            color: white;
+            font-size: 11px;
+        }
+    }
+}
+
 // App category for home screen
 export struct AppCategory {
     name: string,
@@ -1640,6 +1750,8 @@ component HomeScreen inherits Rectangle {
 // Quick settings panel - comprehensive iOS/Android-style control center
 component QuickSettingsPanel inherits Rectangle {
     in property <float> brightness: 0.7;
+    in property <int> volume: 50;
+    in property <bool> muted: false;
     in property <bool> wifi-enabled: true;
     in property <bool> bluetooth-enabled: false;
     in property <bool> dnd-enabled: false;
@@ -1653,6 +1765,7 @@ component QuickSettingsPanel inherits Rectangle {
     in property <[Notification]> notifications: [];
 
     callback brightness-changed(float);
+    callback volume-changed(int);
     callback wifi-toggled();
     callback bluetooth-toggled();
     callback dnd-toggled();
@@ -1840,6 +1953,31 @@ component QuickSettingsPanel inherits Rectangle {
                     color: Theme.on-surface;
                     font-size: 22px;
                     vertical-alignment: center;
+                }
+            }
+        }
+
+        // Volume slider section
+        Rectangle {
+            height: 72px;
+            background: Theme.surface;
+
+            HorizontalLayout {
+                padding: 16px;
+                spacing: 12px;
+
+                Text {
+                    text: muted ? "🔇" : "🔊";
+                    color: muted ? Theme.on-surface-variant : Theme.on-surface;
+                    font-size: 18px;
+                    vertical-alignment: center;
+                }
+
+                VolumeSlider {
+                    horizontal-stretch: 1;
+                    value: volume;
+                    muted: muted;
+                    changed(v) => { volume-changed(v); }
                 }
             }
         }
@@ -2343,6 +2481,8 @@ export component FlickShell inherits Window {
     in property <int> pin-length: 0;
     in property <string> lock-error: "";
     in property <float> brightness: 0.7;
+    in property <int> volume: 50;
+    in property <bool> muted: false;
     in property <bool> wifi-enabled: true;
     in property <bool> bluetooth-enabled: false;
     in property <bool> dnd-enabled: false;
@@ -2361,6 +2501,9 @@ export component FlickShell inherits Window {
     in property <bool> popup-can-pick-default: true;
     in property <float> popup-x: 100;
     in property <float> popup-y: 200;
+
+    // Volume overlay state (shown when hardware volume buttons pressed)
+    in property <bool> show-volume-overlay: false;
 
     // Wiggle mode state
     in property <bool> wiggle-mode: false;
@@ -2409,6 +2552,7 @@ export component FlickShell inherits Window {
     callback app-tapped(int);
     callback app-long-pressed(int);
     callback brightness-changed(float);
+    callback volume-changed(int);
     callback wifi-toggled();
     callback bluetooth-toggled();
     callback dnd-toggled();
@@ -2468,6 +2612,8 @@ export component FlickShell inherits Window {
         width: 100%;
         height: 100%;
         brightness: brightness;
+        volume: volume;
+        muted: muted;
         wifi-enabled: wifi-enabled;
         bluetooth-enabled: bluetooth-enabled;
         dnd-enabled: dnd-enabled;
@@ -2480,6 +2626,7 @@ export component FlickShell inherits Window {
         notifications: notifications;
         time: lock-time;
         brightness-changed(v) => { brightness-changed(v); }
+        volume-changed(v) => { volume-changed(v); }
         wifi-toggled => { wifi-toggled(); }
         bluetooth-toggled => { bluetooth-toggled(); }
         dnd-toggled => { dnd-toggled(); }
@@ -2600,5 +2747,13 @@ export component FlickShell inherits Window {
         space-pressed => { keyboard-space(); }
         layout-toggled => { keyboard-layout-toggled(); }
         hide-keyboard => { keyboard-hide(); }
+    }
+
+    // Volume overlay - shown briefly when hardware volume buttons pressed
+    if show-volume-overlay: VolumeOverlay {
+        x: parent.width - self.width - 20px;
+        y: (parent.height - self.height) / 2;
+        volume: root.volume;
+        muted: root.muted;
     }
 }

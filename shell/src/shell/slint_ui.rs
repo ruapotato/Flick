@@ -37,6 +37,7 @@ pub enum QuickSettingsAction {
     Lock,
     Settings,  // Now launches Flutter Settings app
     BrightnessChanged(f32),
+    VolumeChanged(u8),
 }
 
 /// Actions that can be triggered from the on-screen keyboard
@@ -209,6 +210,12 @@ impl SlintShell {
         shell.on_brightness_changed(move |value| {
             info!("Slint Brightness changed callback: {}", value);
             qs_clone.borrow_mut().push(QuickSettingsAction::BrightnessChanged(value));
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_volume_changed(move |value| {
+            info!("Slint Volume changed callback: {}", value);
+            qs_clone.borrow_mut().push(QuickSettingsAction::VolumeChanged(value as u8));
         });
 
         // Create pending switcher tap storage
@@ -426,6 +433,21 @@ impl SlintShell {
     /// Set brightness value (0.0 to 1.0)
     pub fn set_brightness(&self, brightness: f32) {
         self.shell.set_brightness(brightness);
+    }
+
+    /// Set volume value (0 to 100)
+    pub fn set_volume(&self, volume: i32) {
+        self.shell.set_volume(volume);
+    }
+
+    /// Set muted state
+    pub fn set_muted(&self, muted: bool) {
+        self.shell.set_muted(muted);
+    }
+
+    /// Show or hide volume overlay
+    pub fn set_show_volume_overlay(&self, show: bool) {
+        self.shell.set_show_volume_overlay(show);
     }
 
     /// Set WiFi enabled state
