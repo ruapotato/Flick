@@ -1820,12 +1820,12 @@ fn render_frame(
         // Check if we're in a gesture that needs to preview the switcher
         let switcher_gesture_preview = state.switcher_gesture_active && shell_view == ShellView::App;
 
-        // Render Slint UI for shell views
-        // Always render Slint for lock screen (we use Slint lock screen, not QML anymore)
-        // Also render during switcher gesture preview
-        if !qml_lockscreen_connected || shell_view == ShellView::LockScreen {
+        // Render Slint UI for shell views (not for lock screen when QML is connected)
+        // When QML lock screen is connected, render QML windows instead of Slint
+        let render_slint_lock = shell_view == ShellView::LockScreen && !qml_lockscreen_connected;
+        if !qml_lockscreen_connected || render_slint_lock {
             match shell_view {
-                ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault | ShellView::LockScreen
+                ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault
                 if !switcher_gesture_preview => {
                     // Update Slint timers and animations (needed for clock updates, etc.)
                     slint::platform::update_timers_and_animations();
@@ -1833,11 +1833,6 @@ fn render_frame(
                     // Set up Slint UI state based on current view
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         match shell_view {
-                            ShellView::LockScreen => {
-                                // Lock screen is QML-based - just set minimal view for Slint fallback
-                                slint_ui.set_view("lock");
-                                // QML lock screen app handles all UI
-                            }
                             ShellView::Home => {
                                 slint_ui.set_view("home");
                                 let slint_categories = state.shell.get_categories_with_icons();
@@ -2038,8 +2033,56 @@ fn render_frame(
             }
         }
 
+        // Render QML lock screen window when on lock screen with QML connected
+        if shell_view == ShellView::LockScreen && qml_lockscreen_connected {
+            let windows: Vec<_> = state.space.elements().cloned().collect();
+            for window in windows.iter() {
+                let wl_surface = if let Some(toplevel) = window.toplevel() {
+                    Some(toplevel.wl_surface().clone())
+                } else {
+                    None
+                };
+
+                if let Some(wl_surface) = wl_surface {
+                    let buffer_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(&wl_surface, |data| {
+                        use std::cell::RefCell;
+                        use crate::state::SurfaceBufferData;
+
+                        if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                            let data = buffer_data.borrow();
+                            if let Some(ref stored) = data.buffer {
+                                Some((stored.width, stored.height, stored.pixels.clone()))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    });
+
+                    if let Some((width, height, pixels)) = buffer_info {
+                        unsafe {
+                            gl::render_texture(width, height, &pixels, display.width, display.height);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Render Slint fallback for lock screen when QML is not yet connected
+        if shell_view == ShellView::LockScreen && !qml_lockscreen_connected {
+            slint::platform::update_timers_and_animations();
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                slint_ui.set_view("lock");
+                if let Some((width, height, pixels)) = slint_ui.render() {
+                    unsafe {
+                        gl::render_texture(width, height, &pixels, display.width, display.height);
+                    }
+                }
+            }
+        }
+
         // Render Wayland windows ONLY for App view (not during switcher gesture preview)
-        // NEVER render client windows when lock screen is active - Slint handles the lock UI
         if shell_view == ShellView::App && !switcher_gesture_preview && !state.shell.lock_screen_active {
             // Render ONLY the topmost Wayland client surface (last in elements order)
             // This ensures only the active window is visible and receives input
