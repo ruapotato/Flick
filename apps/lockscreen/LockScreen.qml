@@ -110,9 +110,10 @@ Item {
         }
     }
 
-    // Media controls on clock screen
+    // Media controls on clock screen (z: 10 to be above swipeArea)
     MediaControls {
         id: clockMediaControls
+        z: 10
         anchors.top: clockContainer.bottom
         anchors.topMargin: 40
         anchors.horizontalCenter: parent.horizontalCenter
