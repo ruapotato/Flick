@@ -59,6 +59,15 @@ pub enum KeyboardAction {
     Hide,
 }
 
+/// Actions that can be triggered from phone call UI
+#[derive(Debug, Clone, PartialEq)]
+pub enum PhoneCallAction {
+    /// Answer incoming call
+    Answer,
+    /// Reject/hangup call
+    Reject,
+}
+
 /// Actions that can be triggered from the lock screen
 #[derive(Debug, Clone, PartialEq)]
 pub enum LockScreenAction {
@@ -108,6 +117,8 @@ pub struct SlintShell {
     pending_keyboard_actions: Rc<RefCell<Vec<KeyboardAction>>>,
     /// Pending lock screen actions (set by callbacks, polled by compositor)
     pending_lock_actions: Rc<RefCell<Vec<LockScreenAction>>>,
+    /// Pending phone call actions (set by callbacks, polled by compositor)
+    pending_phone_actions: Rc<RefCell<Vec<PhoneCallAction>>>,
 }
 
 impl SlintShell {
@@ -277,6 +288,21 @@ impl SlintShell {
         // Lock screen callbacks removed - lock screen is now QML-based
         let pending_lock_actions = Rc::new(RefCell::new(Vec::new()));
 
+        // Phone call callbacks
+        let pending_phone_actions = Rc::new(RefCell::new(Vec::new()));
+
+        let phone_clone = pending_phone_actions.clone();
+        shell.on_call_answered(move || {
+            info!("Phone: call answered callback");
+            phone_clone.borrow_mut().push(PhoneCallAction::Answer);
+        });
+
+        let phone_clone = pending_phone_actions.clone();
+        shell.on_call_rejected(move || {
+            info!("Phone: call rejected callback");
+            phone_clone.borrow_mut().push(PhoneCallAction::Reject);
+        });
+
         Self {
             window,
             shell,
@@ -290,6 +316,7 @@ impl SlintShell {
             wiggle_mode: RefCell::new(false),
             pending_keyboard_actions,
             pending_lock_actions,
+            pending_phone_actions,
         }
     }
 
@@ -504,6 +531,23 @@ impl SlintShell {
     /// Set switcher enter animation progress (0.0 = full screen, 1.0 = card size)
     pub fn set_switcher_enter_progress(&self, progress: f32) {
         self.shell.set_switcher_enter_progress(progress);
+    }
+
+    /// Set incoming call state
+    pub fn set_incoming_call(&self, incoming: bool, caller: &str) {
+        self.shell.set_incoming_call(incoming);
+        self.shell.set_incoming_caller(caller.into());
+    }
+
+    /// Clear incoming call overlay
+    pub fn clear_incoming_call(&self) {
+        self.shell.set_incoming_call(false);
+        self.shell.set_incoming_caller("".into());
+    }
+
+    /// Poll for pending phone call actions (answer/reject)
+    pub fn take_pending_phone_actions(&self) -> Vec<PhoneCallAction> {
+        std::mem::take(&mut *self.pending_phone_actions.borrow_mut())
     }
 
     /// Poll for pending switcher window tap (from Slint callback)

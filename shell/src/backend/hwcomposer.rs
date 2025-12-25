@@ -1743,6 +1743,41 @@ pub fn run() -> Result<()> {
             state.system_last_refresh = std::time::Instant::now();
         }
 
+        // Check for phone status (incoming calls) - rate limited internally to 500ms
+        let new_incoming = state.system.check_phone();
+        if new_incoming {
+            // New incoming call - wake screen and show overlay
+            tracing::info!("Incoming call from: {}", state.system.phone.number);
+            // Wake screen if blanked
+            if state.shell.display_blanked {
+                state.shell.wake_lock_screen();
+                hwc_display.set_power(true);
+            }
+            // Vibrate for incoming call (continuous pattern)
+            state.system.haptic_heavy();
+        }
+
+        // Update Slint UI with phone status
+        if let Some(ref slint_ui) = state.shell.slint_ui {
+            let has_incoming = state.system.has_incoming_call();
+            slint_ui.set_incoming_call(has_incoming, state.system.incoming_call_number());
+
+            // Handle phone call actions from UI
+            use crate::shell::slint_ui::PhoneCallAction;
+            for action in slint_ui.take_pending_phone_actions() {
+                match action {
+                    PhoneCallAction::Answer => {
+                        tracing::info!("Phone: user answered call");
+                        state.system.answer_call();
+                    }
+                    PhoneCallAction::Reject => {
+                        tracing::info!("Phone: user rejected call");
+                        state.system.reject_call();
+                    }
+                }
+            }
+        }
+
         debug!("Loop {}: calling render_frame", loop_count);
         // Render frame
         if let Err(e) = render_frame(&mut hwc_display, &state, &output) {

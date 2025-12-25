@@ -1814,6 +1814,98 @@ component AppSwitcherPanel inherits Rectangle {
     }
 }
 
+// Incoming call overlay - full screen overlay for incoming calls
+component IncomingCallOverlay inherits Rectangle {
+    in property <string> caller-number: "Unknown";
+    callback answer-pressed();
+    callback reject-pressed();
+
+    width: 100%;
+    height: 100%;
+    background: #1a1a2eee;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 30px;
+        padding: 40px;
+
+        // Phone icon
+        Text {
+            text: "\u{1F4DE}";  // Telephone receiver emoji
+            font-size: 72px;
+            horizontal-alignment: center;
+        }
+
+        // "Incoming call" label
+        Text {
+            text: "Incoming Call";
+            font-size: 24px;
+            color: Theme.on-surface-variant;
+            horizontal-alignment: center;
+        }
+
+        // Caller number
+        Text {
+            text: caller-number;
+            font-size: 36px;
+            font-weight: 700;
+            color: Theme.on-surface;
+            horizontal-alignment: center;
+        }
+
+        // Spacer
+        Rectangle {
+            height: 80px;
+        }
+
+        // Answer/Reject buttons
+        HorizontalLayout {
+            alignment: center;
+            spacing: 60px;
+
+            // Reject button (red)
+            Rectangle {
+                width: 80px;
+                height: 80px;
+                border-radius: 40px;
+                background: reject-touch.pressed ? #cc3333 : #ff4444;
+
+                Text {
+                    text: "\u{2716}";  // X mark
+                    font-size: 36px;
+                    color: white;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+
+                reject-touch := TouchArea {
+                    clicked => { reject-pressed(); }
+                }
+            }
+
+            // Answer button (green)
+            Rectangle {
+                width: 80px;
+                height: 80px;
+                border-radius: 40px;
+                background: answer-touch.pressed ? #33aa33 : #44cc44;
+
+                Text {
+                    text: "\u{2714}";  // Check mark
+                    font-size: 36px;
+                    color: white;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+
+                answer-touch := TouchArea {
+                    clicked => { answer-pressed(); }
+                }
+            }
+        }
+    }
+}
+
 // Main shell component
 export component FlickShell inherits Window {
     in property <string> current-view: "lock"; // "lock", "home", "quick-settings", "pick-default", "switcher", "app"
@@ -1868,6 +1960,10 @@ export component FlickShell inherits Window {
     in property <int> keyboard-layout: 0;  // 0 = letters, 1 = numbers/symbols
     in property <length> keyboard-y-offset: 0px;  // For swipe-to-dismiss animation
 
+    // Incoming call state
+    in property <bool> incoming-call: false;
+    in property <string> incoming-caller: "";
+
     callback app-tapped(int);
     callback app-long-pressed(int);
     callback brightness-changed(float);
@@ -1902,6 +1998,10 @@ export component FlickShell inherits Window {
     callback keyboard-shift-toggled();
     callback keyboard-layout-toggled();
     callback keyboard-hide();
+
+    // Phone call callbacks
+    callback call-answered();
+    callback call-rejected();
 
     title: "Flick Shell";
     // Use magenta as chroma key for transparency in app view (keyboard only)
@@ -2058,5 +2158,12 @@ export component FlickShell inherits Window {
         y: (parent.height - self.height) / 2;
         volume: root.volume;
         muted: root.muted;
+    }
+
+    // Incoming call overlay - shown on top of everything when there's an incoming call
+    if incoming-call: IncomingCallOverlay {
+        caller-number: root.incoming-caller;
+        answer-pressed => { call-answered(); }
+        reject-pressed => { call-rejected(); }
     }
 }

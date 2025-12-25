@@ -519,6 +519,82 @@ impl VolumeManager {
     }
 }
 
+/// Phone call status (read from phone_helper daemon)
+#[derive(Debug, Clone, Default)]
+pub struct PhoneStatus {
+    pub state: String,       // idle, incoming, dialing, alerting, active
+    pub number: String,      // Phone number
+    pub duration: u32,       // Call duration in seconds
+    pub last_check: Option<std::time::Instant>,
+}
+
+impl PhoneStatus {
+    const STATUS_FILE: &'static str = "/tmp/flick_phone_status";
+    const CMD_FILE: &'static str = "/tmp/flick_phone_cmd";
+
+    /// Read current phone status from the phone helper daemon
+    pub fn read() -> Self {
+        match fs::read_to_string(Self::STATUS_FILE) {
+            Ok(contents) => {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                    return Self {
+                        state: json.get("state")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("idle")
+                            .to_string(),
+                        number: json.get("number")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        duration: json.get("duration")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0) as u32,
+                        last_check: Some(std::time::Instant::now()),
+                    };
+                }
+            }
+            Err(_) => {}
+        }
+        Self::default()
+    }
+
+    /// Check if there's an incoming call
+    pub fn is_incoming(&self) -> bool {
+        self.state == "incoming"
+    }
+
+    /// Check if there's an active call
+    pub fn is_active(&self) -> bool {
+        self.state == "active"
+    }
+
+    /// Check if we're in a call (any state except idle)
+    pub fn in_call(&self) -> bool {
+        self.state != "idle" && !self.state.is_empty()
+    }
+
+    /// Send answer command to phone helper
+    pub fn answer() {
+        let cmd = serde_json::json!({"action": "answer"});
+        let _ = fs::write(Self::CMD_FILE, cmd.to_string());
+        tracing::info!("Phone: sent answer command");
+    }
+
+    /// Send hangup command to phone helper
+    pub fn hangup() {
+        let cmd = serde_json::json!({"action": "hangup"});
+        let _ = fs::write(Self::CMD_FILE, cmd.to_string());
+        tracing::info!("Phone: sent hangup command");
+    }
+
+    /// Toggle speaker mode
+    pub fn set_speaker(enabled: bool) {
+        let cmd = serde_json::json!({"action": "speaker", "enabled": enabled});
+        let _ = fs::write(Self::CMD_FILE, cmd.to_string());
+        tracing::info!("Phone: set speaker = {}", enabled);
+    }
+}
+
 /// Do Not Disturb mode (mutes notifications)
 pub struct DoNotDisturb {
     pub enabled: bool,
@@ -779,6 +855,10 @@ pub struct SystemStatus {
     pub volume_overlay_until: Option<std::time::Instant>,
     /// Haptic feedback controller
     pub vibrator: Option<Vibrator>,
+    /// Phone call status
+    pub phone: PhoneStatus,
+    /// Last time we checked phone status
+    phone_last_check: std::time::Instant,
 }
 
 impl SystemStatus {
@@ -800,6 +880,8 @@ impl SystemStatus {
             muted: VolumeManager::is_muted(),
             volume_overlay_until: None,
             vibrator,
+            phone: PhoneStatus::default(),
+            phone_last_check: std::time::Instant::now(),
         }
     }
 
@@ -891,6 +973,51 @@ impl SystemStatus {
     /// Check if volume overlay should be visible
     pub fn should_show_volume_overlay(&self) -> bool {
         self.volume_overlay_until.map(|t| std::time::Instant::now() < t).unwrap_or(false)
+    }
+
+    /// Check phone status (rate limited to every 500ms)
+    /// Returns true if there's a NEW incoming call (state just changed to incoming)
+    pub fn check_phone(&mut self) -> bool {
+        // Rate limit checks to every 500ms
+        if self.phone_last_check.elapsed().as_millis() < 500 {
+            return false;
+        }
+        self.phone_last_check = std::time::Instant::now();
+
+        let old_state = self.phone.state.clone();
+        self.phone = PhoneStatus::read();
+
+        // Return true if we just got an incoming call
+        old_state != "incoming" && self.phone.state == "incoming"
+    }
+
+    /// Check if there's currently an incoming call
+    pub fn has_incoming_call(&self) -> bool {
+        self.phone.is_incoming()
+    }
+
+    /// Check if there's an active call
+    pub fn has_active_call(&self) -> bool {
+        self.phone.is_active()
+    }
+
+    /// Get incoming call number
+    pub fn incoming_call_number(&self) -> &str {
+        &self.phone.number
+    }
+
+    /// Answer incoming call
+    pub fn answer_call(&mut self) {
+        PhoneStatus::answer();
+        // Haptic feedback
+        self.haptic_click();
+    }
+
+    /// Reject/hangup call
+    pub fn reject_call(&mut self) {
+        PhoneStatus::hangup();
+        // Haptic feedback
+        self.haptic_heavy();
     }
 }
 
