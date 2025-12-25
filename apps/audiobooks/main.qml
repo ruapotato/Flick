@@ -25,6 +25,9 @@ Window {
     property string settingsFile: "/home/droidian/.local/state/flick/audiobooks_settings.json"
     property string cacheFile: "/home/droidian/.local/state/flick/audiobooks_cache.json"
 
+    // Flag to prevent state changes during loading/seeking
+    property bool isLoadingChapter: false
+
     // Audio player
     Audio {
         id: audioPlayer
@@ -36,8 +39,11 @@ Window {
                 console.log("Audio loaded, seeking to: " + pendingSeekPosition)
                 seek(pendingSeekPosition)
                 pendingSeekPosition = 0
+                // Keep isLoadingChapter true until seek completes
+                seekCompleteTimer.start()
+            } else if (status === Audio.Loaded && !isLoadingChapter) {
+                writeMediaStatus()
             }
-            writeMediaStatus()
         }
 
         onPositionChanged: {
@@ -45,20 +51,36 @@ Window {
         }
 
         onPlaybackStateChanged: {
+            // Ignore state changes during loading/seeking
+            if (isLoadingChapter) return
+
             writeMediaStatus()
-            // Save progress when pausing
+            // Save progress when pausing (but not during loading)
             if (playbackState === Audio.PausedState || playbackState === Audio.StoppedState) {
                 saveProgress()
             }
         }
 
         onStopped: {
+            // Ignore stops during loading/seeking
+            if (isLoadingChapter) return
+
             // Auto-advance to next chapter if at end
             if (position >= duration - 1000 && currentChapterIndex < currentBook.chapters.length - 1) {
                 currentChapterIndex++
                 loadChapter(currentChapterIndex)
                 audioPlayer.play()
             }
+        }
+    }
+
+    // Timer to mark seek as complete
+    Timer {
+        id: seekCompleteTimer
+        interval: 500
+        onTriggered: {
+            isLoadingChapter = false
+            console.log("Seek complete, ready for playback")
         }
     }
 
@@ -269,11 +291,7 @@ Window {
                             booksListModel.sync()
                             console.log("Loaded " + booksList.length + " books from cache")
                             cacheLoaded = true
-
-                            // Try to auto-resume if we have a last played book
-                            if (lastPlayedBookPath) {
-                                autoResumeTimer.start()
-                            }
+                            // Resume button will be shown automatically since lastPlayedBookPath is set
                         }
                     } catch (e) {
                         console.log("Cache parse error:", e)
@@ -296,17 +314,6 @@ Window {
         xhr.open("PUT", "file://" + cacheFile)
         xhr.send(JSON.stringify(cache, null, 2))
         console.log("Saved " + booksList.length + " books to cache")
-    }
-
-    // Timer for auto-resume after cache loads
-    Timer {
-        id: autoResumeTimer
-        interval: 100
-        onTriggered: {
-            if (lastPlayedBookPath && booksList.length > 0) {
-                resumeLastBook()
-            }
-        }
     }
 
     // Timer to start background scan after a short delay
@@ -534,6 +541,9 @@ Window {
     function loadChapter(index) {
         if (!currentBook || !currentBook.chapters || index < 0 || index >= currentBook.chapters.length) return
 
+        // Mark as loading to prevent spurious pause/stop handling
+        isLoadingChapter = true
+
         var chapter = currentBook.chapters[index]
         // FolderListModel's filePath returns a local path, Audio needs file:// URL
         var sourcePath = chapter.path
@@ -548,6 +558,8 @@ Window {
             console.log("Will seek to saved position: " + pendingSeekPosition)
         } else {
             pendingSeekPosition = 0
+            // No seek needed, clear loading flag after a short delay
+            seekCompleteTimer.start()
         }
 
         // Now set the source - this triggers status changes
