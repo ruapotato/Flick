@@ -29,6 +29,15 @@ Window {
         id: audioPlayer
         autoPlay: false
 
+        onStatusChanged: {
+            // When audio is loaded and we have a pending seek, do it now
+            if (status === Audio.Loaded && pendingSeekPosition > 0) {
+                console.log("Audio loaded, seeking to: " + pendingSeekPosition)
+                seek(pendingSeekPosition)
+                pendingSeekPosition = 0
+            }
+        }
+
         onPositionChanged: {
             if (currentBook && currentBook.chapters && currentBook.chapters[currentChapterIndex]) {
                 saveProgress()
@@ -185,11 +194,8 @@ Window {
                     currentChapterIndex = progressData[lastPlayedBookPath].chapter || 0
                     loadChapter(currentChapterIndex)
                     currentView = "player"
-                    // Seek to position after a short delay (let audio load)
-                    Qt.callLater(function() {
-                        audioPlayer.seek(progressData[lastPlayedBookPath].position || 0)
-                        audioPlayer.play()
-                    })
+                    // Play will start, and onStatusChanged will seek to saved position
+                    audioPlayer.play()
                 }
                 return
             }
@@ -362,6 +368,9 @@ Window {
         audioPlayer.play()
     }
 
+    // Pending seek position (set when loading a chapter with saved progress)
+    property int pendingSeekPosition: 0
+
     function loadChapter(index) {
         if (!currentBook || !currentBook.chapters || index < 0 || index >= currentBook.chapters.length) return
 
@@ -374,9 +383,12 @@ Window {
         audioPlayer.source = sourcePath
         console.log("Loading audio: " + sourcePath)
 
-        // Restore position if available
+        // Set pending seek position if we have saved progress for this chapter
         if (progressData[currentBook.path] && progressData[currentBook.path].chapter === index) {
-            audioPlayer.seek(progressData[currentBook.path].position || 0)
+            pendingSeekPosition = progressData[currentBook.path].position || 0
+            console.log("Will seek to saved position: " + pendingSeekPosition)
+        } else {
+            pendingSeekPosition = 0
         }
     }
 
