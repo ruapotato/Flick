@@ -2054,6 +2054,127 @@ fn try_import_egl_buffer(
     Some((texture_id, width as u32, height as u32, egl_image))
 }
 
+/// Recursively render subsurfaces of a parent surface
+/// This is needed for camera preview which uses EGL/dmabuf subsurfaces
+fn render_subsurfaces(
+    parent: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    parent_pos: smithay::utils::Point<i32, smithay::utils::Logical>,
+    display: &mut HwcDisplay,
+    log_frame: bool,
+    frame_num: u64,
+) {
+    use std::cell::RefCell;
+    use crate::state::{SurfaceBufferData, EglTextureBuffer};
+
+    // Get all child surfaces (subsurfaces)
+    let children = compositor::get_children(parent);
+
+    if log_frame && !children.is_empty() {
+        info!("Surface {:?} has {} subsurfaces", parent.id(), children.len());
+    }
+
+    for (idx, child) in children.iter().enumerate() {
+        // Get subsurface position relative to parent
+        let subsurface_offset = compositor::with_states(child, |data| {
+            // Get cached state for subsurface position
+            use smithay::wayland::compositor::SubsurfaceCachedState;
+            let cached = data.cached_state.get::<SubsurfaceCachedState>();
+            cached.current().location
+        });
+
+        let child_pos = smithay::utils::Point::from((
+            parent_pos.x + subsurface_offset.x,
+            parent_pos.y + subsurface_offset.y,
+        ));
+
+        // Check buffer state for this subsurface
+        let buffer_state = compositor::with_states(child, |data| {
+            if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                let bd = buffer_data.borrow();
+                (bd.needs_egl_import, bd.buffer.is_some(), bd.egl_texture.is_some(),
+                 bd.egl_texture.as_ref().map(|t| (t.texture_id, t.width, t.height)))
+            } else {
+                (false, false, false, None)
+            }
+        });
+
+        let (needs_egl, has_shm, has_egl_tex, egl_info) = buffer_state;
+
+        if log_frame {
+            info!("  Subsurface[{}] {:?}: needs_egl={}, has_shm={}, has_egl_tex={}, pos=({},{})",
+                  idx, child.id(), needs_egl, has_shm, has_egl_tex, child_pos.x, child_pos.y);
+        }
+
+        // Render EGL texture if available
+        if let Some((texture_id, width, height)) = egl_info {
+            if log_frame {
+                info!("  Subsurface[{}] RENDERING EGL texture {} ({}x{})", idx, texture_id, width, height);
+            }
+            unsafe {
+                gl::render_egl_texture_at(texture_id, width, height, display.width, display.height,
+                                          child_pos.x, child_pos.y);
+            }
+        } else if needs_egl {
+            // Try to import EGL buffer
+            if log_frame {
+                info!("  Subsurface[{}] attempting EGL import...", idx);
+            }
+            if let Some(imported) = try_import_egl_buffer(child, display) {
+                // Store the imported texture
+                compositor::with_states(child, |data| {
+                    data.data_map.insert_if_missing(|| RefCell::new(SurfaceBufferData::default()));
+                    if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                        let mut bd = buffer_data.borrow_mut();
+                        bd.egl_texture = Some(EglTextureBuffer {
+                            texture_id: imported.0,
+                            width: imported.1,
+                            height: imported.2,
+                            egl_image: imported.3,
+                        });
+                        bd.needs_egl_import = false;
+                    }
+                });
+
+                if log_frame {
+                    info!("  Subsurface[{}] EGL IMPORT SUCCESS: texture {} ({}x{})",
+                          idx, imported.0, imported.1, imported.2);
+                }
+
+                unsafe {
+                    gl::render_egl_texture_at(imported.0, imported.1, imported.2,
+                                              display.width, display.height, child_pos.x, child_pos.y);
+                }
+            } else if log_frame {
+                info!("  Subsurface[{}] EGL import FAILED", idx);
+            }
+        } else if has_shm {
+            // Render SHM buffer
+            let pixels_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(child, |data| {
+                if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                    let bd = buffer_data.borrow();
+                    if let Some(ref stored) = bd.buffer {
+                        return Some((stored.width, stored.height, stored.pixels.clone()));
+                    }
+                }
+                None
+            });
+
+            if let Some((width, height, pixels)) = pixels_info {
+                if log_frame {
+                    info!("  Subsurface[{}] RENDERING SHM {}x{}", idx, width, height);
+                }
+                unsafe {
+                    gl::render_texture_at(width, height, &pixels, display.width, display.height,
+                                          child_pos.x, child_pos.y);
+                }
+            }
+        }
+
+        // Recursively render this child's subsurfaces
+        render_subsurfaces(child, child_pos, display, log_frame, frame_num);
+    }
+}
+
 /// Render a frame to the hwcomposer display
 fn render_frame(
     display: &mut HwcDisplay,
@@ -2572,6 +2693,12 @@ fn render_frame(
                         let window_type = if window.toplevel().is_some() { "Wayland" } else { "X11" };
                         info!("{} NO BUFFER frame {}: window {} has no stored buffer", window_type, frame_num, i);
                     }
+
+                    // === RENDER SUBSURFACES ===
+                    // Camera preview and other video surfaces are subsurfaces
+                    // They may use EGL/dmabuf buffers for hardware-accelerated rendering
+                    let window_pos = state.space.element_location(window).unwrap_or_default();
+                    render_subsurfaces(&wl_surface, window_pos, display, log_frame, frame_num);
                 }
             }
             debug!("Finished rendering windows");
