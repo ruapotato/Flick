@@ -59,10 +59,28 @@ pub struct StoredBuffer {
     pub pixels: Vec<u8>,
 }
 
+/// EGL-imported texture data
+#[derive(Debug)]
+pub struct EglTextureBuffer {
+    pub texture_id: u32,
+    pub width: u32,
+    pub height: u32,
+    pub egl_image: *mut std::ffi::c_void,
+}
+
+// Mark as Send+Sync since the texture ID and EGL image are just handles
+unsafe impl Send for EglTextureBuffer {}
+unsafe impl Sync for EglTextureBuffer {}
+
 /// User data key for storing buffer data on surfaces
 #[derive(Debug, Default)]
 pub struct SurfaceBufferData {
+    /// SHM buffer pixels (if available)
     pub buffer: Option<StoredBuffer>,
+    /// EGL texture (if imported)
+    pub egl_texture: Option<EglTextureBuffer>,
+    /// Flag indicating this surface needs EGL import (SHM failed)
+    pub needs_egl_import: bool,
 }
 
 use crate::input::{GestureRecognizer, GestureAction};
@@ -1184,13 +1202,21 @@ impl CompositorHandler for Flick {
                             // Store in surface user data
                             data.data_map.insert_if_missing(|| RefCell::new(SurfaceBufferData::default()));
                             if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
-                                buffer_data.borrow_mut().buffer = Some(stored);
+                                let mut bd = buffer_data.borrow_mut();
+                                bd.buffer = Some(stored);
+                                bd.needs_egl_import = false;
                             }
                         }
-                        Err(e) => {
-                            // This is expected for non-SHM buffers (dmabuf, EGL, android gralloc)
-                            // TODO: Add EGL image import for camera/video preview support
-                            tracing::debug!("Buffer is not SHM (likely dmabuf/EGL): {:?} - {:?}", buffer.id(), e);
+                        Err(_e) => {
+                            // Non-SHM buffer (dmabuf, EGL, android gralloc)
+                            // Mark for EGL import during rendering
+                            data.data_map.insert_if_missing(|| RefCell::new(SurfaceBufferData::default()));
+                            if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                let mut bd = buffer_data.borrow_mut();
+                                bd.buffer = None; // Clear SHM buffer
+                                bd.needs_egl_import = true;
+                                tracing::debug!("Surface {:?} needs EGL import", surface.id());
+                            }
                         }
                     }
                 }

@@ -119,6 +119,61 @@ use super::hwc_shim_ffi::{HwcContext, FlickDisplayInfo};
 // Re-use khronos-egl for raw EGL access
 use khronos_egl as egl;
 
+// EGL extension constants for wayland buffer import
+const EGL_WAYLAND_BUFFER_WL: u32 = 0x31D5;
+const EGL_TEXTURE_FORMAT: u32 = 0x3080;
+const EGL_TEXTURE_RGB: u32 = 0x305D;
+const EGL_TEXTURE_RGBA: u32 = 0x305E;
+const EGL_TEXTURE_EXTERNAL_WL: u32 = 0x31DA;
+const EGL_TEXTURE_Y_U_V_WL: u32 = 0x31D7;
+const EGL_TEXTURE_Y_UV_WL: u32 = 0x31D8;
+const EGL_TEXTURE_Y_XUXV_WL: u32 = 0x31D9;
+const EGL_WIDTH: u32 = 0x3057;
+const EGL_HEIGHT: u32 = 0x3056;
+
+// EGL image types
+type EGLImageKHR = *mut std::ffi::c_void;
+const EGL_NO_IMAGE_KHR: EGLImageKHR = std::ptr::null_mut();
+
+// EGL extension function types
+type EglQueryWaylandBufferWL = unsafe extern "C" fn(
+    dpy: *mut std::ffi::c_void,
+    buffer: *mut std::ffi::c_void,
+    attribute: i32,
+    value: *mut i32,
+) -> u32;
+
+type EglCreateImageKHR = unsafe extern "C" fn(
+    dpy: *mut std::ffi::c_void,
+    ctx: *mut std::ffi::c_void,
+    target: u32,
+    buffer: *mut std::ffi::c_void,
+    attrib_list: *const i32,
+) -> EGLImageKHR;
+
+type EglDestroyImageKHR = unsafe extern "C" fn(
+    dpy: *mut std::ffi::c_void,
+    image: EGLImageKHR,
+) -> u32;
+
+type GlEGLImageTargetTexture2DOES = unsafe extern "C" fn(
+    target: u32,
+    image: EGLImageKHR,
+);
+
+/// Imported EGL buffer for wayland clients
+#[derive(Debug)]
+struct ImportedEglBuffer {
+    /// OpenGL texture ID
+    texture_id: u32,
+    /// EGL image handle (for cleanup)
+    egl_image: EGLImageKHR,
+    /// Buffer width
+    width: u32,
+    /// Buffer height
+    height: u32,
+}
+
 /// Keyboard modifier state
 #[derive(Default)]
 struct ModifierState {
@@ -149,6 +204,14 @@ struct HwcDisplay {
     width: u32,
     /// Display height in pixels
     height: u32,
+    /// EGL extension: query wayland buffer attributes
+    egl_query_wayland_buffer: Option<EglQueryWaylandBufferWL>,
+    /// EGL extension: create EGL image from buffer
+    egl_create_image: Option<EglCreateImageKHR>,
+    /// EGL extension: destroy EGL image
+    egl_destroy_image: Option<EglDestroyImageKHR>,
+    /// GL extension: bind EGL image to texture
+    gl_egl_image_target_texture_2d: Option<GlEGLImageTargetTexture2DOES>,
 }
 
 impl Drop for HwcDisplay {
@@ -306,6 +369,46 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
     // Initialize GL function pointers
     unsafe { gl::init(); }
 
+    // Load EGL extension functions for wayland buffer import
+    let egl_query_wayland_buffer: Option<EglQueryWaylandBufferWL> = unsafe {
+        let ptr = egl.get_proc_address("eglQueryWaylandBufferWL");
+        ptr.map(|p| std::mem::transmute(p))
+    };
+    if egl_query_wayland_buffer.is_some() {
+        info!("Loaded eglQueryWaylandBufferWL extension");
+    } else {
+        warn!("eglQueryWaylandBufferWL not available - camera preview may not work");
+    }
+
+    let egl_create_image: Option<EglCreateImageKHR> = unsafe {
+        let ptr = egl.get_proc_address("eglCreateImageKHR");
+        ptr.map(|p| std::mem::transmute(p))
+    };
+    if egl_create_image.is_some() {
+        info!("Loaded eglCreateImageKHR extension");
+    } else {
+        warn!("eglCreateImageKHR not available");
+    }
+
+    let egl_destroy_image: Option<EglDestroyImageKHR> = unsafe {
+        let ptr = egl.get_proc_address("eglDestroyImageKHR");
+        ptr.map(|p| std::mem::transmute(p))
+    };
+    if egl_destroy_image.is_some() {
+        info!("Loaded eglDestroyImageKHR extension");
+    }
+
+    // Load GL extension for EGL image to texture
+    let gl_egl_image_target_texture_2d: Option<GlEGLImageTargetTexture2DOES> = unsafe {
+        let ptr = egl.get_proc_address("glEGLImageTargetTexture2DOES");
+        ptr.map(|p| std::mem::transmute(p))
+    };
+    if gl_egl_image_target_texture_2d.is_some() {
+        info!("Loaded glEGLImageTargetTexture2DOES extension");
+    } else {
+        warn!("glEGLImageTargetTexture2DOES not available");
+    }
+
     info!("HWComposer display initialized successfully via shim");
 
     Ok(HwcDisplay {
@@ -316,6 +419,10 @@ fn init_hwc_display(_output: &Output) -> Result<HwcDisplay> {
         egl_context,
         width,
         height,
+        egl_query_wayland_buffer,
+        egl_create_image,
+        egl_destroy_image,
+        gl_egl_image_target_texture_2d,
     })
 }
 
@@ -1823,6 +1930,100 @@ pub fn run() -> Result<()> {
 // Frame counter for render_frame logging
 static mut RENDER_FRAME_COUNT: u64 = 0;
 
+/// Try to import a wayland buffer as an EGL image and create a GL texture
+/// Returns (texture_id, width, height, egl_image) on success
+fn try_import_egl_buffer(
+    wl_surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    display: &HwcDisplay,
+) -> Option<(u32, u32, u32, *mut std::ffi::c_void)> {
+    use smithay::wayland::compositor::{with_states, SurfaceAttributes};
+
+    // Check if we have the required EGL extensions
+    let query_fn = display.egl_query_wayland_buffer?;
+    let create_image_fn = display.egl_create_image?;
+    let image_target_fn = display.gl_egl_image_target_texture_2d?;
+
+    // Get the wl_buffer from the surface
+    let buffer_ptr: Option<*mut std::ffi::c_void> = with_states(wl_surface, |data| {
+        let mut binding = data.cached_state.get::<SurfaceAttributes>();
+        let attrs = binding.current();
+
+        if let Some(ref buffer_assignment) = attrs.buffer {
+            use smithay::wayland::compositor::BufferAssignment;
+            if let BufferAssignment::NewBuffer(buffer) = buffer_assignment {
+                // Get the raw wayland buffer pointer
+                use smithay::reexports::wayland_server::Resource;
+                Some(buffer.id().as_ptr() as *mut std::ffi::c_void)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    });
+
+    let buffer_ptr = buffer_ptr?;
+
+    // Query buffer dimensions
+    let mut width: i32 = 0;
+    let mut height: i32 = 0;
+    let mut texture_format: i32 = 0;
+
+    let egl_display_ptr = display.egl_display.as_ptr() as *mut std::ffi::c_void;
+
+    unsafe {
+        // Query width
+        let result = query_fn(egl_display_ptr, buffer_ptr, EGL_WIDTH as i32, &mut width);
+        if result == 0 {
+            debug!("eglQueryWaylandBufferWL failed for width");
+            return None;
+        }
+
+        // Query height
+        let result = query_fn(egl_display_ptr, buffer_ptr, EGL_HEIGHT as i32, &mut height);
+        if result == 0 {
+            debug!("eglQueryWaylandBufferWL failed for height");
+            return None;
+        }
+
+        // Query texture format
+        let result = query_fn(egl_display_ptr, buffer_ptr, EGL_TEXTURE_FORMAT as i32, &mut texture_format);
+        if result == 0 {
+            debug!("eglQueryWaylandBufferWL failed for format");
+            return None;
+        }
+    }
+
+    info!("EGL buffer query: {}x{}, format={}", width, height, texture_format);
+
+    // Create EGL image from the wayland buffer
+    let attribs: [i32; 1] = [egl::NONE as i32];
+
+    let egl_image = unsafe {
+        create_image_fn(
+            egl_display_ptr,
+            egl::NO_CONTEXT as *mut std::ffi::c_void, // No context for wayland buffer
+            EGL_WAYLAND_BUFFER_WL,
+            buffer_ptr,
+            attribs.as_ptr(),
+        )
+    };
+
+    if egl_image == EGL_NO_IMAGE_KHR {
+        debug!("eglCreateImageKHR failed");
+        return None;
+    }
+
+    info!("Created EGL image: {:?}", egl_image);
+
+    // Create GL texture and bind EGL image to it
+    let texture_id = unsafe { gl::create_texture_from_egl_image(egl_image, image_target_fn) };
+
+    info!("Created GL texture {} from EGL image", texture_id);
+
+    Some((texture_id, width as u32, height as u32, egl_image))
+}
+
 /// Render a frame to the hwcomposer display
 fn render_frame(
     display: &mut HwcDisplay,
@@ -2207,7 +2408,78 @@ fn render_frame(
                     // Render using stored buffer data from commit handler
                     debug!("Window {} trying to render stored buffer", i);
 
-                    // Get stored buffer from surface user data
+                    // First check if we have an EGL texture or need to import one
+                    let egl_texture_info: Option<(u32, u32, u32)> = compositor::with_states(&wl_surface, |data| {
+                        use std::cell::RefCell;
+                        use crate::state::SurfaceBufferData;
+
+                        if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                            let bd = buffer_data.borrow();
+                            if let Some(ref egl_tex) = bd.egl_texture {
+                                return Some((egl_tex.texture_id, egl_tex.width, egl_tex.height));
+                            }
+                        }
+                        None
+                    });
+
+                    // If we have an EGL texture, render it
+                    if let Some((texture_id, width, height)) = egl_texture_info {
+                        let window_pos = state.space.element_location(window).unwrap_or_default();
+                        if log_frame {
+                            info!("EGL RENDER[{}] frame {}: texture_id={}, {}x{}", i, frame_num, texture_id, width, height);
+                        }
+                        unsafe {
+                            gl::render_egl_texture_at(texture_id, width, height, display.width, display.height,
+                                                       window_pos.x, window_pos.y);
+                        }
+                    } else {
+                        // Try EGL import if needed
+                        let needs_import = compositor::with_states(&wl_surface, |data| {
+                            use std::cell::RefCell;
+                            use crate::state::SurfaceBufferData;
+                            if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                buffer_data.borrow().needs_egl_import
+                            } else {
+                                false
+                            }
+                        });
+
+                        if needs_import {
+                            // Try to import EGL buffer
+                            if let Some(imported) = try_import_egl_buffer(&wl_surface, display) {
+                                // Store the imported texture
+                                compositor::with_states(&wl_surface, |data| {
+                                    use std::cell::RefCell;
+                                    use crate::state::{SurfaceBufferData, EglTextureBuffer};
+                                    data.data_map.insert_if_missing(|| RefCell::new(SurfaceBufferData::default()));
+                                    if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                        let mut bd = buffer_data.borrow_mut();
+                                        bd.egl_texture = Some(EglTextureBuffer {
+                                            texture_id: imported.0,
+                                            width: imported.1,
+                                            height: imported.2,
+                                            egl_image: imported.3,
+                                        });
+                                        bd.needs_egl_import = false;
+                                    }
+                                });
+
+                                // Render the newly imported texture
+                                let window_pos = state.space.element_location(window).unwrap_or_default();
+                                if log_frame {
+                                    info!("EGL IMPORT+RENDER[{}] frame {}: texture_id={}, {}x{}", i, frame_num, imported.0, imported.1, imported.2);
+                                }
+                                unsafe {
+                                    gl::render_egl_texture_at(imported.0, imported.1, imported.2, display.width, display.height,
+                                                               window_pos.x, window_pos.y);
+                                }
+                            } else if log_frame {
+                                info!("EGL IMPORT FAILED[{}] frame {}", i, frame_num);
+                            }
+                        }
+                    }
+
+                    // Get stored SHM buffer from surface user data (fallback)
                     let buffer_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(&wl_surface, |data| {
                         debug!("  stored: inside with_states");
                         use std::cell::RefCell;
@@ -2215,6 +2487,10 @@ fn render_frame(
 
                         if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
                             let data = buffer_data.borrow();
+                            // Skip if we already rendered via EGL
+                            if data.egl_texture.is_some() {
+                                return None;
+                            }
                             if let Some(ref stored) = data.buffer {
                                 debug!("  stored: found buffer {}x{}", stored.width, stored.height);
                                 Some((stored.width, stored.height, stored.pixels.clone()))
@@ -2229,7 +2505,7 @@ fn render_frame(
                     });
                     debug!("Window {} after with_states", i);
 
-                    // Render outside of with_states to avoid holding locks
+                    // Render SHM buffer outside of with_states to avoid holding locks
                     if let Some((width, height, pixels)) = buffer_info {
                         // Get window position from space (for close gesture animation)
                         let window_pos = state.space.element_location(window)
@@ -2804,6 +3080,117 @@ mod gl {
         // Cleanup
         if let Some(f) = FN_DISABLE { f(BLEND); }
         if let Some(f) = FN_DELETE_TEXTURES { f(1, &texture); }
+    }
+
+    /// Render an existing GL texture at a specific position (for EGL-imported buffers)
+    /// Unlike render_texture_at, this uses an existing texture ID and doesn't upload pixels
+    pub unsafe fn render_egl_texture_at(texture_id: u32, tex_width: u32, tex_height: u32,
+                                         screen_width: u32, screen_height: u32,
+                                         x: i32, y: i32) {
+        if SHADER_PROGRAM == 0 || ATTR_POSITION < 0 || ATTR_TEXCOORD < 0 {
+            return;
+        }
+
+        // Clear any pending errors
+        while GetError() != 0 {}
+
+        // Set viewport
+        if let Some(f) = FN_VIEWPORT {
+            f(0, 0, screen_width as i32, screen_height as i32);
+        }
+
+        // Bind the existing texture
+        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, texture_id); }
+
+        // Set texture parameters (in case they weren't set)
+        if let Some(f) = FN_TEX_PARAMETERI {
+            f(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
+            f(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
+        }
+
+        // Use shader program
+        if let Some(f) = FN_USE_PROGRAM { f(SHADER_PROGRAM); }
+
+        // Set texture uniform
+        if let Some(f) = FN_ACTIVE_TEXTURE { f(0x84C0); } // GL_TEXTURE0
+        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, texture_id); }
+        if let Some(f) = FN_UNIFORM1I { f(UNIFORM_TEXTURE, 0); }
+
+        // Convert screen coordinates to normalized device coordinates
+        let sw = screen_width as f32;
+        let sh = screen_height as f32;
+        let tw = tex_width as f32;
+        let th = tex_height as f32;
+
+        let left = (x as f32 / sw) * 2.0 - 1.0;
+        let right = ((x as f32 + tw) / sw) * 2.0 - 1.0;
+        let top = 1.0 - (y as f32 / sh) * 2.0;
+        let bottom = 1.0 - ((y as f32 + th) / sh) * 2.0;
+
+        #[rustfmt::skip]
+        let vertices: [f32; 16] = [
+            left,  bottom,      0.0, 1.0,
+            right, bottom,      1.0, 1.0,
+            left,  top,         0.0, 0.0,
+            right, top,         1.0, 0.0,
+        ];
+
+        if let Some(f) = FN_ENABLE_VERTEX_ATTRIB_ARRAY {
+            f(ATTR_POSITION as u32);
+            f(ATTR_TEXCOORD as u32);
+        }
+
+        if let Some(f) = FN_VERTEX_ATTRIB_POINTER {
+            let stride = 4 * std::mem::size_of::<f32>() as i32;
+            f(ATTR_POSITION as u32, 2, FLOAT, FALSE, stride, vertices.as_ptr() as *const c_void);
+            f(ATTR_TEXCOORD as u32, 2, FLOAT, FALSE, stride,
+              (vertices.as_ptr() as *const f32).add(2) as *const c_void);
+        }
+
+        if let Some(f) = FN_ENABLE { f(BLEND); }
+        if let Some(f) = FN_BLEND_FUNC { f(SRC_ALPHA, ONE_MINUS_SRC_ALPHA); }
+
+        if let Some(f) = FN_DRAW_ARRAYS {
+            f(TRIANGLE_STRIP, 0, 4);
+        }
+
+        Flush();
+
+        if let Some(f) = FN_DISABLE { f(BLEND); }
+        // Note: Don't delete the texture - it's cached for reuse
+    }
+
+    /// Create a GL texture from an EGL image
+    /// This is used for importing camera/video preview buffers
+    pub unsafe fn create_texture_from_egl_image(
+        egl_image: *mut std::ffi::c_void,
+        image_target_fn: super::GlEGLImageTargetTexture2DOES,
+    ) -> u32 {
+        let mut texture_id: u32 = 0;
+
+        if let Some(gen_textures) = FN_GEN_TEXTURES {
+            gen_textures(1, &mut texture_id);
+        }
+        if let Some(bind_texture) = FN_BIND_TEXTURE {
+            bind_texture(TEXTURE_2D, texture_id);
+        }
+
+        // Bind EGL image to texture
+        image_target_fn(TEXTURE_2D, egl_image);
+
+        // Set texture parameters
+        const TEXTURE_WRAP_S: u32 = 0x2802;
+        const TEXTURE_WRAP_T: u32 = 0x2803;
+        const CLAMP_TO_EDGE: i32 = 0x812F;
+
+        if let Some(tex_param) = FN_TEX_PARAMETERI {
+            tex_param(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
+            tex_param(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
+            tex_param(TEXTURE_2D, TEXTURE_WRAP_S, CLAMP_TO_EDGE);
+            tex_param(TEXTURE_2D, TEXTURE_WRAP_T, CLAMP_TO_EDGE);
+        }
+
+        texture_id
     }
 }
 
