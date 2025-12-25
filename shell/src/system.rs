@@ -333,10 +333,12 @@ impl VolumeManager {
     /// Run pactl command as the audio user
     fn run_pactl(args: &[&str]) -> Option<std::process::Output> {
         if let Some((uid, username)) = Self::get_audio_user() {
+            // Quote each argument to handle @ symbols properly
+            let quoted_args: Vec<String> = args.iter().map(|a| format!("'{}'", a)).collect();
             // Set required environment variables for PulseAudio/PipeWire access
             let pactl_cmd = format!(
                 "XDG_RUNTIME_DIR=/run/user/{} DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{}/bus DISPLAY= pactl {}",
-                uid, uid, args.join(" ")
+                uid, uid, quoted_args.join(" ")
             );
 
             tracing::info!("Running pactl as user {}: {:?}", username, args);
@@ -363,10 +365,12 @@ impl VolumeManager {
     /// Run pactl command as the audio user (fire and forget)
     fn run_pactl_async(args: &[&str]) {
         if let Some((uid, username)) = Self::get_audio_user() {
+            // Quote each argument to handle @ symbols properly
+            let quoted_args: Vec<String> = args.iter().map(|a| format!("'{}'", a)).collect();
             // Set required environment variables for PulseAudio/PipeWire access
             let pactl_cmd = format!(
                 "XDG_RUNTIME_DIR=/run/user/{} DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{}/bus DISPLAY= pactl {}",
-                uid, uid, args.join(" ")
+                uid, uid, quoted_args.join(" ")
             );
 
             tracing::info!("Running pactl as user {}: {:?}", username, args);
