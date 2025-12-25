@@ -249,12 +249,47 @@ Item {
 
             onPatternComplete: {
                 console.log("Pattern entered:", JSON.stringify(pattern))
-                console.log("Correct pattern:", JSON.stringify(correctPattern))
-                // Compare patterns
-                if (arraysEqual(pattern, correctPattern)) {
-                    successAnim.start()
-                } else {
-                    patternEntry.showError("Wrong pattern")
+                // Send pattern for verification via shell script
+                var patternStr = pattern.join(",")
+                console.warn("VERIFY_PATTERN:" + patternStr)
+                // Start polling for verification result
+                verifyTimer.start()
+            }
+        }
+
+        // Timer to poll for verification result
+        Timer {
+            id: verifyTimer
+            property int pollCount: 0
+            interval: 100
+            repeat: true
+            onTriggered: {
+                pollCount++
+                // Timeout after 3 seconds
+                if (pollCount > 30) {
+                    verifyTimer.stop()
+                    pollCount = 0
+                    patternEntry.showError("Verification timeout")
+                    return
+                }
+
+                var xhr = new XMLHttpRequest()
+                xhr.open("GET", "file://" + stateDir + "/verify_result", false)
+                try {
+                    xhr.send()
+                    if (xhr.status === 200 && xhr.responseText.trim() !== "") {
+                        verifyTimer.stop()
+                        pollCount = 0
+                        var result = xhr.responseText.trim()
+                        console.log("Verification result:", result)
+                        if (result === "OK") {
+                            successAnim.start()
+                        } else {
+                            patternEntry.showError("Wrong pattern")
+                        }
+                    }
+                } catch (e) {
+                    // File not ready yet, keep polling
                 }
             }
         }

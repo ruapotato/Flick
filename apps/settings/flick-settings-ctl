@@ -229,6 +229,44 @@ print(hash)
 EOF
                 echo "Pattern saved successfully"
                 ;;
+            verify-pattern)
+                # VALUE should be comma-separated node indices like "0,3,6,7,8"
+                [ -z "$VALUE" ] && { echo "FAIL:no pattern"; exit 1; }
+
+                # Read stored hash from config
+                if [ ! -f "$LOCK_CONFIG_PATH" ]; then
+                    echo "FAIL:no config"
+                    exit 1
+                fi
+
+                STORED_HASH=$(python3 -c "
+import json
+with open('$LOCK_CONFIG_PATH') as f:
+    config = json.load(f)
+print(config.get('pattern_hash', '') or '')
+" 2>/dev/null)
+
+                if [ -z "$STORED_HASH" ]; then
+                    echo "FAIL:no hash"
+                    exit 1
+                fi
+
+                # Verify pattern using bcrypt
+                RESULT=$(python3 -c "
+import bcrypt
+pattern = '$VALUE'
+stored_hash = '$STORED_HASH'
+try:
+    if bcrypt.checkpw(pattern.encode(), stored_hash.encode()):
+        print('OK')
+    else:
+        print('FAIL:wrong')
+except Exception as e:
+    print('FAIL:' + str(e))
+" 2>/dev/null)
+
+                echo "$RESULT"
+                ;;
             *)
                 usage
                 ;;
