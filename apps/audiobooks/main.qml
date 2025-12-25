@@ -36,12 +36,17 @@ Window {
                 seek(pendingSeekPosition)
                 pendingSeekPosition = 0
             }
+            writeMediaStatus()
         }
 
         onPositionChanged: {
             if (currentBook && currentBook.chapters && currentBook.chapters[currentChapterIndex]) {
                 saveProgress()
             }
+        }
+
+        onPlaybackStateChanged: {
+            writeMediaStatus()
         }
 
         onStopped: {
@@ -51,6 +56,77 @@ Window {
                 loadChapter(currentChapterIndex)
                 audioPlayer.play()
             }
+        }
+    }
+
+    // Write media status for lock screen controls
+    function writeMediaStatus() {
+        if (!currentBook || !currentBook.chapters || !currentBook.chapters[currentChapterIndex]) {
+            return
+        }
+        var status = {
+            playing: audioPlayer.playbackState === Audio.PlayingState,
+            app: "audiobooks",
+            title: currentBook.chapters[currentChapterIndex].title,
+            artist: currentBook.title,
+            position: audioPlayer.position,
+            duration: audioPlayer.duration,
+            timestamp: Date.now()
+        }
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file:///home/droidian/.local/state/flick/media_status.json")
+        xhr.send(JSON.stringify(status))
+    }
+
+    // Timer to periodically update media status and check for commands
+    Timer {
+        id: mediaStatusTimer
+        interval: 1000
+        running: currentBook !== null  // Run whenever we have a book loaded
+        repeat: true
+        onTriggered: {
+            if (audioPlayer.playbackState === Audio.PlayingState) {
+                writeMediaStatus()
+            }
+            checkMediaCommand()
+        }
+    }
+
+    property string lastCommandTimestamp: ""
+
+    function checkMediaCommand() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///home/droidian/.local/state/flick/media_command")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                if (xhr.status === 200 || xhr.status === 0) {
+                    var cmdLine = xhr.responseText.trim()
+                    if (cmdLine && cmdLine !== lastCommandTimestamp) {
+                        var parts = cmdLine.split(":")
+                        var cmd = parts[0]
+                        var timestamp = parts.length > 1 ? parts[parts.length - 1] : ""
+
+                        // Only process if this is a new command
+                        if (timestamp !== lastCommandTimestamp) {
+                            lastCommandTimestamp = timestamp
+                            processMediaCommand(cmd, parts.length > 2 ? parts[1] : "")
+                        }
+                    }
+                }
+            }
+        }
+        xhr.send()
+    }
+
+    function processMediaCommand(cmd, arg) {
+        console.log("Processing media command: " + cmd + " arg: " + arg)
+        if (cmd === "play") {
+            audioPlayer.play()
+        } else if (cmd === "pause") {
+            audioPlayer.pause()
+        } else if (cmd === "seek") {
+            var delta = parseInt(arg) || 0
+            audioPlayer.seek(Math.max(0, Math.min(audioPlayer.duration, audioPlayer.position + delta)))
         }
     }
 

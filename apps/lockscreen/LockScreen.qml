@@ -108,6 +108,18 @@ Item {
         }
     }
 
+    // Media controls on clock screen
+    MediaControls {
+        id: clockMediaControls
+        anchors.top: clockContainer.bottom
+        anchors.topMargin: 40
+        anchors.horizontalCenter: parent.horizontalCenter
+        opacity: 1 - swipeProgress * 1.5
+        stateDir: lockScreen.stateDir
+
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+    }
+
     // Swipe up hint with animated chevron
     Column {
         id: swipeHint
@@ -197,27 +209,40 @@ Item {
             opacity: 0.92
         }
 
-        PinEntry {
-            id: pinEntry
+        // Container for PIN entry and media controls
+        Column {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: showingPin ? 0 : 200
-            correctPin: lockScreen.correctPin
+            spacing: 24
 
             Behavior on anchors.verticalCenterOffset {
                 NumberAnimation { duration: 400; easing.type: Easing.OutBack }
             }
 
-            onPinCorrect: {
-                // Success animation
-                successAnim.start()
+            PinEntry {
+                id: pinEntry
+                anchors.horizontalCenter: parent.horizontalCenter
+                correctPin: lockScreen.correctPin
+
+                onPinCorrect: {
+                    // Success animation
+                    successAnim.start()
+                }
+
+                onPinIncorrect: {
+                    shakeAnimation.start()
+                }
+
+                onCancelled: {
+                    showingPin = false
+                }
             }
 
-            onPinIncorrect: {
-                shakeAnimation.start()
-            }
-
-            onCancelled: {
-                showingPin = false
+            // Media controls below PIN entry
+            MediaControls {
+                id: pinMediaControls
+                anchors.horizontalCenter: parent.horizontalCenter
+                stateDir: lockScreen.stateDir
             }
         }
 
