@@ -27,6 +27,8 @@ Window {
 
     // Flag to prevent state changes during loading/seeking
     property bool isLoadingChapter: false
+    // Flag to auto-play after seek completes
+    property bool playAfterSeek: false
 
     // Audio player
     Audio {
@@ -81,6 +83,11 @@ Window {
         onTriggered: {
             isLoadingChapter = false
             console.log("Seek complete, ready for playback")
+            // Auto-play if requested
+            if (playAfterSeek) {
+                playAfterSeek = false
+                audioPlayer.play()
+            }
         }
     }
 
@@ -357,8 +364,8 @@ Window {
                     currentChapterIndex = progressData[lastPlayedBookPath].chapter || 0
                     loadChapter(currentChapterIndex)
                     currentView = "player"
-                    // Play will start, and onStatusChanged will seek to saved position
-                    audioPlayer.play()
+                    // Play after seek completes to avoid pause/play glitch
+                    playAfterSeek = true
                 }
                 return
             }
