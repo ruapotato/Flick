@@ -339,12 +339,20 @@ impl VolumeManager {
                 uid, uid, args.join(" ")
             );
 
-            Command::new("su")
+            tracing::info!("Running pactl as user {}: {:?}", username, args);
+            let result = Command::new("su")
                 .args([&username, "-c", &pactl_cmd])
                 .output()
-                .ok()
+                .ok();
+            if let Some(ref output) = result {
+                if !output.status.success() {
+                    tracing::warn!("pactl failed: {}", String::from_utf8_lossy(&output.stderr));
+                }
+            }
+            result
         } else {
             // Fallback to direct call (works if not running as root)
+            tracing::info!("Running pactl directly: {:?}", args);
             Command::new("pactl")
                 .args(args)
                 .output()
@@ -393,12 +401,14 @@ impl VolumeManager {
 
     /// Increase volume by 5%
     pub fn volume_up() {
-        Self::run_pactl_async(&["set-sink-volume", "@DEFAULT_SINK@", "+5%"]);
+        // Use synchronous run_pactl so volume change completes before we read it back
+        let _ = Self::run_pactl(&["set-sink-volume", "@DEFAULT_SINK@", "+5%"]);
     }
 
     /// Decrease volume by 5%
     pub fn volume_down() {
-        Self::run_pactl_async(&["set-sink-volume", "@DEFAULT_SINK@", "-5%"]);
+        // Use synchronous run_pactl so volume change completes before we read it back
+        let _ = Self::run_pactl(&["set-sink-volume", "@DEFAULT_SINK@", "-5%"]);
     }
 
     /// Check if muted
