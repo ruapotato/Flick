@@ -312,15 +312,6 @@ Item {
             }
         }
 
-        // Media controls below unlock entry
-        MediaControls {
-            id: unlockMediaControls
-            anchors.top: lockMethod === "pin" ? pinEntry.bottom : patternEntry.bottom
-            anchors.topMargin: 16
-            anchors.horizontalCenter: parent.horizontalCenter
-            stateDir: lockScreen.stateDir
-        }
-
         // Shake animation for wrong PIN
         SequentialAnimation {
             id: shakeAnimation

@@ -168,6 +168,7 @@ Item {
                     MouseArea {
                         id: skipBackMouse
                         anchors.fill: parent
+                        anchors.margins: -15
                         onClicked: sendCommand("seek:-30000")
                     }
                 }
@@ -189,6 +190,7 @@ Item {
                     MouseArea {
                         id: playPauseMouse
                         anchors.fill: parent
+                        anchors.margins: -15
                         onClicked: sendCommand(isPlaying ? "pause" : "play")
                     }
                 }
@@ -210,6 +212,7 @@ Item {
                     MouseArea {
                         id: skipFwdMouse
                         anchors.fill: parent
+                        anchors.margins: -15
                         onClicked: sendCommand("seek:30000")
                     }
                 }
