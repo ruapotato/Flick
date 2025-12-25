@@ -11,21 +11,17 @@ Window {
     title: "Flick Calendar"
     color: "#0a0a0f"
 
-    // Calendar uses fixed scaling
-    property real textScale: 1.0
     property var currentDate: new Date()
     property int currentMonth: currentDate.getMonth()
     property int currentYear: currentDate.getFullYear()
     property int selectedDay: -1
     property var events: ({})
+    property string viewMode: "month"  // "month" or "week"
+    property int currentWeekStart: 0  // Day of month for week view start
 
     Component.onCompleted: {
-        loadConfig()
         loadEvents()
-    }
-
-    function loadConfig() {
-        // Calendar uses fixed scaling - no config needed
+        updateCurrentWeek()
     }
 
     function loadEvents() {
@@ -36,7 +32,7 @@ Window {
             xhr.send()
             if (xhr.status === 200 || xhr.status === 0) {
                 events = JSON.parse(xhr.responseText)
-                console.log("Loaded events")
+                console.log("Loaded events: " + JSON.stringify(events))
             }
         } catch (e) {
             console.log("No existing events file")
@@ -51,19 +47,17 @@ Window {
         xhr.open("PUT", "file://" + eventsPath, false)
         try {
             xhr.send(eventsJson)
-            console.log("Saved events to " + eventsPath)
+            console.log("Saved events")
         } catch (e) {
             console.log("Failed to save events: " + e)
         }
-        // Refresh calendar view to show event indicators
-        refreshCalendar()
     }
 
-    function refreshCalendar() {
-        // Force grid refresh by resetting model
-        var model = calendarGrid.model
-        calendarGrid.model = 0
-        calendarGrid.model = model
+    function updateCurrentWeek() {
+        var today = new Date()
+        var dayOfWeek = today.getDay()
+        currentWeekStart = today.getDate() - dayOfWeek
+        if (currentWeekStart < 1) currentWeekStart = 1
     }
 
     function getMonthName(month) {
@@ -95,7 +89,18 @@ Window {
 
     function hasEvents(day) {
         var key = getDateKey(day)
-        return events[key] && events[key].length > 0
+        var result = events[key] && events[key].length > 0
+        return result
+    }
+
+    function getEventsForDay(day) {
+        var key = getDateKey(day)
+        return events[key] || []
+    }
+
+    function getEventCount(day) {
+        var key = getDateKey(day)
+        return events[key] ? events[key].length : 0
     }
 
     function previousMonth() {
@@ -106,8 +111,6 @@ Window {
         } else {
             currentMonth--
         }
-        calendarGrid.model = null
-        calendarGrid.model = getDaysInMonth(currentMonth, currentYear) + getFirstDayOfMonth(currentMonth, currentYear)
     }
 
     function nextMonth() {
@@ -118,10 +121,26 @@ Window {
         } else {
             currentMonth++
         }
-        calendarGrid.model = null
-        calendarGrid.model = getDaysInMonth(currentMonth, currentYear) + getFirstDayOfMonth(currentMonth, currentYear)
     }
 
+    function previousWeek() {
+        Haptic.tap()
+        currentWeekStart -= 7
+        if (currentWeekStart < 1) {
+            previousMonth()
+            currentWeekStart = getDaysInMonth(currentMonth, currentYear) + currentWeekStart
+        }
+    }
+
+    function nextWeek() {
+        Haptic.tap()
+        currentWeekStart += 7
+        var daysInMonth = getDaysInMonth(currentMonth, currentYear)
+        if (currentWeekStart > daysInMonth) {
+            currentWeekStart = currentWeekStart - daysInMonth
+            nextMonth()
+        }
+    }
 
     // Header
     Rectangle {
@@ -129,26 +148,8 @@ Window {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 180
+        height: 160
         color: "transparent"
-
-        // Ambient glow
-        Rectangle {
-            anchors.centerIn: parent
-            width: 300
-            height: 150
-            radius: 150
-            color: "#e94560"
-            opacity: 0.08
-
-            NumberAnimation on opacity {
-                from: 0.05
-                to: 0.12
-                duration: 3000
-                loops: Animation.Infinite
-                easing.type: Easing.InOutSine
-            }
-        }
 
         Column {
             anchors.centerIn: parent
@@ -157,40 +158,65 @@ Window {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: getMonthName(currentMonth) + " " + currentYear
-                font.pixelSize: 42
+                font.pixelSize: 36
                 font.weight: Font.Light
-                font.letterSpacing: 4
                 color: "#ffffff"
             }
 
-            Text {
+            // View mode toggle
+            Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "CALENDAR"
-                font.pixelSize: 12
-                font.weight: Font.Medium
-                font.letterSpacing: 3
-                color: "#555566"
-            }
-        }
+                spacing: 8
 
-        // Bottom line
-        Rectangle {
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: 1
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.2; color: "#e94560" }
-                GradientStop { position: 0.8; color: "#e94560" }
-                GradientStop { position: 1.0; color: "transparent" }
+                Rectangle {
+                    width: 100
+                    height: 36
+                    radius: 18
+                    color: viewMode === "month" ? "#e94560" : "#2a2a3e"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Month"
+                        font.pixelSize: 14
+                        color: "#ffffff"
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            Haptic.tap()
+                            viewMode = "month"
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 100
+                    height: 36
+                    radius: 18
+                    color: viewMode === "week" ? "#e94560" : "#2a2a3e"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Week"
+                        font.pixelSize: 14
+                        color: "#ffffff"
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            Haptic.tap()
+                            viewMode = "week"
+                            updateCurrentWeek()
+                        }
+                    }
+                }
             }
-            opacity: 0.3
         }
     }
 
-    // Main content area
+    // Main content
     Item {
         id: mainContent
         anchors.top: header.bottom
@@ -200,191 +226,146 @@ Window {
         anchors.margins: 16
         anchors.bottomMargin: 100
 
-        // Calendar view
+        // Month View
         Item {
-            id: calendarView
+            id: monthView
             anchors.fill: parent
-            visible: selectedDay === -1
+            visible: selectedDay === -1 && viewMode === "month"
 
-            // Swipe area for month navigation
-            MouseArea {
-                anchors.fill: parent
-                property real startX: 0
-
-                onPressed: {
-                    startX = mouse.x
-                }
-
-                onReleased: {
-                    var delta = mouse.x - startX
-                    if (Math.abs(delta) > 100) {
-                        if (delta > 0) {
-                            previousMonth()
-                        } else {
-                            nextMonth()
-                        }
-                    }
-                }
-            }
-
-            // Day names header
+            // Day names
             Row {
-                id: dayNamesRow
+                id: dayNames
                 anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
+                width: parent.width
                 height: 40
 
                 Repeater {
                     model: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-
-                    Rectangle {
+                    Text {
                         width: parent.width / 7
-                        height: parent.height
-                        color: "transparent"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData
-                            font.pixelSize: 14
-                            font.weight: Font.Medium
-                            color: "#777788"
-                        }
+                        text: modelData
+                        font.pixelSize: 14
+                        color: "#777788"
+                        horizontalAlignment: Text.AlignHCenter
                     }
                 }
             }
 
             // Calendar grid
-            GridView {
+            Grid {
                 id: calendarGrid
-                anchors.top: dayNamesRow.bottom
+                anchors.top: dayNames.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                anchors.topMargin: 8
+                height: parent.height - 140
+                columns: 7
 
-                cellWidth: width / 7
-                cellHeight: (height - 80) / 6
-                interactive: false
+                property int firstDay: getFirstDayOfMonth(currentMonth, currentYear)
+                property int daysInMonth: getDaysInMonth(currentMonth, currentYear)
+                property real cellW: width / 7
+                property real cellH: height / 6
 
-                model: getDaysInMonth(currentMonth, currentYear) + getFirstDayOfMonth(currentMonth, currentYear)
+                Repeater {
+                    model: 42
 
-                delegate: Item {
-                    width: calendarGrid.cellWidth
-                    height: calendarGrid.cellHeight
+                    Item {
+                        width: calendarGrid.cellW
+                        height: calendarGrid.cellH
 
-                    property int dayNumber: {
-                        var firstDay = getFirstDayOfMonth(currentMonth, currentYear)
-                        if (index < firstDay) {
-                            return -1
-                        }
-                        return index - firstDay + 1
-                    }
+                        property int dayNum: index - calendarGrid.firstDay + 1
+                        property bool isValid: dayNum > 0 && dayNum <= calendarGrid.daysInMonth
+                        property bool hasEvt: isValid && hasEvents(dayNum)
 
-                    property bool isValid: dayNumber > 0 && dayNumber <= getDaysInMonth(currentMonth, currentYear)
-
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.margins: 4
-                        radius: 12
-                        color: {
-                            if (!isValid) return "transparent"
-                            if (dayMouse.pressed) return "#e94560"
-                            if (isToday(dayNumber)) return "#e94560"
-                            if (hasEvents(dayNumber)) return "#1a1a2e"
-                            return "transparent"
-                        }
-                        border.color: isValid && hasEvents(dayNumber) ? "#e94560" : "transparent"
-                        border.width: 1
-                        opacity: {
-                            if (!isValid) return 0
-                            if (dayMouse.pressed) return 0.8
-                            if (isToday(dayNumber)) return 0.6
-                            return 0.4
-                        }
-
-                        Behavior on color { ColorAnimation { duration: 150 } }
-                        Behavior on opacity { NumberAnimation { duration: 150 } }
-
-                        Column {
-                            anchors.centerIn: parent
-                            spacing: 2
-
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: isValid ? dayNumber : ""
-                                font.pixelSize: 20
-                                font.weight: isToday(dayNumber) ? Font.Bold : Font.Normal
-                                color: isToday(dayNumber) ? "#ffffff" : "#ccccdd"
-                            }
-
-                            // Event indicator
-                            Rectangle {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                width: 6
-                                height: 6
-                                radius: 3
-                                color: "#e94560"
-                                visible: isValid && hasEvents(dayNumber)
-                            }
-                        }
-
-                        MouseArea {
-                            id: dayMouse
+                        Rectangle {
                             anchors.fill: parent
-                            enabled: isValid
-                            onClicked: {
-                                Haptic.tap()
-                                selectedDay = dayNumber
+                            anchors.margins: 4
+                            radius: 12
+                            color: {
+                                if (!isValid) return "transparent"
+                                if (isToday(dayNum)) return "#e94560"
+                                if (hasEvt) return "#2a2a3e"
+                                return "transparent"
+                            }
+                            opacity: isValid ? (isToday(dayNum) ? 0.8 : 1.0) : 0
+                            border.color: hasEvt ? "#e94560" : "transparent"
+                            border.width: hasEvt ? 2 : 0
+
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 4
+
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: isValid ? dayNum : ""
+                                    font.pixelSize: 18
+                                    font.weight: isToday(dayNum) ? Font.Bold : Font.Normal
+                                    color: "#ffffff"
+                                }
+
+                                // Event dot
+                                Rectangle {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: 8
+                                    height: 8
+                                    radius: 4
+                                    color: "#e94560"
+                                    visible: hasEvt && !isToday(dayNum)
+                                }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: isValid
+                                onClicked: {
+                                    Haptic.tap()
+                                    selectedDay = dayNum
+                                    updateEventsList()
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Month navigation buttons
+            // Navigation
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 spacing: 40
 
                 Rectangle {
-                    width: 60
-                    height: 60
-                    radius: 30
-                    color: prevMouse.pressed ? "#c23a50" : "#e94560"
-                    opacity: 0.6
+                    width: 56
+                    height: 56
+                    radius: 28
+                    color: "#2a2a3e"
 
                     Text {
                         anchors.centerIn: parent
                         text: "◀"
-                        font.pixelSize: 24
+                        font.pixelSize: 20
                         color: "#ffffff"
                     }
 
                     MouseArea {
-                        id: prevMouse
                         anchors.fill: parent
                         onClicked: previousMonth()
                     }
                 }
 
                 Rectangle {
-                    width: 60
-                    height: 60
-                    radius: 30
-                    color: nextMouse.pressed ? "#c23a50" : "#e94560"
-                    opacity: 0.6
+                    width: 56
+                    height: 56
+                    radius: 28
+                    color: "#2a2a3e"
 
                     Text {
                         anchors.centerIn: parent
                         text: "▶"
-                        font.pixelSize: 24
+                        font.pixelSize: 20
                         color: "#ffffff"
                     }
 
                     MouseArea {
-                        id: nextMouse
                         anchors.fill: parent
                         onClicked: nextMonth()
                     }
@@ -392,7 +373,156 @@ Window {
             }
         }
 
-        // Day detail view
+        // Week View
+        Item {
+            id: weekView
+            anchors.fill: parent
+            visible: selectedDay === -1 && viewMode === "week"
+
+            Column {
+                anchors.fill: parent
+                spacing: 8
+
+                // Week days
+                Repeater {
+                    model: 7
+
+                    Rectangle {
+                        width: parent.width
+                        height: (weekView.height - 120) / 7
+                        radius: 12
+                        color: {
+                            var day = currentWeekStart + index
+                            if (day > getDaysInMonth(currentMonth, currentYear)) return "#1a1a2e"
+                            if (day < 1) return "#1a1a2e"
+                            if (isToday(day)) return "#2a2a3e"
+                            return "#1a1a2e"
+                        }
+                        border.color: {
+                            var day = currentWeekStart + index
+                            if (day > 0 && day <= getDaysInMonth(currentMonth, currentYear) && hasEvents(day)) {
+                                return "#e94560"
+                            }
+                            return "transparent"
+                        }
+                        border.width: 2
+
+                        property int dayNum: {
+                            var d = currentWeekStart + index
+                            var max = getDaysInMonth(currentMonth, currentYear)
+                            if (d < 1 || d > max) return -1
+                            return d
+                        }
+
+                        Row {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 16
+
+                            // Day info
+                            Column {
+                                width: 80
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                Text {
+                                    text: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][index]
+                                    font.pixelSize: 14
+                                    color: "#777788"
+                                }
+                                Text {
+                                    text: dayNum > 0 ? dayNum : ""
+                                    font.pixelSize: 28
+                                    font.weight: Font.Bold
+                                    color: dayNum > 0 && isToday(dayNum) ? "#e94560" : "#ffffff"
+                                }
+                            }
+
+                            // Events preview
+                            Column {
+                                width: parent.width - 96
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 4
+
+                                Repeater {
+                                    model: dayNum > 0 ? getEventsForDay(dayNum).slice(0, 2) : []
+
+                                    Text {
+                                        text: (modelData.time || "All day") + " - " + modelData.title
+                                        font.pixelSize: 14
+                                        color: "#ccccdd"
+                                        elide: Text.ElideRight
+                                        width: parent.width
+                                    }
+                                }
+
+                                Text {
+                                    visible: dayNum > 0 && getEventCount(dayNum) > 2
+                                    text: "+" + (getEventCount(dayNum) - 2) + " more"
+                                    font.pixelSize: 12
+                                    color: "#e94560"
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: dayNum > 0
+                            onClicked: {
+                                Haptic.tap()
+                                selectedDay = dayNum
+                                updateEventsList()
+                            }
+                        }
+                    }
+                }
+
+                // Week navigation
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 40
+
+                    Rectangle {
+                        width: 56
+                        height: 56
+                        radius: 28
+                        color: "#2a2a3e"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "◀"
+                            font.pixelSize: 20
+                            color: "#ffffff"
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: previousWeek()
+                        }
+                    }
+
+                    Rectangle {
+                        width: 56
+                        height: 56
+                        radius: 28
+                        color: "#2a2a3e"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "▶"
+                            font.pixelSize: 20
+                            color: "#ffffff"
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: nextWeek()
+                        }
+                    }
+                }
+            }
+        }
+
+        // Day Detail View
         Item {
             id: dayDetailView
             anchors.fill: parent
@@ -405,15 +535,14 @@ Window {
                 // Date header
                 Rectangle {
                     width: parent.width
-                    height: 80
+                    height: 70
                     radius: 16
                     color: "#1a1a2e"
 
                     Text {
                         anchors.centerIn: parent
-                        text: selectedDay !== -1 ?
-                              getMonthName(currentMonth) + " " + selectedDay + ", " + currentYear : ""
-                        font.pixelSize: 28
+                        text: getMonthName(currentMonth) + " " + selectedDay + ", " + currentYear
+                        font.pixelSize: 24
                         font.weight: Font.Medium
                         color: "#ffffff"
                     }
@@ -423,93 +552,93 @@ Window {
                 ListView {
                     id: eventsList
                     width: parent.width
-                    height: parent.height - 240
+                    height: parent.height - 160
                     clip: true
                     spacing: 12
 
-                    model: {
-                        if (selectedDay === -1) return []
-                        var key = getDateKey(selectedDay)
-                        return events[key] || []
-                    }
+                    model: ListModel { id: eventsModel }
 
                     delegate: Rectangle {
                         width: eventsList.width
-                        height: 100
+                        height: 80
                         radius: 16
                         color: "#1a1a2e"
                         border.color: "#e94560"
                         border.width: 1
 
-                        Column {
+                        Row {
                             anchors.fill: parent
                             anchors.margins: 16
-                            spacing: 8
+                            spacing: 16
 
-                            Row {
-                                width: parent.width
-                                spacing: 12
-
-                                Text {
-                                    text: modelData.time || "All day"
-                                    font.pixelSize: 16
-                                    font.weight: Font.Medium
-                                    color: "#e94560"
-                                }
+                            Column {
+                                width: parent.width - 60
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 4
 
                                 Text {
-                                    text: modelData.title || "Untitled"
+                                    text: model.title
                                     font.pixelSize: 18
                                     font.weight: Font.Medium
                                     color: "#ffffff"
+                                    elide: Text.ElideRight
+                                    width: parent.width
+                                }
+
+                                Text {
+                                    text: model.time || "All day"
+                                    font.pixelSize: 14
+                                    color: "#e94560"
                                 }
                             }
 
                             Rectangle {
-                                width: 40
-                                height: 30
-                                radius: 8
-                                color: "#e94560"
-                                opacity: 0.3
+                                width: 44
+                                height: 44
+                                radius: 22
+                                color: delMouse.pressed ? "#e94560" : "#2a2a3e"
+                                anchors.verticalCenter: parent.verticalCenter
 
                                 Text {
                                     anchors.centerIn: parent
                                     text: "×"
-                                    font.pixelSize: 20
+                                    font.pixelSize: 24
                                     color: "#ffffff"
                                 }
 
                                 MouseArea {
+                                    id: delMouse
                                     anchors.fill: parent
                                     onClicked: {
-                                        var key = getDateKey(selectedDay)
-                                        var eventList = events[key] || []
-                                        eventList.splice(index, 1)
-                                        if (eventList.length === 0) {
-                                            delete events[key]
-                                        } else {
-                                            events[key] = eventList
-                                        }
-                                        saveEvents()
-                                        eventsList.model = events[key] || []
+                                        Haptic.tap()
+                                        deleteEvent(model.index)
                                     }
                                 }
                             }
                         }
+                    }
+
+                    // Empty state
+                    Text {
+                        anchors.centerIn: parent
+                        text: "No events"
+                        font.pixelSize: 18
+                        color: "#555566"
+                        visible: eventsModel.count === 0
                     }
                 }
 
                 // Add event button
                 Rectangle {
                     width: parent.width
-                    height: 60
+                    height: 56
                     radius: 16
                     color: addMouse.pressed ? "#c23a50" : "#e94560"
 
                     Text {
                         anchors.centerIn: parent
                         text: "+ Add Event"
-                        font.pixelSize: 20
+                        font.pixelSize: 18
                         font.weight: Font.Medium
                         color: "#ffffff"
                     }
@@ -518,7 +647,8 @@ Window {
                         id: addMouse
                         anchors.fill: parent
                         onClicked: {
-                            newEventPopup.open()
+                            Haptic.tap()
+                            eventPopup.open()
                         }
                     }
                 }
@@ -526,55 +656,86 @@ Window {
         }
     }
 
-    // New event popup
+    function updateEventsList() {
+        eventsModel.clear()
+        if (selectedDay > 0) {
+            var dayEvents = getEventsForDay(selectedDay)
+            for (var i = 0; i < dayEvents.length; i++) {
+                eventsModel.append({
+                    title: dayEvents[i].title || "Untitled",
+                    time: dayEvents[i].time || "",
+                    index: i
+                })
+            }
+        }
+    }
+
+    function deleteEvent(idx) {
+        var key = getDateKey(selectedDay)
+        var eventList = events[key] || []
+        eventList.splice(idx, 1)
+        if (eventList.length === 0) {
+            delete events[key]
+        } else {
+            events[key] = eventList
+        }
+        saveEvents()
+        updateEventsList()
+    }
+
+    function addEvent(title, hour, minute) {
+        var key = getDateKey(selectedDay)
+        if (!events[key]) {
+            events[key] = []
+        }
+        var timeStr = ""
+        if (hour >= 0) {
+            var h = hour % 12
+            if (h === 0) h = 12
+            var ampm = hour < 12 ? "AM" : "PM"
+            timeStr = h + ":" + String(minute).padStart(2, '0') + " " + ampm
+        }
+        events[key].push({
+            title: title,
+            time: timeStr,
+            date: key
+        })
+        saveEvents()
+        updateEventsList()
+    }
+
+    // Event Popup
     Rectangle {
-        id: newEventPopup
+        id: eventPopup
         anchors.fill: parent
-        color: "#000000"
-        opacity: 0
-        visible: opacity > 0
+        color: "#000000ee"
+        visible: false
         z: 100
 
-        property bool isOpen: false
-
         function open() {
-            isOpen = true
             titleInput.text = ""
-            timeInput.text = ""
+            selectedHour = -1
+            selectedMinute = 0
+            visible = true
             titleInput.forceActiveFocus()
-            openAnim.start()
         }
 
         function close() {
-            isOpen = false
-            closeAnim.start()
+            visible = false
         }
 
-        NumberAnimation {
-            id: openAnim
-            target: newEventPopup
-            property: "opacity"
-            to: 0.95
-            duration: 200
-        }
-
-        NumberAnimation {
-            id: closeAnim
-            target: newEventPopup
-            property: "opacity"
-            to: 0
-            duration: 200
-        }
+        property int selectedHour: -1
+        property int selectedMinute: 0
 
         MouseArea {
             anchors.fill: parent
-            onClicked: {} // Prevent clicks from passing through
+            onClicked: {} // Block clicks
         }
 
         Rectangle {
             anchors.centerIn: parent
-            width: parent.width - 80
-            height: 400
+            width: parent.width - 60
+            height: 520
             radius: 24
             color: "#1a1a2e"
             border.color: "#e94560"
@@ -583,23 +744,24 @@ Window {
             Column {
                 anchors.fill: parent
                 anchors.margins: 24
-                spacing: 20
+                spacing: 16
 
                 Text {
                     text: "New Event"
-                    font.pixelSize: 28
+                    font.pixelSize: 24
                     font.weight: Font.Bold
                     color: "#ffffff"
                 }
 
+                // Title input
                 Column {
                     width: parent.width
                     spacing: 8
 
                     Text {
                         text: "Title"
-                        font.pixelSize: 16
-                        color: "#999999"
+                        font.pixelSize: 14
+                        color: "#888899"
                     }
 
                     Rectangle {
@@ -608,7 +770,6 @@ Window {
                         radius: 12
                         color: "#0a0a0f"
                         border.color: titleInput.activeFocus ? "#e94560" : "#333344"
-                        border.width: titleInput.activeFocus ? 2 : 1
 
                         TextInput {
                             id: titleInput
@@ -617,52 +778,197 @@ Window {
                             font.pixelSize: 18
                             color: "#ffffff"
                             verticalAlignment: TextInput.AlignVCenter
-                            clip: true
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: titleInput.forceActiveFocus()
                         }
                     }
                 }
 
+                // Time picker
                 Column {
                     width: parent.width
                     spacing: 8
 
-                    Text {
-                        text: "Time (optional)"
-                        font.pixelSize: 16
-                        color: "#999999"
-                    }
+                    Row {
+                        spacing: 12
 
-                    Rectangle {
-                        width: parent.width
-                        height: 50
-                        radius: 12
-                        color: "#0a0a0f"
-                        border.color: timeInput.activeFocus ? "#e94560" : "#333344"
-                        border.width: timeInput.activeFocus ? 2 : 1
-
-                        TextInput {
-                            id: timeInput
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            font.pixelSize: 18
-                            color: "#ffffff"
-                            verticalAlignment: TextInput.AlignVCenter
-                            inputMethodHints: Qt.ImhTime
-                            clip: true
+                        Text {
+                            text: "Time"
+                            font.pixelSize: 14
+                            color: "#888899"
+                            anchors.verticalCenter: parent.verticalCenter
                         }
 
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: timeInput.forceActiveFocus()
+                        Rectangle {
+                            width: 100
+                            height: 32
+                            radius: 16
+                            color: eventPopup.selectedHour === -1 ? "#e94560" : "#2a2a3e"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "All Day"
+                                font.pixelSize: 14
+                                color: "#ffffff"
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    Haptic.tap()
+                                    eventPopup.selectedHour = -1
+                                }
+                            }
+                        }
+                    }
+
+                    // Hour picker
+                    Row {
+                        width: parent.width
+                        spacing: 8
+
+                        Text {
+                            text: "Hour:"
+                            font.pixelSize: 14
+                            color: "#666677"
+                            width: 50
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Flow {
+                            width: parent.width - 58
+                            spacing: 6
+
+                            Repeater {
+                                model: 12
+
+                                Rectangle {
+                                    width: 44
+                                    height: 36
+                                    radius: 8
+                                    color: {
+                                        if (eventPopup.selectedHour === index || eventPopup.selectedHour === index + 12)
+                                            return "#e94560"
+                                        return "#2a2a3e"
+                                    }
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: index === 0 ? "12" : index
+                                        font.pixelSize: 14
+                                        color: "#ffffff"
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            Haptic.tap()
+                                            // Keep AM/PM, just change hour
+                                            var isPM = eventPopup.selectedHour >= 12
+                                            eventPopup.selectedHour = isPM ? index + 12 : index
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // AM/PM and Minute
+                    Row {
+                        width: parent.width
+                        spacing: 16
+
+                        // AM/PM toggle
+                        Row {
+                            spacing: 8
+
+                            Rectangle {
+                                width: 60
+                                height: 36
+                                radius: 8
+                                color: eventPopup.selectedHour >= 0 && eventPopup.selectedHour < 12 ? "#e94560" : "#2a2a3e"
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "AM"
+                                    font.pixelSize: 14
+                                    color: "#ffffff"
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        Haptic.tap()
+                                        if (eventPopup.selectedHour < 0) eventPopup.selectedHour = 9
+                                        else if (eventPopup.selectedHour >= 12) eventPopup.selectedHour -= 12
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                width: 60
+                                height: 36
+                                radius: 8
+                                color: eventPopup.selectedHour >= 12 ? "#e94560" : "#2a2a3e"
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "PM"
+                                    font.pixelSize: 14
+                                    color: "#ffffff"
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        Haptic.tap()
+                                        if (eventPopup.selectedHour < 0) eventPopup.selectedHour = 12
+                                        else if (eventPopup.selectedHour < 12) eventPopup.selectedHour += 12
+                                    }
+                                }
+                            }
+                        }
+
+                        // Minute picker
+                        Row {
+                            spacing: 8
+
+                            Text {
+                                text: ":"
+                                font.pixelSize: 18
+                                color: "#ffffff"
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Repeater {
+                                model: [0, 15, 30, 45]
+
+                                Rectangle {
+                                    width: 50
+                                    height: 36
+                                    radius: 8
+                                    color: eventPopup.selectedMinute === modelData ? "#e94560" : "#2a2a3e"
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: String(modelData).padStart(2, '0')
+                                        font.pixelSize: 14
+                                        color: "#ffffff"
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            Haptic.tap()
+                                            eventPopup.selectedMinute = modelData
+                                            if (eventPopup.selectedHour < 0) eventPopup.selectedHour = 9
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
+                // Buttons
                 Row {
                     width: parent.width
                     spacing: 12
@@ -671,23 +977,20 @@ Window {
                         width: (parent.width - 12) / 2
                         height: 50
                         radius: 12
-                        color: cancelMouse.pressed ? "#2a2a3e" : "#1a1a2e"
-                        border.color: "#555566"
-                        border.width: 1
+                        color: "#2a2a3e"
 
                         Text {
                             anchors.centerIn: parent
                             text: "Cancel"
-                            font.pixelSize: 18
+                            font.pixelSize: 16
                             color: "#ffffff"
                         }
 
                         MouseArea {
-                            id: cancelMouse
                             anchors.fill: parent
                             onClicked: {
                                 Haptic.tap()
-                                newEventPopup.close()
+                                eventPopup.close()
                             }
                         }
                     }
@@ -696,34 +999,23 @@ Window {
                         width: (parent.width - 12) / 2
                         height: 50
                         radius: 12
-                        color: saveMouse.pressed ? "#c23a50" : "#e94560"
+                        color: "#e94560"
 
                         Text {
                             anchors.centerIn: parent
                             text: "Save"
-                            font.pixelSize: 18
+                            font.pixelSize: 16
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }
 
                         MouseArea {
-                            id: saveMouse
                             anchors.fill: parent
                             onClicked: {
                                 if (titleInput.text.trim() !== "") {
                                     Haptic.click()
-                                    var key = getDateKey(selectedDay)
-                                    if (!events[key]) {
-                                        events[key] = []
-                                    }
-                                    events[key].push({
-                                        title: titleInput.text.trim(),
-                                        time: timeInput.text.trim(),
-                                        date: key
-                                    })
-                                    saveEvents()
-                                    eventsList.model = events[key]
-                                    newEventPopup.close()
+                                    addEvent(titleInput.text.trim(), eventPopup.selectedHour, eventPopup.selectedMinute)
+                                    eventPopup.close()
                                 }
                             }
                         }
@@ -733,9 +1025,8 @@ Window {
         }
     }
 
-    // Floating back button
+    // Back button
     Rectangle {
-        id: backButton
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
@@ -746,13 +1037,10 @@ Window {
         color: backMouse.pressed ? "#c23a50" : "#e94560"
         z: 50
 
-        Behavior on color { ColorAnimation { duration: 150 } }
-
         Text {
             anchors.centerIn: parent
             text: selectedDay !== -1 ? "←" : "✕"
             font.pixelSize: 32
-            font.weight: Font.Medium
             color: "#ffffff"
         }
 
@@ -763,7 +1051,6 @@ Window {
                 Haptic.tap()
                 if (selectedDay !== -1) {
                     selectedDay = -1
-                    refreshCalendar()
                 } else {
                     Qt.quit()
                 }
@@ -771,10 +1058,10 @@ Window {
         }
     }
 
-    // Home indicator bar
+    // Home indicator
     Rectangle {
-        anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottomMargin: 8
         width: 120
         height: 4
