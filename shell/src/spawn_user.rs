@@ -83,9 +83,9 @@ pub fn spawn_as_user(cmd: &str, socket_name: &str, text_scale: f64) -> Result<()
     command.env("WAYLAND_DISPLAY", socket_name);
     command.env("QT_QPA_PLATFORM", "wayland");
 
-    // Qt Quick uses software rendering for UI, but EGL stays available
-    // for buffer sharing (android_wlegl, dmabuf) needed for camera/video
+    // Force software rendering for Qt apps - required for hwcomposer backend
     command.env("QT_QUICK_BACKEND", "software");
+    command.env("QT_OPENGL", "software");
     command.env("QSG_RENDER_LOOP", "basic");
     command.env("LIBGL_ALWAYS_SOFTWARE", "1");
 
@@ -193,9 +193,9 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
 
     // Allow EGL for buffer sharing (android_wlegl, dmabuf)
     // This is required for camera preview and video playback
-    // Qt Quick uses software rendering for UI, but EGL stays available
-    // for buffer sharing (android_wlegl, dmabuf) needed for camera/video
+    // Force software rendering for Qt apps - required for hwcomposer backend
     command.env("QT_QUICK_BACKEND", "software");
+    command.env("QT_OPENGL", "software");
     command.env("QSG_RENDER_LOOP", "basic");
     command.env("LIBGL_ALWAYS_SOFTWARE", "1");
 
