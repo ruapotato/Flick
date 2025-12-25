@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
+import "../shared"
 
 Window {
     id: root
@@ -44,8 +45,25 @@ Window {
     }
 
     function saveEvents() {
+        var eventsPath = "/home/droidian/.local/state/flick/calendar.json"
         var eventsJson = JSON.stringify(events, null, 2)
-        console.log("SAVE_EVENTS:" + eventsJson)
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file://" + eventsPath, false)
+        try {
+            xhr.send(eventsJson)
+            console.log("Saved events to " + eventsPath)
+        } catch (e) {
+            console.log("Failed to save events: " + e)
+        }
+        // Refresh calendar view to show event indicators
+        refreshCalendar()
+    }
+
+    function refreshCalendar() {
+        // Force grid refresh by resetting model
+        var model = calendarGrid.model
+        calendarGrid.model = 0
+        calendarGrid.model = model
     }
 
     function getMonthName(month) {
@@ -81,6 +99,7 @@ Window {
     }
 
     function previousMonth() {
+        Haptic.tap()
         if (currentMonth === 0) {
             currentMonth = 11
             currentYear--
@@ -92,6 +111,7 @@ Window {
     }
 
     function nextMonth() {
+        Haptic.tap()
         if (currentMonth === 11) {
             currentMonth = 0
             currentYear++
@@ -314,6 +334,7 @@ Window {
                             anchors.fill: parent
                             enabled: isValid
                             onClicked: {
+                                Haptic.tap()
                                 selectedDay = dayNumber
                             }
                         }
@@ -664,7 +685,10 @@ Window {
                         MouseArea {
                             id: cancelMouse
                             anchors.fill: parent
-                            onClicked: newEventPopup.close()
+                            onClicked: {
+                                Haptic.tap()
+                                newEventPopup.close()
+                            }
                         }
                     }
 
@@ -687,6 +711,7 @@ Window {
                             anchors.fill: parent
                             onClicked: {
                                 if (titleInput.text.trim() !== "") {
+                                    Haptic.click()
                                     var key = getDateKey(selectedDay)
                                     if (!events[key]) {
                                         events[key] = []
@@ -735,8 +760,10 @@ Window {
             id: backMouse
             anchors.fill: parent
             onClicked: {
+                Haptic.tap()
                 if (selectedDay !== -1) {
                     selectedDay = -1
+                    refreshCalendar()
                 } else {
                     Qt.quit()
                 }
