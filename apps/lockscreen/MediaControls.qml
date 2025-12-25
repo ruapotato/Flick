@@ -149,9 +149,9 @@ Item {
             // Controls row
             Row {
                 width: parent.width
-                spacing: 24
+                spacing: 20
 
-                // Skip back 30s
+                // Skip back (30s for audiobooks, prev track for music)
                 Rectangle {
                     width: 44
                     height: 44
@@ -160,7 +160,7 @@ Item {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "⏪"
+                        text: app === "music" ? "⏮" : "⏪"
                         font.pixelSize: 22
                         color: "#aaaacc"
                     }
@@ -169,7 +169,7 @@ Item {
                         id: skipBackMouse
                         anchors.fill: parent
                         anchors.margins: -25
-                        onClicked: sendCommand("seek:-30000")
+                        onClicked: sendCommand(app === "music" ? "prev" : "seek:-30000")
                     }
                 }
 
@@ -195,7 +195,7 @@ Item {
                     }
                 }
 
-                // Skip forward 30s
+                // Skip forward (30s for audiobooks, next track for music)
                 Rectangle {
                     width: 44
                     height: 44
@@ -204,7 +204,7 @@ Item {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "⏩"
+                        text: app === "music" ? "⏭" : "⏩"
                         font.pixelSize: 22
                         color: "#aaaacc"
                     }
@@ -213,7 +213,7 @@ Item {
                         id: skipFwdMouse
                         anchors.fill: parent
                         anchors.margins: -25
-                        onClicked: sendCommand("seek:30000")
+                        onClicked: sendCommand(app === "music" ? "next" : "seek:30000")
                     }
                 }
 

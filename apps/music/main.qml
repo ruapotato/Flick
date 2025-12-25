@@ -387,6 +387,85 @@ Window {
         }
     }
 
+    // Write media status for lock screen controls
+    function writeMediaStatus() {
+        if (currentTrackIndex < 0 || musicFiles.length === 0) {
+            return
+        }
+        var status = {
+            playing: audioPlayer.playbackState === Audio.PlayingState,
+            app: "music",
+            title: musicFiles[currentTrackIndex].title,
+            artist: musicFiles[currentTrackIndex].artist,
+            position: audioPlayer.position,
+            duration: audioPlayer.duration,
+            timestamp: Date.now()
+        }
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file:///home/droidian/.local/state/flick/media_status.json")
+        xhr.send(JSON.stringify(status))
+    }
+
+    // Timer to periodically update media status and check for commands
+    Timer {
+        id: mediaStatusTimer
+        interval: 1000
+        running: currentTrackIndex >= 0  // Run whenever we have a track loaded
+        repeat: true
+        onTriggered: {
+            if (audioPlayer.playbackState === Audio.PlayingState) {
+                writeMediaStatus()
+            }
+            checkMediaCommand()
+        }
+    }
+
+    property string lastCommandTimestamp: ""
+
+    function checkMediaCommand() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///home/droidian/.local/state/flick/media_command")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                if (xhr.status === 200 || xhr.status === 0) {
+                    var cmdLine = xhr.responseText.trim()
+                    if (cmdLine && cmdLine !== lastCommandTimestamp) {
+                        var parts = cmdLine.split(":")
+                        var cmd = parts[0]
+                        var timestamp = parts.length > 1 ? parts[parts.length - 1] : ""
+
+                        // Only process if this is a new command
+                        if (timestamp !== lastCommandTimestamp) {
+                            lastCommandTimestamp = timestamp
+                            processMediaCommand(cmd, parts.length > 2 ? parts[1] : "")
+                        }
+                    }
+                }
+            }
+        }
+        xhr.send()
+    }
+
+    function processMediaCommand(cmd, arg) {
+        console.log("Music: Processing media command: " + cmd + " arg: " + arg)
+        if (cmd === "play") {
+            if (currentTrackIndex < 0 && musicFiles.length > 0 && musicFiles[0].path !== "") {
+                playTrack(0)
+            } else {
+                audioPlayer.play()
+            }
+        } else if (cmd === "pause") {
+            audioPlayer.pause()
+        } else if (cmd === "seek") {
+            var delta = parseInt(arg) || 0
+            audioPlayer.seek(Math.max(0, Math.min(audioPlayer.duration, audioPlayer.position + delta)))
+        } else if (cmd === "next") {
+            nextTrack()
+        } else if (cmd === "prev") {
+            prevTrack()
+        }
+    }
+
     // Large hero header with ambient glow
     Rectangle {
         id: headerArea
