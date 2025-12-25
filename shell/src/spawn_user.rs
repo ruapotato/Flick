@@ -83,8 +83,9 @@ pub fn spawn_as_user(cmd: &str, socket_name: &str, text_scale: f64) -> Result<()
     command.env("WAYLAND_DISPLAY", socket_name);
     command.env("QT_QPA_PLATFORM", "wayland");
 
-    // Allow EGL for buffer sharing (android_wlegl, dmabuf)
-    // Required for camera preview and video playback
+    // Qt Quick uses software rendering for UI, but EGL stays available
+    // for buffer sharing (android_wlegl, dmabuf) needed for camera/video
+    command.env("QT_QUICK_BACKEND", "software");
     command.env("QSG_RENDER_LOOP", "basic");
 
     // Set scaling
@@ -191,7 +192,9 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
 
     // Allow EGL for buffer sharing (android_wlegl, dmabuf)
     // This is required for camera preview and video playback
-    // UI rendering still uses software, but video frames are shared via EGL
+    // Qt Quick uses software rendering for UI, but EGL stays available
+    // for buffer sharing (android_wlegl, dmabuf) needed for camera/video
+    command.env("QT_QUICK_BACKEND", "software");
     command.env("QSG_RENDER_LOOP", "basic");
 
     // Set scaling
