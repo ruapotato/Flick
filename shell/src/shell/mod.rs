@@ -288,6 +288,8 @@ pub struct Shell {
     pub lock_screen_last_activity: std::time::Instant,
     /// Whether lock screen is dimmed (power saving mode)
     pub lock_screen_dimmed: bool,
+    /// Whether display is blanked (powered off)
+    pub display_blanked: bool,
     /// Time of last tap on dimmed lock screen (for double-tap detection)
     pub lock_screen_last_tap: Option<std::time::Instant>,
     /// Screen timeout in seconds (0 = never, from display settings)
@@ -377,6 +379,7 @@ impl Shell {
             last_unlock_time: None,
             lock_screen_last_activity: std::time::Instant::now(),
             lock_screen_dimmed: false,
+            display_blanked: false,
             lock_screen_last_tap: None,
             screen_timeout_secs: Self::load_screen_timeout(),
             text_scale: Self::load_text_scale(),
@@ -545,6 +548,8 @@ impl Shell {
     pub fn unlock(&mut self) {
         tracing::info!("Lock screen unlocked");
         self.lock_screen_active = false;
+        self.lock_screen_dimmed = false;
+        self.display_blanked = false;
         self.last_unlock_time = Some(std::time::Instant::now());
         self.set_view(ShellView::Home);
         self.lock_state.reset_input();
@@ -607,13 +612,13 @@ impl Shell {
         self.lock_screen_last_activity = std::time::Instant::now();
     }
 
-    /// Wake the lock screen from dimmed state
+    /// Wake the lock screen from dimmed/blanked state
     pub fn wake_lock_screen(&mut self) {
-        if self.lock_screen_dimmed {
-            tracing::info!("Waking lock screen from dimmed state");
+        if self.display_blanked || self.lock_screen_dimmed {
+            tracing::info!("Waking lock screen from dimmed/blanked state");
             self.lock_screen_dimmed = false;
+            self.display_blanked = false;
             self.lock_screen_last_activity = std::time::Instant::now();
-            // Dimming is handled by QML lock screen
         }
     }
 
@@ -629,7 +634,28 @@ impl Shell {
         if self.lock_screen_last_activity.elapsed() > std::time::Duration::from_secs(DIM_TIMEOUT_SECS) {
             tracing::info!("Lock screen dimming after {}s inactivity", DIM_TIMEOUT_SECS);
             self.lock_screen_dimmed = true;
-            // Dimming is handled by QML lock screen
+            return true;
+        }
+        false
+    }
+
+    /// Check if display should be blanked (shortly after dimming)
+    /// Returns true if display should now be blanked (state changed)
+    pub fn check_display_blank(&mut self) -> bool {
+        const BLANK_TIMEOUT_SECS: u64 = 8; // Blank 3 seconds after dim (5+3=8 total)
+
+        if !self.lock_screen_active || self.display_blanked {
+            return false;
+        }
+
+        // Only blank if already dimmed
+        if !self.lock_screen_dimmed {
+            return false;
+        }
+
+        if self.lock_screen_last_activity.elapsed() > std::time::Duration::from_secs(BLANK_TIMEOUT_SECS) {
+            tracing::info!("Display blanking after {}s inactivity", BLANK_TIMEOUT_SECS);
+            self.display_blanked = true;
             return true;
         }
         false

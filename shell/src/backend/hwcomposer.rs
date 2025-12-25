@@ -393,23 +393,25 @@ fn handle_input_event(
                 info!("Volume now: {}%", state.system.volume);
             }
 
-            // Power button (evdev keycode 116) - toggle dim/wake on lock screen, or lock
+            // Power button (evdev keycode 116) - toggle blank/wake on lock screen, or lock
             if evdev_keycode == 116 && pressed {
                 if state.shell.lock_screen_active {
-                    if state.shell.lock_screen_dimmed {
-                        // Wake the dimmed lock screen
-                        info!("Power button pressed, waking dimmed lock screen");
+                    if state.shell.display_blanked || state.shell.lock_screen_dimmed {
+                        // Wake the blanked/dimmed lock screen
+                        info!("Power button pressed, waking lock screen");
                         state.shell.wake_lock_screen();
                     } else {
-                        // Dim the lock screen immediately
-                        info!("Power button pressed, dimming lock screen");
+                        // Blank the display immediately (skip dimming)
+                        info!("Power button pressed, blanking display");
                         state.shell.lock_screen_dimmed = true;
-                        // Dimming is handled by QML lock screen
+                        state.shell.display_blanked = true;
                     }
                 } else {
-                    // Lock the screen
+                    // Lock the screen and blank display
                     info!("Power button pressed, locking screen");
                     state.shell.lock();
+                    state.shell.lock_screen_dimmed = true;
+                    state.shell.display_blanked = true;
                     // Launch lock screen app
                     if let Some(socket) = state.socket_name.to_str() {
                         state.shell.launch_lock_screen_app(socket);
@@ -496,8 +498,8 @@ fn handle_input_event(
 
             // If lock screen is active, handle touch
             if state.shell.lock_screen_active {
-                if state.shell.lock_screen_dimmed {
-                    // Require double-tap to wake dimmed screen
+                if state.shell.display_blanked || state.shell.lock_screen_dimmed {
+                    // Require double-tap to wake blanked/dimmed screen
                     const DOUBLE_TAP_MS: u128 = 400; // Max time between taps
                     let now = std::time::Instant::now();
                     if let Some(last_tap) = state.shell.lock_screen_last_tap {
@@ -515,7 +517,7 @@ fn handle_input_event(
                         state.shell.lock_screen_last_tap = Some(now);
                     }
                 } else {
-                    // Not dimmed - reset activity timer
+                    // Not dimmed/blanked - reset activity timer
                     state.shell.reset_lock_screen_activity();
                 }
             }
@@ -1631,6 +1633,7 @@ pub fn run() -> Result<()> {
 
     // Main event loop
     let mut loop_count: u64 = 0;
+    let mut was_blanked = false; // Track previous blanked state for unblank transitions
     loop {
         loop_count += 1;
         let log_loop = loop_count % 1000 == 0;
@@ -1690,6 +1693,31 @@ pub fn run() -> Result<()> {
         // Check if lock screen should be dimmed (power saving)
         if state.shell.view == crate::shell::ShellView::LockScreen {
             state.shell.check_lock_screen_dim();
+            // Also check timeout-based blanking
+            state.shell.check_display_blank();
+        }
+
+        // Handle display power state transitions
+        if !was_blanked && state.shell.display_blanked {
+            // Transition to blanked - turn off display
+            info!("Blanking display (power off)");
+            if let Err(e) = hwc_display.hwc_ctx.set_power(false) {
+                error!("Failed to blank display: {}", e);
+            }
+        } else if was_blanked && !state.shell.display_blanked {
+            // Transition to unblanked - turn on display
+            info!("Unblanking display (power on)");
+            if let Err(e) = hwc_display.hwc_ctx.set_power(true) {
+                error!("Failed to unblank display: {}", e);
+            }
+        }
+        was_blanked = state.shell.display_blanked;
+
+        // Skip rendering if display is blanked
+        if state.shell.display_blanked {
+            // Still need to dispatch events but don't render
+            std::thread::sleep(Duration::from_millis(100));
+            continue;
         }
 
         // Periodic system refresh (battery, wifi, etc.) - every 10 seconds
