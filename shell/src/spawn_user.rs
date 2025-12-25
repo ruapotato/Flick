@@ -89,7 +89,11 @@ pub fn spawn_as_user(cmd: &str, socket_name: &str, text_scale: f64) -> Result<()
     command.env("QT_QUICK_BACKEND", "software");
     command.env("LIBGL_ALWAYS_SOFTWARE", "1");
     command.env("QSG_RENDER_LOOP", "basic");
-    // Don't set buffer integration - let Qt figure it out with software rendering
+    command.env("QT_OPENGL", "software");
+
+    // Force GStreamer to use software/CPU paths for video
+    command.env("GST_GL_API", ""); // Disable GStreamer GL
+    command.env("GST_GL_PLATFORM", ""); // No GL platform
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
@@ -202,6 +206,13 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     command.env("QT_QUICK_BACKEND", "software");
     command.env("QT_OPENGL", "software");
     command.env("QSG_RENDER_LOOP", "basic");
+
+    // Force GStreamer to use software/CPU paths for video
+    // This downloads hardware buffers to CPU memory for display
+    command.env("GST_GL_API", ""); // Disable GStreamer GL
+    command.env("GST_GL_PLATFORM", ""); // No GL platform
+    command.env("GST_VAAPI_ALL_DRIVERS", "1"); // Force software decoders
+    command.env("LIBVA_DRIVER_NAME", ""); // Disable VA-API
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
