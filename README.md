@@ -49,6 +49,7 @@ The hwcomposer backend uses a C shim library (`hwc-shim/`) that wraps Android's 
 - Home screen with categorized app grid
 - App switcher with Android-style stacked cards
 - Quick Settings panel (WiFi, Bluetooth, brightness, flashlight, airplane mode, rotation lock)
+- Hardware volume buttons with on-screen overlay
 - On-screen keyboard (Slint-based, integrated into shell)
 - XWayland support for X11 apps
 - Smooth animated transitions throughout
@@ -226,7 +227,7 @@ Press `Ctrl+Alt+F1` through `Ctrl+Alt+F12` to switch between virtual terminals.
 - [ ] Notifications (freedesktop notification daemon)
 - [ ] WiFi network picker
 - [ ] Bluetooth pairing
-- [ ] Sound controls
+- [x] Sound controls (hardware volume buttons)
 
 ### Phase 3: Phone Features
 - [ ] Telephony (ModemManager integration)
