@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
 import Qt.labs.folderlistmodel 2.15
+import "../shared"
 
 Window {
     id: root
@@ -23,7 +24,9 @@ Window {
     }
 
     function saveNote(filename, content) {
-        console.log("SAVE_NOTE:" + filename + ":" + content)
+        // Base64 encode to handle newlines in content
+        var encoded = Qt.btoa(content)
+        console.log("SAVE_NOTE:" + filename + ":" + encoded)
     }
 
     function deleteNote(filename) {
@@ -31,6 +34,7 @@ Window {
     }
 
     function createNewNote() {
+        Haptic.tap()
         var timestamp = Date.now()
         currentNoteFile = "note_" + timestamp + ".txt"
         currentNoteContent = ""
@@ -38,6 +42,7 @@ Window {
     }
 
     function openNote(filename, content) {
+        Haptic.tap()
         currentNoteFile = filename
         currentNoteContent = content
         editMode = true
@@ -165,6 +170,7 @@ Window {
                     pressAndHoldInterval: 500
                     onClicked: openNote(model.fileName, noteItem.noteContent)
                     onPressAndHold: {
+                        Haptic.heavy()
                         deleteDialog.noteToDelete = model.fileName
                         deleteDialog.visible = true
                     }
@@ -204,7 +210,7 @@ Window {
             MouseArea {
                 id: addMouse
                 anchors.fill: parent
-                onClicked: createNewNote()
+                onClicked: createNewNote()  // Haptic in createNewNote()
             }
         }
 
@@ -231,7 +237,7 @@ Window {
             MouseArea {
                 id: listBackMouse
                 anchors.fill: parent
-                onClicked: Qt.quit()
+                onClicked: { Haptic.tap(); Qt.quit() }
             }
         }
 
@@ -350,6 +356,7 @@ Window {
                 id: saveMouse
                 anchors.fill: parent
                 onClicked: {
+                    Haptic.click()
                     if (textEdit.text.trim() !== "") {
                         saveNote(currentNoteFile, textEdit.text)
                     }
@@ -386,6 +393,7 @@ Window {
                 id: editorBackMouse
                 anchors.fill: parent
                 onClicked: {
+                    Haptic.tap()
                     // Auto-save on back
                     if (textEdit.text.trim() !== "") {
                         saveNote(currentNoteFile, textEdit.text)
@@ -464,7 +472,7 @@ Window {
                         MouseArea {
                             id: cancelMouse
                             anchors.fill: parent
-                            onClicked: deleteDialog.visible = false
+                            onClicked: { Haptic.tap(); deleteDialog.visible = false }
                         }
                     }
 
@@ -485,6 +493,7 @@ Window {
                             id: deleteMouse
                             anchors.fill: parent
                             onClicked: {
+                                Haptic.heavy()
                                 deleteNote(deleteDialog.noteToDelete)
                                 deleteDialog.visible = false
                                 folderModel.folder = ""

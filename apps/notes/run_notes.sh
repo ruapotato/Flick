@@ -58,12 +58,13 @@ stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" |
     # Check for save note commands
     if [[ "$line" == *"SAVE_NOTE:"* ]]; then
         NOTE_DATA=$(echo "$line" | sed 's/.*SAVE_NOTE://')
-        # Split by first colon to get filename and content
+        # Split by first colon to get filename and base64 content
         FILENAME=$(echo "$NOTE_DATA" | cut -d':' -f1)
-        CONTENT=$(echo "$NOTE_DATA" | cut -d':' -f2-)
+        ENCODED=$(echo "$NOTE_DATA" | cut -d':' -f2-)
 
         echo "Saving note: $FILENAME" >> "$LOG_FILE"
-        echo -n "$CONTENT" > "$NOTES_DIR/$FILENAME"
+        # Decode base64 content and save
+        echo -n "$ENCODED" | base64 -d > "$NOTES_DIR/$FILENAME"
         echo "Note saved to $NOTES_DIR/$FILENAME" >> "$LOG_FILE"
     fi
 
