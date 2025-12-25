@@ -45,11 +45,11 @@ Item {
                 if (xhr.status === 200 || xhr.status === 0) {
                     try {
                         var status = JSON.parse(xhr.responseText)
-                        // Check if status is recent (within last 10 seconds)
+                        // Check if status is recent (within last 10 seconds) AND playing
                         var now = Date.now()
                         var age = now - status.timestamp
                         console.log("MediaControls: timestamp age=" + age + "ms, playing=" + status.playing)
-                        if (status.timestamp && age < 10000) {
+                        if (status.timestamp && age < 10000 && status.playing) {
                             hasMedia = true
                             isPlaying = status.playing || false
                             title = status.title || ""
