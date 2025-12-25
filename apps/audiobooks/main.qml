@@ -472,16 +472,19 @@ Window {
         if (!sourcePath.startsWith("file://")) {
             sourcePath = "file://" + sourcePath
         }
-        audioPlayer.source = sourcePath
-        console.log("Loading audio: " + sourcePath)
 
-        // Set pending seek position if we have saved progress for this chapter
+        // Set pending seek position BEFORE setting source to avoid race condition
+        // (onStatusChanged may fire synchronously when source changes)
         if (progressData[currentBook.path] && progressData[currentBook.path].chapter === index) {
             pendingSeekPosition = progressData[currentBook.path].position || 0
             console.log("Will seek to saved position: " + pendingSeekPosition)
         } else {
             pendingSeekPosition = 0
         }
+
+        // Now set the source - this triggers status changes
+        audioPlayer.source = sourcePath
+        console.log("Loading audio: " + sourcePath)
     }
 
     function formatTime(ms) {

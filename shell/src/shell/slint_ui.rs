@@ -274,69 +274,8 @@ impl SlintShell {
             kb_clone.borrow_mut().push(KeyboardAction::Hide);
         });
 
-        // Create pending lock screen actions storage
+        // Lock screen callbacks removed - lock screen is now QML-based
         let pending_lock_actions = Rc::new(RefCell::new(Vec::new()));
-
-        // Connect lock screen callbacks
-        let lock_clone = pending_lock_actions.clone();
-        shell.on_pin_digit_pressed(move |digit| {
-            info!("Slint PIN digit pressed: {}", digit);
-            lock_clone.borrow_mut().push(LockScreenAction::PinDigit(digit.to_string()));
-        });
-
-        let lock_clone = pending_lock_actions.clone();
-        shell.on_pin_backspace_pressed(move || {
-            info!("Slint PIN backspace pressed");
-            lock_clone.borrow_mut().push(LockScreenAction::PinBackspace);
-        });
-
-        let lock_clone = pending_lock_actions.clone();
-        shell.on_pattern_node_touched(move |idx| {
-            info!("Slint pattern node touched: {}", idx);
-            lock_clone.borrow_mut().push(LockScreenAction::PatternNode(idx));
-        });
-
-        let lock_clone = pending_lock_actions.clone();
-        shell.on_pattern_complete(move || {
-            info!("Slint pattern complete");
-            lock_clone.borrow_mut().push(LockScreenAction::PatternComplete);
-        });
-
-        let lock_clone = pending_lock_actions.clone();
-        shell.on_pattern_started(move || {
-            info!("Slint pattern started");
-            lock_clone.borrow_mut().push(LockScreenAction::PatternStarted);
-        });
-
-        let lock_clone = pending_lock_actions.clone();
-        shell.on_use_password_pressed(move || {
-            info!("Slint use password pressed");
-            lock_clone.borrow_mut().push(LockScreenAction::UsePassword);
-        });
-
-        let lock_clone = pending_lock_actions.clone();
-        shell.on_password_field_tapped(move || {
-            info!("Slint password field tapped");
-            lock_clone.borrow_mut().push(LockScreenAction::PasswordFieldTapped);
-        });
-
-        let lock_clone = pending_lock_actions.clone();
-        shell.on_password_submit(move || {
-            info!("Slint password submit pressed");
-            lock_clone.borrow_mut().push(LockScreenAction::PasswordSubmit);
-        });
-
-        // Lock screen revealed callback (user swiped/tapped to show unlock UI)
-        shell.on_lock_screen_revealed(move || {
-            info!("Slint lock screen revealed (user swiped to unlock UI)");
-        });
-
-        // Wake lock screen callback (user tapped to wake from dimmed state)
-        let lock_clone = pending_lock_actions.clone();
-        shell.on_wake_lock_screen(move || {
-            info!("Slint lock screen wake requested");
-            lock_clone.borrow_mut().push(LockScreenAction::WakeScreen);
-        });
 
         Self {
             window,
@@ -372,57 +311,9 @@ impl SlintShell {
         self.shell.set_current_view(view.into());
     }
 
-    /// Set lock screen time
-    pub fn set_lock_time(&self, time: &str) {
-        self.shell.set_lock_time(time.into());
-    }
-
     /// Set status bar time (for home screen)
     pub fn set_time(&self, time: &str) {
         self.shell.set_time(time.into());
-    }
-
-    /// Set lock screen date
-    pub fn set_lock_date(&self, date: &str) {
-        self.shell.set_lock_date(date.into());
-    }
-
-    /// Set PIN entry length (number of digits entered)
-    pub fn set_pin_length(&self, len: i32) {
-        self.shell.set_pin_length(len);
-    }
-
-    /// Set lock screen error message
-    pub fn set_lock_error(&self, error: &str) {
-        self.shell.set_lock_error(error.into());
-    }
-
-    /// Set lock screen mode (pin, pattern, password, none)
-    pub fn set_lock_mode(&self, mode: &str) {
-        self.shell.set_lock_mode(mode.into());
-    }
-
-    /// Set pattern nodes state (9 bools for 3x3 grid)
-    pub fn set_pattern_nodes(&self, nodes: &[bool; 9]) {
-        use slint::ModelRc;
-        use slint::VecModel;
-        let model: Rc<VecModel<bool>> = Rc::new(VecModel::from(nodes.to_vec()));
-        self.shell.set_pattern_nodes(ModelRc::from(model));
-    }
-
-    /// Set lockout message (shown when too many failed attempts)
-    pub fn set_lockout_message(&self, msg: &str) {
-        self.shell.set_lockout_message(msg.into());
-    }
-
-    /// Set password length (for dots display)
-    pub fn set_password_length(&self, len: i32) {
-        self.shell.set_password_length(len);
-    }
-
-    /// Reset unlock revealed state (called when locking to show clock first)
-    pub fn set_unlock_revealed(&self, revealed: bool) {
-        self.shell.set_unlock_revealed(revealed);
     }
 
     /// Poll for pending lock screen actions
@@ -528,21 +419,6 @@ impl SlintShell {
         self.shell.set_wiggle_time(time);
     }
 
-    /// Set star twinkling animation time (updated each frame during lock screen)
-    pub fn set_star_time(&self, time: f32) {
-        self.shell.set_star_time(time);
-    }
-
-    /// Set lock screen dimmed state (power saving - black screen, no animations)
-    pub fn set_lock_screen_dimmed(&self, dimmed: bool) {
-        self.shell.set_lock_screen_dimmed(dimmed);
-    }
-
-    /// Check if lock screen is dimmed
-    pub fn is_lock_screen_dimmed(&self) -> bool {
-        self.shell.get_lock_screen_dimmed()
-    }
-
     /// Set the index of the tile being dragged (-1 if none)
     pub fn set_dragging_index(&self, index: i32) {
         self.shell.set_dragging_index(index);
@@ -634,20 +510,6 @@ impl SlintShell {
     /// Returns the window ID if there was a tap, and clears the pending state
     pub fn take_pending_switcher_tap(&self) -> Option<i32> {
         self.pending_switcher_tap.borrow_mut().take()
-    }
-
-    /// Connect PIN digit pressed callback
-    pub fn on_pin_digit_pressed(&self, callback: impl Fn(String) + 'static) {
-        self.shell.on_pin_digit_pressed(move |digit| {
-            callback(digit.to_string());
-        });
-    }
-
-    /// Connect PIN backspace callback
-    pub fn on_pin_backspace(&self, callback: impl Fn() + 'static) {
-        self.shell.on_pin_backspace_pressed(move || {
-            callback();
-        });
     }
 
     /// Connect app tapped callback

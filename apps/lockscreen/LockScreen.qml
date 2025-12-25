@@ -4,9 +4,11 @@ import QtQuick.Controls 2.15
 Item {
     id: lockScreen
 
+    property string lockMethod: "pin"  // "pin", "pattern", "password", "none"
     property string correctPin: "1234"
+    property var correctPattern: [0, 1, 2, 5, 8]
     property string stateDir: ""
-    property bool showingPin: false
+    property bool showingUnlock: false
     property real swipeProgress: 0  // 0-1 for swipe animation
 
     signal unlocked()
@@ -160,7 +162,7 @@ Item {
     MouseArea {
         id: swipeArea
         anchors.fill: parent
-        enabled: !showingPin
+        enabled: !showingUnlock
         property real startY: 0
         property bool isDragging: false
 
@@ -176,7 +178,7 @@ Item {
 
                 if (swipeProgress > 0.7) {
                     isDragging = false
-                    showingPin = true
+                    showingUnlock = true
                     swipeProgress = 0
                 }
             }
@@ -184,18 +186,18 @@ Item {
 
         onReleased: {
             isDragging = false
-            if (!showingPin) {
+            if (!showingUnlock) {
                 swipeProgress = 0
             }
         }
     }
 
-    // PIN Entry overlay - slides up from bottom
+    // Unlock overlay - slides up from bottom
     Rectangle {
-        id: pinOverlay
+        id: unlockOverlay
         anchors.fill: parent
         color: "transparent"
-        opacity: showingPin ? 1 : 0
+        opacity: showingUnlock ? 1 : 0
         visible: opacity > 0
 
         Behavior on opacity {
@@ -209,10 +211,12 @@ Item {
             opacity: 0.92
         }
 
+        // PIN Entry (shown when lockMethod is "pin")
         PinEntry {
             id: pinEntry
+            visible: lockMethod === "pin"
             anchors.centerIn: parent
-            anchors.verticalCenterOffset: showingPin ? -80 : 200
+            anchors.verticalCenterOffset: showingUnlock ? -80 : 200
             correctPin: lockScreen.correctPin
 
             Behavior on anchors.verticalCenterOffset {
@@ -220,7 +224,6 @@ Item {
             }
 
             onPinCorrect: {
-                // Success animation
                 successAnim.start()
             }
 
@@ -229,14 +232,54 @@ Item {
             }
 
             onCancelled: {
-                showingPin = false
+                showingUnlock = false
             }
         }
 
-        // Media controls below PIN entry
+        // Pattern Entry (shown when lockMethod is "pattern")
+        PatternEntry {
+            id: patternEntry
+            visible: lockMethod === "pattern"
+            anchors.centerIn: parent
+            anchors.verticalCenterOffset: showingUnlock ? -40 : 200
+
+            Behavior on anchors.verticalCenterOffset {
+                NumberAnimation { duration: 400; easing.type: Easing.OutBack }
+            }
+
+            onPatternComplete: {
+                console.log("Pattern entered:", JSON.stringify(pattern))
+                console.log("Correct pattern:", JSON.stringify(correctPattern))
+                // Compare patterns
+                if (arraysEqual(pattern, correctPattern)) {
+                    successAnim.start()
+                } else {
+                    patternEntry.showError("Wrong pattern")
+                }
+            }
+        }
+
+        // Cancel button for pattern mode
+        Text {
+            visible: lockMethod === "pattern"
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 100
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Cancel"
+            font.pixelSize: 18
+            color: "#888899"
+
+            MouseArea {
+                anchors.fill: parent
+                anchors.margins: -20
+                onClicked: showingUnlock = false
+            }
+        }
+
+        // Media controls below unlock entry
         MediaControls {
-            id: pinMediaControls
-            anchors.top: pinEntry.bottom
+            id: unlockMediaControls
+            anchors.top: lockMethod === "pin" ? pinEntry.bottom : patternEntry.bottom
             anchors.topMargin: 16
             anchors.horizontalCenter: parent.horizontalCenter
             stateDir: lockScreen.stateDir
@@ -255,8 +298,8 @@ Item {
         // Success animation
         SequentialAnimation {
             id: successAnim
-            PropertyAnimation { target: pinOverlay; property: "scale"; to: 1.05; duration: 150 }
-            PropertyAnimation { target: pinOverlay; property: "opacity"; to: 0; duration: 300 }
+            PropertyAnimation { target: unlockOverlay; property: "scale"; to: 1.05; duration: 150 }
+            PropertyAnimation { target: unlockOverlay; property: "opacity"; to: 0; duration: 300 }
             ScriptAction {
                 script: {
                     writeUnlockSignal()
@@ -264,6 +307,15 @@ Item {
                 }
             }
         }
+    }
+
+    // Helper function to compare arrays
+    function arraysEqual(a, b) {
+        if (a.length !== b.length) return false
+        for (var i = 0; i < a.length; i++) {
+            if (a[i] !== b[i]) return false
+        }
+        return true
     }
 
     // Home indicator at bottom

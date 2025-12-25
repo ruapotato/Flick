@@ -315,15 +315,7 @@ impl Shell {
         }) {
             Ok(ui) => {
                 tracing::info!("Slint UI initialized successfully");
-                // Initialize lock screen mode based on config
-                let lock_mode = match lock_config.method {
-                    lock_screen::LockMethod::None => "none",
-                    lock_screen::LockMethod::Pin => "pin",
-                    lock_screen::LockMethod::Pattern => "pattern",
-                    lock_screen::LockMethod::Password => "password",
-                };
-                ui.set_lock_mode(lock_mode);
-                tracing::info!("Lock screen mode set to: {}", lock_mode);
+                // Lock screen is now QML-based, mode is read from config by QML
                 // Initialize text scale from config
                 let text_scale = Self::load_text_scale();
                 ui.set_text_scale(text_scale);
@@ -581,11 +573,7 @@ impl Shell {
             // Reset activity time and dimmed state
             self.lock_screen_last_activity = std::time::Instant::now();
             self.lock_screen_dimmed = false;
-            // Reset to clock view (unlock UI hidden) when locking
-            if let Some(ref slint_ui) = self.slint_ui {
-                slint_ui.set_unlock_revealed(false);
-                slint_ui.set_lock_screen_dimmed(false);
-            }
+            // Lock screen is now QML-based
             // Clear any stale unlock signal
             let signal_path = unlock_signal_path();
             if signal_path.exists() {
@@ -625,9 +613,7 @@ impl Shell {
             tracing::info!("Waking lock screen from dimmed state");
             self.lock_screen_dimmed = false;
             self.lock_screen_last_activity = std::time::Instant::now();
-            if let Some(ref slint_ui) = self.slint_ui {
-                slint_ui.set_lock_screen_dimmed(false);
-            }
+            // Dimming is handled by QML lock screen
         }
     }
 
@@ -643,29 +629,18 @@ impl Shell {
         if self.lock_screen_last_activity.elapsed() > std::time::Duration::from_secs(DIM_TIMEOUT_SECS) {
             tracing::info!("Lock screen dimming after {}s inactivity", DIM_TIMEOUT_SECS);
             self.lock_screen_dimmed = true;
-            if let Some(ref slint_ui) = self.slint_ui {
-                slint_ui.set_lock_screen_dimmed(true);
-            }
+            // Dimming is handled by QML lock screen
             return true;
         }
         false
     }
 
-    /// Launch the external lock screen app (called by compositor)
-    /// NOTE: We now use the built-in Slint lock screen which supports all modes
-    /// (PIN, password, pattern). The QML lock screen is disabled.
+    /// Launch the external QML lock screen app
     pub fn launch_lock_screen_app(&self, _socket_name: &str) -> bool {
         if !self.lock_screen_active {
             return false;
         }
 
-        // Use built-in Slint lock screen instead of QML app
-        // The Slint lock screen supports PIN, password, and pattern modes
-        tracing::info!("Using built-in Slint lock screen (QML app disabled)");
-        return false;
-
-        #[allow(unreachable_code)]
-        {
         let (cmd, args) = get_lockscreen_command();
         tracing::info!("Launching QML lock screen: {} {:?}", cmd, args);
 
@@ -718,7 +693,6 @@ impl Shell {
                 tracing::error!("Failed to launch QML lock screen app: {}", e);
                 false
             }
-        }
         }
     }
 

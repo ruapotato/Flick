@@ -404,9 +404,7 @@ fn handle_input_event(
                         // Dim the lock screen immediately
                         info!("Power button pressed, dimming lock screen");
                         state.shell.lock_screen_dimmed = true;
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.set_lock_screen_dimmed(true);
-                        }
+                        // Dimming is handled by QML lock screen
                     }
                 } else {
                     // Lock the screen
@@ -853,39 +851,7 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::LockScreen => {
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
-
-                            // Poll and process lock screen actions during motion (for pattern drawing)
-                            use crate::shell::slint_ui::LockScreenAction;
-                            let actions = slint_ui.poll_lock_actions();
-                            for action in &actions {
-                                match action {
-                                    LockScreenAction::PatternNode(idx) => {
-                                        let idx_u8 = *idx as u8;
-                                        if !state.shell.lock_state.pattern_nodes.contains(&idx_u8) {
-                                            state.shell.lock_state.pattern_nodes.push(idx_u8);
-                                        }
-                                    }
-                                    LockScreenAction::PatternStarted => {
-                                        state.shell.lock_state.pattern_active = true;
-                                        state.shell.lock_state.pattern_nodes.clear();
-                                    }
-                                    _ => {} // Other actions handled on touch up
-                                }
-                            }
-
-                            // Update pattern nodes UI immediately
-                            if !actions.is_empty() {
-                                let mut nodes = [false; 9];
-                                for &n in &state.shell.lock_state.pattern_nodes {
-                                    if (n as usize) < 9 {
-                                        nodes[n as usize] = true;
-                                    }
-                                }
-                                slint_ui.set_pattern_nodes(&nodes);
-                            }
-                        }
+                        // Lock screen is QML-based, touch events are forwarded to QML app
                     }
                     crate::shell::ShellView::QuickSettings => {
                         if let Some(ref slint_ui) = state.shell.slint_ui {
@@ -1145,177 +1111,9 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::LockScreen => {
-                        use crate::shell::slint_ui::LockScreenAction;
-
-                        // Dispatch to Slint
-                        if let Some(pos) = last_pos {
-                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
-                            }
-                        }
-
-                        // Poll lock actions from Slint
-                        let actions: Vec<LockScreenAction> = if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.poll_lock_actions()
-                        } else {
-                            Vec::new()
-                        };
-
-                        // Track if we need to show keyboard or update mode
-                        let mut show_keyboard = false;
-                        let mut switch_to_password = false;
-
-                        // Process actions
-                        for action in &actions {
-                            match action {
-                                LockScreenAction::PinDigit(digit) => {
-                                    if state.shell.lock_state.entered_pin.len() < 6 {
-                                        state.shell.lock_state.entered_pin.push_str(digit);
-                                    }
-                                }
-                                LockScreenAction::PinBackspace => {
-                                    state.shell.lock_state.entered_pin.pop();
-                                }
-                                LockScreenAction::PatternNode(idx) => {
-                                    let idx_u8 = *idx as u8;
-                                    if !state.shell.lock_state.pattern_nodes.contains(&idx_u8) {
-                                        state.shell.lock_state.pattern_nodes.push(idx_u8);
-                                    }
-                                }
-                                LockScreenAction::PatternStarted => {
-                                    state.shell.lock_state.pattern_active = true;
-                                    state.shell.lock_state.pattern_nodes.clear();
-                                }
-                                LockScreenAction::PatternComplete => {
-                                    state.shell.lock_state.pattern_active = false;
-                                    if state.shell.lock_state.pattern_nodes.len() >= 4 {
-                                        state.shell.try_unlock();
-                                    } else if !state.shell.lock_state.pattern_nodes.is_empty() {
-                                        state.shell.lock_state.error_message = Some("Pattern too short (min 4 dots)".to_string());
-                                    }
-                                    state.shell.lock_state.pattern_nodes.clear();
-                                }
-                                LockScreenAction::UsePassword => {
-                                    state.shell.lock_state.switch_to_password();
-                                    switch_to_password = true;
-                                    info!("Switched to password mode");
-                                }
-                                LockScreenAction::PasswordFieldTapped => {
-                                    show_keyboard = true;
-                                    info!("Password field tapped - showing keyboard");
-                                }
-                                LockScreenAction::PasswordSubmit => {
-                                    info!("Password submit - attempting PAM auth");
-                                    state.shell.try_unlock();
-                                }
-                                LockScreenAction::WakeScreen => {
-                                    info!("Wake screen requested");
-                                    state.shell.wake_lock_screen();
-                                }
-                            }
-                            // Reset activity on any lock screen action
-                            state.shell.reset_lock_screen_activity();
-                        }
-
-                        // Update Slint UI
-                        if !actions.is_empty() {
-                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
-                                slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
-
-                                // Update pattern nodes
-                                let mut nodes = [false; 9];
-                                for &n in &state.shell.lock_state.pattern_nodes {
-                                    if (n as usize) < 9 {
-                                        nodes[n as usize] = true;
-                                    }
-                                }
-                                slint_ui.set_pattern_nodes(&nodes);
-
-                                if let Some(ref err) = state.shell.lock_state.error_message {
-                                    slint_ui.set_lock_error(err);
-                                }
-
-                                if switch_to_password {
-                                    slint_ui.set_lock_mode("password");
-                                }
-
-                                if show_keyboard {
-                                    slint_ui.set_keyboard_visible(true);
-                                }
-                            }
-                        }
-
-                        // Try to unlock if PIN is long enough
-                        if state.shell.lock_state.entered_pin.len() >= 4 {
-                            if state.shell.try_unlock() {
-                                info!("Lock screen unlocked!");
-                            } else {
-                                // Failed attempt - reset PIN
-                                state.shell.lock_state.entered_pin.clear();
-                                if let Some(ref slint_ui) = state.shell.slint_ui {
-                                    slint_ui.set_pin_length(0);
-                                }
-                            }
-                        }
-
-                        // Handle keyboard input for password entry
-                        if touch_on_keyboard {
-                            if let Some(pos) = last_pos {
-                                info!("LockScreen Keyboard TouchUp at ({}, {})", pos.x, pos.y);
-
-                                use crate::shell::slint_ui::KeyboardAction;
-                                let actions = if let Some(ref slint_ui) = state.shell.slint_ui {
-                                    slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
-                                    slint_ui.take_pending_keyboard_actions()
-                                } else {
-                                    Vec::new()
-                                };
-
-                                // Process keyboard actions - add to password
-                                for action in actions {
-                                    info!("LockScreen KB ACTION: {:?}", action);
-                                    match action {
-                                        KeyboardAction::Character(ch) => {
-                                            state.shell.lock_state.entered_password.push_str(&ch);
-                                        }
-                                        KeyboardAction::Backspace => {
-                                            state.shell.lock_state.entered_password.pop();
-                                        }
-                                        KeyboardAction::Enter => {
-                                            // Submit password
-                                            info!("Password submit via Enter key");
-                                            state.shell.try_unlock();
-                                        }
-                                        KeyboardAction::Space => {
-                                            state.shell.lock_state.entered_password.push(' ');
-                                        }
-                                        KeyboardAction::ShiftToggled => {
-                                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                                let current = slint_ui.is_keyboard_shifted();
-                                                slint_ui.set_keyboard_shifted(!current);
-                                            }
-                                        }
-                                        KeyboardAction::LayoutToggled => {
-                                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                                let current = slint_ui.get_keyboard_layout();
-                                                slint_ui.set_keyboard_layout(if current == 0 { 1 } else { 0 });
-                                            }
-                                        }
-                                        KeyboardAction::Hide => {
-                                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                                slint_ui.set_keyboard_visible(false);
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Update password length in UI
-                                if let Some(ref slint_ui) = state.shell.slint_ui {
-                                    slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
-                                }
-                            }
-                        }
+                        // Lock screen is QML-based, touch events are forwarded to QML app
+                        // Reset activity on any touch
+                        state.shell.reset_lock_screen_activity();
                     }
                     crate::shell::ShellView::QuickSettings => {
                         if let Some(pos) = last_pos {
@@ -2036,53 +1834,9 @@ fn render_frame(
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         match shell_view {
                             ShellView::LockScreen => {
-                                // Use built-in Slint lock screen
+                                // Lock screen is QML-based - just set minimal view for Slint fallback
                                 slint_ui.set_view("lock");
-
-                                // Set lock mode based on config
-                                let lock_mode = match state.shell.lock_config.method {
-                                    crate::shell::lock_screen::LockMethod::Pin => "pin",
-                                    crate::shell::lock_screen::LockMethod::Pattern => "pattern",
-                                    crate::shell::lock_screen::LockMethod::Password => "password",
-                                    crate::shell::lock_screen::LockMethod::None => "none",
-                                };
-                                slint_ui.set_lock_mode(lock_mode);
-
-                                // Update lock screen state
-                                slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
-                                slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
-
-                                // Update pattern nodes
-                                let mut nodes = [false; 9];
-                                for &n in &state.shell.lock_state.pattern_nodes {
-                                    if (n as usize) < 9 {
-                                        nodes[n as usize] = true;
-                                    }
-                                }
-                                slint_ui.set_pattern_nodes(&nodes);
-
-                                // Show error message if any
-                                if let Some(ref err) = state.shell.lock_state.error_message {
-                                    slint_ui.set_lock_error(err);
-                                } else {
-                                    slint_ui.set_lock_error("");
-                                }
-
-                                // Update battery and text scale for lock screen
-                                slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
-                                slint_ui.set_text_scale(state.shell.text_scale);
-
-                                // Only update animations and time when not dimmed (power saving)
-                                if !state.shell.lock_screen_dimmed {
-                                    // Update time/date for lock screen
-                                    let now = chrono::Local::now();
-                                    slint_ui.set_lock_time(&now.format("%H:%M").to_string());
-                                    slint_ui.set_lock_date(&now.format("%A, %B %d").to_string());
-
-                                    // Update star twinkling animation time
-                                    let elapsed = state.start_time.elapsed().as_secs_f32();
-                                    slint_ui.set_star_time(elapsed);
-                                }
+                                // QML lock screen app handles all UI
                             }
                             ShellView::Home => {
                                 slint_ui.set_view("home");

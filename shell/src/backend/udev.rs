@@ -907,25 +907,9 @@ fn render_surface(
             // Update Slint UI state based on current view
             match shell_view {
                 ShellView::LockScreen => {
-                    // Check if QML lockscreen app is connected (has windows in space)
-                    let qml_app_connected = state.space.elements().count() > 0;
-
-                    if qml_app_connected {
-                        // QML app is running - we'll render it in the dedicated branch below
-                        // Just set a minimal view here (won't be displayed)
-                        slint_ui.set_view("lock");
-                        slint_ui.set_lock_time(&chrono::Local::now().format("%H:%M").to_string());
-                        slint_ui.set_lock_date(&chrono::Local::now().format("%A, %B %e").to_string());
-                    } else {
-                        // QML lockscreen not connected yet - show debug info
-                        // This is a fallback that shouldn't normally be visible for long
-                        slint_ui.set_view("lock");
-                        slint_ui.set_lock_time("DEBUG");
-                        slint_ui.set_lock_date("Waiting for QML lockscreen...");
-                        slint_ui.set_lock_error("If stuck here: check ~/.local/state/flick/qml_lockscreen.log");
-                        tracing::warn!("LockScreen view but no QML app connected - showing debug fallback");
-                    }
-                    slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
+                    // Lock screen is QML-based - just set minimal view for Slint fallback
+                    slint_ui.set_view("lock");
+                    // QML lock screen app handles all UI
                 }
                 ShellView::Home => {
                     info!("RENDER: ShellView::Home - setting up home view in Slint");
@@ -3601,40 +3585,7 @@ fn handle_input_event(
                     }
                 }
 
-                // Phase 3: Update Slint UI with results (new immutable borrow)
-                if !actions.is_empty() {
-                    if let Some(ref slint_ui) = state.shell.slint_ui {
-                        // Update PIN length
-                        slint_ui.set_pin_length(state.shell.lock_state.entered_pin.len() as i32);
-
-                        // Update password length
-                        slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
-
-                        // Update pattern nodes
-                        let mut nodes = [false; 9];
-                        for &n in &state.shell.lock_state.pattern_nodes {
-                            if (n as usize) < 9 {
-                                nodes[n as usize] = true;
-                            }
-                        }
-                        slint_ui.set_pattern_nodes(&nodes);
-
-                        // Update error message if any
-                        if let Some(ref err) = state.shell.lock_state.error_message {
-                            slint_ui.set_lock_error(err);
-                        }
-
-                        // Update lock mode if changed to password
-                        if actions.iter().any(|a| matches!(a, LockScreenAction::UsePassword)) {
-                            slint_ui.set_lock_mode("password");
-                        }
-
-                        // Show keyboard if password field was tapped
-                        if actions.iter().any(|a| matches!(a, LockScreenAction::PasswordFieldTapped)) {
-                            slint_ui.set_keyboard_visible(true);
-                        }
-                    }
-                }
+                // Lock screen UI updates are now handled by QML app
             }
 
             // Handle home screen tap to launch app (only if not scrolling and not an edge gesture)
@@ -4257,12 +4208,7 @@ fn handle_input_event(
                 }
             }
 
-            // Update Slint UI password length if it changed
-            if password_updated {
-                if let Some(ref slint_ui) = state.shell.slint_ui {
-                    slint_ui.set_password_length(state.shell.lock_state.entered_password.len() as i32);
-                }
-            }
+            // Password UI updates are handled by QML lock screen app
 
             // Always clear home touch state at end of touch up to prevent stale long press detection
             // This is a safety net in case view changed during gesture and normal handler was skipped
