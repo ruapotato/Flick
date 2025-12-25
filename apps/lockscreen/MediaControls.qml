@@ -4,8 +4,16 @@ import QtQuick.Controls 2.15
 Item {
     id: mediaControls
     width: parent ? parent.width - 48 : 400
-    height: visible && hasMedia ? 140 : 0
+    height: hasMedia ? 140 : 0
     visible: hasMedia
+
+    Component.onCompleted: {
+        console.log("MediaControls: initialized, stateDir=" + stateDir)
+    }
+
+    onHasMediaChanged: {
+        console.log("MediaControls: hasMedia changed to " + hasMedia)
+    }
 
     property bool hasMedia: false
     property bool isPlaying: false
@@ -29,15 +37,19 @@ Item {
 
     function loadMediaStatus() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + stateDir + "/media_status.json")
+        var url = "file://" + stateDir + "/media_status.json"
+        xhr.open("GET", url)
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
+                console.log("MediaControls: loaded status, status=" + xhr.status + " response=" + xhr.responseText.substring(0, 100))
                 if (xhr.status === 200 || xhr.status === 0) {
                     try {
                         var status = JSON.parse(xhr.responseText)
-                        // Check if status is recent (within last 5 seconds)
+                        // Check if status is recent (within last 10 seconds)
                         var now = Date.now()
-                        if (status.timestamp && (now - status.timestamp) < 10000) {
+                        var age = now - status.timestamp
+                        console.log("MediaControls: timestamp age=" + age + "ms, playing=" + status.playing)
+                        if (status.timestamp && age < 10000) {
                             hasMedia = true
                             isPlaying = status.playing || false
                             title = status.title || ""
@@ -45,14 +57,18 @@ Item {
                             app = status.app || ""
                             position = status.position || 0
                             duration = status.duration || 0
+                            console.log("MediaControls: hasMedia=true, title=" + title)
                         } else {
                             hasMedia = false
+                            console.log("MediaControls: status too old, age=" + age)
                         }
                     } catch (e) {
                         hasMedia = false
+                        console.log("MediaControls: parse error: " + e)
                     }
                 } else {
                     hasMedia = false
+                    console.log("MediaControls: request failed, status=" + xhr.status)
                 }
             }
         }
