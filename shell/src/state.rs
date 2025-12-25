@@ -1139,6 +1139,9 @@ impl CompositorHandler for Flick {
             if let Some(ref buffer_assignment) = attrs.buffer {
                 use smithay::wayland::compositor::BufferAssignment;
                 if let BufferAssignment::NewBuffer(buffer) = buffer_assignment {
+                    // Log buffer info for debugging
+                    tracing::debug!("Surface commit with new buffer: {:?}", buffer.id());
+
                     // Try to capture SHM buffer contents
                     let buffer_data = with_buffer_contents(buffer, |ptr, _pool_len, buf_data| {
                         let width = buf_data.width as u32;
@@ -1185,7 +1188,9 @@ impl CompositorHandler for Flick {
                             }
                         }
                         Err(e) => {
-                            tracing::warn!("Failed to capture buffer contents: {:?}", e);
+                            // This is expected for non-SHM buffers (dmabuf, EGL, android gralloc)
+                            // TODO: Add EGL image import for camera/video preview support
+                            tracing::debug!("Buffer is not SHM (likely dmabuf/EGL): {:?} - {:?}", buffer.id(), e);
                         }
                     }
                 }
