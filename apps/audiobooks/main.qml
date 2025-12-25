@@ -23,6 +23,7 @@ Window {
     // Settings
     property var libraryPaths: ["/home/droidian/Audiobooks"]
     property string settingsFile: "/home/droidian/.local/state/flick/audiobooks_settings.json"
+    property string cacheFile: "/home/droidian/.local/state/flick/audiobooks_cache.json"
 
     // Audio player
     Audio {
@@ -150,7 +151,8 @@ Window {
         loadTextScale()
         loadSettings()
         loadProgress()
-        scanAudiobooks()
+        loadCache()  // Load cached books first for instant display
+        // Scan will happen after cache is loaded (or immediately if no cache)
     }
 
     function loadSettings() {
@@ -252,6 +254,68 @@ Window {
         xhr.send()
     }
 
+    // Load cached books list for instant startup
+    function loadCache() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + cacheFile)
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                var cacheLoaded = false
+                if (xhr.status === 200 || xhr.status === 0) {
+                    try {
+                        var cache = JSON.parse(xhr.responseText)
+                        if (cache.books && cache.books.length > 0) {
+                            booksList = cache.books
+                            booksListModel.sync()
+                            console.log("Loaded " + booksList.length + " books from cache")
+                            cacheLoaded = true
+
+                            // Try to auto-resume if we have a last played book
+                            if (lastPlayedBookPath) {
+                                autoResumeTimer.start()
+                            }
+                        }
+                    } catch (e) {
+                        console.log("Cache parse error:", e)
+                    }
+                }
+                // Always scan in background to update/verify cache
+                backgroundScanTimer.start()
+            }
+        }
+        xhr.send()
+    }
+
+    // Save books list to cache
+    function saveCache() {
+        var cache = {
+            books: booksList,
+            timestamp: Date.now()
+        }
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file://" + cacheFile)
+        xhr.send(JSON.stringify(cache, null, 2))
+        console.log("Saved " + booksList.length + " books to cache")
+    }
+
+    // Timer for auto-resume after cache loads
+    Timer {
+        id: autoResumeTimer
+        interval: 100
+        onTriggered: {
+            if (lastPlayedBookPath && booksList.length > 0) {
+                resumeLastBook()
+            }
+        }
+    }
+
+    // Timer to start background scan after a short delay
+    Timer {
+        id: backgroundScanTimer
+        interval: 500
+        onTriggered: scanAudiobooks()
+    }
+
     // Track the last played book for quick resume
     property string lastPlayedBookPath: ""
 
@@ -294,9 +358,11 @@ Window {
         }
     }
 
+    // Temporary list for background scanning (keeps UI responsive with cached data)
+    property var scanningBooksList: []
+
     function scanAudiobooks() {
-        booksList = []
-        booksListModel.clear()
+        scanningBooksList = []  // Use separate list while scanning
         currentLibraryIndex = 0
         console.log("Starting audiobook scan, " + libraryPaths.length + " library paths")
         scanNextLibrary()
@@ -306,7 +372,8 @@ Window {
 
     function scanNextLibrary() {
         if (currentLibraryIndex >= libraryPaths.length) {
-            // Done scanning all libraries
+            // Done scanning - update main list with scanned results
+            booksList = scanningBooksList
             syncTimer.start()
             return
         }
@@ -375,6 +442,7 @@ Window {
         interval: 1000
         onTriggered: {
             booksListModel.sync()
+            saveCache()  // Save to cache for next startup
             console.log("Found " + booksList.length + " audiobooks total")
         }
     }
@@ -416,7 +484,7 @@ Window {
                     chapters.sort(function(a, b) {
                         return a.title.localeCompare(b.title)
                     })
-                    booksList.push({
+                    scanningBooksList.push({
                         title: folderName,
                         path: folderPath,
                         chapters: chapters
