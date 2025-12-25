@@ -500,7 +500,7 @@ fn handle_input_event(
             if state.shell.lock_screen_active {
                 if state.shell.display_blanked || state.shell.lock_screen_dimmed {
                     // Require double-tap to wake blanked/dimmed screen
-                    const DOUBLE_TAP_MS: u128 = 400; // Max time between taps
+                    const DOUBLE_TAP_MS: u128 = 600; // Max time between taps
                     let now = std::time::Instant::now();
                     if let Some(last_tap) = state.shell.lock_screen_last_tap {
                         if now.duration_since(last_tap).as_millis() < DOUBLE_TAP_MS {
