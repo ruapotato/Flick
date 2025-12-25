@@ -83,11 +83,9 @@ pub fn spawn_as_user(cmd: &str, socket_name: &str, text_scale: f64) -> Result<()
     command.env("WAYLAND_DISPLAY", socket_name);
     command.env("QT_QPA_PLATFORM", "wayland");
 
-    // Force software rendering for Qt apps - required for hwcomposer backend
+    // Force software rendering for Qt Quick UI - required for hwcomposer backend
     command.env("QT_QUICK_BACKEND", "software");
-    command.env("QT_OPENGL", "software");
     command.env("QSG_RENDER_LOOP", "basic");
-    command.env("LIBGL_ALWAYS_SOFTWARE", "1");
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
