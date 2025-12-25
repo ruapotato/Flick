@@ -2078,7 +2078,7 @@ fn render_subsurfaces(
         let subsurface_offset = compositor::with_states(child, |data| {
             // Get cached state for subsurface position
             use smithay::wayland::compositor::SubsurfaceCachedState;
-            let cached = data.cached_state.get::<SubsurfaceCachedState>();
+            let mut cached = data.cached_state.get::<SubsurfaceCachedState>();
             cached.current().location
         });
 
