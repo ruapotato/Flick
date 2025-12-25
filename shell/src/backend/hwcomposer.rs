@@ -1939,9 +1939,27 @@ fn try_import_egl_buffer(
     use smithay::wayland::compositor::{with_states, SurfaceAttributes};
 
     // Check if we have the required EGL extensions
-    let query_fn = display.egl_query_wayland_buffer?;
-    let create_image_fn = display.egl_create_image?;
-    let image_target_fn = display.gl_egl_image_target_texture_2d?;
+    let query_fn = match display.egl_query_wayland_buffer {
+        Some(f) => f,
+        None => {
+            info!("try_import_egl_buffer: no egl_query_wayland_buffer");
+            return None;
+        }
+    };
+    let create_image_fn = match display.egl_create_image {
+        Some(f) => f,
+        None => {
+            info!("try_import_egl_buffer: no egl_create_image");
+            return None;
+        }
+    };
+    let image_target_fn = match display.gl_egl_image_target_texture_2d {
+        Some(f) => f,
+        None => {
+            info!("try_import_egl_buffer: no gl_egl_image_target_texture_2d");
+            return None;
+        }
+    };
 
     // Get the wl_buffer from the surface
     let buffer_ptr: Option<*mut std::ffi::c_void> = with_states(wl_surface, |data| {
@@ -1950,19 +1968,31 @@ fn try_import_egl_buffer(
 
         if let Some(ref buffer_assignment) = attrs.buffer {
             use smithay::wayland::compositor::BufferAssignment;
-            if let BufferAssignment::NewBuffer(buffer) = buffer_assignment {
-                // Get the raw wayland buffer pointer
-                use smithay::reexports::wayland_server::Resource;
-                Some(buffer.id().as_ptr() as *mut std::ffi::c_void)
-            } else {
-                None
+            match buffer_assignment {
+                BufferAssignment::NewBuffer(buffer) => {
+                    // Get the raw wayland buffer pointer
+                    use smithay::reexports::wayland_server::Resource;
+                    info!("try_import_egl_buffer: found NewBuffer {:?}", buffer.id());
+                    Some(buffer.id().as_ptr() as *mut std::ffi::c_void)
+                }
+                BufferAssignment::Removed => {
+                    info!("try_import_egl_buffer: buffer was Removed");
+                    None
+                }
             }
         } else {
+            info!("try_import_egl_buffer: no buffer assignment");
             None
         }
     });
 
-    let buffer_ptr = buffer_ptr?;
+    let buffer_ptr = match buffer_ptr {
+        Some(p) => p,
+        None => {
+            info!("try_import_egl_buffer: no buffer pointer");
+            return None;
+        }
+    };
 
     // Query buffer dimensions
     let mut width: i32 = 0;
@@ -2434,15 +2464,21 @@ fn render_frame(
                         }
                     } else {
                         // Try EGL import if needed
-                        let needs_import = compositor::with_states(&wl_surface, |data| {
+                        let (needs_import, has_shm, has_egl_tex) = compositor::with_states(&wl_surface, |data| {
                             use std::cell::RefCell;
                             use crate::state::SurfaceBufferData;
                             if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
-                                buffer_data.borrow().needs_egl_import
+                                let bd = buffer_data.borrow();
+                                (bd.needs_egl_import, bd.buffer.is_some(), bd.egl_texture.is_some())
                             } else {
-                                false
+                                (false, false, false)
                             }
                         });
+
+                        if log_frame {
+                            info!("Window {} buffer state: needs_egl={}, has_shm={}, has_egl_tex={}",
+                                  i, needs_import, has_shm, has_egl_tex);
+                        }
 
                         if needs_import {
                             // Try to import EGL buffer
