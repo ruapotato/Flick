@@ -191,13 +191,20 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     // Suppress dconf warnings (no D-Bus session in our environment)
     command.env("GSETTINGS_BACKEND", "memory");
 
-    // Allow EGL for buffer sharing (android_wlegl, dmabuf)
-    // This is required for camera preview and video playback
     // Force software rendering for Qt apps - required for hwcomposer backend
+    // Qt UI uses software rendering, but GStreamer uses android gralloc for video
     command.env("QT_QUICK_BACKEND", "software");
     command.env("QT_OPENGL", "software");
     command.env("QSG_RENDER_LOOP", "basic");
     command.env("LIBGL_ALWAYS_SOFTWARE", "1");
+    command.env("GALLIUM_DRIVER", "llvmpipe");
+
+    // Critical: Disable Mesa EGL so GStreamer uses android/hybris gralloc path
+    // The compositor imports these buffers via its own EGL context
+    command.env("__EGL_VENDOR_LIBRARY_FILENAMES", "");
+
+    // Qt uses SHM for its own buffers, video goes through android_wlegl
+    command.env("QT_WAYLAND_CLIENT_BUFFER_INTEGRATION", "shm");
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
