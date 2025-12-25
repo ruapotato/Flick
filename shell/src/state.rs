@@ -10,8 +10,9 @@ use std::{
 };
 
 use smithay::{
-    delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
-    delegate_xdg_shell,
+    delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_output, delegate_seat,
+    delegate_shm, delegate_xdg_shell,
+    backend::allocator::{dmabuf::Dmabuf, Buffer},
     desktop::{PopupManager, Space, Window},
     input::{dnd::DndGrabHandler, Seat, SeatHandler, SeatState},
     output::Output,
@@ -31,6 +32,7 @@ use smithay::{
             get_parent, is_sync_subsurface, with_states, CompositorClientState, CompositorHandler,
             CompositorState, SurfaceAttributes,
         },
+        dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         output::{OutputHandler, OutputManagerState},
         selection::{
             data_device::{
@@ -81,6 +83,8 @@ pub struct SurfaceBufferData {
     pub egl_texture: Option<EglTextureBuffer>,
     /// Flag indicating this surface needs EGL import (SHM failed)
     pub needs_egl_import: bool,
+    /// Raw wl_buffer pointer for EGL import (stored during commit)
+    pub wl_buffer_ptr: Option<*mut std::ffi::c_void>,
 }
 
 use crate::input::{GestureRecognizer, GestureAction};
@@ -123,6 +127,8 @@ pub struct Flick {
     pub seat: Seat<Self>,
     pub text_input_state: TextInputState,
     pub android_wlegl_state: AndroidWleglState,
+    pub dmabuf_state: DmabufState,
+    pub dmabuf_global: Option<DmabufGlobal>,
 
     // Desktop
     pub space: Space<Window>,
@@ -228,6 +234,8 @@ impl Flick {
         let data_device_state = DataDeviceState::new::<Self>(&display_handle);
         let text_input_state = TextInputState::new::<Self>(&display_handle);
         let android_wlegl_state = AndroidWleglState::new::<Self>(&display_handle);
+        let dmabuf_state = DmabufState::new();
+        // dmabuf_global is created later in the backend when EGL context is ready
 
         // Set up seat (input devices)
         let mut seat_state = SeatState::new();
@@ -300,6 +308,8 @@ impl Flick {
             data_device_state,
             text_input_state,
             android_wlegl_state,
+            dmabuf_state,
+            dmabuf_global: None,
             seat_state,
             seat,
             space: Space::default(),
@@ -1206,17 +1216,22 @@ impl CompositorHandler for Flick {
                                 bd.buffer = Some(stored);
                                 bd.needs_egl_import = false;
                             }
+                            tracing::info!("Surface {:?} committed SHM buffer", surface.id());
                         }
                         Err(_e) => {
                             // Non-SHM buffer (dmabuf, EGL, android gralloc)
-                            // Mark for EGL import during rendering
+                            // Store buffer pointer and mark for EGL import during rendering
+                            use smithay::reexports::wayland_server::Resource;
+                            let buffer_ptr = buffer.id().as_ptr() as *mut std::ffi::c_void;
+
                             data.data_map.insert_if_missing(|| RefCell::new(SurfaceBufferData::default()));
                             if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
                                 let mut bd = buffer_data.borrow_mut();
                                 bd.buffer = None; // Clear SHM buffer
                                 bd.needs_egl_import = true;
-                                tracing::debug!("Surface {:?} needs EGL import", surface.id());
+                                bd.wl_buffer_ptr = Some(buffer_ptr);
                             }
+                            tracing::info!("Surface {:?} needs EGL import (buffer ptr: {:?})", surface.id(), buffer_ptr);
                         }
                     }
                 }
@@ -1466,6 +1481,27 @@ impl AndroidWleglHandler for Flick {
     }
 }
 
+impl DmabufHandler for Flick {
+    fn dmabuf_state(&mut self) -> &mut DmabufState {
+        &mut self.dmabuf_state
+    }
+
+    fn dmabuf_imported(&mut self, _global: &DmabufGlobal, dmabuf: Dmabuf, notifier: ImportNotifier) {
+        // Log the import for debugging
+        tracing::info!(
+            "Dmabuf import requested: {}x{}, {} planes, format {:?}",
+            dmabuf.width(),
+            dmabuf.height(),
+            dmabuf.num_planes(),
+            dmabuf.format()
+        );
+
+        // For now, accept all dmabuf imports - actual GPU import happens during rendering
+        // The dmabuf data is stored in the wl_buffer and accessed when the surface is committed
+        notifier.successful::<Flick>();
+    }
+}
+
 // Delegate macros
 delegate_compositor!(Flick);
 delegate_shm!(Flick);
@@ -1473,5 +1509,6 @@ delegate_seat!(Flick);
 delegate_data_device!(Flick);
 delegate_output!(Flick);
 delegate_xdg_shell!(Flick);
+delegate_dmabuf!(Flick);
 crate::delegate_text_input!(Flick);
 crate::delegate_android_wlegl!(Flick);

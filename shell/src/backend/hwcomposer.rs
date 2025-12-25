@@ -24,6 +24,10 @@ use tracing::{debug, error, info, warn};
 
 use smithay::{
     backend::{
+        allocator::{
+            dmabuf::Dmabuf,
+            Buffer, Format, Fourcc, Modifier,
+        },
         input::InputEvent,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         session::{
@@ -39,6 +43,7 @@ use smithay::{
     },
     utils::Transform,
     wayland::compositor,
+    wayland::dmabuf::{DmabufFeedbackBuilder, get_dmabuf},
     wayland::xwayland_shell::XWaylandShellState,
     xwayland::{XWayland, XWaylandEvent, xwm::X11Wm},
 };
@@ -1681,6 +1686,78 @@ pub fn run() -> Result<()> {
         }
     }
 
+    // Create dmabuf global for buffer sharing (required for camera preview)
+    {
+        // Try to find a render node for dmabuf
+        let render_node = std::fs::read_dir("/dev/dri")
+            .ok()
+            .and_then(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .find(|e| e.file_name().to_string_lossy().starts_with("renderD"))
+                    .map(|e| e.path())
+            });
+
+        if let Some(render_path) = render_node {
+            info!("Found render node: {:?}", render_path);
+
+            // Open the render node to get the device
+            if let Ok(file) = std::fs::File::open(&render_path) {
+                use std::os::unix::io::AsRawFd;
+                let fd = file.as_raw_fd();
+
+                // Get device info using fstat
+                let mut stat: libc::stat = unsafe { std::mem::zeroed() };
+                let stat_result = unsafe { libc::fstat(fd, &mut stat) };
+
+                if stat_result == 0 {
+                    let dev = stat.st_rdev;
+                    info!("Render node device: major={}, minor={}",
+                          unsafe { libc::major(dev) },
+                          unsafe { libc::minor(dev) });
+
+                    // Common DRM formats supported by most Android devices
+                    let formats = vec![
+                        Format { code: Fourcc::Argb8888, modifier: Modifier::Linear },
+                        Format { code: Fourcc::Xrgb8888, modifier: Modifier::Linear },
+                        Format { code: Fourcc::Abgr8888, modifier: Modifier::Linear },
+                        Format { code: Fourcc::Xbgr8888, modifier: Modifier::Linear },
+                        // Also support invalid modifier (means driver will choose)
+                        Format { code: Fourcc::Argb8888, modifier: Modifier::Invalid },
+                        Format { code: Fourcc::Xrgb8888, modifier: Modifier::Invalid },
+                        Format { code: Fourcc::Abgr8888, modifier: Modifier::Invalid },
+                        Format { code: Fourcc::Xbgr8888, modifier: Modifier::Invalid },
+                    ];
+
+                    // Build dmabuf feedback
+                    match DmabufFeedbackBuilder::new(dev, formats.clone()).build() {
+                        Ok(default_feedback) => {
+                            let dmabuf_global = state.dmabuf_state
+                                .create_global_with_default_feedback::<Flick>(
+                                    &state.display_handle,
+                                    &default_feedback,
+                                );
+                            state.dmabuf_global = Some(dmabuf_global);
+                            info!("Created dmabuf global with {} formats", formats.len());
+                        }
+                        Err(e) => {
+                            warn!("Failed to build dmabuf feedback: {:?}", e);
+                        }
+                    }
+
+                    // Keep file open to maintain the device reference
+                    std::mem::forget(file);
+                } else {
+                    warn!("Failed to stat render node");
+                }
+            } else {
+                warn!("Failed to open render node");
+            }
+        } else {
+            info!("No render node found - dmabuf not available");
+        }
+    }
+
     // Update state with actual screen size from hwc_display
     // (may differ from initial estimate if shim got real dimensions)
     let width = hwc_display.width;
@@ -1961,8 +2038,21 @@ fn try_import_egl_buffer(
         }
     };
 
-    // Get the wl_buffer from the surface
+    // Get the stored wl_buffer pointer from the surface data
+    use std::cell::RefCell;
+    use crate::state::SurfaceBufferData;
+
     let buffer_ptr: Option<*mut std::ffi::c_void> = with_states(wl_surface, |data| {
+        // First check if we have a stored buffer pointer from commit
+        if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+            let bd = buffer_data.borrow();
+            if let Some(ptr) = bd.wl_buffer_ptr {
+                info!("try_import_egl_buffer: using stored buffer ptr {:?}", ptr);
+                return Some(ptr);
+            }
+        }
+
+        // Fallback: try to get from buffer assignment (may already be cleared)
         let mut binding = data.cached_state.get::<SurfaceAttributes>();
         let attrs = binding.current();
 
@@ -1970,7 +2060,6 @@ fn try_import_egl_buffer(
             use smithay::wayland::compositor::BufferAssignment;
             match buffer_assignment {
                 BufferAssignment::NewBuffer(buffer) => {
-                    // Get the raw wayland buffer pointer
                     use smithay::reexports::wayland_server::Resource;
                     info!("try_import_egl_buffer: found NewBuffer {:?}", buffer.id());
                     Some(buffer.id().as_ptr() as *mut std::ffi::c_void)
@@ -1989,7 +2078,7 @@ fn try_import_egl_buffer(
     let buffer_ptr = match buffer_ptr {
         Some(p) => p,
         None => {
-            info!("try_import_egl_buffer: no buffer pointer");
+            info!("try_import_egl_buffer: no buffer pointer available");
             return None;
         }
     };
@@ -2559,22 +2648,59 @@ fn render_frame(
                     // Render using stored buffer data from commit handler
                     debug!("Window {} trying to render stored buffer", i);
 
-                    // First check if we have an EGL texture or need to import one
-                    let egl_texture_info: Option<(u32, u32, u32)> = compositor::with_states(&wl_surface, |data| {
+                    // Check buffer state - do we need to (re-)import?
+                    let (needs_import, has_shm, egl_texture_info) = compositor::with_states(&wl_surface, |data| {
                         use std::cell::RefCell;
                         use crate::state::SurfaceBufferData;
 
                         if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
                             let bd = buffer_data.borrow();
-                            if let Some(ref egl_tex) = bd.egl_texture {
-                                return Some((egl_tex.texture_id, egl_tex.width, egl_tex.height));
-                            }
+                            let egl_info = bd.egl_texture.as_ref().map(|t| (t.texture_id, t.width, t.height));
+                            (bd.needs_egl_import, bd.buffer.is_some(), egl_info)
+                        } else {
+                            (false, false, None)
                         }
-                        None
                     });
 
-                    // If we have an EGL texture, render it
-                    if let Some((texture_id, width, height)) = egl_texture_info {
+                    // If we need to import (new buffer arrived), do it now
+                    if needs_import {
+                        if log_frame {
+                            info!("Window {} needs EGL re-import", i);
+                        }
+                        if let Some(imported) = try_import_egl_buffer(&wl_surface, display) {
+                            // Store the imported texture
+                            compositor::with_states(&wl_surface, |data| {
+                                use std::cell::RefCell;
+                                use crate::state::{SurfaceBufferData, EglTextureBuffer};
+                                data.data_map.insert_if_missing(|| RefCell::new(SurfaceBufferData::default()));
+                                if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                    let mut bd = buffer_data.borrow_mut();
+                                    // TODO: destroy old EGL image if present
+                                    bd.egl_texture = Some(EglTextureBuffer {
+                                        texture_id: imported.0,
+                                        width: imported.1,
+                                        height: imported.2,
+                                        egl_image: imported.3,
+                                    });
+                                    bd.needs_egl_import = false;
+                                    bd.wl_buffer_ptr = None; // Clear after import
+                                }
+                            });
+
+                            // Render the newly imported texture
+                            let window_pos = state.space.element_location(window).unwrap_or_default();
+                            if log_frame {
+                                info!("EGL IMPORT+RENDER[{}] frame {}: texture_id={}, {}x{}", i, frame_num, imported.0, imported.1, imported.2);
+                            }
+                            unsafe {
+                                gl::render_egl_texture_at(imported.0, imported.1, imported.2, display.width, display.height,
+                                                           window_pos.x, window_pos.y);
+                            }
+                        } else if log_frame {
+                            info!("EGL IMPORT FAILED[{}] frame {}", i, frame_num);
+                        }
+                    } else if let Some((texture_id, width, height)) = egl_texture_info {
+                        // Use existing cached EGL texture
                         let window_pos = state.space.element_location(window).unwrap_or_default();
                         if log_frame {
                             info!("EGL RENDER[{}] frame {}: texture_id={}, {}x{}", i, frame_num, texture_id, width, height);
@@ -2582,57 +2708,6 @@ fn render_frame(
                         unsafe {
                             gl::render_egl_texture_at(texture_id, width, height, display.width, display.height,
                                                        window_pos.x, window_pos.y);
-                        }
-                    } else {
-                        // Try EGL import if needed
-                        let (needs_import, has_shm, has_egl_tex) = compositor::with_states(&wl_surface, |data| {
-                            use std::cell::RefCell;
-                            use crate::state::SurfaceBufferData;
-                            if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
-                                let bd = buffer_data.borrow();
-                                (bd.needs_egl_import, bd.buffer.is_some(), bd.egl_texture.is_some())
-                            } else {
-                                (false, false, false)
-                            }
-                        });
-
-                        if log_frame {
-                            info!("Window {} buffer state: needs_egl={}, has_shm={}, has_egl_tex={}",
-                                  i, needs_import, has_shm, has_egl_tex);
-                        }
-
-                        if needs_import {
-                            // Try to import EGL buffer
-                            if let Some(imported) = try_import_egl_buffer(&wl_surface, display) {
-                                // Store the imported texture
-                                compositor::with_states(&wl_surface, |data| {
-                                    use std::cell::RefCell;
-                                    use crate::state::{SurfaceBufferData, EglTextureBuffer};
-                                    data.data_map.insert_if_missing(|| RefCell::new(SurfaceBufferData::default()));
-                                    if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
-                                        let mut bd = buffer_data.borrow_mut();
-                                        bd.egl_texture = Some(EglTextureBuffer {
-                                            texture_id: imported.0,
-                                            width: imported.1,
-                                            height: imported.2,
-                                            egl_image: imported.3,
-                                        });
-                                        bd.needs_egl_import = false;
-                                    }
-                                });
-
-                                // Render the newly imported texture
-                                let window_pos = state.space.element_location(window).unwrap_or_default();
-                                if log_frame {
-                                    info!("EGL IMPORT+RENDER[{}] frame {}: texture_id={}, {}x{}", i, frame_num, imported.0, imported.1, imported.2);
-                                }
-                                unsafe {
-                                    gl::render_egl_texture_at(imported.0, imported.1, imported.2, display.width, display.height,
-                                                               window_pos.x, window_pos.y);
-                                }
-                            } else if log_frame {
-                                info!("EGL IMPORT FAILED[{}] frame {}", i, frame_num);
-                            }
                         }
                     }
 
