@@ -1751,7 +1751,7 @@ pub fn run() -> Result<()> {
             // Wake screen if blanked
             if state.shell.display_blanked {
                 state.shell.wake_lock_screen();
-                hwc_display.set_power(true);
+                hwc_display.hwc_ctx.set_power(true);
             }
             // Vibrate for incoming call (continuous pattern)
             state.system.haptic_heavy();
