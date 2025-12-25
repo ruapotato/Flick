@@ -332,29 +332,33 @@ impl VolumeManager {
 
     /// Run pactl command as the audio user
     fn run_pactl(args: &[&str]) -> Option<std::process::Output> {
-        if let Some((uid, username)) = Self::get_audio_user() {
-            // Quote each argument to handle @ symbols properly
-            let quoted_args: Vec<String> = args.iter().map(|a| format!("'{}'", a)).collect();
-            // Set required environment variables for PulseAudio/PipeWire access
-            let pactl_cmd = format!(
-                "XDG_RUNTIME_DIR=/run/user/{} DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{}/bus DISPLAY= pactl {}",
-                uid, uid, quoted_args.join(" ")
-            );
+        if let Some((uid, _username)) = Self::get_audio_user() {
+            // Check if we're already running as the target user
+            let current_uid = unsafe { libc::getuid() };
 
-            tracing::info!("Running pactl as user {}: {:?}", username, args);
-            let result = Command::new("su")
-                .args([&username, "-c", &pactl_cmd])
-                .output()
-                .ok();
-            if let Some(ref output) = result {
-                if !output.status.success() {
-                    tracing::warn!("pactl failed: {}", String::from_utf8_lossy(&output.stderr));
-                }
+            if current_uid == uid {
+                // Already the right user, run directly with env vars
+                tracing::info!("Running pactl directly (same user): {:?}", args);
+                Command::new("pactl")
+                    .env("XDG_RUNTIME_DIR", format!("/run/user/{}", uid))
+                    .args(args)
+                    .output()
+                    .ok()
+            } else {
+                // Need to switch users - use sudo -u instead of su for non-interactive
+                let pactl_args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+                tracing::info!("Running pactl via sudo as uid {}: {:?}", uid, args);
+                Command::new("sudo")
+                    .args(["-u", &format!("#{}", uid)])
+                    .env("XDG_RUNTIME_DIR", format!("/run/user/{}", uid))
+                    .arg("pactl")
+                    .args(&pactl_args)
+                    .output()
+                    .ok()
             }
-            result
         } else {
             // Fallback to direct call (works if not running as root)
-            tracing::info!("Running pactl directly: {:?}", args);
+            tracing::info!("Running pactl directly (no audio user found): {:?}", args);
             Command::new("pactl")
                 .args(args)
                 .output()
@@ -364,35 +368,53 @@ impl VolumeManager {
 
     /// Run pactl command as the audio user (fire and forget)
     fn run_pactl_async(args: &[&str]) {
-        if let Some((uid, username)) = Self::get_audio_user() {
-            // Quote each argument to handle @ symbols properly
-            let quoted_args: Vec<String> = args.iter().map(|a| format!("'{}'", a)).collect();
-            // Set required environment variables for PulseAudio/PipeWire access
-            let pactl_cmd = format!(
-                "XDG_RUNTIME_DIR=/run/user/{} DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{}/bus DISPLAY= pactl {}",
-                uid, uid, quoted_args.join(" ")
-            );
+        if let Some((uid, _username)) = Self::get_audio_user() {
+            let current_uid = unsafe { libc::getuid() };
 
-            tracing::info!("Running pactl as user {}: {:?}", username, args);
-            let _ = Command::new("su")
-                .args([&username, "-c", &pactl_cmd])
-                .spawn();
+            if current_uid == uid {
+                tracing::info!("Running pactl async directly (same user): {:?}", args);
+                let mut cmd = Command::new("pactl");
+                cmd.env("XDG_RUNTIME_DIR", format!("/run/user/{}", uid));
+                cmd.args(args);
+                let _ = cmd.spawn();
+            } else {
+                let pactl_args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+                tracing::info!("Running pactl async via sudo as uid {}: {:?}", uid, args);
+                let mut cmd = Command::new("sudo");
+                cmd.args(["-u", &format!("#{}", uid)]);
+                cmd.env("XDG_RUNTIME_DIR", format!("/run/user/{}", uid));
+                cmd.arg("pactl");
+                cmd.args(&pactl_args);
+                let _ = cmd.spawn();
+            }
         } else {
-            tracing::info!("Running pactl directly: {:?}", args);
+            tracing::info!("Running pactl async directly: {:?}", args);
             let _ = Command::new("pactl")
                 .args(args)
                 .spawn();
         }
     }
 
-    /// Get current volume (0-100)
+    /// Get current volume (0-100) using pactl list sinks (compatible with older pactl)
     pub fn get_volume() -> u8 {
-        Self::run_pactl(&["get-sink-volume", "@DEFAULT_SINK@"])
+        Self::run_pactl(&["list", "sinks"])
             .and_then(|o| {
                 let output = String::from_utf8_lossy(&o.stdout);
-                // Parse "Volume: front-left: 65536 / 100% / 0.00 dB, ..."
-                output.split('/').nth(1)
-                    .and_then(|s| s.trim().trim_end_matches('%').parse().ok())
+                // Find primary sink volume line, parse "Volume: front-left: 65536 / 100% / 0.00 dB, ..."
+                for line in output.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with("Volume:") && !trimmed.contains("Base Volume") {
+                        // Extract percentage from "front-left: 65536 / 100% / ..."
+                        if let Some(pct_part) = trimmed.split('/').nth(1) {
+                            if let Some(pct_str) = pct_part.trim().strip_suffix('%') {
+                                if let Ok(vol) = pct_str.trim().parse::<u8>() {
+                                    return Some(vol);
+                                }
+                            }
+                        }
+                    }
+                }
+                None
             })
             .unwrap_or(50)
     }
@@ -415,10 +437,20 @@ impl VolumeManager {
         let _ = Self::run_pactl(&["set-sink-volume", "@DEFAULT_SINK@", "-5%"]);
     }
 
-    /// Check if muted
+    /// Check if muted (using pactl list sinks for compatibility)
     pub fn is_muted() -> bool {
-        Self::run_pactl(&["get-sink-mute", "@DEFAULT_SINK@"])
-            .map(|o| String::from_utf8_lossy(&o.stdout).contains("yes"))
+        Self::run_pactl(&["list", "sinks"])
+            .map(|o| {
+                let output = String::from_utf8_lossy(&o.stdout);
+                // Look for "Mute: yes" line (first sink)
+                for line in output.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with("Mute:") {
+                        return trimmed.contains("yes");
+                    }
+                }
+                false
+            })
             .unwrap_or(false)
     }
 
