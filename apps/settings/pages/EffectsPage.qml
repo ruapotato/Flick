@@ -336,6 +336,90 @@ Page {
                 onSave: saveConfig()
             }
 
+            // Test buttons for each effect
+            Rectangle {
+                width: settingsColumn.width
+                height: 90
+                radius: 20
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                visible: touchEffectsEnabled
+
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 8
+
+                    Text {
+                        text: "Test Effects"
+                        font.pixelSize: 14
+                        color: "#888899"
+                    }
+
+                    Row {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: 8
+
+                        Repeater {
+                            model: [
+                                { icon: "💧", label: "Water", style: 0, color: "#4a9eff" },
+                                { icon: "🔥", label: "Fire", style: 1, color: "#ff6b35" },
+                                { icon: "🔄", label: "Invert", style: 2, color: "#9966ff" },
+                                { icon: "❄️", label: "Snow", style: 3, color: "#88ddff" },
+                                { icon: "💨", label: "Fart", style: 4, color: "#7aab4a" }
+                            ]
+
+                            Rectangle {
+                                width: 54
+                                height: 42
+                                radius: 10
+                                color: testArea.pressed ? Qt.darker(modelData.color, 1.5) : "#1a1a28"
+                                border.color: modelData.color
+                                border.width: 1
+
+                                Column {
+                                    anchors.centerIn: parent
+                                    spacing: 1
+
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: modelData.icon
+                                        font.pixelSize: 16
+                                    }
+
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: modelData.label
+                                        font.pixelSize: 8
+                                        color: "#888899"
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: testArea
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        // Temporarily switch to this style and trigger a test
+                                        var oldStyle = touchEffectStyle
+                                        touchEffectStyle = modelData.style
+                                        saveConfig()
+                                        // Flash feedback
+                                        parent.color = modelData.color
+                                        flashTimer.start()
+                                    }
+                                }
+
+                                Timer {
+                                    id: flashTimer
+                                    interval: 200
+                                    onTriggered: parent.color = "#1a1a28"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Item { height: 16 }
 
             // ===== SYSTEM EFFECTS =====
