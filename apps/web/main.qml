@@ -18,9 +18,18 @@ Window {
     property real textScale: 1.0
 
     // Browser state
-    property string currentView: "browser" // "browser", "tabs", "bookmarks", "history", "downloads", "menu"
-    property string homepage: "https://start.duckduckgo.com"
-    property string searchEngine: "https://duckduckgo.com/?q="
+    property string currentView: "browser" // "browser", "tabs", "bookmarks", "history", "downloads", "menu", "settings"
+    property string homepage: "https://www.google.com"
+    property string searchEngine: "google" // "google", "duckduckgo", "bing", "yahoo"
+    property bool privateMode: false
+
+    // Search engine URLs
+    readonly property var searchEngines: ({
+        "google": "https://www.google.com/search?q=",
+        "duckduckgo": "https://duckduckgo.com/?q=",
+        "bing": "https://www.bing.com/search?q=",
+        "yahoo": "https://search.yahoo.com/search?p="
+    })
 
     // Tab management
     property var tabs: []
@@ -160,8 +169,8 @@ Window {
     }
 
     function addToHistory(title, url) {
-        // Don't add empty or about: urls
-        if (!url || url.indexOf("about:") === 0) return
+        // Don't add in private mode or for empty/about: urls
+        if (privateMode || !url || url.indexOf("about:") === 0) return
 
         var entry = {
             id: Date.now().toString(),
@@ -246,6 +255,11 @@ Window {
         return null
     }
 
+    function getSearchUrl(query) {
+        var baseUrl = searchEngines[searchEngine] || searchEngines["google"]
+        return baseUrl + encodeURIComponent(query)
+    }
+
     function navigateTo(urlOrSearch) {
         var url = urlOrSearch.trim()
         if (!url) return
@@ -253,7 +267,7 @@ Window {
         // Check if it's a URL or search query
         if (url.indexOf("://") === -1 && url.indexOf(".") === -1) {
             // Treat as search query
-            url = searchEngine + encodeURIComponent(url)
+            url = getSearchUrl(url)
         } else if (url.indexOf("://") === -1) {
             // Add https://
             url = "https://" + url
@@ -262,6 +276,38 @@ Window {
         if (tabs.length > 0 && currentTabIndex < tabs.length) {
             tabs[currentTabIndex].url = url
             tabsChanged()
+        }
+    }
+
+    function goBack() {
+        var webView = tabRepeater.itemAt(currentTabIndex)
+        if (webView && webView.canGoBack) {
+            webView.goBack()
+            Haptic.tap()
+        }
+    }
+
+    function goForward() {
+        var webView = tabRepeater.itemAt(currentTabIndex)
+        if (webView && webView.canGoForward) {
+            webView.goForward()
+            Haptic.tap()
+        }
+    }
+
+    function reload() {
+        var webView = tabRepeater.itemAt(currentTabIndex)
+        if (webView) {
+            webView.reload()
+            Haptic.tap()
+        }
+    }
+
+    function stopLoading() {
+        var webView = tabRepeater.itemAt(currentTabIndex)
+        if (webView) {
+            webView.stop()
+            Haptic.tap()
         }
     }
 
@@ -274,10 +320,11 @@ Window {
         onTriggered: loadConfig()
     }
 
-    // ==================== WebEngine Profile ====================
+    // ==================== WebEngine Profiles ====================
 
+    // Normal browsing profile
     WebEngineProfile {
-        id: webProfile
+        id: normalProfile
         storageName: "FlickBrowser"
         offTheRecord: false
         httpCacheType: WebEngineProfile.DiskHttpCache
@@ -285,27 +332,42 @@ Window {
         httpUserAgent: "Mozilla/5.0 (Linux; Android 11; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
         onDownloadRequested: function(download) {
-            var filename = download.downloadFileName
-            var downloadPath = "/home/droidian/Downloads/" + filename
-
-            download.downloadDirectory = "/home/droidian/Downloads"
-            download.accept()
-
-            var dlEntry = {
-                id: Date.now().toString(),
-                filename: filename,
-                url: download.url.toString(),
-                localPath: downloadPath,
-                progress: 0,
-                status: "downloading",
-                startedAt: Date.now()
-            }
-            downloadsList.unshift(dlEntry)
-            downloadsListChanged()
-            saveDownloads()
-
-            Haptic.click()
+            handleDownload(download)
         }
+    }
+
+    // Private browsing profile (incognito)
+    WebEngineProfile {
+        id: privateProfile
+        offTheRecord: true
+        httpUserAgent: "Mozilla/5.0 (Linux; Android 11; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+        onDownloadRequested: function(download) {
+            handleDownload(download)
+        }
+    }
+
+    function handleDownload(download) {
+        var filename = download.downloadFileName
+        var downloadPath = "/home/droidian/Downloads/" + filename
+
+        download.downloadDirectory = "/home/droidian/Downloads"
+        download.accept()
+
+        var dlEntry = {
+            id: Date.now().toString(),
+            filename: filename,
+            url: download.url.toString(),
+            localPath: downloadPath,
+            progress: 0,
+            status: "downloading",
+            startedAt: Date.now()
+        }
+        downloadsList.unshift(dlEntry)
+        downloadsListChanged()
+        saveDownloads()
+
+        Haptic.click()
     }
 
     // ==================== Main Browser View ====================
@@ -315,14 +377,34 @@ Window {
         anchors.fill: parent
         visible: currentView === "browser"
 
-        // Address Bar
+        // Private mode indicator
         Rectangle {
-            id: addressBar
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
+            height: privateMode ? 32 : 0
+            color: "#6b5b95"
+            visible: privateMode
+            z: 20
+
+            Text {
+                anchors.centerIn: parent
+                text: "🕶 Private Browsing"
+                color: "#ffffff"
+                font.pixelSize: 14 * textScale
+                font.weight: Font.Medium
+            }
+        }
+
+        // Address Bar
+        Rectangle {
+            id: addressBar
+            anchors.top: privateMode ? parent.top : parent.top
+            anchors.topMargin: privateMode ? 32 : 0
+            anchors.left: parent.left
+            anchors.right: parent.right
             height: 72
-            color: "#1a1a2e"
+            color: privateMode ? "#4a4a6a" : "#1a1a2e"
             z: 10
 
             RowLayout {
@@ -335,7 +417,7 @@ Window {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: 12
-                    color: "#2a2a3e"
+                    color: privateMode ? "#5a5a7a" : "#2a2a3e"
 
                     RowLayout {
                         anchors.fill: parent
@@ -346,6 +428,7 @@ Window {
                         Text {
                             text: {
                                 var tab = getCurrentTab()
+                                if (privateMode) return "🕶"
                                 if (tab && tab.url && tab.url.indexOf("https://") === 0) {
                                     return "🔒"
                                 }
@@ -428,9 +511,9 @@ Window {
                                     } else {
                                         var tab = getCurrentTab()
                                         if (tab && tab.loading) {
-                                            tabStack.currentItem.stop()
+                                            stopLoading()
                                         } else {
-                                            tabStack.currentItem.reload()
+                                            reload()
                                         }
                                     }
                                 }
@@ -551,7 +634,7 @@ Window {
                 return parent.width * ((tab ? tab.progress : 0) / 100)
             }
             height: 3
-            color: "#e94560"
+            color: privateMode ? "#6b5b95" : "#e94560"
             visible: {
                 var tab = getCurrentTab()
                 return tab && tab.loading
@@ -561,21 +644,23 @@ Window {
             Behavior on width { NumberAnimation { duration: 100 } }
         }
 
-        // Web content area - StackLayout for tabs
-        StackLayout {
-            id: tabStack
+        // Web content area - Item with Repeater for tabs
+        Item {
+            id: tabContainer
             anchors.top: tabBar.visible ? tabBar.bottom : addressBar.bottom
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: bottomToolbar.top
-            currentIndex: currentTabIndex
 
             Repeater {
+                id: tabRepeater
                 model: tabs.length
 
                 WebEngineView {
                     id: webView
-                    profile: webProfile
+                    anchors.fill: parent
+                    visible: index === currentTabIndex
+                    profile: privateMode ? privateProfile : normalProfile
 
                     Component.onCompleted: {
                         if (tabs[index]) {
@@ -608,8 +693,8 @@ Window {
                     onLoadingChanged: function(loadRequest) {
                         if (tabs[index]) {
                             tabs[index].loading = loading
-                            tabs[index].canGoBack = canGoBack
-                            tabs[index].canGoForward = canGoForward
+                            tabs[index].canGoBack = webView.canGoBack
+                            tabs[index].canGoForward = webView.canGoForward
                             tabsChanged()
 
                             if (loadRequest.status === WebEngineLoadRequest.LoadSucceededStatus) {
@@ -644,7 +729,7 @@ Window {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             height: 100
-            color: "#1a1a2e"
+            color: privateMode ? "#4a4a6a" : "#1a1a2e"
 
             RowLayout {
                 anchors.fill: parent
@@ -674,13 +759,7 @@ Window {
                     MouseArea {
                         id: backMouse
                         anchors.fill: parent
-                        onClicked: {
-                            var tab = getCurrentTab()
-                            if (tab && tab.canGoBack) {
-                                tabStack.currentItem.goBack()
-                                Haptic.tap()
-                            }
-                        }
+                        onClicked: goBack()
                     }
                 }
 
@@ -705,13 +784,7 @@ Window {
                     MouseArea {
                         id: fwdMouse
                         anchors.fill: parent
-                        onClicked: {
-                            var tab = getCurrentTab()
-                            if (tab && tab.canGoForward) {
-                                tabStack.currentItem.goForward()
-                                Haptic.tap()
-                            }
-                        }
+                        onClicked: goForward()
                     }
                 }
 
@@ -723,7 +796,7 @@ Window {
                     Layout.preferredHeight: 56
                     radius: 8
                     color: tabsMouse.pressed ? "#3a3a4e" : "#2a2a3e"
-                    border.color: "#e94560"
+                    border.color: privateMode ? "#6b5b95" : "#e94560"
                     border.width: 2
 
                     Text {
@@ -760,7 +833,7 @@ Window {
                             return isBookmarked(tab ? tab.url : "") ? "★" : "☆"
                         }
                         font.pixelSize: 28
-                        color: "#e94560"
+                        color: privateMode ? "#6b5b95" : "#e94560"
                     }
 
                     MouseArea {
@@ -868,66 +941,72 @@ Window {
                         color: index === currentTabIndex ? "#2a2a3e" : "#1a1a2e"
                         radius: 12
 
-                    Column {
-                        anchors.fill: parent
-                        anchors.margins: 12
-                        spacing: 8
+                        Column {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 8
 
-                        Text {
-                            width: parent.width
-                            text: tabs[index] ? tabs[index].title : ""
-                            color: "#ffffff"
-                            font.pixelSize: 14 * textScale
-                            font.weight: Font.Medium
-                            elide: Text.ElideRight
-                            maximumLineCount: 2
-                            wrapMode: Text.Wrap
-                        }
-
-                        Text {
-                            width: parent.width
-                            text: {
-                                var tab = tabs[index]
-                                if (!tab) return ""
-                                try {
-                                    var url = new URL(tab.url)
-                                    return url.hostname
-                                } catch(e) { return tab.url }
+                            Text {
+                                width: parent.width
+                                text: tabs[index] ? tabs[index].title : ""
+                                color: "#ffffff"
+                                font.pixelSize: 14 * textScale
+                                font.weight: Font.Medium
+                                elide: Text.ElideRight
+                                maximumLineCount: 2
+                                wrapMode: Text.Wrap
                             }
-                            color: "#888888"
-                            font.pixelSize: 12 * textScale
-                            elide: Text.ElideRight
+
+                            Text {
+                                width: parent.width
+                                text: {
+                                    var tab = tabs[index]
+                                    if (!tab) return ""
+                                    try {
+                                        var u = tab.url
+                                        var start = u.indexOf("://")
+                                        if (start !== -1) {
+                                            var rest = u.substring(start + 3)
+                                            var end = rest.indexOf("/")
+                                            return end !== -1 ? rest.substring(0, end) : rest
+                                        }
+                                        return u
+                                    } catch(e) { return tab.url }
+                                }
+                                color: "#888888"
+                                font.pixelSize: 12 * textScale
+                                elide: Text.ElideRight
+                            }
                         }
-                    }
 
-                    // Close button
-                    Rectangle {
-                        anchors.top: parent.top
-                        anchors.right: parent.right
-                        anchors.margins: 8
-                        width: 32
-                        height: 32
-                        radius: 16
-                        color: "#e94560"
+                        // Close button
+                        Rectangle {
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.margins: 8
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: "#e94560"
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: "✕"
-                            color: "#ffffff"
-                            font.pixelSize: 16
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✕"
+                                color: "#ffffff"
+                                font.pixelSize: 16
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: closeTab(index)
+                            }
                         }
 
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: closeTab(index)
+                            anchors.margins: 40
+                            onClicked: switchTab(index)
                         }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        anchors.margins: 40
-                        onClicked: switchTab(index)
-                    }
                     }
                 }
             }
@@ -1016,15 +1095,69 @@ Window {
                 }
             }
 
+            // Private mode toggle
+            Rectangle {
+                width: parent.width
+                height: 64
+                radius: 12
+                color: privateMode ? "#6b5b95" : "#1a1a2e"
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 16
+
+                    Text {
+                        text: "🕶"
+                        font.pixelSize: 24
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: privateMode ? "Exit Private Mode" : "Private Browsing"
+                        color: "#ffffff"
+                        font.pixelSize: 18 * textScale
+                    }
+
+                    Rectangle {
+                        width: 52
+                        height: 28
+                        radius: 14
+                        color: privateMode ? "#9b8bc5" : "#3a3a4e"
+
+                        Rectangle {
+                            width: 24
+                            height: 24
+                            radius: 12
+                            color: "#ffffff"
+                            x: privateMode ? parent.width - 26 : 2
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Behavior on x { NumberAnimation { duration: 150 } }
+                        }
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        privateMode = !privateMode
+                        Haptic.click()
+                    }
+                }
+            }
+
+            Item { height: 8; width: 1 }
+
             // Menu items
             Repeater {
                 model: [
                     { icon: "★", label: "Bookmarks", view: "bookmarks" },
                     { icon: "🕐", label: "History", view: "history" },
                     { icon: "↓", label: "Downloads", view: "downloads" },
+                    { icon: "⚙", label: "Settings", view: "settings" },
                     { icon: "🏠", label: "Set as Homepage", action: "setHomepage" },
-                    { icon: "🔄", label: "Reload", action: "reload" },
-                    { icon: "⊕", label: "Desktop Site", action: "desktop" }
+                    { icon: "🔄", label: "Reload", action: "reload" }
                 ]
 
                 Rectangle {
@@ -1072,7 +1205,7 @@ Window {
                                 }
                                 currentView = "browser"
                             } else if (modelData.action === "reload") {
-                                tabStack.currentItem.reload()
+                                reload()
                                 currentView = "browser"
                             }
                         }
@@ -1130,6 +1263,189 @@ Window {
                 anchors.fill: parent
                 onClicked: {
                     currentView = "browser"
+                    Haptic.tap()
+                }
+            }
+        }
+    }
+
+    // ==================== Settings View ====================
+
+    Rectangle {
+        id: settingsView
+        anchors.fill: parent
+        color: "#0a0a0f"
+        visible: currentView === "settings"
+
+        Column {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 16
+
+            // Header
+            Rectangle {
+                width: parent.width
+                height: 64
+                color: "transparent"
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Settings"
+                    color: "#ffffff"
+                    font.pixelSize: 28 * textScale
+                    font.weight: Font.Bold
+                }
+            }
+
+            // Search Engine Section
+            Text {
+                text: "Search Engine"
+                color: "#888888"
+                font.pixelSize: 14 * textScale
+                font.weight: Font.Medium
+            }
+
+            Column {
+                width: parent.width
+                spacing: 8
+
+                Repeater {
+                    model: [
+                        { id: "google", name: "Google", icon: "🔍" },
+                        { id: "duckduckgo", name: "DuckDuckGo", icon: "🦆" },
+                        { id: "bing", name: "Bing", icon: "🅱" },
+                        { id: "yahoo", name: "Yahoo", icon: "🟣" }
+                    ]
+
+                    Rectangle {
+                        width: parent.width
+                        height: 64
+                        radius: 12
+                        color: searchEngine === modelData.id ? "#2a2a3e" : "#1a1a2e"
+                        border.color: searchEngine === modelData.id ? "#e94560" : "transparent"
+                        border.width: 2
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            spacing: 16
+
+                            Text {
+                                text: modelData.icon
+                                font.pixelSize: 24
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData.name
+                                color: "#ffffff"
+                                font.pixelSize: 18 * textScale
+                            }
+
+                            Text {
+                                text: searchEngine === modelData.id ? "✓" : ""
+                                color: "#e94560"
+                                font.pixelSize: 24
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                searchEngine = modelData.id
+                                saveSettings()
+                                Haptic.tap()
+                            }
+                        }
+                    }
+                }
+            }
+
+            Item { height: 16; width: 1 }
+
+            // Homepage Section
+            Text {
+                text: "Homepage"
+                color: "#888888"
+                font.pixelSize: 14 * textScale
+                font.weight: Font.Medium
+            }
+
+            Rectangle {
+                width: parent.width
+                height: 64
+                radius: 12
+                color: "#1a1a2e"
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 8
+
+                    Text {
+                        text: "🏠"
+                        font.pixelSize: 24
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: homepage
+                        color: "#ffffff"
+                        font.pixelSize: 14 * textScale
+                        elide: Text.ElideMiddle
+                    }
+                }
+            }
+
+            // Reset homepage button
+            Rectangle {
+                width: parent.width
+                height: 56
+                radius: 12
+                color: resetHomeMouse.pressed ? "#3a3a4e" : "#2a2a3e"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Reset to Google"
+                    color: "#e94560"
+                    font.pixelSize: 16 * textScale
+                }
+
+                MouseArea {
+                    id: resetHomeMouse
+                    anchors.fill: parent
+                    onClicked: {
+                        homepage = "https://www.google.com"
+                        saveSettings()
+                        Haptic.tap()
+                    }
+                }
+            }
+        }
+
+        // Back button
+        Rectangle {
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 24
+            anchors.bottomMargin: 100
+            width: 72
+            height: 72
+            radius: 36
+            color: "#e94560"
+
+            Text {
+                anchors.centerIn: parent
+                text: "←"
+                color: "#ffffff"
+                font.pixelSize: 32
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    currentView = "menu"
                     Haptic.tap()
                 }
             }
