@@ -2926,22 +2926,22 @@ fn render_frame(
     }
 
     // Render touch distortion effects (fisheye while touching, ripple on release)
-    if state.has_touch_effects() {
-        let shader_data = state.touch_effects.get_shader_data(
-            display.width as f64,
-            display.height as f64,
-        );
-        if shader_data.count > 0 {
-            if log_frame {
-                info!("TOUCH DISTORTION frame {}: {} effects", frame_num, shader_data.count);
-            }
-            unsafe {
-                gl::render_distortion(
-                    display.width as u32,
-                    display.height as u32,
-                    &shader_data,
-                );
-            }
+    // Also render continuously for ASCII mode (style 2)
+    let shader_data = state.touch_effects.get_shader_data(
+        display.width as f64,
+        display.height as f64,
+    );
+    let is_ascii_mode = shader_data.effect_style == 2;
+    if shader_data.count > 0 || is_ascii_mode {
+        if log_frame {
+            info!("DISTORTION frame {}: {} effects, style {}", frame_num, shader_data.count, shader_data.effect_style);
+        }
+        unsafe {
+            gl::render_distortion(
+                display.width as u32,
+                display.height as u32,
+                &shader_data,
+            );
         }
     }
 
@@ -3093,7 +3093,7 @@ mod gl {
     "#;
 
     // Distortion fragment shader - STABLE version
-    // Style: 0=water, 1=snow, 2=ascii (libaa style)
+    // Style: 0=water, 1=snow (ice crystals), 2=ascii (bb/aalib style)
     const DISTORT_FRAGMENT_SRC: &str = r#"
         precision highp float;
         varying vec2 v_texcoord;
@@ -3109,87 +3109,89 @@ mod gl {
             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
         }
 
-        // ASCII character patterns - procedurally rendered
-        // Characters: space . : - = + * # @ (10 levels)
-        float getAsciiChar(float lum, vec2 cellUV) {
-            int charIdx = int(lum * 9.99);
-            float cx = cellUV.x;
-            float cy = cellUV.y;
+        float hash2(vec2 p) {
+            return fract(sin(dot(p, vec2(269.5, 183.3))) * 43758.5453);
+        }
 
-            // Space (charIdx 0) - return nothing
+        // ASCII character bitmaps - 5x7 font patterns encoded as floats
+        // Returns pixel value (0 or 1) for a character at given position
+        float getCharPixel(int charIdx, vec2 pos) {
+            // pos is 0-1 within cell, we map to 5x7 grid
+            int px = int(pos.x * 5.0);
+            int py = int(pos.y * 7.0);
+            if (px < 0 || px > 4 || py < 0 || py > 6) return 0.0;
+
+            // Character patterns (5 wide, 7 tall, LSB = left)
+            // Indexed by luminance level 0-9
+            // ' ', '.', ':', '-', '+', '=', '*', '#', '@', 'M'
+
+            int row = 6 - py; // Flip Y
+
+            // Space - empty
             if (charIdx == 0) return 0.0;
 
-            // Period . (charIdx 1) - small dot at bottom center
+            // . - small dot
             if (charIdx == 1) {
-                if (cx > 0.35 && cx < 0.65 && cy > 0.1 && cy < 0.3) return 1.0;
+                if (row == 0 && px == 2) return 1.0;
                 return 0.0;
             }
 
-            // Colon : (charIdx 2) - two dots
+            // : - two dots
             if (charIdx == 2) {
-                if (cx > 0.35 && cx < 0.65) {
-                    if ((cy > 0.2 && cy < 0.4) || (cy > 0.6 && cy < 0.8)) return 1.0;
-                }
+                if ((row == 1 || row == 4) && px == 2) return 1.0;
                 return 0.0;
             }
 
-            // Dash - (charIdx 3) - horizontal line middle
+            // - - horizontal line
             if (charIdx == 3) {
-                if (cy > 0.4 && cy < 0.6 && cx > 0.15 && cx < 0.85) return 1.0;
+                if (row == 3 && px >= 1 && px <= 3) return 1.0;
                 return 0.0;
             }
 
-            // Equals = (charIdx 4) - two horizontal lines
+            // + - plus
             if (charIdx == 4) {
-                if (cx > 0.15 && cx < 0.85) {
-                    if ((cy > 0.3 && cy < 0.45) || (cy > 0.55 && cy < 0.7)) return 1.0;
-                }
+                if (row == 3 && px >= 1 && px <= 3) return 1.0;
+                if (px == 2 && row >= 2 && row <= 4) return 1.0;
                 return 0.0;
             }
 
-            // Plus + (charIdx 5) - cross
+            // = - double line
             if (charIdx == 5) {
-                if ((cy > 0.4 && cy < 0.6 && cx > 0.15 && cx < 0.85) ||
-                    (cx > 0.4 && cx < 0.6 && cy > 0.15 && cy < 0.85)) return 1.0;
+                if ((row == 2 || row == 4) && px >= 1 && px <= 3) return 1.0;
                 return 0.0;
             }
 
-            // Asterisk * (charIdx 6) - star pattern
+            // * - asterisk
             if (charIdx == 6) {
-                vec2 c = vec2(0.5, 0.5);
-                float d = length(cellUV - c);
-                if (d < 0.35) {
-                    float angle = atan(cellUV.y - 0.5, cellUV.x - 0.5);
-                    float spike = abs(sin(angle * 3.0));
-                    if (spike > 0.5 || d < 0.1) return 1.0;
-                }
+                if (row == 3 && px >= 0 && px <= 4) return 1.0;
+                if (px == 2 && row >= 1 && row <= 5) return 1.0;
+                if ((row == 2 || row == 4) && (px == 1 || px == 3)) return 1.0;
                 return 0.0;
             }
 
-            // Hash # (charIdx 7) - grid pattern
+            // # - hash
             if (charIdx == 7) {
-                if ((cx > 0.25 && cx < 0.4) || (cx > 0.6 && cx < 0.75)) {
-                    if (cy > 0.15 && cy < 0.85) return 1.0;
-                }
-                if ((cy > 0.25 && cy < 0.4) || (cy > 0.6 && cy < 0.75)) {
-                    if (cx > 0.15 && cx < 0.85) return 1.0;
-                }
+                if ((px == 1 || px == 3) && row >= 1 && row <= 5) return 1.0;
+                if ((row == 2 || row == 4) && px >= 0 && px <= 4) return 1.0;
                 return 0.0;
             }
 
-            // At @ (charIdx 8) - circle with center
+            // @ - at sign
             if (charIdx == 8) {
-                vec2 c = vec2(0.5, 0.5);
-                float d = length(cellUV - c);
-                if (d > 0.25 && d < 0.4) return 1.0;
-                if (d < 0.15) return 1.0;
-                if (cx > 0.5 && cy > 0.3 && cy < 0.5 && d < 0.35) return 1.0;
+                if (row == 1 && px >= 1 && px <= 3) return 1.0;
+                if (row == 5 && px >= 1 && px <= 3) return 1.0;
+                if ((px == 0 || px == 4) && row >= 2 && row <= 4) return 1.0;
+                if (px == 2 && row >= 2 && row <= 4) return 1.0;
+                if (px == 3 && row == 3) return 1.0;
                 return 0.0;
             }
 
-            // Block (charIdx 9) - solid block
+            // M - solid block-ish
             if (charIdx >= 9) {
-                if (cx > 0.1 && cx < 0.9 && cy > 0.1 && cy < 0.9) return 1.0;
+                if (px == 0 || px == 4) return 1.0;
+                if (row == 5) return 1.0;
+                if (row == 4 && (px == 1 || px == 3)) return 1.0;
+                if (row == 3 && px == 2) return 1.0;
                 return 0.0;
             }
 
@@ -3199,35 +3201,45 @@ mod gl {
         void main() {
             vec2 uv = v_texcoord;
 
-            // For ASCII mode, render entire screen as ASCII art
+            // === ASCII MODE (style 2) - Full screen terminal look ===
             if (u_style == 2) {
-                // Calculate cell size based on density (higher = smaller cells)
-                float cellSize = 1.0 / u_density;
-                float cellAspect = u_aspect; // Adjust for screen aspect
+                // u_density controls character size (higher = more chars = smaller)
+                // For bb-style look, we want ~80 columns
+                // density of 80 = 80 chars across screen width
+                float charsAcross = u_density * 10.0; // Scale up: 8 -> 80 chars
+                float charWidth = 1.0 / charsAcross;
+                float charHeight = charWidth * u_aspect * 1.4; // Chars are taller than wide
 
-                // Find which cell this pixel is in
-                vec2 cellCoord = floor(uv / vec2(cellSize / cellAspect, cellSize));
-                vec2 cellUV = fract(uv / vec2(cellSize / cellAspect, cellSize));
+                // Find which character cell this pixel is in
+                vec2 cellIdx = floor(uv / vec2(charWidth, charHeight));
+                vec2 cellUV = fract(uv / vec2(charWidth, charHeight));
 
-                // Sample center of the cell to get luminance
-                vec2 cellCenter = (cellCoord + 0.5) * vec2(cellSize / cellAspect, cellSize);
-                vec4 sampleColor = texture2D(u_texture, cellCenter);
+                // Sample the image at cell center
+                vec2 samplePos = (cellIdx + 0.5) * vec2(charWidth, charHeight);
+                samplePos = clamp(samplePos, vec2(0.0), vec2(1.0));
+                vec4 sampleColor = texture2D(u_texture, samplePos);
+
+                // Convert to luminance
                 float lum = dot(sampleColor.rgb, vec3(0.299, 0.587, 0.114));
 
-                // Get ASCII character pattern
-                float charPattern = getAsciiChar(lum, cellUV);
+                // Map luminance to character index (0-9)
+                int charIdx = int(lum * 9.99);
 
-                // Render: character color based on original, background dark
-                vec3 charColor = sampleColor.rgb * 1.2; // Slightly brighter
-                vec3 bgColor = vec3(0.02, 0.02, 0.03);  // Near black
+                // Get the pixel value from character bitmap
+                float pixel = getCharPixel(charIdx, cellUV);
 
-                gl_FragColor = vec4(mix(bgColor, charColor, charPattern), 1.0);
+                // Green phosphor terminal look with original color tint
+                vec3 charColor = mix(vec3(0.2, 1.0, 0.3), sampleColor.rgb, 0.3);
+                vec3 bgColor = vec3(0.0, 0.02, 0.0);
+
+                gl_FragColor = vec4(mix(bgColor, charColor, pixel), 1.0);
                 return;
             }
 
-            // Normal distortion effects (water/snow)
+            // === WATER/SNOW DISTORTION EFFECTS ===
             vec2 totalOffset = vec2(0.0);
             float totalInf = 0.0;
+            float iceAmount = 0.0; // For snow: tracks ice crystal coverage
 
             for (int i = 0; i < 10; i++) {
                 if (i >= u_count) break;
@@ -3253,25 +3265,40 @@ mod gl {
                     offset.x /= u_aspect;
                     totalOffset += offset;
                     totalInf += (1.0 - nd) * strength;
+
+                    // For snow: accumulate ice in fisheye area
+                    if (u_style == 1) {
+                        iceAmount += (1.0 - nd * nd) * strength * 3.0;
+                    }
                 }
-                // RIPPLE (effectType >= 1.0) - finger released, ring expanding
+                // RIPPLE (effectType >= 1.0) - finger released
                 else if (effectType >= 1.0) {
                     float progress = effectType - 1.0;
                     if (progress > 1.0) continue;
 
-                    float ringPos = radius * progress;
-                    float ringWidth = 0.05 * (1.0 - progress * 0.3);
                     float fade = 1.0 - progress;
 
-                    float ringDist = abs(dist - ringPos);
-                    if (ringDist < ringWidth) {
-                        float wave = 1.0 - ringDist / ringWidth;
-                        wave = wave * wave * (3.0 - 2.0 * wave);
-                        float phase = (dist < ringPos) ? 1.0 : -1.0;
-                        vec2 offset = dir * wave * strength * phase * 0.1 * fade;
-                        offset.x /= u_aspect;
-                        totalOffset += offset;
-                        totalInf += wave * fade * strength;
+                    if (u_style == 1) {
+                        // SNOW: Ice melting effect - crystals fade from center out
+                        float meltRadius = radius * (1.0 - fade * 0.7);
+                        if (dist < meltRadius) {
+                            float meltND = dist / meltRadius;
+                            iceAmount += (1.0 - meltND) * fade * fade * strength * 2.0;
+                        }
+                    } else {
+                        // WATER: Expanding ripple ring
+                        float ringPos = radius * progress;
+                        float ringWidth = 0.05 * (1.0 - progress * 0.3);
+                        float ringDist = abs(dist - ringPos);
+                        if (ringDist < ringWidth) {
+                            float wave = 1.0 - ringDist / ringWidth;
+                            wave = wave * wave * (3.0 - 2.0 * wave);
+                            float phase = (dist < ringPos) ? 1.0 : -1.0;
+                            vec2 offset = dir * wave * strength * phase * 0.1 * fade;
+                            offset.x /= u_aspect;
+                            totalOffset += offset;
+                            totalInf += wave * fade * strength;
+                        }
                     }
                 }
             }
@@ -3279,21 +3306,45 @@ mod gl {
             vec2 sampleUV = clamp(uv - totalOffset, vec2(0.0), vec2(1.0));
             vec4 color = texture2D(u_texture, sampleUV);
 
-            // Apply style-specific coloring
-            if (totalInf > 0.01) {
+            // Apply style-specific effects
+            if (u_style == 0 && totalInf > 0.01) {
+                // WATER: Blue tint
                 float inf = clamp(totalInf, 0.0, 1.0);
+                color.rgb = mix(color.rgb, color.rgb * vec3(0.8, 0.9, 1.2), inf * 0.5);
+            }
+            else if (u_style == 1 && iceAmount > 0.01) {
+                // SNOW: Ice crystals
+                float ice = clamp(iceAmount, 0.0, 1.0);
 
-                if (u_style == 0) {
-                    // WATER: Blue tint
-                    color.rgb = mix(color.rgb, color.rgb * vec3(0.8, 0.9, 1.2), inf * 0.5);
-                } else if (u_style == 1) {
-                    // SNOW: White frost with sparkles
-                    float sparkle = pow(hash(sampleUV * 200.0), 8.0);
-                    vec3 frost = vec3(0.9, 0.95, 1.0);
-                    color.rgb = mix(color.rgb, frost, inf * 0.6);
-                    color.rgb += sparkle * inf * 0.5;
-                    color.rgb = min(color.rgb, vec3(1.0));
-                }
+                // Generate crystal patterns based on position
+                vec2 crystalUV = sampleUV * 150.0;
+                float crystal1 = hash(floor(crystalUV));
+                float crystal2 = hash2(floor(crystalUV * 0.5));
+
+                // Hexagonal crystal pattern
+                vec2 hexUV = fract(crystalUV);
+                float hex = abs(hexUV.x - 0.5) + abs(hexUV.y - 0.5);
+                float crystalShape = smoothstep(0.6, 0.3, hex);
+
+                // Branching pattern
+                float branch = max(
+                    smoothstep(0.1, 0.0, abs(hexUV.x - 0.5)),
+                    smoothstep(0.1, 0.0, abs(hexUV.y - 0.5))
+                );
+
+                // Combine for frost pattern
+                float frost = (crystalShape * 0.5 + branch * 0.5) * crystal1;
+                frost = pow(frost, 0.5) * ice;
+
+                // Ice colors - blue-white crystalline
+                vec3 iceColor = mix(vec3(0.7, 0.85, 1.0), vec3(1.0, 1.0, 1.0), crystal2);
+
+                // Sparkle effect
+                float sparkle = pow(hash(sampleUV * 300.0 + ice), 12.0) * ice;
+
+                color.rgb = mix(color.rgb, iceColor, frost * 0.8);
+                color.rgb += sparkle * 0.6;
+                color.rgb = min(color.rgb, vec3(1.0));
             }
 
             gl_FragColor = color;
@@ -3915,7 +3966,9 @@ mod gl {
             return;
         }
 
-        if shader_data.count == 0 {
+        // For ASCII mode (style 2), always render even with no touches
+        // For other modes, only render when there are active effects
+        if shader_data.count == 0 && shader_data.effect_style != 2 {
             return;
         }
 
