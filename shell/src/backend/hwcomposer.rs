@@ -3183,52 +3183,114 @@ mod gl {
                 float influence = clamp(totalInfluence, 0.0, 1.0);
 
                 if (u_style == 0) {
-                    // WATER: subtle blue tint
-                    vec3 waterTint = vec3(0.4, 0.7, 1.0);
-                    color.rgb = mix(color.rgb, color.rgb * waterTint, influence * 0.3);
+                    // WATER: Beautiful caustic ripples with chromatic aberration
+                    float aberration = influence * 0.008;
+                    vec3 chromatic;
+                    chromatic.r = texture2D(u_texture, sampleUV + vec2(aberration, 0.0)).r;
+                    chromatic.g = color.g;
+                    chromatic.b = texture2D(u_texture, sampleUV - vec2(aberration, 0.0)).b;
+                    // Water caustic pattern
+                    float caustic1 = hash(sampleUV * 50.0 + totalOffset * 20.0);
+                    float caustic2 = hash(sampleUV * 80.0 - totalOffset * 15.0);
+                    float caustics = pow(caustic1 * caustic2, 0.5) * 2.0;
+                    // Deep blue water tint with bright caustic highlights
+                    vec3 waterColor = vec3(0.2, 0.5, 0.9);
+                    vec3 result = mix(chromatic, chromatic * waterColor, influence * 0.4);
+                    result += vec3(0.3, 0.6, 1.0) * caustics * influence * 0.3;
+                    color.rgb = result;
                 } else if (u_style == 1) {
-                    // FIRE: orange/red heat distortion with glow
-                    vec3 fireColor = vec3(1.0, 0.4, 0.1);
-                    // Add heat shimmer noise
-                    float noise = hash(sampleUV * 100.0 + totalOffset * 50.0);
-                    vec3 heated = color.rgb + fireColor * influence * 0.5;
-                    // Slight brightness boost for heat glow
-                    heated = mix(heated, vec3(1.0, 0.8, 0.3), influence * noise * 0.3);
-                    color.rgb = heated;
+                    // FIRE: Realistic flames - yellow core to orange to red edges
+                    float n1 = hash(sampleUV * 60.0 + totalOffset * 40.0);
+                    float n2 = hash(sampleUV * 120.0 - totalOffset * 30.0);
+                    float n3 = hash(sampleUV * 200.0 + vec2(totalOffset.y, -totalOffset.x) * 25.0);
+                    float flame = (n1 * 0.5 + n2 * 0.3 + n3 * 0.2);
+                    // Flame gradient: white-yellow core -> orange -> red -> dark
+                    float intensity = influence * (0.7 + flame * 0.6);
+                    vec3 flameColor;
+                    if (intensity > 0.8) {
+                        flameColor = mix(vec3(1.0, 0.9, 0.4), vec3(1.0, 1.0, 0.9), (intensity - 0.8) * 5.0);
+                    } else if (intensity > 0.5) {
+                        flameColor = mix(vec3(1.0, 0.4, 0.0), vec3(1.0, 0.9, 0.4), (intensity - 0.5) * 3.33);
+                    } else if (intensity > 0.2) {
+                        flameColor = mix(vec3(0.6, 0.1, 0.0), vec3(1.0, 0.4, 0.0), (intensity - 0.2) * 3.33);
+                    } else {
+                        flameColor = mix(vec3(0.1, 0.0, 0.0), vec3(0.6, 0.1, 0.0), intensity * 5.0);
+                    }
+                    // Additive blend for glow effect
+                    color.rgb = color.rgb + flameColor * influence * 1.2;
+                    color.rgb = min(color.rgb, vec3(1.0));
                 } else if (u_style == 2) {
-                    // INVERT: color inversion
-                    vec3 inverted = vec3(1.0) - color.rgb;
-                    color.rgb = mix(color.rgb, inverted, influence);
+                    // INVERT: Psychedelic with chromatic split and edge glow
+                    float aberration = influence * 0.015;
+                    vec3 shifted;
+                    shifted.r = texture2D(u_texture, sampleUV + vec2(aberration, aberration * 0.5)).r;
+                    shifted.g = texture2D(u_texture, sampleUV).g;
+                    shifted.b = texture2D(u_texture, sampleUV - vec2(aberration, aberration * 0.5)).b;
+                    // Invert with hue shift
+                    vec3 inverted = vec3(1.0) - shifted;
+                    // Add rainbow edge effect
+                    float edge = length(totalOffset) * 20.0;
+                    vec3 rainbow = vec3(
+                        sin(edge * 3.14159 + 0.0) * 0.5 + 0.5,
+                        sin(edge * 3.14159 + 2.094) * 0.5 + 0.5,
+                        sin(edge * 3.14159 + 4.188) * 0.5 + 0.5
+                    );
+                    vec3 result = mix(shifted, inverted, influence);
+                    result = mix(result, rainbow, influence * 0.3);
+                    // Boost contrast
+                    result = (result - 0.5) * (1.0 + influence * 0.5) + 0.5;
+                    color.rgb = clamp(result, 0.0, 1.0);
                 } else if (u_style == 3) {
-                    // SNOW: white/blue frost effect with sparkles
-                    vec3 frostColor = vec3(0.85, 0.92, 1.0);
-                    // Add sparkle noise
-                    float sparkle = hash(sampleUV * 200.0);
-                    sparkle = pow(sparkle, 8.0);  // Make sparkles sparse
-                    // Frost overlay
-                    vec3 frosted = mix(color.rgb, frostColor, influence * 0.6);
-                    // Add sparkles
-                    frosted += vec3(1.0) * sparkle * influence;
-                    // Slight desaturation for cold look
-                    float gray = dot(frosted, vec3(0.299, 0.587, 0.114));
-                    color.rgb = mix(frosted, vec3(gray) * frostColor, influence * 0.2);
+                    // SNOW: Ice crystals with frost patterns and bright sparkles
+                    // Multi-layer frost pattern
+                    float frost1 = hash(sampleUV * 100.0);
+                    float frost2 = hash(sampleUV * 200.0 + 0.5);
+                    float frost3 = hash(sampleUV * 400.0 + 0.25);
+                    float frostPattern = frost1 * 0.5 + frost2 * 0.3 + frost3 * 0.2;
+                    frostPattern = pow(frostPattern, 0.7);
+                    // Ice colors - white to pale blue
+                    vec3 iceWhite = vec3(1.0, 1.0, 1.0);
+                    vec3 iceBlue = vec3(0.7, 0.85, 1.0);
+                    vec3 iceCrystal = mix(iceBlue, iceWhite, frostPattern);
+                    // Sparkles - bright points
+                    float sparkle = hash(sampleUV * 500.0);
+                    sparkle = pow(sparkle, 20.0) * 3.0;  // Very bright, very sparse
+                    // Desaturate original for frozen look
+                    float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+                    vec3 frozen = vec3(gray) * iceBlue;
+                    // Blend layers
+                    vec3 result = mix(color.rgb, frozen, influence * 0.6);
+                    result = mix(result, iceCrystal, influence * frostPattern * 0.5);
+                    result += vec3(1.0) * sparkle * influence;
+                    color.rgb = min(result, vec3(1.0));
                 } else if (u_style == 4) {
-                    // FART: Green gas cloud effect
-                    vec3 gasColor = vec3(0.3, 0.8, 0.2);  // Sickly green
-                    vec3 gasColor2 = vec3(0.5, 0.7, 0.1); // Yellow-green
-                    // Turbulent gas noise
-                    float noise1 = hash(sampleUV * 80.0 + totalOffset * 30.0);
-                    float noise2 = hash(sampleUV * 40.0 - totalOffset * 20.0);
-                    float turbulence = noise1 * 0.6 + noise2 * 0.4;
-                    // Gas cloud blend
-                    vec3 gas = mix(gasColor, gasColor2, turbulence);
-                    // Add some darker swirls
-                    float swirl = hash(sampleUV * 120.0 + vec2(totalOffset.y, -totalOffset.x) * 50.0);
-                    gas = mix(gas, gas * 0.5, swirl * swirl * influence);
-                    // Slight transparency/overlay effect
-                    color.rgb = mix(color.rgb, gas, influence * 0.7);
-                    // Add a slight yellow tinge to surrounding area
-                    color.rgb = mix(color.rgb, color.rgb * vec3(1.05, 1.02, 0.9), influence * 0.3);
+                    // FART: Thick green gas clouds with swirling turbulence
+                    // Multi-octave turbulence for realistic gas
+                    float t1 = hash(sampleUV * 30.0 + totalOffset * 20.0);
+                    float t2 = hash(sampleUV * 60.0 - totalOffset * 15.0);
+                    float t3 = hash(sampleUV * 120.0 + vec2(-totalOffset.y, totalOffset.x) * 10.0);
+                    float t4 = hash(sampleUV * 240.0 + totalOffset * 5.0);
+                    float turbulence = t1 * 0.4 + t2 * 0.3 + t3 * 0.2 + t4 * 0.1;
+                    // Gas color gradient - sickly yellow-green to darker green
+                    vec3 gasLight = vec3(0.7, 0.85, 0.2);   // Yellow-green
+                    vec3 gasMid = vec3(0.3, 0.7, 0.15);     // Green
+                    vec3 gasDark = vec3(0.15, 0.4, 0.1);    // Dark green
+                    vec3 gasColor;
+                    if (turbulence > 0.6) {
+                        gasColor = mix(gasMid, gasLight, (turbulence - 0.6) * 2.5);
+                    } else if (turbulence > 0.3) {
+                        gasColor = mix(gasDark, gasMid, (turbulence - 0.3) * 3.33);
+                    } else {
+                        gasColor = gasDark;
+                    }
+                    // Swirl effect
+                    float swirl = hash(sampleUV * 80.0 + vec2(totalOffset.y * 2.0, -totalOffset.x * 2.0));
+                    gasColor = mix(gasColor, gasColor * 1.3, swirl * 0.4);
+                    // Semi-transparent gas overlay
+                    float density = influence * (0.6 + turbulence * 0.4);
+                    color.rgb = mix(color.rgb, gasColor, density * 0.75);
+                    // Slight color shift to surrounding area
+                    color.rgb *= mix(vec3(1.0), vec3(1.0, 1.02, 0.95), influence * 0.2);
                 }
             }
 
