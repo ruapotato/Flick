@@ -2686,9 +2686,7 @@ fn render_frame(
                                     // Release the buffer so client can reuse it
                                     if let Some(buffer) = bd.pending_buffer.take() {
                                         buffer.release();
-                                        if log_frame {
-                                            info!("Released wl_buffer after import");
-                                        }
+                                        info!("Released wl_buffer after EGL import");
                                     }
                                 }
                             });
