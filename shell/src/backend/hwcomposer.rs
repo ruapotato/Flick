@@ -3113,85 +3113,131 @@ mod gl {
             return fract(sin(dot(p, vec2(269.5, 183.3))) * 43758.5453);
         }
 
-        // ASCII character bitmaps - 5x7 font patterns encoded as floats
-        // Returns pixel value (0 or 1) for a character at given position
+        // ASCII character bitmaps - 5x7 font patterns
+        // aalib-inspired character ramp from dark to light:
+        // ' ', '.', '`', ',', ':', ';', 'i', 'l', '!', 'c', 'r', 's', 'x', 'v', 'z', 'X', 'Z', 'Y', 'U', 'J', 'C', 'L', 'Q', 'O', '0', 'm', 'w', 'q', 'p', 'd', 'b', 'k', 'h', 'a', 'o', '*', '#', 'M', 'W', '&', '8', '%', 'B', '@', '$'
+        // We use 16 levels for shader efficiency
         float getCharPixel(int charIdx, vec2 pos) {
-            // pos is 0-1 within cell, we map to 5x7 grid
             int px = int(pos.x * 5.0);
             int py = int(pos.y * 7.0);
             if (px < 0 || px > 4 || py < 0 || py > 6) return 0.0;
+            int row = 6 - py;
 
-            // Character patterns (5 wide, 7 tall, LSB = left)
-            // Indexed by luminance level 0-9
-            // ' ', '.', ':', '-', '+', '=', '*', '#', '@', 'M'
-
-            int row = 6 - py; // Flip Y
-
-            // Space - empty
+            // 0: space (empty)
             if (charIdx == 0) return 0.0;
 
-            // . - small dot
+            // 1: . (dot)
             if (charIdx == 1) {
                 if (row == 0 && px == 2) return 1.0;
                 return 0.0;
             }
 
-            // : - two dots
+            // 2: , (comma)
             if (charIdx == 2) {
+                if (row == 0 && px == 2) return 1.0;
+                if (row == 1 && px == 2) return 1.0;
+                return 0.0;
+            }
+
+            // 3: : (colon)
+            if (charIdx == 3) {
                 if ((row == 1 || row == 4) && px == 2) return 1.0;
                 return 0.0;
             }
 
-            // - - horizontal line
-            if (charIdx == 3) {
-                if (row == 3 && px >= 1 && px <= 3) return 1.0;
-                return 0.0;
-            }
-
-            // + - plus
+            // 4: ; (semicolon)
             if (charIdx == 4) {
-                if (row == 3 && px >= 1 && px <= 3) return 1.0;
-                if (px == 2 && row >= 2 && row <= 4) return 1.0;
+                if (row == 0 && px == 2) return 1.0;
+                if ((row == 1 || row == 4) && px == 2) return 1.0;
                 return 0.0;
             }
 
-            // = - double line
+            // 5: i (lowercase i)
             if (charIdx == 5) {
-                if ((row == 2 || row == 4) && px >= 1 && px <= 3) return 1.0;
+                if (row == 5 && px == 2) return 1.0;
+                if (row >= 0 && row <= 3 && px == 2) return 1.0;
+                if (row == 0 && (px == 1 || px == 3)) return 1.0;
                 return 0.0;
             }
 
-            // * - asterisk
+            // 6: l (lowercase L)
             if (charIdx == 6) {
-                if (row == 3 && px >= 0 && px <= 4) return 1.0;
-                if (px == 2 && row >= 1 && row <= 5) return 1.0;
-                if ((row == 2 || row == 4) && (px == 1 || px == 3)) return 1.0;
+                if (px == 2 && row >= 0 && row <= 5) return 1.0;
+                if (row == 0 && px == 3) return 1.0;
                 return 0.0;
             }
 
-            // # - hash
+            // 7: c (lowercase c)
             if (charIdx == 7) {
+                if (row == 0 && px >= 1 && px <= 3) return 1.0;
+                if (row == 3 && px >= 1 && px <= 3) return 1.0;
+                if (px == 0 && row >= 1 && row <= 2) return 1.0;
+                return 0.0;
+            }
+
+            // 8: r (lowercase r)
+            if (charIdx == 8) {
+                if (px == 1 && row >= 0 && row <= 3) return 1.0;
+                if (row == 3 && px >= 2 && px <= 3) return 1.0;
+                if (row == 2 && px == 4) return 1.0;
+                return 0.0;
+            }
+
+            // 9: x (lowercase x)
+            if (charIdx == 9) {
+                if ((px == 0 || px == 4) && (row == 0 || row == 3)) return 1.0;
+                if ((px == 1 || px == 3) && (row == 1 || row == 2)) return 1.0;
+                if (px == 2 && row == 1) return 1.0;
+                return 0.0;
+            }
+
+            // 10: o (lowercase o)
+            if (charIdx == 10) {
+                if ((row == 0 || row == 3) && px >= 1 && px <= 3) return 1.0;
+                if ((px == 0 || px == 4) && row >= 1 && row <= 2) return 1.0;
+                return 0.0;
+            }
+
+            // 11: a (lowercase a)
+            if (charIdx == 11) {
+                if (row == 0 && px >= 1 && px <= 4) return 1.0;
+                if (row == 2 && px >= 1 && px <= 4) return 1.0;
+                if (row == 3 && px >= 1 && px <= 3) return 1.0;
+                if (px == 0 && row == 1) return 1.0;
+                if (px == 4 && row >= 0 && row <= 2) return 1.0;
+                return 0.0;
+            }
+
+            // 12: # (hash)
+            if (charIdx == 12) {
                 if ((px == 1 || px == 3) && row >= 1 && row <= 5) return 1.0;
                 if ((row == 2 || row == 4) && px >= 0 && px <= 4) return 1.0;
                 return 0.0;
             }
 
-            // @ - at sign
-            if (charIdx == 8) {
-                if (row == 1 && px >= 1 && px <= 3) return 1.0;
-                if (row == 5 && px >= 1 && px <= 3) return 1.0;
-                if ((px == 0 || px == 4) && row >= 2 && row <= 4) return 1.0;
-                if (px == 2 && row >= 2 && row <= 4) return 1.0;
-                if (px == 3 && row == 3) return 1.0;
+            // 13: W
+            if (charIdx == 13) {
+                if ((px == 0 || px == 4) && row >= 0 && row <= 5) return 1.0;
+                if (px == 2 && row >= 0 && row <= 3) return 1.0;
+                if ((px == 1 || px == 3) && row == 0) return 1.0;
                 return 0.0;
             }
 
-            // M - solid block-ish
-            if (charIdx >= 9) {
-                if (px == 0 || px == 4) return 1.0;
-                if (row == 5) return 1.0;
-                if (row == 4 && (px == 1 || px == 3)) return 1.0;
-                if (row == 3 && px == 2) return 1.0;
+            // 14: M
+            if (charIdx == 14) {
+                if ((px == 0 || px == 4) && row >= 0 && row <= 5) return 1.0;
+                if ((px == 1 || px == 3) && row == 4) return 1.0;
+                if (px == 2 && row == 3) return 1.0;
+                return 0.0;
+            }
+
+            // 15: @ (at) - densest
+            if (charIdx >= 15) {
+                if ((row == 1 || row == 5) && px >= 1 && px <= 3) return 1.0;
+                if ((px == 0 || px == 4) && row >= 2 && row <= 4) return 1.0;
+                if (row == 3 && px >= 2 && px <= 3) return 1.0;
+                if (row == 4 && px >= 1 && px <= 3) return 1.0;
+                if (px == 1 && row == 2) return 1.0;
                 return 0.0;
             }
 
@@ -3222,8 +3268,8 @@ mod gl {
                 // Convert to luminance
                 float lum = dot(sampleColor.rgb, vec3(0.299, 0.587, 0.114));
 
-                // Map luminance to character index (0-9)
-                int charIdx = int(lum * 9.99);
+                // Map luminance to character index (0-15, 16 levels)
+                int charIdx = int(lum * 15.99);
 
                 // Get the pixel value from character bitmap
                 float pixel = getCharPixel(charIdx, cellUV);
@@ -3974,6 +4020,10 @@ mod gl {
 
         // Clear any pending errors
         while GetError() != 0 {}
+
+        // IMPORTANT: Wait for all GPU rendering to complete before capturing
+        // This prevents flickering where parts of the screen haven't been rendered yet
+        Finish();
 
         // Create texture to capture framebuffer
         let mut capture_texture: u32 = 0;
