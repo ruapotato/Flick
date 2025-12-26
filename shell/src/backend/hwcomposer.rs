@@ -2668,7 +2668,7 @@ fn render_frame(
                             info!("Window {} needs EGL re-import", i);
                         }
                         if let Some(imported) = try_import_egl_buffer(&wl_surface, display) {
-                            // Store the imported texture (don't cleanup old - AAL may reuse buffers)
+                            // Store the imported texture and release the buffer
                             compositor::with_states(&wl_surface, |data| {
                                 use std::cell::RefCell;
                                 use crate::state::{SurfaceBufferData, EglTextureBuffer};
@@ -2683,6 +2683,13 @@ fn render_frame(
                                     });
                                     bd.needs_egl_import = false;
                                     bd.wl_buffer_ptr = None; // Clear after import
+                                    // Release the buffer so client can reuse it
+                                    if let Some(buffer) = bd.pending_buffer.take() {
+                                        buffer.release();
+                                        if log_frame {
+                                            info!("Released wl_buffer after import");
+                                        }
+                                    }
                                 }
                             });
 

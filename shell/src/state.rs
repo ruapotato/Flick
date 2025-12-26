@@ -85,6 +85,8 @@ pub struct SurfaceBufferData {
     pub needs_egl_import: bool,
     /// Raw wl_buffer pointer for EGL import (stored during commit)
     pub wl_buffer_ptr: Option<*mut std::ffi::c_void>,
+    /// The actual WlBuffer for releasing after import
+    pub pending_buffer: Option<wl_buffer::WlBuffer>,
 }
 
 use crate::input::{GestureRecognizer, GestureAction};
@@ -1230,6 +1232,12 @@ impl CompositorHandler for Flick {
                                 bd.buffer = None; // Clear SHM buffer
                                 bd.needs_egl_import = true;
                                 bd.wl_buffer_ptr = Some(buffer_ptr);
+                                // Store the buffer for releasing after import
+                                // Release any previously pending buffer first
+                                if let Some(old_buffer) = bd.pending_buffer.take() {
+                                    old_buffer.release();
+                                }
+                                bd.pending_buffer = Some(buffer.clone());
                             }
                             tracing::info!("Surface {:?} needs EGL import (buffer ptr: {:?})", surface.id(), buffer_ptr);
                         }
