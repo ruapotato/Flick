@@ -91,6 +91,23 @@ pub enum LockScreenAction {
     WakeScreen,
 }
 
+/// UI icons for quick settings and other shell elements
+pub struct UiIconImages {
+    pub wifi: slint::Image,
+    pub wifi_off: slint::Image,
+    pub bluetooth: slint::Image,
+    pub bluetooth_off: slint::Image,
+    pub moon: slint::Image,
+    pub flashlight: slint::Image,
+    pub flashlight_off: slint::Image,
+    pub plane: slint::Image,
+    pub rotate: slint::Image,
+    pub lock: slint::Image,
+    pub sun: slint::Image,
+    pub volume: slint::Image,
+    pub volume_off: slint::Image,
+}
+
 /// Slint UI state for the shell
 pub struct SlintShell {
     /// The Slint window adapter
@@ -544,6 +561,25 @@ impl SlintShell {
     pub fn clear_incoming_call(&self) {
         self.shell.set_incoming_call(false);
         self.shell.set_incoming_caller("".into());
+    }
+
+    /// Set UI icons for quick settings and other shell elements
+    pub fn set_ui_icons(&self, icons: UiIconImages) {
+        self.shell.set_ui_icons(UiIcons {
+            wifi: icons.wifi,
+            wifi_off: icons.wifi_off,
+            bluetooth: icons.bluetooth,
+            bluetooth_off: icons.bluetooth_off,
+            moon: icons.moon,
+            flashlight: icons.flashlight,
+            flashlight_off: icons.flashlight_off,
+            plane: icons.plane,
+            rotate: icons.rotate,
+            lock: icons.lock,
+            sun: icons.sun,
+            volume: icons.volume,
+            volume_off: icons.volume_off,
+        });
     }
 
     /// Poll for pending phone call actions (answer/reject)

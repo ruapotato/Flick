@@ -20,6 +20,7 @@ pub mod slint_ui;
 
 use smithay::utils::{Logical, Point, Size};
 use crate::input::{Edge, GestureEvent};
+use std::cell::Cell;
 use std::path::PathBuf;
 
 /// Get the Flick project root directory
@@ -296,6 +297,8 @@ pub struct Shell {
     pub screen_timeout_secs: u64,
     /// Text scale factor (1.0 = normal, 2.0 = double size, etc.)
     pub text_scale: f32,
+    /// Whether UI icons have been loaded and set to Slint (Cell for interior mutability)
+    pub ui_icons_loaded: Cell<bool>,
 }
 
 impl Shell {
@@ -383,6 +386,7 @@ impl Shell {
             lock_screen_last_tap: None,
             screen_timeout_secs: Self::load_screen_timeout(),
             text_scale: Self::load_text_scale(),
+            ui_icons_loaded: Cell::new(false),
         };
 
         // Preload icons for all categories
@@ -774,6 +778,41 @@ impl Shell {
                 (cat.name.clone(), icon, cat.color)
             })
             .collect()
+    }
+
+    /// Load UI icons for quick settings and other shell elements
+    /// These are loaded from the icons/ui folder
+    pub fn load_ui_icons(&mut self) -> slint_ui::UiIconImages {
+        // Helper to load a single icon and convert to slint::Image
+        let mut load_icon = |name: &str| -> slint::Image {
+            if let Some(icon_data) = self.icon_cache.get(name) {
+                let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                    &icon_data.data,
+                    icon_data.width,
+                    icon_data.height,
+                );
+                slint::Image::from_rgba8(pixel_buffer)
+            } else {
+                tracing::warn!("Failed to load UI icon: {}", name);
+                slint::Image::default()
+            }
+        };
+
+        slint_ui::UiIconImages {
+            wifi: load_icon("wifi"),
+            wifi_off: load_icon("wifi-off"),
+            bluetooth: load_icon("bluetooth"),
+            bluetooth_off: load_icon("bluetooth-off"),
+            moon: load_icon("moon"),
+            flashlight: load_icon("flashlight"),
+            flashlight_off: load_icon("flashlight-off"),
+            plane: load_icon("plane"),
+            rotate: load_icon("rotate-cw"),
+            lock: load_icon("lock"),
+            sun: load_icon("sun"),
+            volume: load_icon("volume-2"),
+            volume_off: load_icon("volume-off"),
+        }
     }
 
     /// Start tracking a touch on home screen (potential scroll or tap)

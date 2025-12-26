@@ -60,6 +60,9 @@ femtovg = "0.9"
 # Image loading for icons
 image = { version = "0.25", default-features = false, features = ["png"] }
 
+# SVG rendering for icons
+resvg = "0.44"
+
 # Lazy static for global state
 lazy_static = "1.4"
 

@@ -978,6 +978,7 @@ fn render_surface(
                         slint_ui.set_touch_effects_enabled(state.touch_effects_enabled);
                         slint_ui.set_wifi_ssid(state.system.wifi_ssid.as_deref().unwrap_or(""));
                         slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
+                        // UI icons are loaded when QuickSettings is first opened (see edge gesture handler)
                     }
                 }
                 ShellView::Switcher => {
@@ -3511,6 +3512,15 @@ fn handle_input_event(
                         if *completed {
                             state.system.refresh();
                             state.shell.sync_quick_settings(&state.system);
+                            // Load and set UI icons if not yet done
+                            if !state.shell.ui_icons_loaded.get() {
+                                let ui_icons = state.shell.load_ui_icons();
+                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    slint_ui.set_ui_icons(ui_icons);
+                                    state.shell.ui_icons_loaded.set(true);
+                                    info!("UI icons loaded and set to Slint");
+                                }
+                            }
                             info!("Quick Settings opened - synced with system status");
                         }
                     }

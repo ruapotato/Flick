@@ -288,6 +288,15 @@ Flick aims to be the best Linux phone DE. Contributions welcome - especially for
 - Accessibility features
 - Testing on different devices
 
+## Credits
+
+### Icons
+
+Flick uses icons from the following open source projects:
+
+- **[Papirus Icon Theme](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)** (GPL-3.0) - App icons for Phone, Messages, Camera, Calculator, Calendar, Music, Files, Settings, and more
+- **[Lucide Icons](https://github.com/lucide-icons/lucide)** (ISC License) - UI icons for status bar and quick settings (WiFi, Bluetooth, battery, volume, etc.)
+
 ## License
 
 GPL-3.0 - David Hamner

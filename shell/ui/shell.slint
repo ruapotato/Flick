@@ -210,6 +210,23 @@ export struct WindowCard {
     preview: image,       // Screenshot of the app window
 }
 
+// UI icons for quick settings and other shell elements
+export struct UiIcons {
+    wifi: image,
+    wifi-off: image,
+    bluetooth: image,
+    bluetooth-off: image,
+    moon: image,
+    flashlight: image,
+    flashlight-off: image,
+    plane: image,
+    rotate: image,
+    lock: image,
+    sun: image,
+    volume: image,
+    volume-off: image,
+}
+
 // Status bar at top of screen
 component StatusBar inherits Rectangle {
     in property <string> time: "12:00";
@@ -730,7 +747,7 @@ component NotificationCard inherits Rectangle {
 // Quick toggle button
 component QuickToggle inherits Rectangle {
     in property <string> label: "Toggle";
-    in property <string> icon: "T";
+    in property <image> icon;
     in property <bool> enabled: false;
 
     callback toggled();
@@ -744,11 +761,13 @@ component QuickToggle inherits Rectangle {
         alignment: center;
         spacing: 4px;
 
-        Text {
-            text: icon;
-            color: Theme.on-surface;
-            font-size: 24px;
-            font-weight: 600;
+        // Icon image with colorization
+        Image {
+            width: 28px;
+            height: 28px;
+            source: icon;
+            colorize: Theme.on-surface;
+            image-fit: contain;
             horizontal-alignment: center;
         }
 
@@ -1107,6 +1126,7 @@ component QuickSettingsPanel inherits Rectangle {
     in property <int> battery-percent: 85;
     in property <string> time: "12:00";
     in property <[Notification]> notifications: [];
+    in property <UiIcons> icons;
 
     callback brightness-changed(float);
     callback volume-changed(int);
@@ -1207,28 +1227,28 @@ component QuickSettingsPanel inherits Rectangle {
 
                     QuickToggle {
                         label: "WiFi";
-                        icon: "W";
+                        icon: wifi-enabled ? root.icons.wifi : root.icons.wifi-off;
                         enabled: wifi-enabled;
                         toggled => { wifi-toggled(); }
                     }
 
                     QuickToggle {
                         label: "Bluetooth";
-                        icon: "B";
+                        icon: bluetooth-enabled ? root.icons.bluetooth : root.icons.bluetooth-off;
                         enabled: bluetooth-enabled;
                         toggled => { bluetooth-toggled(); }
                     }
 
                     QuickToggle {
                         label: "DND";
-                        icon: "🌙";
+                        icon: root.icons.moon;
                         enabled: dnd-enabled;
                         toggled => { dnd-toggled(); }
                     }
 
                     QuickToggle {
                         label: "Flash";
-                        icon: "🔦";
+                        icon: flashlight-enabled ? root.icons.flashlight : root.icons.flashlight-off;
                         enabled: flashlight-enabled;
                         toggled => { flashlight-toggled(); }
                     }
@@ -1241,28 +1261,28 @@ component QuickSettingsPanel inherits Rectangle {
 
                     QuickToggle {
                         label: "Airplane";
-                        icon: "✈";
+                        icon: root.icons.plane;
                         enabled: airplane-enabled;
                         toggled => { airplane-toggled(); }
                     }
 
                     QuickToggle {
                         label: "Rotate";
-                        icon: "🔄";
+                        icon: root.icons.rotate;
                         enabled: rotation-locked;
                         toggled => { rotation-toggled(); }
                     }
 
                     QuickToggle {
                         label: "Lock";
-                        icon: "🔒";
+                        icon: root.icons.lock;
                         enabled: false;
                         toggled => { lock-pressed(); }
                     }
 
                     QuickToggle {
                         label: "Ripples";
-                        icon: "💧";
+                        icon: root.icons.volume;
                         enabled: touch-effects-enabled;
                         toggled => { touch-effects-toggled(); }
                     }
@@ -1942,6 +1962,7 @@ export component FlickShell inherits Window {
     in property <int> battery-percent: 85;
     in property <float> text-scale: 2.0;  // Text scale factor (1.0 = normal, 2.0 = double)
     in property <[Notification]> notifications: [];
+    in property <UiIcons> ui-icons;  // Icons for quick settings toggles
 
     // Popup menu state
     in property <bool> show-popup: false;
@@ -2061,6 +2082,7 @@ export component FlickShell inherits Window {
         battery-percent: battery-percent;
         notifications: notifications;
         time: root.time;
+        icons: root.ui-icons;
         brightness-changed(v) => { brightness-changed(v); }
         volume-changed(v) => { volume-changed(v); }
         wifi-toggled => { wifi-toggled(); }

@@ -1060,6 +1060,15 @@ fn handle_input_event(
                             state.shell.view = crate::shell::ShellView::QuickSettings;
                             state.system.refresh();
                             state.shell.sync_quick_settings(&state.system);
+                            // Load and set UI icons if not yet done
+                            if !state.shell.ui_icons_loaded.get() {
+                                let ui_icons = state.shell.load_ui_icons();
+                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    slint_ui.set_ui_icons(ui_icons);
+                                    state.shell.ui_icons_loaded.set(true);
+                                    info!("UI icons loaded and set to Slint");
+                                }
+                            }
                             info!("Quick Settings OPENED via gesture");
                         }
                         state.qs_gesture_active = false;
@@ -2415,6 +2424,7 @@ fn render_frame(
                                 slint_ui.set_muted(state.system.muted);
                                 slint_ui.set_wifi_enabled(state.system.wifi_enabled);
                                 slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
+                                // UI icons are loaded when QuickSettings is first opened (see edge gesture handler)
                             }
                             ShellView::Switcher => {
                                 slint_ui.set_view("switcher");

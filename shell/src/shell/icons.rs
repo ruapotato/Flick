@@ -1,6 +1,6 @@
 //! Icon loading and caching for app grid
 //!
-//! Loads PNG icons from standard XDG icon directories and caches them.
+//! Loads PNG and SVG icons from standard XDG icon directories and caches them.
 
 use std::collections::HashMap;
 use std::fs;
@@ -74,27 +74,34 @@ impl IconCache {
         // Categories to search
         let categories = ["apps", "applications", "mimetypes", "places", "devices", "actions", "status"];
 
+        // Extensions to try (prefer SVG for quality, PNG as fallback)
+        let extensions = ["svg", "png"];
+
         for base_path in &search_paths {
             for size in &sizes {
                 for category in &categories {
-                    // Try PNG first
-                    let png_path = format!("{}/{}/{}/{}.png", base_path, size, category, icon_name);
-                    if fs::metadata(&png_path).is_ok() {
-                        return Some(png_path);
+                    for ext in &extensions {
+                        let path = format!("{}/{}/{}/{}.{}", base_path, size, category, icon_name, ext);
+                        if fs::metadata(&path).is_ok() {
+                            return Some(path);
+                        }
                     }
                 }
             }
 
             // Also try direct path (some themes put icons at root)
-            let direct_png = format!("{}/{}.png", base_path, icon_name);
-            if fs::metadata(&direct_png).is_ok() {
-                return Some(direct_png);
+            for ext in &extensions {
+                let direct_path = format!("{}/{}.{}", base_path, icon_name, ext);
+                if fs::metadata(&direct_path).is_ok() {
+                    return Some(direct_path);
+                }
             }
         }
 
         // Try pixmaps directory as fallback
         let pixmap_paths = [
             format!("/usr/share/pixmaps/{}.png", icon_name),
+            format!("/usr/share/pixmaps/{}.svg", icon_name),
             format!("/usr/share/pixmaps/{}.xpm", icon_name),
         ];
         for path in &pixmap_paths {
@@ -110,6 +117,21 @@ impl IconCache {
     /// Get list of icon search paths
     fn get_icon_search_paths(&self) -> Vec<String> {
         let mut paths = Vec::new();
+
+        // Flick's own icons (highest priority)
+        if let Ok(home) = std::env::var("HOME") {
+            paths.push(format!("{}/Flick/icons/apps", home));
+            paths.push(format!("{}/Flick/icons/ui", home));
+        }
+        // Also check relative to executable for development
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(shell_dir) = exe_path.parent().and_then(|p| p.parent()) {
+                let icons_path = shell_dir.join("icons").join("apps");
+                if icons_path.exists() {
+                    paths.push(icons_path.to_string_lossy().to_string());
+                }
+            }
+        }
 
         // User icons
         if let Ok(home) = std::env::var("HOME") {
@@ -128,12 +150,18 @@ impl IconCache {
 
     /// Load icon from a specific file path
     fn load_icon_file(&self, path: &str) -> Option<IconData> {
-        // Only support PNG for now
-        if !path.ends_with(".png") {
-            tracing::debug!("Skipping non-PNG icon: {}", path);
-            return None;
+        if path.ends_with(".svg") {
+            self.load_svg_file(path)
+        } else if path.ends_with(".png") {
+            self.load_png_file(path)
+        } else {
+            tracing::debug!("Skipping unsupported icon format: {}", path);
+            None
         }
+    }
 
+    /// Load a PNG icon file
+    fn load_png_file(&self, path: &str) -> Option<IconData> {
         let data = fs::read(path).ok()?;
 
         let img = image::load_from_memory(&data).ok()?;
@@ -149,12 +177,51 @@ impl IconCache {
             rgba
         };
 
-        tracing::info!("Loaded icon: {} ({}x{} -> {}x{})", path, width, height, target, target);
+        tracing::info!("Loaded PNG icon: {} ({}x{} -> {}x{})", path, width, height, target, target);
 
         Some(IconData {
             width: target,
             height: target,
             data: final_img.into_raw(),
+        })
+    }
+
+    /// Load an SVG icon file and render to RGBA pixels
+    fn load_svg_file(&self, path: &str) -> Option<IconData> {
+        let svg_data = fs::read(path).ok()?;
+        let target = self.icon_size;
+
+        // Parse the SVG
+        let options = resvg::usvg::Options::default();
+        let tree = resvg::usvg::Tree::from_data(&svg_data, &options).ok()?;
+
+        // Calculate scaling to fit target size
+        let svg_size = tree.size();
+        let scale_x = target as f32 / svg_size.width();
+        let scale_y = target as f32 / svg_size.height();
+        let scale = scale_x.min(scale_y);
+
+        // Create a pixmap to render into
+        let mut pixmap = resvg::tiny_skia::Pixmap::new(target, target)?;
+
+        // Center the icon in the target area
+        let scaled_width = svg_size.width() * scale;
+        let scaled_height = svg_size.height() * scale;
+        let offset_x = (target as f32 - scaled_width) / 2.0;
+        let offset_y = (target as f32 - scaled_height) / 2.0;
+
+        // Render SVG to pixmap
+        let transform = resvg::tiny_skia::Transform::from_scale(scale, scale)
+            .post_translate(offset_x, offset_y);
+        resvg::render(&tree, transform, &mut pixmap.as_mut());
+
+        tracing::info!("Loaded SVG icon: {} ({}x{} -> {}x{})",
+            path, svg_size.width() as u32, svg_size.height() as u32, target, target);
+
+        Some(IconData {
+            width: target,
+            height: target,
+            data: pixmap.data().to_vec(),
         })
     }
 }
