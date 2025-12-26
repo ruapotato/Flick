@@ -77,36 +77,41 @@ impl IconCache {
         // Extensions to try (prefer SVG for quality, PNG as fallback)
         let extensions = ["svg", "png"];
 
-        for base_path in &search_paths {
-            for size in &sizes {
-                for category in &categories {
-                    for ext in &extensions {
-                        let path = format!("{}/{}/{}/{}.{}", base_path, size, category, icon_name, ext);
-                        if fs::metadata(&path).is_ok() {
-                            return Some(path);
+        // Try both original name and lowercase (our Papirus icons are lowercase)
+        let names_to_try = [icon_name.to_string(), icon_name.to_lowercase()];
+
+        for name in &names_to_try {
+            for base_path in &search_paths {
+                for size in &sizes {
+                    for category in &categories {
+                        for ext in &extensions {
+                            let path = format!("{}/{}/{}/{}.{}", base_path, size, category, name, ext);
+                            if fs::metadata(&path).is_ok() {
+                                return Some(path);
+                            }
                         }
+                    }
+                }
+
+                // Also try direct path (some themes put icons at root)
+                for ext in &extensions {
+                    let direct_path = format!("{}/{}.{}", base_path, name, ext);
+                    if fs::metadata(&direct_path).is_ok() {
+                        return Some(direct_path);
                     }
                 }
             }
 
-            // Also try direct path (some themes put icons at root)
-            for ext in &extensions {
-                let direct_path = format!("{}/{}.{}", base_path, icon_name, ext);
-                if fs::metadata(&direct_path).is_ok() {
-                    return Some(direct_path);
+            // Try pixmaps directory as fallback
+            let pixmap_paths = [
+                format!("/usr/share/pixmaps/{}.png", name),
+                format!("/usr/share/pixmaps/{}.svg", name),
+                format!("/usr/share/pixmaps/{}.xpm", name),
+            ];
+            for path in &pixmap_paths {
+                if fs::metadata(path).is_ok() {
+                    return Some(path.clone());
                 }
-            }
-        }
-
-        // Try pixmaps directory as fallback
-        let pixmap_paths = [
-            format!("/usr/share/pixmaps/{}.png", icon_name),
-            format!("/usr/share/pixmaps/{}.svg", icon_name),
-            format!("/usr/share/pixmaps/{}.xpm", icon_name),
-        ];
-        for path in &pixmap_paths {
-            if fs::metadata(path).is_ok() {
-                return Some(path.clone());
             }
         }
 

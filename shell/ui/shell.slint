@@ -760,15 +760,19 @@ component QuickToggle inherits Rectangle {
     VerticalLayout {
         alignment: center;
         spacing: 4px;
+        padding-left: 0px;
+        padding-right: 0px;
 
-        // Icon image with colorization
-        Image {
-            width: 28px;
-            height: 28px;
-            source: icon;
-            colorize: Theme.on-surface;
-            image-fit: contain;
-            horizontal-alignment: center;
+        // Icon container for centering
+        HorizontalLayout {
+            alignment: center;
+            Image {
+                width: 28px;
+                height: 28px;
+                source: icon;
+                colorize: Theme.on-surface;
+                image-fit: contain;
+            }
         }
 
         Text {

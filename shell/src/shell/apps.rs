@@ -431,11 +431,14 @@ impl AppManager {
         self.cached_category_info = self.config.grid_order.iter().map(|&cat| {
             let selected_exec = self.config.get_selected(cat).map(|s| s.to_string());
             let available_apps = self.apps_for_category(cat);
-            let icon = selected_exec.as_ref().and_then(|exec| {
+            // Try to get icon from selected app's .desktop file
+            let app_icon = selected_exec.as_ref().and_then(|exec| {
                 self.entries.iter()
                     .find(|e| &e.exec == exec)
                     .and_then(|e| e.icon.clone())
             });
+            // Fall back to category name as icon (matches our Papirus icons like "phone.svg")
+            let icon = app_icon.or_else(|| Some(cat.display_name().to_string()));
 
             CategoryInfo {
                 category: cat,
