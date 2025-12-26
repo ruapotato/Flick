@@ -128,6 +128,16 @@ impl IconCache {
             paths.push(format!("{}/Flick/icons/apps", home));
             paths.push(format!("{}/Flick/icons/ui", home));
         }
+
+        // Hardcoded paths for when running as root (compositor runs as root on phone)
+        // Check common user home directories
+        for user_dir in &["/home/droidian", "/home/user", "/home/phablet"] {
+            if fs::metadata(user_dir).is_ok() {
+                paths.push(format!("{}/Flick/icons/apps", user_dir));
+                paths.push(format!("{}/Flick/icons/ui", user_dir));
+            }
+        }
+
         // Also check relative to executable for development
         if let Ok(exe_path) = std::env::current_exe() {
             if let Some(shell_dir) = exe_path.parent().and_then(|p| p.parent()) {
