@@ -3,15 +3,17 @@
 
 import { Button, VerticalBox, HorizontalBox, GridBox, ScrollView } from "std-widgets.slint";
 
-// Color scheme - dark mobile theme
+// Color scheme - dark mobile theme with accent
 global Theme {
     out property <color> background: #0a0a0f;
-    out property <color> surface: #1a1a24;
-    out property <color> surface-variant: #252532;
+    out property <color> surface: #12121a;
+    out property <color> surface-variant: #1a1a24;
     out property <color> primary: #4a9eff;
     out property <color> primary-container: #1a3a5c;
+    out property <color> accent: #e94560;
+    out property <color> accent-dim: #c23a50;
     out property <color> on-surface: #ffffff;
-    out property <color> on-surface-variant: #a0a0b0;
+    out property <color> on-surface-variant: #888899;
     out property <color> error: #ff6b6b;
     out property <color> success: #4ade80;
 }
@@ -21,48 +23,55 @@ component BrightnessSlider inherits Rectangle {
     in property <float> value: 0.5;  // 0.0 to 1.0
     callback changed(float);
 
-    height: 40px;
-    background: Theme.surface-variant;
-    border-radius: 8px;
+    height: 32px;
+    background: transparent;
 
     // Track background
     Rectangle {
-        x: 8px;
-        y: (parent.height - 8px) / 2;
-        width: parent.width - 16px;
-        height: 8px;
-        border-radius: 4px;
-        background: Theme.background;
+        x: 0px;
+        y: (parent.height - 6px) / 2;
+        width: parent.width;
+        height: 6px;
+        border-radius: 3px;
+        background: #1a1a24;
 
-        // Filled portion
+        // Filled portion with gradient
         Rectangle {
             width: parent.width * root.value;
             height: 100%;
-            border-radius: 4px;
-            background: Theme.primary;
+            border-radius: 3px;
+            background: Theme.accent;
         }
     }
 
     // Thumb
     Rectangle {
-        x: 8px + (parent.width - 16px - 24px) * root.value;
+        x: (parent.width - 24px) * root.value;
         y: (parent.height - 24px) / 2;
         width: 24px;
         height: 24px;
         border-radius: 12px;
-        background: Theme.on-surface;
+        background: Theme.accent;
+
+        // Inner dot
+        Rectangle {
+            x: (parent.width - 10px) / 2;
+            y: (parent.height - 10px) / 2;
+            width: 10px;
+            height: 10px;
+            border-radius: 5px;
+            background: #ffffff;
+        }
     }
 
     touch := TouchArea {
         moved => {
             if self.pressed {
-                // Calculate new value: (mouse-x - 8px) / (width - 16px), clamped 0-1
-                root.changed(max(0.0, min(1.0, (self.mouse-x - 8px) / (parent.width - 16px))));
+                root.changed(max(0.0, min(1.0, self.mouse-x / parent.width)));
             }
         }
         clicked => {
-            // Calculate new value on click
-            root.changed(max(0.0, min(1.0, (self.mouse-x - 8px) / (parent.width - 16px))));
+            root.changed(max(0.0, min(1.0, self.mouse-x / parent.width)));
         }
     }
 }
@@ -73,57 +82,55 @@ component VolumeSlider inherits Rectangle {
     in property <bool> muted: false;
     callback changed(int);
 
-    height: 40px;
-    background: Theme.surface-variant;
-    border-radius: 8px;
+    height: 32px;
+    background: transparent;
 
     // Track background
     Rectangle {
-        x: 8px;
-        y: (parent.height - 8px) / 2;
-        width: parent.width - 16px;
-        height: 8px;
-        border-radius: 4px;
-        background: Theme.background;
+        x: 0px;
+        y: (parent.height - 6px) / 2;
+        width: parent.width;
+        height: 6px;
+        border-radius: 3px;
+        background: #1a1a24;
 
-        // Filled portion (gray when muted, blue when active)
+        // Filled portion
         Rectangle {
             width: root.muted ? 0px : parent.width * (root.value / 100.0);
             height: 100%;
-            border-radius: 4px;
-            background: root.muted ? Theme.surface-variant : #60a0ff;
+            border-radius: 3px;
+            background: root.muted ? Theme.on-surface-variant : Theme.accent;
         }
     }
 
     // Thumb
     Rectangle {
-        x: 8px + (parent.width - 16px - 24px) * (root.value / 100.0);
+        x: (parent.width - 24px) * (root.value / 100.0);
         y: (parent.height - 24px) / 2;
         width: 24px;
         height: 24px;
         border-radius: 12px;
-        background: root.muted ? Theme.surface-variant : Theme.on-surface;
-    }
+        background: root.muted ? Theme.on-surface-variant : Theme.accent;
 
-    // Volume percentage text
-    Text {
-        x: parent.width - 50px;
-        y: (parent.height - self.height) / 2;
-        text: root.muted ? "Muted" : "\{root.value}%";
-        color: Theme.on-surface;
-        font-size: 12px;
+        // Inner dot
+        Rectangle {
+            x: (parent.width - 10px) / 2;
+            y: (parent.height - 10px) / 2;
+            width: 10px;
+            height: 10px;
+            border-radius: 5px;
+            background: #ffffff;
+        }
     }
 
     touch := TouchArea {
         moved => {
             if self.pressed {
-                // Calculate new value: (mouse-x - 8px) / (width - 16px - 50px), clamped 0-100
-                root.changed(max(0, min(100, round((self.mouse-x - 8px) / (parent.width - 16px - 50px) * 100))));
+                root.changed(max(0, min(100, round(self.mouse-x / parent.width * 100))));
             }
         }
         clicked => {
-            // Calculate new value on click
-            root.changed(max(0, min(100, round((self.mouse-x - 8px) / (parent.width - 16px - 50px) * 100))));
+            root.changed(max(0, min(100, round(self.mouse-x / parent.width * 100))));
         }
     }
 }
@@ -744,46 +751,109 @@ component NotificationCard inherits Rectangle {
     }
 }
 
-// Quick toggle button
+// Quick toggle tile - gradient background with icon circle
 component QuickToggle inherits Rectangle {
     in property <string> label: "Toggle";
     in property <image> icon;
     in property <bool> enabled: false;
+    in property <color> tile-color: #1a3a5c;  // Base color for gradient
 
     callback toggled();
 
-    width: 80px;
-    height: 80px;
-    border-radius: 16px;
-    background: enabled ? Theme.primary : Theme.surface-variant;
+    property <color> grad-start: enabled ? tile-color.brighter(40%) : tile-color;
+    property <color> grad-end: enabled ? tile-color : tile-color.darker(40%);
 
+    horizontal-stretch: 1;
+    height: self.width;  // Square tiles
+    border-radius: 20px;
+    background: grad-end;
+    clip: true;
+
+    // Gradient overlay (top lighter, bottom darker)
+    Rectangle {
+        width: 100%;
+        height: 50%;
+        background: grad-start;
+        border-radius: 20px;
+
+        // Fade the bottom edge
+        Rectangle {
+            y: parent.height - 20px;
+            width: 100%;
+            height: 20px;
+            background: grad-end;
+        }
+    }
+
+    // Active glow when enabled
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 20px;
+        background: Theme.accent;
+        opacity: enabled ? 0.15 : 0;
+    }
+
+    // Subtle border
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 20px;
+        background: transparent;
+        border-width: enabled ? 2px : 1px;
+        border-color: enabled ? Theme.accent.with-alpha(0.6) : #ffffff.with-alpha(0.08);
+    }
+
+    // Press highlight
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 20px;
+        background: #ffffff;
+        opacity: touch.pressed ? 0.15 : 0;
+    }
+
+    // Content
     VerticalLayout {
         alignment: center;
-        spacing: 4px;
-        padding-left: 0px;
-        padding-right: 0px;
+        spacing: 8px;
 
-        // Icon container for centering
+        // Icon circle
         HorizontalLayout {
             alignment: center;
-            Image {
-                width: 28px;
-                height: 28px;
-                source: icon;
-                colorize: Theme.on-surface;
-                image-fit: contain;
+
+            Rectangle {
+                width: 52px;
+                height: 52px;
+                border-radius: 26px;
+                background: enabled ? Theme.accent : #2a2a3a;
+                border-width: 2px;
+                border-color: enabled ? Theme.accent : #3a3a4a;
+
+                Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 24px;
+                    height: 24px;
+                    source: icon;
+                    colorize: enabled ? #ffffff : #666677;
+                    image-fit: contain;
+                }
             }
         }
 
+        // Label
         Text {
             text: label;
-            color: Theme.on-surface.with-alpha(0.8);
-            font-size: 10px;
+            color: enabled ? #ffffff : #777788;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
             horizontal-alignment: center;
         }
     }
 
-    TouchArea {
+    touch := TouchArea {
         clicked => { root.toggled(); }
     }
 }
@@ -1114,7 +1184,7 @@ component HomeScreen inherits Rectangle {
     }
 }
 
-// Quick settings panel - comprehensive iOS/Android-style control center
+// Quick settings panel - modern grid-based control center
 component QuickSettingsPanel inherits Rectangle {
     in property <float> brightness: 0.7;
     in property <int> volume: 50;
@@ -1153,86 +1223,114 @@ component QuickSettingsPanel inherits Rectangle {
 
     VerticalLayout {
         padding: 0px;
-        spacing: 1px;
+        spacing: 0px;
 
-        // Header with time and status
+        // Hero header with time, battery and ambient glow
         Rectangle {
-            height: 72px;
-            background: Theme.surface;
+            height: 140px;
+            background: transparent;
 
+            // Ambient glow effect
+            Rectangle {
+                x: (parent.width - 400px) / 2;
+                y: (parent.height - 180px) / 2;
+                width: 400px;
+                height: 180px;
+                border-radius: 200px;
+                background: Theme.accent;
+                opacity: 0.06;
+            }
+
+            // Content
             HorizontalLayout {
-                padding-left: 20px;
-                padding-right: 20px;
-                padding-top: 16px;
-                padding-bottom: 16px;
-                spacing: 16px;
+                padding-left: 32px;
+                padding-right: 32px;
+                alignment: center;
+                spacing: 40px;
 
+                // Large time
                 Text {
                     text: time;
                     color: Theme.on-surface;
-                    font-size: 32px;
+                    font-size: 72px;
                     font-weight: 300;
+                    letter-spacing: 4px;
                     vertical-alignment: center;
                 }
 
-                Rectangle { horizontal-stretch: 1; }
-
-                VerticalLayout {
+                // Battery with icon
+                HorizontalLayout {
+                    spacing: 8px;
                     alignment: center;
-                    spacing: 2px;
-
-                    HorizontalLayout {
-                        spacing: 8px;
-                        alignment: end;
-
-                        // WiFi indicator
-                        Text {
-                            text: wifi-enabled ? "W" : "";
-                            color: Theme.primary;
-                            font-size: 12px;
-                        }
-                        // Bluetooth indicator
-                        Text {
-                            text: bluetooth-enabled ? "B" : "";
-                            color: Theme.primary;
-                            font-size: 12px;
-                        }
-                        // DND indicator
-                        Text {
-                            text: dnd-enabled ? "🌙" : "";
-                            font-size: 12px;
-                        }
-                    }
 
                     Text {
                         text: battery-percent + "%";
-                        color: battery-percent > 20 ? Theme.on-surface : Theme.error;
-                        font-size: 14px;
+                        color: battery-percent > 20 ? Theme.on-surface-variant : Theme.error;
+                        font-size: 24px;
                         font-weight: 500;
-                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+
+                    // Simple battery icon
+                    Rectangle {
+                        width: 28px;
+                        height: 14px;
+                        border-radius: 3px;
+                        background: transparent;
+                        border-width: 2px;
+                        border-color: battery-percent > 20 ? Theme.on-surface-variant : Theme.error;
+
+                        // Fill level
+                        Rectangle {
+                            x: 2px;
+                            y: 2px;
+                            width: (parent.width - 4px) * battery-percent / 100;
+                            height: parent.height - 4px;
+                            border-radius: 1px;
+                            background: battery-percent > 20 ? Theme.on-surface-variant : Theme.error;
+                        }
+
+                        // Battery tip
+                        Rectangle {
+                            x: parent.width;
+                            y: (parent.height - 6px) / 2;
+                            width: 3px;
+                            height: 6px;
+                            border-radius: 1px;
+                            background: battery-percent > 20 ? Theme.on-surface-variant : Theme.error;
+                        }
                     }
                 }
             }
+
+            // Bottom accent line
+            Rectangle {
+                y: parent.height - 1px;
+                width: 100%;
+                height: 1px;
+                background: Theme.accent;
+                opacity: 0.4;
+            }
         }
 
-        // Quick toggles - 2 rows of 4
+        // Toggle grid - 4x2 with proper spacing
         Rectangle {
-            height: 200px;
-            background: Theme.surface;
+            height: 340px;
+            background: transparent;
 
             VerticalLayout {
                 padding: 16px;
                 spacing: 12px;
 
-                // Row 1
+                // Row 1: WiFi, Bluetooth, DND, Flash
                 HorizontalLayout {
                     spacing: 12px;
-                    alignment: space-around;
 
                     QuickToggle {
                         label: "WiFi";
                         icon: wifi-enabled ? root.icons.wifi : root.icons.wifi-off;
                         enabled: wifi-enabled;
+                        tile-color: #1a3a5c;
                         toggled => { wifi-toggled(); }
                     }
 
@@ -1240,6 +1338,7 @@ component QuickSettingsPanel inherits Rectangle {
                         label: "Bluetooth";
                         icon: bluetooth-enabled ? root.icons.bluetooth : root.icons.bluetooth-off;
                         enabled: bluetooth-enabled;
+                        tile-color: #2a2a5c;
                         toggled => { bluetooth-toggled(); }
                     }
 
@@ -1247,6 +1346,7 @@ component QuickSettingsPanel inherits Rectangle {
                         label: "DND";
                         icon: root.icons.moon;
                         enabled: dnd-enabled;
+                        tile-color: #4a2a4a;
                         toggled => { dnd-toggled(); }
                     }
 
@@ -1254,19 +1354,20 @@ component QuickSettingsPanel inherits Rectangle {
                         label: "Flash";
                         icon: flashlight-enabled ? root.icons.flashlight : root.icons.flashlight-off;
                         enabled: flashlight-enabled;
+                        tile-color: #4a4a2a;
                         toggled => { flashlight-toggled(); }
                     }
                 }
 
-                // Row 2
+                // Row 2: Airplane, Rotate, Lock, Ripples
                 HorizontalLayout {
                     spacing: 12px;
-                    alignment: space-around;
 
                     QuickToggle {
                         label: "Airplane";
                         icon: root.icons.plane;
                         enabled: airplane-enabled;
+                        tile-color: #3a3a4a;
                         toggled => { airplane-toggled(); }
                     }
 
@@ -1274,6 +1375,7 @@ component QuickSettingsPanel inherits Rectangle {
                         label: "Rotate";
                         icon: root.icons.rotate;
                         enabled: rotation-locked;
+                        tile-color: #2a4a3a;
                         toggled => { rotation-toggled(); }
                     }
 
@@ -1281,6 +1383,7 @@ component QuickSettingsPanel inherits Rectangle {
                         label: "Lock";
                         icon: root.icons.lock;
                         enabled: false;
+                        tile-color: #4a2a2a;
                         toggled => { lock-pressed(); }
                     }
 
@@ -1288,142 +1391,223 @@ component QuickSettingsPanel inherits Rectangle {
                         label: "Ripples";
                         icon: root.icons.volume;
                         enabled: touch-effects-enabled;
+                        tile-color: #3a2a4a;
                         toggled => { touch-effects-toggled(); }
                     }
                 }
             }
         }
 
-        // Brightness slider
+        // Sliders section with modern styling
         Rectangle {
-            height: 70px;
-            background: Theme.surface;
+            height: 180px;
+            background: transparent;
+
+            VerticalLayout {
+                padding-left: 24px;
+                padding-right: 24px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                spacing: 16px;
+
+                // Brightness slider card
+                Rectangle {
+                    height: 72px;
+                    border-radius: 20px;
+                    background: Theme.surface;
+
+                    // Subtle border
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        border-radius: 20px;
+                        background: transparent;
+                        border-width: 1px;
+                        border-color: #ffffff.with-alpha(0.05);
+                    }
+
+                    HorizontalLayout {
+                        padding: 16px;
+                        spacing: 16px;
+
+                        // Icon circle
+                        Rectangle {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: 20px;
+                            background: #1a1a24;
+
+                            Text {
+                                text: "☀";
+                                color: Theme.accent;
+                                font-size: 20px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // Slider area
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 4px;
+
+                            Text {
+                                text: "Brightness";
+                                color: Theme.on-surface-variant;
+                                font-size: 12px;
+                                font-weight: 500;
+                                letter-spacing: 1px;
+                            }
+
+                            BrightnessSlider {
+                                value: brightness;
+                                changed(v) => { brightness-changed(v); }
+                            }
+                        }
+                    }
+                }
+
+                // Volume slider card
+                Rectangle {
+                    height: 72px;
+                    border-radius: 20px;
+                    background: Theme.surface;
+
+                    // Subtle border
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        border-radius: 20px;
+                        background: transparent;
+                        border-width: 1px;
+                        border-color: #ffffff.with-alpha(0.05);
+                    }
+
+                    HorizontalLayout {
+                        padding: 16px;
+                        spacing: 16px;
+
+                        // Icon circle
+                        Rectangle {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: 20px;
+                            background: #1a1a24;
+
+                            Text {
+                                text: muted ? "🔇" : "🔊";
+                                color: muted ? Theme.on-surface-variant : Theme.accent;
+                                font-size: 18px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // Slider area
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 4px;
+
+                            Text {
+                                text: "Volume";
+                                color: Theme.on-surface-variant;
+                                font-size: 12px;
+                                font-weight: 500;
+                                letter-spacing: 1px;
+                            }
+
+                            VolumeSlider {
+                                value: volume;
+                                muted: muted;
+                                changed(v) => { volume-changed(v); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Notifications section header
+        Rectangle {
+            height: 50px;
+            background: transparent;
 
             HorizontalLayout {
-                padding: 16px;
-                spacing: 12px;
+                padding-left: 24px;
+                padding-right: 24px;
+                alignment: center;
 
                 Text {
-                    text: "☀";
+                    text: "NOTIFICATIONS";
                     color: Theme.on-surface-variant;
-                    font-size: 18px;
-                    vertical-alignment: center;
-                }
-
-                BrightnessSlider {
+                    font-size: 12px;
+                    font-weight: 500;
+                    letter-spacing: 3px;
                     horizontal-stretch: 1;
-                    value: brightness;
-                    changed(v) => { brightness-changed(v); }
-                }
-
-                Text {
-                    text: "☀";
-                    color: Theme.on-surface;
-                    font-size: 22px;
                     vertical-alignment: center;
                 }
+
+                Rectangle {
+                    width: 80px;
+                    height: 32px;
+                    border-radius: 16px;
+                    background: notifications.length > 0 ? Theme.surface : transparent;
+                    visible: notifications.length > 0;
+
+                    Text {
+                        text: "Clear all";
+                        color: Theme.accent;
+                        font-size: 12px;
+                        font-weight: 500;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    TouchArea {
+                        clicked => { clear-all-notifications(); }
+                    }
+                }
+            }
+
+            // Separator line
+            Rectangle {
+                y: parent.height - 1px;
+                x: 24px;
+                width: parent.width - 48px;
+                height: 1px;
+                background: Theme.surface;
             }
         }
 
-        // Volume slider section
-        Rectangle {
-            height: 72px;
-            background: Theme.surface;
-
-            HorizontalLayout {
-                padding: 16px;
-                spacing: 12px;
-
-                Text {
-                    text: muted ? "🔇" : "🔊";
-                    color: muted ? Theme.on-surface-variant : Theme.on-surface;
-                    font-size: 18px;
-                    vertical-alignment: center;
-                }
-
-                VolumeSlider {
-                    horizontal-stretch: 1;
-                    value: volume;
-                    muted: muted;
-                    changed(v) => { volume-changed(v); }
-                }
-            }
-        }
-
-        // Notifications section
+        // Notifications list or empty state
         Rectangle {
             vertical-stretch: 1;
-            background: Theme.background;
+            background: transparent;
 
+            if notifications.length == 0: VerticalLayout {
+                alignment: center;
+                spacing: 12px;
+
+                Text {
+                    text: "🔔";
+                    font-size: 48px;
+                    horizontal-alignment: center;
+                    opacity: 0.5;
+                }
+
+                Text {
+                    text: "No notifications";
+                    color: Theme.on-surface-variant;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                }
+            }
+
+            // Notification cards with padding
             VerticalLayout {
                 padding: 16px;
                 spacing: 8px;
 
-                // Notifications header
-                HorizontalLayout {
-                    height: 30px;
-
-                    Text {
-                        text: "Notifications";
-                        color: Theme.on-surface;
-                        font-size: 14px;
-                        font-weight: 600;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                    }
-
-                    Rectangle {
-                        width: 80px;
-                        height: 28px;
-                        border-radius: 14px;
-                        background: notifications.length > 0 ? Theme.surface-variant : transparent;
-                        visible: notifications.length > 0;
-
-                        Text {
-                            text: "Clear all";
-                            color: Theme.primary;
-                            font-size: 11px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-
-                        TouchArea {
-                            clicked => { clear-all-notifications(); }
-                        }
-                    }
-                }
-
-                // Notification list or empty state
-                if notifications.length == 0: Rectangle {
-                    vertical-stretch: 1;
-
-                    VerticalLayout {
-                        alignment: center;
-                        spacing: 8px;
-
-                        Text {
-                            text: "🔔";
-                            font-size: 48px;
-                            horizontal-alignment: center;
-                        }
-
-                        Text {
-                            text: "No notifications";
-                            color: Theme.on-surface-variant;
-                            font-size: 14px;
-                            horizontal-alignment: center;
-                        }
-
-                        Text {
-                            text: "You're all caught up!";
-                            color: Theme.on-surface-variant.with-alpha(0.6);
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                        }
-                    }
-                }
-
-                // Notification cards
                 for notification[idx] in notifications: NotificationCard {
                     app-name: notification.app-name;
                     app-icon: notification.app-icon;

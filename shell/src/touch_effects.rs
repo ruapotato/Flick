@@ -1,12 +1,18 @@
-//! Touch visual effects - simple fading circles that merge on swipe
+//! Touch visual effects - Material Design style ripples
 //!
 //! Creates elegant touch feedback:
-//! - Tap: Circle that fades outward
-//! - Swipe: Trail of merging circles creating fluid motion
+//! - Tap: Ripple that expands outward from touch point
+//! - Swipe: Trail of ripples creating fluid motion
+//! - Uses accent color (#e94560) for brand consistency
 
 use std::time::Instant;
 
-/// A single touch circle
+/// Accent color for ripples (RGB)
+const RIPPLE_R: u8 = 233;  // #e9
+const RIPPLE_G: u8 = 69;   // #45
+const RIPPLE_B: u8 = 96;   // #60
+
+/// A single ripple circle
 #[derive(Clone, Debug)]
 pub struct TouchCircle {
     pub x: f64,
@@ -30,7 +36,7 @@ impl TouchCircle {
 
     /// Check if expired (fully faded)
     pub fn is_expired(&self) -> bool {
-        self.age() > 0.6 // Circles last 0.6 seconds
+        self.age() > 0.45 // Ripples last 0.45 seconds (faster than before)
     }
 }
 
@@ -51,14 +57,14 @@ impl TouchEffect {
         }
     }
 
-    /// Update position - add circles along the path for consistent density
+    /// Update position - add ripples along the path for consistent density
     pub fn update_position(&mut self, x: f64, y: f64) {
         let dx = x - self.last_pos.0;
         let dy = y - self.last_pos.1;
         let dist = (dx * dx + dy * dy).sqrt();
 
-        // Spacing between circles (pixels)
-        let circle_spacing = 12.0;
+        // Spacing between ripples (pixels) - larger for cleaner trails
+        let circle_spacing = 20.0;
 
         if dist >= circle_spacing {
             // Calculate how many circles to add along the path
@@ -133,22 +139,29 @@ impl TouchEffectRenderer {
         }
     }
 
-    /// Render a single filled fading circle
+    /// Render a single ripple effect (Material Design style)
     fn render_circle(&self, pixels: &mut [u8], circle: &TouchCircle) {
         let age = circle.age();
-        if age > 0.6 {
+        let duration = 0.45;
+        if age > duration {
             return;
         }
 
         let cx = circle.x;
         let cy = circle.y;
 
-        // Circle expands over time
-        let max_radius = 50.0;
-        let radius = max_radius * (age / 0.6);
+        // Ripple expands with easing (fast start, slow end)
+        let progress = age / duration;
+        let eased = 1.0 - (1.0 - progress).powi(3); // Ease out cubic
 
-        // Fade out as it expands
-        let fade = 1.0 - (age / 0.6);
+        let max_radius = 80.0;  // Larger ripple
+        let radius = max_radius * eased;
+
+        // Ring thickness - starts thick, gets thinner
+        let ring_thickness = 20.0 * (1.0 - progress * 0.5);
+
+        // Fade out smoothly
+        let fade = (1.0 - progress).powi(2);
 
         // Calculate bounding box
         let x_min = ((cx - radius) as i32).max(0) as u32;
@@ -162,24 +175,51 @@ impl TouchEffectRenderer {
                 let dy = y as f64 - cy;
                 let dist = (dx * dx + dy * dy).sqrt();
 
+                // Create ring effect - solid near edge, fading toward center
+                let inner_radius = (radius - ring_thickness).max(0.0);
+
                 if dist < radius {
-                    // Soft edge at the boundary
-                    let edge = 1.0 - (dist / radius);
-                    let alpha = (edge * fade * 180.0) as u8;
+                    let alpha_value;
+
+                    if dist > inner_radius {
+                        // Ring portion - full opacity with soft edge
+                        let ring_pos = (dist - inner_radius) / ring_thickness;
+                        // Soft edges on both inside and outside
+                        let edge_softness = if ring_pos < 0.3 {
+                            ring_pos / 0.3
+                        } else if ring_pos > 0.7 {
+                            (1.0 - ring_pos) / 0.3
+                        } else {
+                            1.0
+                        };
+                        alpha_value = edge_softness * fade * 0.6;
+                    } else {
+                        // Fill portion - subtle glow
+                        let fill_fade = dist / inner_radius.max(1.0);
+                        alpha_value = fill_fade * fade * 0.15;
+                    }
+
+                    let alpha = (alpha_value * 255.0).min(255.0) as u8;
 
                     if alpha > 0 {
                         let idx = ((y * self.width + x) * 4) as usize;
 
-                        // Soft cyan/white color
-                        let r = 200u8;
-                        let g = 230u8;
-                        let b = 255u8;
+                        // Use accent color
+                        let r = RIPPLE_R;
+                        let g = RIPPLE_G;
+                        let b = RIPPLE_B;
 
-                        // Additive blend for nice merging effect
-                        pixels[idx] = pixels[idx].saturating_add((r as u16 * alpha as u16 / 255) as u8);
-                        pixels[idx + 1] = pixels[idx + 1].saturating_add((g as u16 * alpha as u16 / 255) as u8);
-                        pixels[idx + 2] = pixels[idx + 2].saturating_add((b as u16 * alpha as u16 / 255) as u8);
-                        pixels[idx + 3] = pixels[idx + 3].saturating_add(alpha);
+                        // Alpha blend (over)
+                        let src_a = alpha as f32 / 255.0;
+                        let dst_a = pixels[idx + 3] as f32 / 255.0;
+                        let out_a = src_a + dst_a * (1.0 - src_a);
+
+                        if out_a > 0.0 {
+                            pixels[idx] = ((r as f32 * src_a + pixels[idx] as f32 * dst_a * (1.0 - src_a)) / out_a) as u8;
+                            pixels[idx + 1] = ((g as f32 * src_a + pixels[idx + 1] as f32 * dst_a * (1.0 - src_a)) / out_a) as u8;
+                            pixels[idx + 2] = ((b as f32 * src_a + pixels[idx + 2] as f32 * dst_a * (1.0 - src_a)) / out_a) as u8;
+                            pixels[idx + 3] = (out_a * 255.0) as u8;
+                        }
                     }
                 }
             }
@@ -200,8 +240,8 @@ mod tests {
     #[test]
     fn test_effect_update() {
         let mut effect = TouchEffect::new(100.0, 100.0, 1);
-        effect.update_position(120.0, 100.0); // Move 20px - should add circle
-        assert_eq!(effect.circles.len(), 2);
+        effect.update_position(140.0, 100.0); // Move 40px - should add 2 circles (spacing is 20px)
+        assert_eq!(effect.circles.len(), 3);
     }
 
     #[test]
