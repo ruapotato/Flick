@@ -7,6 +7,7 @@ Page {
 
     // Touch effect settings
     property bool touchEffectsEnabled: true
+    property int touchEffectStyle: 0     // 0=water, 1=fire, 2=invert, 3=snow
     property real fisheyeSize: 0.16
     property real fisheyeStrength: 0.13
     property real rippleSize: 0.30
@@ -39,6 +40,7 @@ Page {
                 var config = JSON.parse(xhr.responseText)
                 // Touch effects
                 if (config.touch_effects_enabled !== undefined) touchEffectsEnabled = config.touch_effects_enabled
+                if (config.touch_effect_style !== undefined) touchEffectStyle = config.touch_effect_style
                 if (config.fisheye_size !== undefined) fisheyeSize = config.fisheye_size
                 if (config.fisheye_strength !== undefined) fisheyeStrength = config.fisheye_strength
                 if (config.ripple_size !== undefined) rippleSize = config.ripple_size
@@ -64,6 +66,7 @@ Page {
         var config = {
             // Touch effects
             touch_effects_enabled: touchEffectsEnabled,
+            touch_effect_style: touchEffectStyle,
             fisheye_size: fisheyeSize,
             fisheye_strength: fisheyeStrength,
             ripple_size: rippleSize,
@@ -217,13 +220,85 @@ Page {
             EffectToggle {
                 width: settingsColumn.width
                 title: "Touch Distortion"
-                subtitle: "Fisheye lens & water ripple"
-                icon: "💧"
+                subtitle: "Fisheye lens & ripple effects"
+                icon: ["💧", "🔥", "🔄", "❄️", "💨"][touchEffectStyle] || "💧"
                 checked: touchEffectsEnabled
-                accentColor: "#e94560"
+                accentColor: ["#4a9eff", "#ff6b35", "#9966ff", "#88ddff", "#7aab4a"][touchEffectStyle] || "#4a9eff"
                 onToggled: {
                     touchEffectsEnabled = !touchEffectsEnabled
                     saveConfig()
+                }
+            }
+
+            // Effect style selector
+            Rectangle {
+                width: settingsColumn.width
+                height: 100
+                radius: 20
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                visible: touchEffectsEnabled
+
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 12
+
+                    Text {
+                        text: "Effect Style"
+                        font.pixelSize: 14
+                        color: "#888899"
+                    }
+
+                    Row {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: 8
+
+                        Repeater {
+                            model: [
+                                { icon: "💧", label: "Water", color: "#4a9eff" },
+                                { icon: "🔥", label: "Fire", color: "#ff6b35" },
+                                { icon: "🔄", label: "Invert", color: "#9966ff" },
+                                { icon: "❄️", label: "Snow", color: "#88ddff" },
+                                { icon: "💨", label: "Fart", color: "#7aab4a" }
+                            ]
+
+                            Rectangle {
+                                width: 58
+                                height: 52
+                                radius: 14
+                                color: touchEffectStyle === index ? Qt.darker(modelData.color, 2) : "#1a1a28"
+                                border.color: touchEffectStyle === index ? modelData.color : "#2a2a3e"
+                                border.width: touchEffectStyle === index ? 2 : 1
+
+                                Column {
+                                    anchors.centerIn: parent
+                                    spacing: 2
+
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: modelData.icon
+                                        font.pixelSize: 18
+                                    }
+
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: modelData.label
+                                        font.pixelSize: 9
+                                        color: touchEffectStyle === index ? "#ffffff" : "#666677"
+                                    }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        touchEffectStyle = index
+                                        saveConfig()
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

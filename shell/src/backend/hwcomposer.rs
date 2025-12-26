@@ -3065,6 +3065,7 @@ mod gl {
     static mut DISTORT_UNIFORM_PARAMS: i32 = -1;
     static mut DISTORT_UNIFORM_COUNT: i32 = -1;
     static mut DISTORT_UNIFORM_ASPECT: i32 = -1;
+    static mut DISTORT_UNIFORM_STYLE: i32 = -1;
 
     // Vertex shader - simple pass-through
     const VERTEX_SHADER_SRC: &str = r#"
@@ -3087,8 +3088,9 @@ mod gl {
         }
     "#;
 
-    // Distortion fragment shader - fisheye and ripple effects
+    // Distortion fragment shader - fisheye and ripple effects with multiple styles
     // Maximum 10 simultaneous touch effects
+    // Style: 0=water (blue tint), 1=fire (orange/red), 2=invert (color inversion), 3=snow (white/blue frost)
     const DISTORT_FRAGMENT_SRC: &str = r#"
         precision highp float;
         varying vec2 v_texcoord;
@@ -3097,10 +3099,17 @@ mod gl {
         uniform vec4 u_params[10];      // [radius, strength, type, reserved]
         uniform int u_count;            // Number of active effects
         uniform float u_aspect;         // Screen aspect ratio (width/height)
+        uniform int u_style;            // Effect style: 0=water, 1=fire, 2=invert, 3=snow
+
+        // Pseudo-random noise for effects
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
 
         void main() {
             vec2 uv = v_texcoord;
             vec2 totalOffset = vec2(0.0);
+            float totalInfluence = 0.0;  // Track how much effect is applied for coloring
 
             for (int i = 0; i < 10; i++) {
                 if (i >= u_count) break;
@@ -3128,6 +3137,9 @@ mod gl {
                         vec2 offset = direction * (dist - distortion * radius);
                         offset.x /= u_aspect;
                         totalOffset += offset * 0.5;
+
+                        // Calculate influence for color effects (stronger in center)
+                        totalInfluence += (1.0 - normalizedDist) * strength * 2.0;
                     }
                 } else {
                     // RIPPLE effect (type 1+) - expanding ring distortion
@@ -3151,6 +3163,9 @@ mod gl {
                         vec2 offset = direction * wave * strength * phase * 0.15;
                         offset.x /= u_aspect;
                         totalOffset += offset;
+
+                        // Influence for color effects
+                        totalInfluence += wave * strength * (1.0 - progress);
                     }
                 }
             }
@@ -3161,7 +3176,63 @@ mod gl {
             // Clamp to valid texture coordinates
             sampleUV = clamp(sampleUV, vec2(0.0), vec2(1.0));
 
-            gl_FragColor = texture2D(u_texture, sampleUV);
+            vec4 color = texture2D(u_texture, sampleUV);
+
+            // Apply style-specific color effects
+            if (totalInfluence > 0.0) {
+                float influence = clamp(totalInfluence, 0.0, 1.0);
+
+                if (u_style == 0) {
+                    // WATER: subtle blue tint
+                    vec3 waterTint = vec3(0.4, 0.7, 1.0);
+                    color.rgb = mix(color.rgb, color.rgb * waterTint, influence * 0.3);
+                } else if (u_style == 1) {
+                    // FIRE: orange/red heat distortion with glow
+                    vec3 fireColor = vec3(1.0, 0.4, 0.1);
+                    // Add heat shimmer noise
+                    float noise = hash(sampleUV * 100.0 + totalOffset * 50.0);
+                    vec3 heated = color.rgb + fireColor * influence * 0.5;
+                    // Slight brightness boost for heat glow
+                    heated = mix(heated, vec3(1.0, 0.8, 0.3), influence * noise * 0.3);
+                    color.rgb = heated;
+                } else if (u_style == 2) {
+                    // INVERT: color inversion
+                    vec3 inverted = vec3(1.0) - color.rgb;
+                    color.rgb = mix(color.rgb, inverted, influence);
+                } else if (u_style == 3) {
+                    // SNOW: white/blue frost effect with sparkles
+                    vec3 frostColor = vec3(0.85, 0.92, 1.0);
+                    // Add sparkle noise
+                    float sparkle = hash(sampleUV * 200.0);
+                    sparkle = pow(sparkle, 8.0);  // Make sparkles sparse
+                    // Frost overlay
+                    vec3 frosted = mix(color.rgb, frostColor, influence * 0.6);
+                    // Add sparkles
+                    frosted += vec3(1.0) * sparkle * influence;
+                    // Slight desaturation for cold look
+                    float gray = dot(frosted, vec3(0.299, 0.587, 0.114));
+                    color.rgb = mix(frosted, vec3(gray) * frostColor, influence * 0.2);
+                } else if (u_style == 4) {
+                    // FART: Green gas cloud effect
+                    vec3 gasColor = vec3(0.3, 0.8, 0.2);  // Sickly green
+                    vec3 gasColor2 = vec3(0.5, 0.7, 0.1); // Yellow-green
+                    // Turbulent gas noise
+                    float noise1 = hash(sampleUV * 80.0 + totalOffset * 30.0);
+                    float noise2 = hash(sampleUV * 40.0 - totalOffset * 20.0);
+                    float turbulence = noise1 * 0.6 + noise2 * 0.4;
+                    // Gas cloud blend
+                    vec3 gas = mix(gasColor, gasColor2, turbulence);
+                    // Add some darker swirls
+                    float swirl = hash(sampleUV * 120.0 + vec2(totalOffset.y, -totalOffset.x) * 50.0);
+                    gas = mix(gas, gas * 0.5, swirl * swirl * influence);
+                    // Slight transparency/overlay effect
+                    color.rgb = mix(color.rgb, gas, influence * 0.7);
+                    // Add a slight yellow tinge to surrounding area
+                    color.rgb = mix(color.rgb, color.rgb * vec3(1.05, 1.02, 0.9), influence * 0.3);
+                }
+            }
+
+            gl_FragColor = color;
         }
     "#;
 
@@ -3267,6 +3338,7 @@ mod gl {
             let params_uni = CString::new("u_params").unwrap();
             let count_uni = CString::new("u_count").unwrap();
             let aspect_uni = CString::new("u_aspect").unwrap();
+            let style_uni = CString::new("u_style").unwrap();
 
             if let Some(f) = FN_GET_ATTRIB_LOCATION {
                 DISTORT_ATTR_POSITION = f(program, pos_name.as_ptr());
@@ -3278,11 +3350,12 @@ mod gl {
                 DISTORT_UNIFORM_PARAMS = f(program, params_uni.as_ptr());
                 DISTORT_UNIFORM_COUNT = f(program, count_uni.as_ptr());
                 DISTORT_UNIFORM_ASPECT = f(program, aspect_uni.as_ptr());
+                DISTORT_UNIFORM_STYLE = f(program, style_uni.as_ptr());
             }
 
-            tracing::info!("Distortion shader created: program={}, positions={}, params={}, count={}, aspect={}",
+            tracing::info!("Distortion shader created: program={}, positions={}, params={}, count={}, aspect={}, style={}",
                 DISTORT_PROGRAM, DISTORT_UNIFORM_POSITIONS, DISTORT_UNIFORM_PARAMS,
-                DISTORT_UNIFORM_COUNT, DISTORT_UNIFORM_ASPECT);
+                DISTORT_UNIFORM_COUNT, DISTORT_UNIFORM_ASPECT, DISTORT_UNIFORM_STYLE);
         }
 
         INITIALIZED = true;
@@ -3821,6 +3894,14 @@ mod gl {
         }
         if let Some(f) = FN_UNIFORM1I {
             f(DISTORT_UNIFORM_COUNT, shader_data.count);
+            f(DISTORT_UNIFORM_STYLE, shader_data.effect_style);
+            // Debug: log style every 60 frames
+            static mut DEBUG_COUNTER: u32 = 0;
+            DEBUG_COUNTER += 1;
+            if DEBUG_COUNTER % 60 == 0 {
+                tracing::info!("Touch effect style uniform: {} (location: {})",
+                    shader_data.effect_style, DISTORT_UNIFORM_STYLE);
+            }
         }
         if let Some(f) = FN_UNIFORM1F {
             let aspect = screen_width as f32 / screen_height as f32;

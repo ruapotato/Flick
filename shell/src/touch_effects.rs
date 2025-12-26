@@ -11,9 +11,34 @@ use std::time::Instant;
 /// Maximum number of active touch effects (for shader uniforms)
 pub const MAX_TOUCH_EFFECTS: usize = 10;
 
+/// Effect style determines the visual appearance
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[repr(i32)]
+pub enum EffectStyle {
+    #[default]
+    Water = 0,   // Blue water ripple
+    Fire = 1,    // Orange/red fire effect
+    Invert = 2,  // Color inversion ripple
+    Snow = 3,    // White/blue snow/frost effect
+    Fart = 4,    // Green gas cloud effect
+}
+
+impl From<i32> for EffectStyle {
+    fn from(v: i32) -> Self {
+        match v {
+            1 => EffectStyle::Fire,
+            2 => EffectStyle::Invert,
+            3 => EffectStyle::Snow,
+            4 => EffectStyle::Fart,
+            _ => EffectStyle::Water,
+        }
+    }
+}
+
 /// Configurable effect parameters
 #[derive(Clone, Debug)]
 pub struct EffectConfig {
+    pub effect_style: EffectStyle, // Visual style (water/fire/invert/snow)
     pub fisheye_size: f32,      // Radius as fraction of screen (0.05 - 0.30)
     pub fisheye_strength: f32,  // Distortion strength (0.0 - 0.50)
     pub ripple_size: f32,       // Max radius as fraction of screen (0.10 - 0.50)
@@ -24,6 +49,7 @@ pub struct EffectConfig {
 impl Default for EffectConfig {
     fn default() -> Self {
         Self {
+            effect_style: EffectStyle::Water,
             fisheye_size: 0.16,      // 16% of screen
             fisheye_strength: 0.13,  // 13% distortion
             ripple_size: 0.30,       // 30% of screen
@@ -36,30 +62,54 @@ impl Default for EffectConfig {
 impl EffectConfig {
     /// Load config from file, falling back to defaults
     pub fn load() -> Self {
-        let config_path = std::env::var("HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"))
-            .join(".local/state/flick/effects_config.json");
+        // Try multiple paths to find the config
+        let possible_homes = [
+            // Try SUDO_USER's home first
+            std::env::var("SUDO_USER").ok().and_then(|user| {
+                std::fs::read_to_string("/etc/passwd").ok().and_then(|passwd| {
+                    passwd.lines()
+                        .find(|line| line.starts_with(&format!("{}:", user)))
+                        .and_then(|line| line.split(':').nth(5))
+                        .map(|s| s.to_string())
+                })
+            }),
+            // Try droidian's home directly (common on Droidian)
+            Some("/home/droidian".to_string()),
+            // Try HOME
+            std::env::var("HOME").ok(),
+        ];
+
+        let config_path = possible_homes.iter()
+            .filter_map(|h| h.as_ref())
+            .map(|home| std::path::PathBuf::from(home).join(".local/state/flick/effects_config.json"))
+            .find(|p| p.exists())
+            .unwrap_or_else(|| std::path::PathBuf::from("/tmp/effects_config.json"));
+
+        tracing::debug!("Loading effects config from: {:?}", config_path);
 
         if let Ok(contents) = std::fs::read_to_string(&config_path) {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                let style_val = json.get("touch_effect_style").and_then(|v| v.as_i64()).unwrap_or(0);
+                let effect_style = EffectStyle::from(style_val as i32);
+                tracing::info!("Loaded effect style: {:?} (raw value: {})", effect_style, style_val);
                 return Self {
+                    effect_style,
                     fisheye_size: json.get("fisheye_size")
                         .and_then(|v| v.as_f64())
                         .map(|v| v as f32)
-                        .unwrap_or(0.12),
+                        .unwrap_or(0.16),
                     fisheye_strength: json.get("fisheye_strength")
                         .and_then(|v| v.as_f64())
                         .map(|v| v as f32)
-                        .unwrap_or(0.20),
+                        .unwrap_or(0.13),
                     ripple_size: json.get("ripple_size")
                         .and_then(|v| v.as_f64())
                         .map(|v| v as f32)
-                        .unwrap_or(0.25),
+                        .unwrap_or(0.30),
                     ripple_strength: json.get("ripple_strength")
                         .and_then(|v| v.as_f64())
                         .map(|v| v as f32)
-                        .unwrap_or(0.20),
+                        .unwrap_or(0.07),
                     ripple_duration: json.get("ripple_duration")
                         .and_then(|v| v.as_f64())
                         .map(|v| v as f32)
@@ -253,6 +303,7 @@ impl TouchEffectManager {
     /// Returns arrays suitable for passing to GL uniforms
     pub fn get_shader_data(&self, screen_width: f64, screen_height: f64) -> TouchEffectShaderData {
         let mut data = TouchEffectShaderData::default();
+        data.effect_style = self.config.effect_style as i32;
 
         for (i, effect) in self.effects.iter().take(MAX_TOUCH_EFFECTS).enumerate() {
             let (x, y, radius, strength, type_flag) = effect.get_shader_params(screen_width, screen_height, &self.config);
@@ -278,6 +329,8 @@ pub struct TouchEffectShaderData {
     pub params: [f32; MAX_TOUCH_EFFECTS * 4],
     /// Number of active effects
     pub count: i32,
+    /// Effect style: 0=water, 1=fire, 2=invert, 3=snow
+    pub effect_style: i32,
 }
 
 impl Default for TouchEffectShaderData {
@@ -286,6 +339,7 @@ impl Default for TouchEffectShaderData {
             positions: [0.0; MAX_TOUCH_EFFECTS * 2],
             params: [0.0; MAX_TOUCH_EFFECTS * 4],
             count: 0,
+            effect_style: 0,
         }
     }
 }
