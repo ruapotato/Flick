@@ -330,38 +330,6 @@ Window {
         }
     }
 
-    // Separate timer for OAuth with longer timeout (user completes auth in browser)
-    Timer {
-        id: oauthResponseTimer
-        interval: 500
-        repeat: true
-        property int attempts: 0
-        property var responseHandler: null
-
-        onTriggered: {
-            attempts++
-            if (attempts > 300) { // 2.5 minute timeout for OAuth
-                stop()
-                setupView.oauthInProgress = false
-                errorMessage = "Authentication timed out. Please try again."
-                return
-            }
-
-            var resp = readResponse()
-            if (resp) {
-                stop()
-                if (responseHandler) {
-                    responseHandler(resp)
-                }
-            }
-        }
-
-        function start() {
-            attempts = 0
-            running = true
-        }
-    }
-
     // ==================== Loading View ====================
     Rectangle {
         anchors.fill: parent
@@ -387,698 +355,198 @@ Window {
         }
     }
 
-    // ==================== Setup View (Add Account) ====================
+    // ==================== Setup View (Add Account via GNOME Online Accounts) ====================
     Rectangle {
         id: setupView
         anchors.fill: parent
         color: "#0a0a0f"
         visible: currentView === "setup"
 
-        property string setupEmail: ""
-        property string setupPassword: ""
-        property string setupName: ""
-        property string setupImapServer: ""
-        property int setupImapPort: 993
-        property string setupSmtpServer: ""
-        property int setupSmtpPort: 587
-        property bool showAdvanced: false
-        property bool showManualSetup: false
-        property bool oauthInProgress: false
-        property string oauthProvider: ""
+        property bool addingAccount: false
 
-        function startOAuthLogin(provider) {
-            oauthInProgress = true
-            oauthProvider = provider
+        function launchAccountSetup() {
+            addingAccount = true
             errorMessage = ""
-            sendCommand({
-                action: "oauth_start_auth",
-                provider: provider
-            })
+            sendCommand({ action: "add_account" })
 
-            // Set up response handler for OAuth (longer timeout since user completes in browser)
-            oauthResponseTimer.responseHandler = function(resp) {
-                oauthInProgress = false
-                if (resp && resp.error) {
-                    errorMessage = resp.error
-                    console.log("OAuth error:", resp.error)
-                } else if (resp && resp.tokens) {
-                    // OAuth successful - show email entry form
-                    setupView.showManualSetup = true
-                    setupView.setupPassword = ""
-                    setupView.oauthTokens = resp.tokens
-                    errorMessage = ""
-                }
-            }
-            oauthResponseTimer.start()
+            // Poll for new accounts after launching GOA
+            accountCheckTimer.start()
         }
 
-        property var oauthTokens: null
+        Timer {
+            id: accountCheckTimer
+            interval: 2000  // Check every 2 seconds
+            repeat: true
+            property int checks: 0
 
-        Flickable {
-            anchors.fill: parent
-            anchors.margins: 16
-            anchors.bottomMargin: 120
-            contentHeight: setupColumn.height
-            clip: true
+            onTriggered: {
+                checks++
+                if (checks > 60) {  // 2 minute timeout
+                    stop()
+                    setupView.addingAccount = false
+                    return
+                }
 
-            Column {
-                id: setupColumn
+                // Check if accounts were added
+                sendCommand({ action: "get_accounts" })
+                responseTimer.responseHandler = function(resp) {
+                    if (resp && resp.accounts && resp.accounts.length > 0) {
+                        accountCheckTimer.stop()
+                        setupView.addingAccount = false
+                        accounts = resp.accounts
+                        currentAccountId = accounts[0].id
+                        loadFolders()
+                        loadEmails()
+                        currentView = "inbox"
+                    }
+                }
+                responseTimer.start()
+            }
+
+            function start() {
+                checks = 0
+                running = true
+            }
+        }
+
+        Column {
+            anchors.centerIn: parent
+            width: parent.width - 64
+            spacing: 32
+
+            // Email icon
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "✉"
+                font.pixelSize: 80
+            }
+
+            // Title
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Add Email Account"
+                color: "#ffffff"
+                font.pixelSize: 28 * textScale
+                font.weight: Font.Bold
+            }
+
+            // Description
+            Text {
                 width: parent.width
-                spacing: 16
+                horizontalAlignment: Text.AlignHCenter
+                text: setupView.addingAccount ?
+                    "Complete sign-in in the Settings window..." :
+                    "Sign in with Google, Microsoft, or other providers using your system accounts."
+                color: "#888888"
+                font.pixelSize: 16 * textScale
+                wrapMode: Text.Wrap
+            }
 
-                // Header
+            Item { height: 16; width: 1 }
+
+            // Add Account button
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(parent.width, 300)
+                height: 64
+                radius: 32
+                color: setupView.addingAccount ? "#555555" : "#e94560"
+
                 Text {
-                    text: "Add Email Account"
+                    anchors.centerIn: parent
+                    text: setupView.addingAccount ? "Waiting for sign-in..." : "Add Account"
                     color: "#ffffff"
-                    font.pixelSize: 28 * textScale
+                    font.pixelSize: 18 * textScale
                     font.weight: Font.Bold
                 }
 
-                Text {
-                    width: parent.width
-                    text: "Sign in with your email provider"
-                    color: "#888888"
-                    font.pixelSize: 14 * textScale
-                    wrapMode: Text.Wrap
-                }
-
-                Item { height: 8; width: 1 }
-
-                // OAuth Provider Buttons
-                Column {
-                    width: parent.width
-                    spacing: 12
-                    visible: !setupView.showManualSetup
-
-                    // Google Sign In
-                    Rectangle {
-                        width: parent.width
-                        height: 56
-                        radius: 12
-                        color: setupView.oauthInProgress && setupView.oauthProvider === "gmail" ? "#2a2a4e" : "#1a1a2e"
-                        border.width: 1
-                        border.color: "#4285f4"
-
-                        Row {
-                            anchors.centerIn: parent
-                            spacing: 12
-
-                            // Google Icon (G)
-                            Rectangle {
-                                width: 24
-                                height: 24
-                                radius: 4
-                                color: "transparent"
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "G"
-                                    font.pixelSize: 20
-                                    font.weight: Font.Bold
-                                    color: "#4285f4"
-                                }
-                            }
-
-                            Text {
-                                text: setupView.oauthInProgress && setupView.oauthProvider === "gmail" ?
-                                      "Signing in..." : "Sign in with Google"
-                                color: "#ffffff"
-                                font.pixelSize: 16 * textScale
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: !setupView.oauthInProgress
-                            onClicked: {
-                                Haptic.click()
-                                setupView.startOAuthLogin("gmail")
-                            }
-                        }
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: !setupView.addingAccount
+                    onClicked: {
+                        Haptic.click()
+                        setupView.launchAccountSetup()
                     }
-
-                    // Microsoft Sign In
-                    Rectangle {
-                        width: parent.width
-                        height: 56
-                        radius: 12
-                        color: setupView.oauthInProgress && setupView.oauthProvider === "outlook" ? "#2a2a4e" : "#1a1a2e"
-                        border.width: 1
-                        border.color: "#00a4ef"
-
-                        Row {
-                            anchors.centerIn: parent
-                            spacing: 12
-
-                            // Microsoft Icon
-                            Rectangle {
-                                width: 24
-                                height: 24
-                                radius: 4
-                                color: "transparent"
-                                Grid {
-                                    anchors.centerIn: parent
-                                    columns: 2
-                                    spacing: 2
-                                    Rectangle { width: 10; height: 10; color: "#f25022" }
-                                    Rectangle { width: 10; height: 10; color: "#7fba00" }
-                                    Rectangle { width: 10; height: 10; color: "#00a4ef" }
-                                    Rectangle { width: 10; height: 10; color: "#ffb900" }
-                                }
-                            }
-
-                            Text {
-                                text: setupView.oauthInProgress && setupView.oauthProvider === "outlook" ?
-                                      "Signing in..." : "Sign in with Microsoft"
-                                color: "#ffffff"
-                                font.pixelSize: 16 * textScale
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: !setupView.oauthInProgress
-                            onClicked: {
-                                Haptic.click()
-                                setupView.startOAuthLogin("outlook")
-                            }
-                        }
-                    }
-
-                    Item { height: 8; width: 1 }
-
-                    // Divider
-                    Row {
-                        width: parent.width
-                        spacing: 16
-
-                        Rectangle {
-                            width: (parent.width - orText.width - 32) / 2
-                            height: 1
-                            color: "#333344"
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-
-                        Text {
-                            id: orText
-                            text: "or"
-                            color: "#666688"
-                            font.pixelSize: 14 * textScale
-                        }
-
-                        Rectangle {
-                            width: (parent.width - orText.width - 32) / 2
-                            height: 1
-                            color: "#333344"
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
-                    // Manual setup button
-                    Rectangle {
-                        width: parent.width
-                        height: 48
-                        radius: 12
-                        color: "transparent"
-                        border.width: 1
-                        border.color: "#333344"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Set up manually"
-                            color: "#888888"
-                            font.pixelSize: 14 * textScale
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: {
-                                Haptic.click()
-                                setupView.showManualSetup = true
-                            }
-                        }
-                    }
-                }
-
-                // Manual Setup Form (shown after OAuth complete or manual button click)
-                Column {
-                    width: parent.width
-                    spacing: 16
-                    visible: setupView.showManualSetup
-
-                    // Back button
-                    Rectangle {
-                        width: 80
-                        height: 36
-                        radius: 8
-                        color: "transparent"
-
-                        Row {
-                            anchors.centerIn: parent
-                            spacing: 4
-                            Text {
-                                text: "←"
-                                color: "#888888"
-                                font.pixelSize: 16
-                            }
-                            Text {
-                                text: "Back"
-                                color: "#888888"
-                                font.pixelSize: 14 * textScale
-                            }
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: {
-                                Haptic.click()
-                                setupView.showManualSetup = false
-                                setupView.oauthTokens = null
-                            }
-                        }
-                    }
-                }
-
-                // Name field (visible in manual setup mode)
-                Text {
-                    text: "Your Name"
-                    color: "#888888"
-                    font.pixelSize: 14 * textScale
-                    visible: setupView.showManualSetup
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: 56
-                    radius: 12
-                    color: "#1a1a2e"
-                    visible: setupView.showManualSetup
-
-                    TextInput {
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        color: "#ffffff"
-                        font.pixelSize: 16 * textScale
-                        verticalAlignment: TextInput.AlignVCenter
-                        text: setupView.setupName
-                        onTextChanged: setupView.setupName = text
-
-                        Text {
-                            anchors.fill: parent
-                            verticalAlignment: Text.AlignVCenter
-                            text: "John Doe"
-                            color: "#555555"
-                            font.pixelSize: 16 * textScale
-                            visible: !parent.text && !parent.focus
-                        }
-                    }
-                }
-
-                // Email field
-                Text {
-                    text: "Email Address"
-                    color: "#888888"
-                    font.pixelSize: 14 * textScale
-                    visible: setupView.showManualSetup
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: 56
-                    radius: 12
-                    color: "#1a1a2e"
-                    visible: setupView.showManualSetup
-
-                    TextInput {
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        color: "#ffffff"
-                        font.pixelSize: 16 * textScale
-                        verticalAlignment: TextInput.AlignVCenter
-                        inputMethodHints: Qt.ImhEmailCharactersOnly
-                        text: setupView.setupEmail
-                        onTextChanged: {
-                            setupView.setupEmail = text
-                            autoDetectServers(text)
-                        }
-
-                        Text {
-                            anchors.fill: parent
-                            verticalAlignment: Text.AlignVCenter
-                            text: "you@example.com"
-                            color: "#555555"
-                            font.pixelSize: 16 * textScale
-                            visible: !parent.text && !parent.focus
-                        }
-                    }
-                }
-
-                // Password field (hidden when using OAuth)
-                Text {
-                    text: "Password"
-                    color: "#888888"
-                    font.pixelSize: 14 * textScale
-                    visible: setupView.showManualSetup && setupView.oauthTokens === null
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: 56
-                    radius: 12
-                    color: "#1a1a2e"
-                    visible: setupView.showManualSetup && setupView.oauthTokens === null
-
-                    TextInput {
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        color: "#ffffff"
-                        font.pixelSize: 16 * textScale
-                        verticalAlignment: TextInput.AlignVCenter
-                        echoMode: TextInput.Password
-                        text: setupView.setupPassword
-                        onTextChanged: setupView.setupPassword = text
-
-                        Text {
-                            anchors.fill: parent
-                            verticalAlignment: Text.AlignVCenter
-                            text: "Password or App Password"
-                            color: "#555555"
-                            font.pixelSize: 16 * textScale
-                            visible: !parent.text && !parent.focus
-                        }
-                    }
-                }
-
-                // OAuth info banner (shown when OAuth tokens exist)
-                Rectangle {
-                    width: parent.width
-                    height: 56
-                    radius: 12
-                    color: "#1a3a2e"
-                    visible: setupView.showManualSetup && setupView.oauthTokens !== null
-
-                    Row {
-                        anchors.centerIn: parent
-                        spacing: 8
-                        Text {
-                            text: "✓"
-                            color: "#4CAF50"
-                            font.pixelSize: 20
-                        }
-                        Text {
-                            text: "Signed in with " + (setupView.oauthProvider === "gmail" ? "Google" : "Microsoft")
-                            color: "#aaffaa"
-                            font.pixelSize: 14 * textScale
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-                }
-
-                // Advanced settings toggle
-                Rectangle {
-                    width: parent.width
-                    height: 48
-                    color: "transparent"
-                    visible: setupView.showManualSetup
-
-                    RowLayout {
-                        anchors.fill: parent
-                        spacing: 8
-
-                        Text {
-                            text: "Advanced Settings"
-                            color: "#e94560"
-                            font.pixelSize: 14 * textScale
-                        }
-
-                        Text {
-                            text: setupView.showAdvanced ? "▲" : "▼"
-                            color: "#e94560"
-                            font.pixelSize: 12
-                        }
-
-                        Item { Layout.fillWidth: true }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            setupView.showAdvanced = !setupView.showAdvanced
-                            Haptic.tap()
-                        }
-                    }
-                }
-
-                // Advanced settings
-                Column {
-                    width: parent.width
-                    spacing: 16
-                    visible: setupView.showManualSetup && setupView.showAdvanced
-
-                    // IMAP Server
-                    Text {
-                        text: "IMAP Server"
-                        color: "#888888"
-                        font.pixelSize: 14 * textScale
-                    }
-
-                    RowLayout {
-                        width: parent.width
-                        spacing: 8
-
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 56
-                            radius: 12
-                            color: "#1a1a2e"
-
-                            TextInput {
-                                anchors.fill: parent
-                                anchors.margins: 16
-                                color: "#ffffff"
-                                font.pixelSize: 16 * textScale
-                                verticalAlignment: TextInput.AlignVCenter
-                                text: setupView.setupImapServer
-                                onTextChanged: setupView.setupImapServer = text
-
-                                Text {
-                                    anchors.fill: parent
-                                    verticalAlignment: Text.AlignVCenter
-                                    text: "imap.example.com"
-                                    color: "#555555"
-                                    font.pixelSize: 16 * textScale
-                                    visible: !parent.text && !parent.focus
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            width: 80
-                            height: 56
-                            radius: 12
-                            color: "#1a1a2e"
-
-                            TextInput {
-                                anchors.fill: parent
-                                anchors.margins: 16
-                                color: "#ffffff"
-                                font.pixelSize: 16 * textScale
-                                verticalAlignment: TextInput.AlignVCenter
-                                horizontalAlignment: TextInput.AlignHCenter
-                                inputMethodHints: Qt.ImhDigitsOnly
-                                text: setupView.setupImapPort.toString()
-                                onTextChanged: setupView.setupImapPort = parseInt(text) || 993
-                            }
-                        }
-                    }
-
-                    // SMTP Server
-                    Text {
-                        text: "SMTP Server"
-                        color: "#888888"
-                        font.pixelSize: 14 * textScale
-                    }
-
-                    RowLayout {
-                        width: parent.width
-                        spacing: 8
-
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 56
-                            radius: 12
-                            color: "#1a1a2e"
-
-                            TextInput {
-                                anchors.fill: parent
-                                anchors.margins: 16
-                                color: "#ffffff"
-                                font.pixelSize: 16 * textScale
-                                verticalAlignment: TextInput.AlignVCenter
-                                text: setupView.setupSmtpServer
-                                onTextChanged: setupView.setupSmtpServer = text
-
-                                Text {
-                                    anchors.fill: parent
-                                    verticalAlignment: Text.AlignVCenter
-                                    text: "smtp.example.com"
-                                    color: "#555555"
-                                    font.pixelSize: 16 * textScale
-                                    visible: !parent.text && !parent.focus
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            width: 80
-                            height: 56
-                            radius: 12
-                            color: "#1a1a2e"
-
-                            TextInput {
-                                anchors.fill: parent
-                                anchors.margins: 16
-                                color: "#ffffff"
-                                font.pixelSize: 16 * textScale
-                                verticalAlignment: TextInput.AlignVCenter
-                                horizontalAlignment: TextInput.AlignHCenter
-                                inputMethodHints: Qt.ImhDigitsOnly
-                                text: setupView.setupSmtpPort.toString()
-                                onTextChanged: setupView.setupSmtpPort = parseInt(text) || 587
-                            }
-                        }
-                    }
-                }
-
-                Item { height: 24; width: 1; visible: setupView.showManualSetup }
-
-                // Error message
-                Text {
-                    width: parent.width
-                    text: errorMessage
-                    color: "#e94560"
-                    font.pixelSize: 14 * textScale
-                    wrapMode: Text.Wrap
-                    visible: errorMessage.length > 0 && setupView.showManualSetup
-                }
-
-                // Add Account button
-                Rectangle {
-                    width: parent.width
-                    height: 64
-                    radius: 32
-                    visible: setupView.showManualSetup
-                    color: loading ? "#555555" : "#e94560"
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: loading ? "Connecting..." : "Add Account"
-                        color: "#ffffff"
-                        font.pixelSize: 18 * textScale
-                        font.weight: Font.Bold
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        enabled: !loading
-                        onClicked: {
-                            // Check if using OAuth or password auth
-                            if (setupView.oauthTokens !== null) {
-                                // OAuth authentication
-                                if (!setupView.setupEmail) {
-                                    errorMessage = "Please enter your email address"
-                                    return
-                                }
-                                errorMessage = ""
-                                loading = true
-                                sendCommand({
-                                    action: "oauth_add_account",
-                                    provider: setupView.oauthProvider,
-                                    email: setupView.setupEmail,
-                                    name: setupView.setupName || setupView.setupEmail.split('@')[0],
-                                    tokens: setupView.oauthTokens
-                                })
-
-                                responseTimer.responseHandler = function(resp) {
-                                    loading = false
-                                    if (resp && resp.success) {
-                                        // Reset setup view state
-                                        setupView.oauthTokens = null
-                                        setupView.showManualSetup = false
-                                        setupView.setupEmail = ""
-                                        setupView.setupName = ""
-                                        loadAccounts()
-                                    } else {
-                                        errorMessage = resp ? (resp.error || "Failed to add account") : "Failed to add account"
-                                    }
-                                }
-                                responseTimer.start()
-                            } else {
-                                // Password authentication
-                                if (!setupView.setupEmail || !setupView.setupPassword) {
-                                    errorMessage = "Please enter email and password"
-                                    return
-                                }
-                                errorMessage = ""
-                                addAccount({
-                                    email: setupView.setupEmail,
-                                    name: setupView.setupName || setupView.setupEmail.split('@')[0],
-                                    username: setupView.setupEmail,
-                                    password: setupView.setupPassword,
-                                    imap_server: setupView.setupImapServer,
-                                    imap_port: setupView.setupImapPort,
-                                    smtp_server: setupView.setupSmtpServer,
-                                    smtp_port: setupView.setupSmtpPort,
-                                    use_ssl: true
-                                })
-                            }
-                            Haptic.click()
-                        }
-                    }
-                }
-
-                // Provider hints (only for manual password setup)
-                Item { height: 16; width: 1; visible: setupView.showManualSetup && setupView.oauthTokens === null }
-
-                Text {
-                    width: parent.width
-                    text: "For Gmail, use an App Password from your Google Account security settings."
-                    color: "#666666"
-                    font.pixelSize: 12 * textScale
-                    wrapMode: Text.Wrap
-                    visible: setupView.showManualSetup && setupView.oauthTokens === null
                 }
             }
-        }
 
-        function autoDetectServers(email) {
-            var domain = email.split('@')[1] || ""
-            domain = domain.toLowerCase()
+            // Provider icons hint
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 24
+                opacity: 0.6
 
-            if (domain === "gmail.com") {
-                setupImapServer = "imap.gmail.com"
-                setupSmtpServer = "smtp.gmail.com"
-                setupImapPort = 993
-                setupSmtpPort = 587
-            } else if (domain === "outlook.com" || domain === "hotmail.com" || domain === "live.com") {
-                setupImapServer = "outlook.office365.com"
-                setupSmtpServer = "smtp.office365.com"
-                setupImapPort = 993
-                setupSmtpPort = 587
-            } else if (domain === "yahoo.com") {
-                setupImapServer = "imap.mail.yahoo.com"
-                setupSmtpServer = "smtp.mail.yahoo.com"
-                setupImapPort = 993
-                setupSmtpPort = 587
-            } else if (domain === "icloud.com" || domain === "me.com" || domain === "mac.com") {
-                setupImapServer = "imap.mail.me.com"
-                setupSmtpServer = "smtp.mail.me.com"
-                setupImapPort = 993
-                setupSmtpPort = 587
-            } else if (domain) {
-                setupImapServer = "imap." + domain
-                setupSmtpServer = "smtp." + domain
+                // Google
+                Rectangle {
+                    width: 40
+                    height: 40
+                    radius: 20
+                    color: "#1a1a2e"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "G"
+                        font.pixelSize: 18
+                        font.weight: Font.Bold
+                        color: "#4285f4"
+                    }
+                }
+
+                // Microsoft
+                Rectangle {
+                    width: 40
+                    height: 40
+                    radius: 20
+                    color: "#1a1a2e"
+                    Grid {
+                        anchors.centerIn: parent
+                        columns: 2
+                        spacing: 1
+                        Rectangle { width: 8; height: 8; color: "#f25022" }
+                        Rectangle { width: 8; height: 8; color: "#7fba00" }
+                        Rectangle { width: 8; height: 8; color: "#00a4ef" }
+                        Rectangle { width: 8; height: 8; color: "#ffb900" }
+                    }
+                }
+
+                // Yahoo
+                Rectangle {
+                    width: 40
+                    height: 40
+                    radius: 20
+                    color: "#1a1a2e"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Y!"
+                        font.pixelSize: 14
+                        font.weight: Font.Bold
+                        color: "#6001d2"
+                    }
+                }
+
+                // iCloud
+                Rectangle {
+                    width: 40
+                    height: 40
+                    radius: 20
+                    color: "#1a1a2e"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "☁"
+                        font.pixelSize: 20
+                        color: "#999999"
+                    }
+                }
+            }
+
+            // Error message
+            Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: errorMessage
+                color: "#e94560"
+                font.pixelSize: 14 * textScale
+                wrapMode: Text.Wrap
+                visible: errorMessage.length > 0
             }
         }
 
