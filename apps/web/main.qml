@@ -9,8 +9,8 @@ Window {
     id: root
     visible: true
     visibility: Window.FullScreen
-    width: 1080
-    height: 2400
+    width: Screen.width
+    height: Screen.height
     title: "Web"
     color: "#0a0a0f"
 
