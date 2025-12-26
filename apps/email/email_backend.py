@@ -2,6 +2,7 @@
 """
 Flick Email Backend
 Handles IMAP/SMTP operations for the email app
+Supports OAuth2 authentication for Gmail, Outlook, etc.
 """
 
 import os
@@ -21,8 +22,15 @@ import threading
 import time
 import hashlib
 import re
+import base64
+import subprocess
+import webbrowser
 from datetime import datetime
 from pathlib import Path
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlencode, parse_qs, urlparse
+import urllib.request
+import urllib.error
 
 # State directory
 STATE_DIR = Path.home() / ".local" / "state" / "flick" / "email"
@@ -37,6 +45,293 @@ APP_NOTIFICATIONS_FILE = FLICK_STATE_DIR / "app_notifications.json"
 # Ensure directories exist
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+# OAuth2 Configuration
+OAUTH_TOKENS_FILE = STATE_DIR / "oauth_tokens.json"
+
+# OAuth2 providers configuration
+# Users need to create their own OAuth app credentials
+OAUTH_PROVIDERS = {
+    "gmail": {
+        "name": "Google",
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "scopes": ["https://mail.google.com/"],
+        "imap_server": "imap.gmail.com",
+        "imap_port": 993,
+        "smtp_server": "smtp.gmail.com",
+        "smtp_port": 587,
+    },
+    "outlook": {
+        "name": "Microsoft",
+        "auth_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+        "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+        "scopes": ["https://outlook.office.com/IMAP.AccessAsUser.All",
+                   "https://outlook.office.com/SMTP.Send", "offline_access"],
+        "imap_server": "outlook.office365.com",
+        "imap_port": 993,
+        "smtp_server": "smtp.office365.com",
+        "smtp_port": 587,
+    }
+}
+
+# Default OAuth client IDs (users should replace with their own for production)
+# These are placeholder values - real OAuth requires registered app credentials
+OAUTH_CREDENTIALS_FILE = STATE_DIR / "oauth_credentials.json"
+
+
+class OAuthCallbackHandler(BaseHTTPRequestHandler):
+    """HTTP handler to receive OAuth callback"""
+
+    auth_code = None
+    error = None
+
+    def do_GET(self):
+        """Handle the OAuth redirect callback"""
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+
+        if 'code' in params:
+            OAuthCallbackHandler.auth_code = params['code'][0]
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(b"""
+                <html><body style="font-family: sans-serif; text-align: center; padding: 50px;">
+                <h1 style="color: #4CAF50;">Authentication Successful!</h1>
+                <p>You can close this window and return to the Flick Email app.</p>
+                </body></html>
+            """)
+        elif 'error' in params:
+            OAuthCallbackHandler.error = params.get('error_description', params['error'])[0]
+            self.send_response(400)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(f"""
+                <html><body style="font-family: sans-serif; text-align: center; padding: 50px;">
+                <h1 style="color: #f44336;">Authentication Failed</h1>
+                <p>{OAuthCallbackHandler.error}</p>
+                <p>Please close this window and try again.</p>
+                </body></html>
+            """.encode())
+        else:
+            self.send_response(400)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        """Suppress HTTP server logs"""
+        pass
+
+
+class OAuth2Manager:
+    """Manages OAuth2 authentication flow"""
+
+    def __init__(self):
+        self.credentials = self.load_credentials()
+        self.tokens = self.load_tokens()
+
+    def load_credentials(self):
+        """Load OAuth client credentials"""
+        if OAUTH_CREDENTIALS_FILE.exists():
+            try:
+                with open(OAUTH_CREDENTIALS_FILE) as f:
+                    return json.load(f)
+            except:
+                pass
+        return {}
+
+    def save_credentials(self, provider, client_id, client_secret=""):
+        """Save OAuth client credentials for a provider"""
+        self.credentials[provider] = {
+            "client_id": client_id,
+            "client_secret": client_secret
+        }
+        with open(OAUTH_CREDENTIALS_FILE, 'w') as f:
+            json.dump(self.credentials, f, indent=2)
+
+    def load_tokens(self):
+        """Load saved OAuth tokens"""
+        if OAUTH_TOKENS_FILE.exists():
+            try:
+                with open(OAUTH_TOKENS_FILE) as f:
+                    return json.load(f)
+            except:
+                pass
+        return {}
+
+    def save_tokens(self):
+        """Save OAuth tokens"""
+        with open(OAUTH_TOKENS_FILE, 'w') as f:
+            json.dump(self.tokens, f, indent=2)
+
+    def get_auth_url(self, provider, redirect_uri):
+        """Generate OAuth authorization URL"""
+        if provider not in OAUTH_PROVIDERS:
+            return None
+        if provider not in self.credentials:
+            return None
+
+        config = OAUTH_PROVIDERS[provider]
+        creds = self.credentials[provider]
+
+        params = {
+            "client_id": creds["client_id"],
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": " ".join(config["scopes"]),
+            "access_type": "offline",
+            "prompt": "consent"
+        }
+
+        return f"{config['auth_url']}?{urlencode(params)}"
+
+    def exchange_code(self, provider, code, redirect_uri):
+        """Exchange authorization code for tokens"""
+        if provider not in OAUTH_PROVIDERS:
+            return None
+        if provider not in self.credentials:
+            return None
+
+        config = OAUTH_PROVIDERS[provider]
+        creds = self.credentials[provider]
+
+        data = {
+            "client_id": creds["client_id"],
+            "client_secret": creds.get("client_secret", ""),
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code"
+        }
+
+        try:
+            req = urllib.request.Request(
+                config["token_url"],
+                data=urlencode(data).encode(),
+                headers={"Content-Type": "application/x-www-form-urlencoded"}
+            )
+            with urllib.request.urlopen(req) as resp:
+                tokens = json.loads(resp.read().decode())
+                return tokens
+        except urllib.error.HTTPError as e:
+            log(f"Token exchange failed: {e.read().decode()}")
+            return None
+
+    def refresh_token(self, provider, email_addr):
+        """Refresh an expired access token"""
+        key = f"{provider}:{email_addr}"
+        if key not in self.tokens:
+            return None
+
+        token_data = self.tokens[key]
+        if "refresh_token" not in token_data:
+            return None
+
+        if provider not in self.credentials:
+            return None
+
+        config = OAUTH_PROVIDERS[provider]
+        creds = self.credentials[provider]
+
+        data = {
+            "client_id": creds["client_id"],
+            "client_secret": creds.get("client_secret", ""),
+            "refresh_token": token_data["refresh_token"],
+            "grant_type": "refresh_token"
+        }
+
+        try:
+            req = urllib.request.Request(
+                config["token_url"],
+                data=urlencode(data).encode(),
+                headers={"Content-Type": "application/x-www-form-urlencoded"}
+            )
+            with urllib.request.urlopen(req) as resp:
+                new_tokens = json.loads(resp.read().decode())
+                # Update stored tokens (keep refresh_token if not returned)
+                token_data["access_token"] = new_tokens["access_token"]
+                if "refresh_token" in new_tokens:
+                    token_data["refresh_token"] = new_tokens["refresh_token"]
+                token_data["expires_at"] = time.time() + new_tokens.get("expires_in", 3600)
+                self.save_tokens()
+                return token_data["access_token"]
+        except urllib.error.HTTPError as e:
+            log(f"Token refresh failed: {e.read().decode()}")
+            return None
+
+    def get_access_token(self, provider, email_addr):
+        """Get a valid access token, refreshing if needed"""
+        key = f"{provider}:{email_addr}"
+        if key not in self.tokens:
+            return None
+
+        token_data = self.tokens[key]
+
+        # Check if token is expired (with 5 min buffer)
+        if token_data.get("expires_at", 0) < time.time() + 300:
+            return self.refresh_token(provider, email_addr)
+
+        return token_data.get("access_token")
+
+    def store_tokens(self, provider, email_addr, tokens):
+        """Store tokens for an account"""
+        key = f"{provider}:{email_addr}"
+        self.tokens[key] = {
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens.get("refresh_token"),
+            "expires_at": time.time() + tokens.get("expires_in", 3600)
+        }
+        self.save_tokens()
+
+    def start_auth_flow(self, provider):
+        """Start OAuth flow - returns auth URL and starts local server"""
+        redirect_port = 8089
+        redirect_uri = f"http://localhost:{redirect_port}/callback"
+
+        auth_url = self.get_auth_url(provider, redirect_uri)
+        if not auth_url:
+            return {"error": "OAuth not configured for this provider"}
+
+        # Reset handler state
+        OAuthCallbackHandler.auth_code = None
+        OAuthCallbackHandler.error = None
+
+        # Start local server in background thread
+        server = HTTPServer(('localhost', redirect_port), OAuthCallbackHandler)
+        server.timeout = 120  # 2 minute timeout
+
+        def run_server():
+            while OAuthCallbackHandler.auth_code is None and OAuthCallbackHandler.error is None:
+                server.handle_request()
+
+        server_thread = threading.Thread(target=run_server, daemon=True)
+        server_thread.start()
+
+        # Open browser
+        try:
+            subprocess.run(['xdg-open', auth_url], check=True)
+        except:
+            webbrowser.open(auth_url)
+
+        # Wait for callback (up to 2 minutes)
+        server_thread.join(timeout=120)
+        server.server_close()
+
+        if OAuthCallbackHandler.error:
+            return {"error": OAuthCallbackHandler.error}
+
+        if not OAuthCallbackHandler.auth_code:
+            return {"error": "Authentication timed out"}
+
+        # Exchange code for tokens
+        tokens = self.exchange_code(provider, OAuthCallbackHandler.auth_code, redirect_uri)
+        if not tokens:
+            return {"error": "Failed to get access token"}
+
+        return {"tokens": tokens, "redirect_uri": redirect_uri}
+
+
+# Global OAuth manager
+oauth_manager = OAuth2Manager()
 
 
 def log(msg):
@@ -165,6 +460,12 @@ def get_attachments(msg):
     return attachments
 
 
+def generate_oauth2_string(username, access_token):
+    """Generate XOAUTH2 authentication string"""
+    auth_string = f"user={username}\x01auth=Bearer {access_token}\x01\x01"
+    return base64.b64encode(auth_string.encode()).decode()
+
+
 class EmailAccount:
     """Represents an email account with IMAP/SMTP settings"""
 
@@ -179,6 +480,8 @@ class EmailAccount:
         self.username = data.get("username", "")
         self.password = data.get("password", "")
         self.use_ssl = data.get("use_ssl", True)
+        self.auth_type = data.get("auth_type", "password")  # "password" or "oauth2"
+        self.oauth_provider = data.get("oauth_provider", "")  # "gmail", "outlook", etc.
         self.imap_conn = None
 
     def to_dict(self):
@@ -192,19 +495,35 @@ class EmailAccount:
             "smtp_port": self.smtp_port,
             "username": self.username,
             "password": self.password,
-            "use_ssl": self.use_ssl
+            "use_ssl": self.use_ssl,
+            "auth_type": self.auth_type,
+            "oauth_provider": self.oauth_provider
         }
 
     def connect_imap(self):
-        """Connect to IMAP server"""
+        """Connect to IMAP server (supports both password and OAuth2)"""
         try:
             if self.use_ssl:
                 self.imap_conn = imaplib.IMAP4_SSL(self.imap_server, self.imap_port)
             else:
                 self.imap_conn = imaplib.IMAP4(self.imap_server, self.imap_port)
 
-            self.imap_conn.login(self.username, self.password)
-            log(f"Connected to IMAP: {self.imap_server}")
+            if self.auth_type == "oauth2" and self.oauth_provider:
+                # OAuth2 authentication using XOAUTH2
+                access_token = oauth_manager.get_access_token(self.oauth_provider, self.email)
+                if not access_token:
+                    log(f"Failed to get OAuth access token for {self.email}")
+                    self.imap_conn = None
+                    return False
+
+                auth_string = generate_oauth2_string(self.email, access_token)
+                self.imap_conn.authenticate('XOAUTH2', lambda x: auth_string.encode())
+                log(f"Connected to IMAP with OAuth2: {self.imap_server}")
+            else:
+                # Password authentication
+                self.imap_conn.login(self.username, self.password)
+                log(f"Connected to IMAP: {self.imap_server}")
+
             return True
         except Exception as e:
             log(f"IMAP connection failed: {e}")
@@ -520,13 +839,29 @@ class EmailAccount:
             if self.smtp_port == 465:
                 # SSL
                 with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, context=context) as server:
-                    server.login(self.username, self.password)
+                    if self.auth_type == "oauth2" and self.oauth_provider:
+                        access_token = oauth_manager.get_access_token(self.oauth_provider, self.email)
+                        if access_token:
+                            auth_string = generate_oauth2_string(self.email, access_token)
+                            server.docmd('AUTH', 'XOAUTH2 ' + auth_string)
+                        else:
+                            raise Exception("Failed to get OAuth access token")
+                    else:
+                        server.login(self.username, self.password)
                     server.sendmail(self.email, all_recipients, msg.as_string())
             else:
                 # STARTTLS
                 with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
                     server.starttls(context=context)
-                    server.login(self.username, self.password)
+                    if self.auth_type == "oauth2" and self.oauth_provider:
+                        access_token = oauth_manager.get_access_token(self.oauth_provider, self.email)
+                        if access_token:
+                            auth_string = generate_oauth2_string(self.email, access_token)
+                            server.docmd('AUTH', 'XOAUTH2 ' + auth_string)
+                        else:
+                            raise Exception("Failed to get OAuth access token")
+                    else:
+                        server.login(self.username, self.password)
                     server.sendmail(self.email, all_recipients, msg.as_string())
 
             log(f"Email sent to {to}")
@@ -701,6 +1036,79 @@ class EmailBackend:
 
         elif action == "check_new_emails":
             return self.check_new_emails()
+
+        # OAuth2 commands
+        elif action == "oauth_set_credentials":
+            provider = cmd.get("provider", "")
+            client_id = cmd.get("client_id", "")
+            client_secret = cmd.get("client_secret", "")
+            if provider and client_id:
+                oauth_manager.save_credentials(provider, client_id, client_secret)
+                return {"success": True}
+            return {"error": "Provider and client_id required"}
+
+        elif action == "oauth_get_providers":
+            # Return list of configured OAuth providers
+            providers = []
+            for key, config in OAUTH_PROVIDERS.items():
+                providers.append({
+                    "id": key,
+                    "name": config["name"],
+                    "configured": key in oauth_manager.credentials
+                })
+            return {"providers": providers}
+
+        elif action == "oauth_start_auth":
+            provider = cmd.get("provider", "")
+            if provider not in OAUTH_PROVIDERS:
+                return {"error": f"Unknown provider: {provider}"}
+            if provider not in oauth_manager.credentials:
+                return {"error": f"OAuth not configured for {provider}. Please set client credentials first."}
+
+            result = oauth_manager.start_auth_flow(provider)
+            return result
+
+        elif action == "oauth_add_account":
+            # Add an OAuth-authenticated account
+            provider = cmd.get("provider", "")
+            email_addr = cmd.get("email", "")
+            name = cmd.get("name", "")
+            tokens = cmd.get("tokens", {})
+
+            if not provider or not email_addr or not tokens:
+                return {"error": "Provider, email and tokens required"}
+
+            if provider not in OAUTH_PROVIDERS:
+                return {"error": f"Unknown provider: {provider}"}
+
+            # Store tokens
+            oauth_manager.store_tokens(provider, email_addr, tokens)
+
+            # Create account with OAuth settings
+            config = OAUTH_PROVIDERS[provider]
+            account_data = {
+                "id": hashlib.md5(email_addr.encode()).hexdigest()[:8],
+                "email": email_addr,
+                "name": name or email_addr.split("@")[0],
+                "imap_server": config["imap_server"],
+                "imap_port": config["imap_port"],
+                "smtp_server": config["smtp_server"],
+                "smtp_port": config["smtp_port"],
+                "username": email_addr,
+                "password": "",  # No password needed for OAuth
+                "use_ssl": True,
+                "auth_type": "oauth2",
+                "oauth_provider": provider
+            }
+
+            account = EmailAccount(account_data)
+            if account.connect_imap():
+                account.disconnect_imap()
+                self.accounts.append(account)
+                self.save_accounts()
+                return {"success": True, "id": account.id}
+            else:
+                return {"success": False, "error": "Failed to connect with OAuth"}
 
         return {"error": f"Unknown action: {action}"}
 
