@@ -1996,6 +1996,11 @@ pub fn run() -> Result<()> {
         // Check for haptic requests from apps (via /tmp/flick_haptic)
         state.system.check_app_haptic();
 
+        // Check for app notifications (via ~/.local/state/flick/app_notifications.json)
+        crate::shell::quick_settings::check_app_notifications();
+        // Export notifications for lock screen display
+        crate::shell::quick_settings::export_notifications_for_lockscreen();
+
         // Check for music scan requests from apps (via /tmp/flick_music_scan_request)
         if let Ok(path) = std::fs::read_to_string("/tmp/flick_music_scan_request") {
             let path = path.trim();

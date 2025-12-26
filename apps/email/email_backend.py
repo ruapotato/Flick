@@ -26,10 +26,13 @@ from pathlib import Path
 
 # State directory
 STATE_DIR = Path.home() / ".local" / "state" / "flick" / "email"
+FLICK_STATE_DIR = Path.home() / ".local" / "state" / "flick"
 ACCOUNTS_FILE = STATE_DIR / "accounts.json"
 CACHE_DIR = STATE_DIR / "cache"
 COMMANDS_FILE = STATE_DIR / "commands.json"
 RESPONSE_FILE = STATE_DIR / "response.json"
+SEEN_EMAILS_FILE = STATE_DIR / "seen_emails.json"
+APP_NOTIFICATIONS_FILE = FLICK_STATE_DIR / "app_notifications.json"
 
 # Ensure directories exist
 STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -40,6 +43,46 @@ def log(msg):
     """Log to stderr for debugging"""
     print(f"[EmailBackend] {msg}", file=sys.stderr)
     sys.stderr.flush()
+
+
+def send_notification(app_name, summary, body, urgency="normal"):
+    """Send a notification via the Flick notification system"""
+    try:
+        notification = {
+            "app_name": app_name,
+            "summary": summary,
+            "body": body,
+            "urgency": urgency
+        }
+        data = {"notifications": [notification]}
+        with open(APP_NOTIFICATIONS_FILE, 'w') as f:
+            json.dump(data, f)
+        log(f"Notification sent: {summary}")
+    except Exception as e:
+        log(f"Failed to send notification: {e}")
+
+
+def load_seen_emails():
+    """Load set of seen email IDs"""
+    try:
+        if SEEN_EMAILS_FILE.exists():
+            with open(SEEN_EMAILS_FILE) as f:
+                data = json.load(f)
+                return set(data.get("seen", []))
+    except:
+        pass
+    return set()
+
+
+def save_seen_emails(seen_set):
+    """Save set of seen email IDs"""
+    try:
+        # Keep only last 1000 to prevent file from growing too large
+        seen_list = list(seen_set)[-1000:]
+        with open(SEEN_EMAILS_FILE, 'w') as f:
+            json.dump({"seen": seen_list}, f)
+    except Exception as e:
+        log(f"Failed to save seen emails: {e}")
 
 
 def decode_mime_words(s):
@@ -656,13 +699,73 @@ class EmailBackend:
                 return {"success": True}
             return {"success": False, "error": "Connection failed"}
 
+        elif action == "check_new_emails":
+            return self.check_new_emails()
+
         return {"error": f"Unknown action: {action}"}
+
+    def check_new_emails(self):
+        """Check all accounts for new emails and send notifications"""
+        if not self.accounts:
+            return {"new_count": 0}
+
+        seen = load_seen_emails()
+        new_count = 0
+        new_emails = []
+
+        for account in self.accounts:
+            try:
+                # Get recent emails from INBOX
+                emails = account.get_emails("INBOX", limit=20, offset=0)
+
+                for email_info in emails:
+                    # Create unique ID for this email
+                    email_id = f"{account.id}:{email_info['id']}"
+
+                    if email_id not in seen and not email_info.get('read', True):
+                        # New unread email!
+                        seen.add(email_id)
+                        new_count += 1
+                        new_emails.append({
+                            "account": account.email,
+                            "from": email_info.get("from_name", email_info.get("from_email", "Unknown")),
+                            "subject": email_info.get("subject", "(No Subject)")
+                        })
+
+            except Exception as e:
+                log(f"Failed to check new emails for {account.email}: {e}")
+
+        # Save updated seen list
+        save_seen_emails(seen)
+
+        # Send notification for new emails
+        if new_count > 0:
+            if new_count == 1:
+                email = new_emails[0]
+                send_notification(
+                    "Email",
+                    email["from"],
+                    email["subject"],
+                    "normal"
+                )
+            else:
+                # Multiple new emails
+                send_notification(
+                    "Email",
+                    f"{new_count} new emails",
+                    f"From {new_emails[0]['from']} and others",
+                    "normal"
+                )
+
+        return {"new_count": new_count, "emails": new_emails}
 
     def run(self):
         """Main loop - watch for commands"""
         log("Email backend started")
 
         last_mtime = 0
+        last_check = 0
+        CHECK_INTERVAL = 60  # Check for new emails every 60 seconds
 
         while True:
             try:
@@ -682,6 +785,18 @@ class EmailBackend:
                             json.dump(response, f, indent=2)
 
                         log(f"Response written")
+
+                # Periodic check for new emails (background notifications)
+                now = time.time()
+                if now - last_check >= CHECK_INTERVAL and self.accounts:
+                    last_check = now
+                    log("Background check for new emails...")
+                    try:
+                        result = self.check_new_emails()
+                        if result.get("new_count", 0) > 0:
+                            log(f"Found {result['new_count']} new email(s)")
+                    except Exception as e:
+                        log(f"Background email check failed: {e}")
 
                 time.sleep(0.1)
             except KeyboardInterrupt:

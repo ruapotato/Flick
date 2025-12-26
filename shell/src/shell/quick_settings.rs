@@ -713,3 +713,160 @@ pub fn add_notification(app_name: &str, summary: &str, body: &str) -> Option<u32
         None
     }
 }
+
+/// Helper to add a notification with urgency
+pub fn add_notification_with_urgency(
+    app_name: &str,
+    summary: &str,
+    body: &str,
+    urgency: NotificationUrgency,
+) -> Option<u32> {
+    if let Ok(mut store) = NOTIFICATIONS.lock() {
+        let id = store.next_id;
+        store.next_id += 1;
+        let mut notif = Notification::new(id, app_name, summary, body);
+        notif.urgency = urgency;
+        store.notifications.push(notif);
+        Some(id)
+    } else {
+        None
+    }
+}
+
+/// Helper to dismiss a notification by ID
+pub fn dismiss_notification(id: u32) {
+    if let Ok(mut store) = NOTIFICATIONS.lock() {
+        store.remove(id);
+    }
+}
+
+/// Helper to clear all notifications
+pub fn clear_all_notifications() {
+    if let Ok(mut store) = NOTIFICATIONS.lock() {
+        store.notifications.clear();
+    }
+}
+
+/// App notification JSON format (what apps write)
+#[derive(Debug, Clone, serde::Deserialize)]
+struct AppNotificationRequest {
+    app_name: String,
+    summary: String,
+    body: String,
+    #[serde(default)]
+    urgency: String,  // "low", "normal", "critical"
+    #[serde(default)]
+    id: Option<String>,  // Optional app-specific ID for deduplication
+}
+
+/// Check for new notifications from apps (file-based IPC)
+/// Apps write to ~/.local/state/flick/app_notifications.json
+/// Format: { "notifications": [ { "app_name": "...", "summary": "...", "body": "...", "urgency": "normal" } ] }
+pub fn check_app_notifications() {
+    use std::fs;
+    use std::path::Path;
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/droidian".to_string());
+    let notif_path = format!("{}/.local/state/flick/app_notifications.json", home);
+    let path = Path::new(&notif_path);
+
+    if !path.exists() {
+        return;
+    }
+
+    // Read and immediately delete to prevent re-processing
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    // Only delete if we successfully read
+    let _ = fs::remove_file(path);
+
+    // Parse the JSON
+    #[derive(serde::Deserialize)]
+    struct NotificationFile {
+        #[serde(default)]
+        notifications: Vec<AppNotificationRequest>,
+    }
+
+    let file_data: NotificationFile = match serde_json::from_str(&content) {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!("Failed to parse app_notifications.json: {}", e);
+            return;
+        }
+    };
+
+    // Add each notification
+    for req in file_data.notifications {
+        let urgency = match req.urgency.to_lowercase().as_str() {
+            "low" => NotificationUrgency::Low,
+            "critical" => NotificationUrgency::Critical,
+            _ => NotificationUrgency::Normal,
+        };
+
+        if let Some(id) = add_notification_with_urgency(&req.app_name, &req.summary, &req.body, urgency) {
+            tracing::info!("Added app notification #{}: {} - {}", id, req.app_name, req.summary);
+        }
+    }
+}
+
+/// Export current notifications to a JSON file for lock screen to read
+/// Writes to ~/.local/state/flick/notifications_display.json
+pub fn export_notifications_for_lockscreen() {
+    use std::fs;
+
+    let notifications = if let Ok(store) = NOTIFICATIONS.lock() {
+        store.get_all()
+    } else {
+        return;
+    };
+
+    #[derive(serde::Serialize)]
+    struct NotificationDisplay {
+        id: u32,
+        app_name: String,
+        summary: String,
+        body: String,
+        urgency: String,
+        time_ago: String,
+        timestamp: u64,
+    }
+
+    #[derive(serde::Serialize)]
+    struct DisplayFile {
+        notifications: Vec<NotificationDisplay>,
+        count: usize,
+    }
+
+    let display_notifs: Vec<NotificationDisplay> = notifications.iter().map(|n| {
+        NotificationDisplay {
+            id: n.id,
+            app_name: n.app_name.clone(),
+            summary: n.summary.clone(),
+            body: n.body.clone(),
+            urgency: match n.urgency {
+                NotificationUrgency::Low => "low".to_string(),
+                NotificationUrgency::Normal => "normal".to_string(),
+                NotificationUrgency::Critical => "critical".to_string(),
+            },
+            time_ago: n.time_ago(),
+            timestamp: n.timestamp,
+        }
+    }).collect();
+
+    let file_data = DisplayFile {
+        count: display_notifs.len(),
+        notifications: display_notifs,
+    };
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/droidian".to_string());
+    let state_dir = format!("{}/.local/state/flick", home);
+    let _ = fs::create_dir_all(&state_dir);
+
+    let display_path = format!("{}/notifications_display.json", state_dir);
+    if let Ok(json) = serde_json::to_string_pretty(&file_data) {
+        let _ = fs::write(&display_path, json);
+    }
+}

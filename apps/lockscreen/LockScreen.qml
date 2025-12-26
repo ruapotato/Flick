@@ -124,6 +124,166 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 150 } }
     }
 
+    // Notification display area
+    property var notifications: []
+    property int notificationCount: 0
+
+    Timer {
+        id: notificationRefreshTimer
+        interval: 2000  // Refresh every 2 seconds
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: loadNotifications()
+    }
+
+    function loadNotifications() {
+        var xhr = new XMLHttpRequest()
+        var url = "file://" + stateDir + "/notifications_display.json"
+        xhr.open("GET", url)
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                if (xhr.status === 200 || xhr.status === 0) {
+                    try {
+                        var data = JSON.parse(xhr.responseText)
+                        notifications = data.notifications || []
+                        notificationCount = data.count || 0
+                    } catch (e) {
+                        // File not ready or empty
+                    }
+                }
+            }
+        }
+        xhr.send()
+    }
+
+    // Notifications container (between media controls and swipe hint)
+    Item {
+        id: notificationsContainer
+        z: 5
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: clockMediaControls.visible ? clockMediaControls.bottom : clockContainer.bottom
+        anchors.topMargin: clockMediaControls.visible ? 24 : 60
+        anchors.bottom: swipeHint.top
+        anchors.bottomMargin: 16
+        opacity: showingUnlock ? 0 : (1 - swipeProgress * 1.5)
+        visible: opacity > 0 && notificationCount > 0
+
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+
+        // Notification count badge
+        Text {
+            id: notifHeader
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            font.pixelSize: 14
+            font.weight: Font.Light
+            font.letterSpacing: 1
+            color: "#666688"
+            text: notificationCount + " NOTIFICATION" + (notificationCount !== 1 ? "S" : "")
+        }
+
+        // Scrollable notification list
+        ListView {
+            id: notificationList
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: notifHeader.bottom
+            anchors.topMargin: 12
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: 24
+            anchors.rightMargin: 24
+            clip: true
+            spacing: 12
+            model: notifications
+
+            delegate: Rectangle {
+                width: notificationList.width
+                height: notifContent.height + 24
+                radius: 16
+                color: "#1a1a2e"
+                border.width: 1
+                border.color: modelData.urgency === "critical" ? "#e94560" :
+                              modelData.urgency === "low" ? "#4a6fa5" : "#2a2a4e"
+
+                // Urgency accent bar
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: 4
+                    radius: 2
+                    color: modelData.urgency === "critical" ? "#e94560" :
+                           modelData.urgency === "low" ? "#4a9a5a" : "#4a6fa5"
+                }
+
+                Column {
+                    id: notifContent
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 12
+                    anchors.topMargin: 12
+                    spacing: 4
+
+                    // App name and time row
+                    Item {
+                        width: parent.width
+                        height: 16
+
+                        Text {
+                            anchors.left: parent.left
+                            font.pixelSize: 12
+                            font.weight: Font.Medium
+                            font.letterSpacing: 0.5
+                            color: "#8888aa"
+                            text: modelData.app_name.toUpperCase()
+                        }
+
+                        Text {
+                            anchors.right: parent.right
+                            font.pixelSize: 11
+                            font.weight: Font.Light
+                            color: "#666688"
+                            text: modelData.time_ago
+                        }
+                    }
+
+                    // Summary (title)
+                    Text {
+                        width: parent.width
+                        font.pixelSize: 15
+                        font.weight: Font.Medium
+                        color: "#ffffff"
+                        text: modelData.summary
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                    }
+
+                    // Body
+                    Text {
+                        width: parent.width
+                        font.pixelSize: 13
+                        font.weight: Font.Light
+                        color: "#aaaacc"
+                        text: modelData.body
+                        elide: Text.ElideRight
+                        maximumLineCount: 2
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                // Tap to dismiss (on unlock screen)
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: false  // Disabled on lock screen for now
+                }
+            }
+        }
+    }
+
     // Swipe up hint with animated chevron
     Column {
         id: swipeHint
