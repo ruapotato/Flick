@@ -3105,7 +3105,8 @@ mod gl {
             for (int i = 0; i < 10; i++) {
                 if (i >= u_count) break;
 
-                vec2 center = u_positions[i];
+                // Flip Y since screen coords have Y=0 at top, texture has Y=0 at bottom
+                vec2 center = vec2(u_positions[i].x, 1.0 - u_positions[i].y);
                 float radius = u_params[i].x;
                 float strength = u_params[i].y;
                 float effectType = u_params[i].z;
@@ -3827,13 +3828,14 @@ mod gl {
         }
 
         // Fullscreen quad vertices
+        // Framebuffer has Y=0 at bottom, so use v=0 at bottom, v=1 at top
         #[rustfmt::skip]
         let vertices: [f32; 16] = [
             // Position       // TexCoord
-            -1.0, -1.0,       0.0, 1.0,  // Bottom-left (flip Y for framebuffer)
-             1.0, -1.0,       1.0, 1.0,  // Bottom-right
-            -1.0,  1.0,       0.0, 0.0,  // Top-left
-             1.0,  1.0,       1.0, 0.0,  // Top-right
+            -1.0, -1.0,       0.0, 0.0,  // Bottom-left
+             1.0, -1.0,       1.0, 0.0,  // Bottom-right
+            -1.0,  1.0,       0.0, 1.0,  // Top-left
+             1.0,  1.0,       1.0, 1.0,  // Top-right
         ];
 
         // Set vertex attributes
