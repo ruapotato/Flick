@@ -1098,12 +1098,32 @@ impl Flick {
         }
     }
 
-    /// Get path to compositor settings file
+    /// Get path to effects config file (shared with Settings app)
     fn compositor_settings_path() -> std::path::PathBuf {
-        std::env::var("HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"))
-            .join(".local/state/flick/compositor_settings.json")
+        // Try multiple paths to find the config (same logic as touch_effects.rs)
+        let possible_homes = [
+            std::env::var("SUDO_USER").ok().and_then(|user| {
+                std::fs::read_to_string("/etc/passwd").ok().and_then(|passwd| {
+                    passwd.lines()
+                        .find(|line| line.starts_with(&format!("{}:", user)))
+                        .and_then(|line| line.split(':').nth(5))
+                        .map(|s| s.to_string())
+                })
+            }),
+            Some("/home/droidian".to_string()),
+            std::env::var("HOME").ok(),
+        ];
+
+        possible_homes.iter()
+            .filter_map(|h| h.as_ref())
+            .map(|home| std::path::PathBuf::from(home).join(".local/state/flick/effects_config.json"))
+            .find(|p| p.exists())
+            .unwrap_or_else(|| {
+                std::env::var("HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"))
+                    .join(".local/state/flick/effects_config.json")
+            })
     }
 
     /// Reload settings from config file if enough time has passed

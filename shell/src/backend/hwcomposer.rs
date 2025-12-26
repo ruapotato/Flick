@@ -3088,209 +3088,169 @@ mod gl {
         }
     "#;
 
-    // Distortion fragment shader - fisheye and ripple effects with multiple styles
-    // Maximum 10 simultaneous touch effects
-    // Style: 0=water (blue tint), 1=fire (orange/red), 2=invert (color inversion), 3=snow (white/blue frost)
+    // Distortion fragment shader - each style has UNIQUE distortion AND coloring
+    // Style: 0=water, 1=fire, 2=invert, 3=snow, 4=fart
     const DISTORT_FRAGMENT_SRC: &str = r#"
         precision highp float;
         varying vec2 v_texcoord;
         uniform sampler2D u_texture;
-        uniform vec2 u_positions[10];   // Touch positions (normalized 0-1)
+        uniform vec2 u_positions[10];
         uniform vec4 u_params[10];      // [radius, strength, type, reserved]
-        uniform int u_count;            // Number of active effects
-        uniform float u_aspect;         // Screen aspect ratio (width/height)
-        uniform int u_style;            // Effect style: 0=water, 1=fire, 2=invert, 3=snow
+        uniform int u_count;
+        uniform float u_aspect;
+        uniform int u_style;
 
-        // Pseudo-random noise for effects
         float hash(vec2 p) {
             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
         }
 
         void main() {
             vec2 uv = v_texcoord;
-            vec2 totalOffset = vec2(0.0);
-            float totalInfluence = 0.0;  // Track how much effect is applied for coloring
+            vec2 finalUV = uv;
+            float totalInfluence = 0.0;
 
             for (int i = 0; i < 10; i++) {
                 if (i >= u_count) break;
 
-                // Flip Y since screen coords have Y=0 at top, texture has Y=0 at bottom
                 vec2 center = vec2(u_positions[i].x, 1.0 - u_positions[i].y);
                 float radius = u_params[i].x;
                 float strength = u_params[i].y;
                 float effectType = u_params[i].z;
 
-                // Calculate distance from touch center (aspect-corrected)
                 vec2 delta = uv - center;
                 delta.x *= u_aspect;
                 float dist = length(delta);
+                vec2 dir = dist > 0.001 ? normalize(delta) : vec2(0.0, 1.0);
 
-                if (effectType < 0.5) {
-                    // FISHEYE effect (type 0) - magnify/pull toward center
-                    if (dist < radius && dist > 0.001) {
-                        // Smooth falloff from center to edge
-                        float normalizedDist = dist / radius;
-                        // Fisheye distortion: push pixels away from center (inverse magnify)
-                        float distortion = pow(normalizedDist, 1.0 + strength * 2.0);
-                        vec2 direction = normalize(delta);
-                        // Pull pixels toward center
-                        vec2 offset = direction * (dist - distortion * radius);
-                        offset.x /= u_aspect;
-                        totalOffset += offset * 0.5;
+                bool isFisheye = effectType < 0.5;
+                float progress = isFisheye ? 0.0 : (effectType - 1.0);
+                float effectRadius = isFisheye ? radius : radius;
+                float ringWidth = 0.08 * (1.0 - progress * 0.5);
 
-                        // Calculate influence for color effects (stronger in center)
-                        totalInfluence += (1.0 - normalizedDist) * strength * 2.0;
-                    }
-                } else {
-                    // RIPPLE effect (type 1+) - expanding ring distortion
-                    float progress = effectType - 1.0;  // 0 to 1 progress
-                    float ringRadius = radius;
-                    float ringWidth = 0.08 * (1.0 - progress * 0.5);  // Ring gets thinner
-
-                    // Distance from the ring edge
-                    float ringDist = abs(dist - ringRadius);
-
+                // Calculate base influence
+                float influence = 0.0;
+                if (isFisheye && dist < radius) {
+                    influence = (1.0 - dist / radius) * strength * 2.0;
+                } else if (!isFisheye) {
+                    float ringDist = abs(dist - effectRadius);
                     if (ringDist < ringWidth) {
-                        // Smooth wave shape
                         float wave = 1.0 - ringDist / ringWidth;
-                        wave = wave * wave * (3.0 - 2.0 * wave);  // Smoothstep
-
-                        // Direction from center
-                        vec2 direction = dist > 0.001 ? normalize(delta) : vec2(0.0, 1.0);
-
-                        // Displacement perpendicular to ring (outward then inward)
-                        float phase = (dist < ringRadius) ? 1.0 : -1.0;
-                        vec2 offset = direction * wave * strength * phase * 0.15;
-                        offset.x /= u_aspect;
-                        totalOffset += offset;
-
-                        // Influence for color effects
-                        totalInfluence += wave * strength * (1.0 - progress);
+                        wave = wave * wave * (3.0 - 2.0 * wave);
+                        influence = wave * strength * (1.0 - progress);
                     }
+                }
+
+                if (influence > 0.001) {
+                    totalInfluence += influence;
+                    vec2 offset = vec2(0.0);
+
+                    if (u_style == 0) {
+                        // WATER: Classic ripple rings expanding outward
+                        if (isFisheye) {
+                            float normalizedDist = dist / radius;
+                            float distortion = pow(normalizedDist, 1.0 + strength * 2.0);
+                            offset = dir * (dist - distortion * radius) * 0.5;
+                        } else {
+                            float ringDist = abs(dist - effectRadius);
+                            if (ringDist < ringWidth) {
+                                float wave = 1.0 - ringDist / ringWidth;
+                                wave = wave * wave * (3.0 - 2.0 * wave);
+                                float phase = (dist < effectRadius) ? 1.0 : -1.0;
+                                offset = dir * wave * strength * phase * 0.15;
+                            }
+                        }
+                    } else if (u_style == 1) {
+                        // FIRE: Heat shimmer - wavy upward distortion
+                        float heat = hash(uv * 50.0 + vec2(0.0, progress * 10.0)) * 2.0 - 1.0;
+                        float heat2 = hash(uv * 100.0 - vec2(0.0, progress * 5.0)) * 2.0 - 1.0;
+                        // Flames rise upward with wavering
+                        offset.x = heat * influence * 0.03;
+                        offset.y = -influence * 0.05 + heat2 * influence * 0.02;
+                        // Add outward expansion
+                        offset += dir * influence * 0.02;
+                    } else if (u_style == 2) {
+                        // INVERT: Swirl/vortex twist distortion
+                        float angle = influence * 3.14159 * 0.5; // Twist up to 90 degrees
+                        float s = sin(angle);
+                        float c = cos(angle);
+                        vec2 rotated = vec2(delta.x * c - delta.y * s, delta.x * s + delta.y * c);
+                        offset = (delta - rotated) * 0.3;
+                    } else if (u_style == 3) {
+                        // SNOW: Crystalline faceted distortion
+                        // Hexagonal crystal pattern
+                        float hexAngle = floor(atan(delta.y, delta.x) / 0.5236 + 0.5) * 0.5236;
+                        vec2 crystalDir = vec2(cos(hexAngle), sin(hexAngle));
+                        // Snap to crystal edges
+                        float crystalDist = dot(delta, crystalDir);
+                        offset = crystalDir * (crystalDist - dist) * influence * 0.3;
+                        // Add slight inward pull
+                        offset += dir * influence * 0.02;
+                    } else if (u_style == 4) {
+                        // FART: Bubbling/bulging wobbly distortion
+                        float bubble1 = sin(dist * 40.0 - progress * 20.0) * 0.5 + 0.5;
+                        float bubble2 = sin(dist * 25.0 + progress * 15.0) * 0.5 + 0.5;
+                        float wobble = hash(uv * 30.0 + vec2(progress * 5.0, 0.0));
+                        // Bulging outward with wobble
+                        float bulge = (bubble1 * 0.6 + bubble2 * 0.4) * influence;
+                        offset = dir * bulge * 0.08;
+                        // Add random wobble
+                        offset += vec2(wobble - 0.5, hash(uv * 35.0) - 0.5) * influence * 0.03;
+                    }
+
+                    offset.x /= u_aspect;
+                    finalUV -= offset;
                 }
             }
 
-            // Apply displacement
-            vec2 sampleUV = uv - totalOffset;
+            finalUV = clamp(finalUV, vec2(0.0), vec2(1.0));
+            vec4 color = texture2D(u_texture, finalUV);
 
-            // Clamp to valid texture coordinates
-            sampleUV = clamp(sampleUV, vec2(0.0), vec2(1.0));
-
-            vec4 color = texture2D(u_texture, sampleUV);
-
-            // Apply style-specific color effects
+            // Style-specific coloring
             if (totalInfluence > 0.0) {
-                float influence = clamp(totalInfluence, 0.0, 1.0);
+                float inf = clamp(totalInfluence, 0.0, 1.0);
 
                 if (u_style == 0) {
-                    // WATER: Beautiful caustic ripples with chromatic aberration
-                    float aberration = influence * 0.008;
-                    vec3 chromatic;
-                    chromatic.r = texture2D(u_texture, sampleUV + vec2(aberration, 0.0)).r;
-                    chromatic.g = color.g;
-                    chromatic.b = texture2D(u_texture, sampleUV - vec2(aberration, 0.0)).b;
-                    // Water caustic pattern
-                    float caustic1 = hash(sampleUV * 50.0 + totalOffset * 20.0);
-                    float caustic2 = hash(sampleUV * 80.0 - totalOffset * 15.0);
-                    float caustics = pow(caustic1 * caustic2, 0.5) * 2.0;
-                    // Deep blue water tint with bright caustic highlights
-                    vec3 waterColor = vec3(0.2, 0.5, 0.9);
-                    vec3 result = mix(chromatic, chromatic * waterColor, influence * 0.4);
-                    result += vec3(0.3, 0.6, 1.0) * caustics * influence * 0.3;
-                    color.rgb = result;
+                    // WATER: Blue tint with caustic highlights
+                    float caustic = hash(finalUV * 60.0) * hash(finalUV * 90.0);
+                    caustic = pow(caustic, 0.4) * 1.5;
+                    color.rgb = mix(color.rgb, color.rgb * vec3(0.7, 0.85, 1.0), inf * 0.5);
+                    color.rgb += vec3(0.2, 0.4, 0.8) * caustic * inf * 0.4;
                 } else if (u_style == 1) {
-                    // FIRE: Realistic flames - yellow core to orange to red edges
-                    float n1 = hash(sampleUV * 60.0 + totalOffset * 40.0);
-                    float n2 = hash(sampleUV * 120.0 - totalOffset * 30.0);
-                    float n3 = hash(sampleUV * 200.0 + vec2(totalOffset.y, -totalOffset.x) * 25.0);
-                    float flame = (n1 * 0.5 + n2 * 0.3 + n3 * 0.2);
-                    // Flame gradient: white-yellow core -> orange -> red -> dark
-                    float intensity = influence * (0.7 + flame * 0.6);
-                    vec3 flameColor;
-                    if (intensity > 0.8) {
-                        flameColor = mix(vec3(1.0, 0.9, 0.4), vec3(1.0, 1.0, 0.9), (intensity - 0.8) * 5.0);
-                    } else if (intensity > 0.5) {
-                        flameColor = mix(vec3(1.0, 0.4, 0.0), vec3(1.0, 0.9, 0.4), (intensity - 0.5) * 3.33);
-                    } else if (intensity > 0.2) {
-                        flameColor = mix(vec3(0.6, 0.1, 0.0), vec3(1.0, 0.4, 0.0), (intensity - 0.2) * 3.33);
-                    } else {
-                        flameColor = mix(vec3(0.1, 0.0, 0.0), vec3(0.6, 0.1, 0.0), intensity * 5.0);
-                    }
-                    // Additive blend for glow effect
-                    color.rgb = color.rgb + flameColor * influence * 1.2;
+                    // FIRE: Hot flames - white core to red edges
+                    float n = hash(finalUV * 80.0);
+                    float intensity = inf * (0.6 + n * 0.4);
+                    vec3 flame = intensity > 0.7 ? mix(vec3(1.0, 0.6, 0.0), vec3(1.0, 1.0, 0.7), (intensity-0.7)*3.3)
+                               : intensity > 0.4 ? mix(vec3(0.9, 0.2, 0.0), vec3(1.0, 0.6, 0.0), (intensity-0.4)*3.3)
+                               : mix(vec3(0.3, 0.0, 0.0), vec3(0.9, 0.2, 0.0), intensity*2.5);
+                    color.rgb += flame * inf * 1.5;
                     color.rgb = min(color.rgb, vec3(1.0));
                 } else if (u_style == 2) {
-                    // INVERT: Psychedelic with chromatic split and edge glow
-                    float aberration = influence * 0.015;
-                    vec3 shifted;
-                    shifted.r = texture2D(u_texture, sampleUV + vec2(aberration, aberration * 0.5)).r;
-                    shifted.g = texture2D(u_texture, sampleUV).g;
-                    shifted.b = texture2D(u_texture, sampleUV - vec2(aberration, aberration * 0.5)).b;
-                    // Invert with hue shift
-                    vec3 inverted = vec3(1.0) - shifted;
-                    // Add rainbow edge effect
-                    float edge = length(totalOffset) * 20.0;
-                    vec3 rainbow = vec3(
-                        sin(edge * 3.14159 + 0.0) * 0.5 + 0.5,
-                        sin(edge * 3.14159 + 2.094) * 0.5 + 0.5,
-                        sin(edge * 3.14159 + 4.188) * 0.5 + 0.5
-                    );
-                    vec3 result = mix(shifted, inverted, influence);
-                    result = mix(result, rainbow, influence * 0.3);
-                    // Boost contrast
-                    result = (result - 0.5) * (1.0 + influence * 0.5) + 0.5;
-                    color.rgb = clamp(result, 0.0, 1.0);
+                    // INVERT: Full color inversion with rainbow edge
+                    vec3 inv = vec3(1.0) - color.rgb;
+                    float edge = length(finalUV - uv) * 30.0;
+                    vec3 rainbow = vec3(sin(edge)*0.5+0.5, sin(edge+2.1)*0.5+0.5, sin(edge+4.2)*0.5+0.5);
+                    color.rgb = mix(color.rgb, inv, inf * 0.9);
+                    color.rgb = mix(color.rgb, rainbow, inf * 0.25);
                 } else if (u_style == 3) {
-                    // SNOW: Ice crystals with frost patterns and bright sparkles
-                    // Multi-layer frost pattern
-                    float frost1 = hash(sampleUV * 100.0);
-                    float frost2 = hash(sampleUV * 200.0 + 0.5);
-                    float frost3 = hash(sampleUV * 400.0 + 0.25);
-                    float frostPattern = frost1 * 0.5 + frost2 * 0.3 + frost3 * 0.2;
-                    frostPattern = pow(frostPattern, 0.7);
-                    // Ice colors - white to pale blue
-                    vec3 iceWhite = vec3(1.0, 1.0, 1.0);
-                    vec3 iceBlue = vec3(0.7, 0.85, 1.0);
-                    vec3 iceCrystal = mix(iceBlue, iceWhite, frostPattern);
-                    // Sparkles - bright points
-                    float sparkle = hash(sampleUV * 500.0);
-                    sparkle = pow(sparkle, 20.0) * 3.0;  // Very bright, very sparse
-                    // Desaturate original for frozen look
-                    float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-                    vec3 frozen = vec3(gray) * iceBlue;
-                    // Blend layers
-                    vec3 result = mix(color.rgb, frozen, influence * 0.6);
-                    result = mix(result, iceCrystal, influence * frostPattern * 0.5);
-                    result += vec3(1.0) * sparkle * influence;
-                    color.rgb = min(result, vec3(1.0));
+                    // SNOW: Frost white with ice sparkles
+                    float sparkle = pow(hash(finalUV * 400.0), 15.0) * 2.5;
+                    float frost = hash(finalUV * 150.0) * 0.3 + 0.7;
+                    vec3 ice = vec3(0.9, 0.95, 1.0) * frost;
+                    float gray = dot(color.rgb, vec3(0.3, 0.6, 0.1));
+                    color.rgb = mix(color.rgb, vec3(gray) * vec3(0.8, 0.9, 1.0), inf * 0.7);
+                    color.rgb = mix(color.rgb, ice, inf * 0.4);
+                    color.rgb += sparkle * inf;
+                    color.rgb = min(color.rgb, vec3(1.0));
                 } else if (u_style == 4) {
-                    // FART: Thick green gas clouds with swirling turbulence
-                    // Multi-octave turbulence for realistic gas
-                    float t1 = hash(sampleUV * 30.0 + totalOffset * 20.0);
-                    float t2 = hash(sampleUV * 60.0 - totalOffset * 15.0);
-                    float t3 = hash(sampleUV * 120.0 + vec2(-totalOffset.y, totalOffset.x) * 10.0);
-                    float t4 = hash(sampleUV * 240.0 + totalOffset * 5.0);
-                    float turbulence = t1 * 0.4 + t2 * 0.3 + t3 * 0.2 + t4 * 0.1;
-                    // Gas color gradient - sickly yellow-green to darker green
-                    vec3 gasLight = vec3(0.7, 0.85, 0.2);   // Yellow-green
-                    vec3 gasMid = vec3(0.3, 0.7, 0.15);     // Green
-                    vec3 gasDark = vec3(0.15, 0.4, 0.1);    // Dark green
-                    vec3 gasColor;
-                    if (turbulence > 0.6) {
-                        gasColor = mix(gasMid, gasLight, (turbulence - 0.6) * 2.5);
-                    } else if (turbulence > 0.3) {
-                        gasColor = mix(gasDark, gasMid, (turbulence - 0.3) * 3.33);
-                    } else {
-                        gasColor = gasDark;
-                    }
-                    // Swirl effect
-                    float swirl = hash(sampleUV * 80.0 + vec2(totalOffset.y * 2.0, -totalOffset.x * 2.0));
-                    gasColor = mix(gasColor, gasColor * 1.3, swirl * 0.4);
-                    // Semi-transparent gas overlay
-                    float density = influence * (0.6 + turbulence * 0.4);
-                    color.rgb = mix(color.rgb, gasColor, density * 0.75);
-                    // Slight color shift to surrounding area
-                    color.rgb *= mix(vec3(1.0), vec3(1.0, 1.02, 0.95), influence * 0.2);
+                    // FART: Sickly green gas clouds
+                    float t1 = hash(finalUV * 25.0);
+                    float t2 = hash(finalUV * 50.0);
+                    float turb = t1 * 0.6 + t2 * 0.4;
+                    vec3 gas = mix(vec3(0.2, 0.5, 0.1), vec3(0.6, 0.8, 0.2), turb);
+                    // Thick opaque gas
+                    color.rgb = mix(color.rgb, gas, inf * 0.85);
+                    // Slight darkening at edges
+                    color.rgb *= mix(vec3(1.0), vec3(0.8, 0.9, 0.7), inf * 0.3);
                 }
             }
 
