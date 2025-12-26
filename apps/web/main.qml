@@ -8,8 +8,7 @@ import "../shared"
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2340
+    visibility: Window.FullScreen
     title: "Web"
     color: "#0a0a0f"
 
