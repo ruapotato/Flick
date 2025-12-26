@@ -7,12 +7,13 @@ Page {
 
     // Touch effect settings
     property bool touchEffectsEnabled: true
-    property int touchEffectStyle: 0     // 0=water, 1=fire, 2=invert, 3=snow
+    property int touchEffectStyle: 0     // 0=water, 1=snow, 2=ascii
     property real fisheyeSize: 0.16
     property real fisheyeStrength: 0.13
     property real rippleSize: 0.30
     property real rippleStrength: 0.07
     property real rippleDuration: 0.5
+    property real asciiDensity: 8.0      // ASCII character density (4-16)
 
     // System event effects
     property bool volumeRippleEnabled: true      // Edge ripple on volume change
@@ -46,6 +47,7 @@ Page {
                 if (config.ripple_size !== undefined) rippleSize = config.ripple_size
                 if (config.ripple_strength !== undefined) rippleStrength = config.ripple_strength
                 if (config.ripple_duration !== undefined) rippleDuration = config.ripple_duration
+                if (config.ascii_density !== undefined) asciiDensity = config.ascii_density
                 // System effects
                 if (config.volume_ripple_enabled !== undefined) volumeRippleEnabled = config.volume_ripple_enabled
                 if (config.notification_ripple_enabled !== undefined) notificationRippleEnabled = config.notification_ripple_enabled
@@ -72,6 +74,7 @@ Page {
             ripple_size: rippleSize,
             ripple_strength: rippleStrength,
             ripple_duration: rippleDuration,
+            ascii_density: asciiDensity,
             // System effects
             volume_ripple_enabled: volumeRippleEnabled,
             notification_ripple_enabled: notificationRippleEnabled,
@@ -221,9 +224,9 @@ Page {
                 width: settingsColumn.width
                 title: "Touch Distortion"
                 subtitle: "Fisheye lens & ripple effects"
-                icon: ["💧", "🔥", "🔄", "❄️", "💨"][touchEffectStyle] || "💧"
+                icon: ["💧", "❄️", "📟"][touchEffectStyle] || "💧"
                 checked: touchEffectsEnabled
-                accentColor: ["#4a9eff", "#ff6b35", "#9966ff", "#88ddff", "#7aab4a"][touchEffectStyle] || "#4a9eff"
+                accentColor: ["#4a9eff", "#88ddff", "#00ff00"][touchEffectStyle] || "#4a9eff"
                 onToggled: {
                     touchEffectsEnabled = !touchEffectsEnabled
                     saveConfig()
@@ -252,20 +255,18 @@ Page {
 
                     Row {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 8
+                        spacing: 16
 
                         Repeater {
                             model: [
                                 { icon: "💧", label: "Water", color: "#4a9eff" },
-                                { icon: "🔥", label: "Fire", color: "#ff6b35" },
-                                { icon: "🔄", label: "Invert", color: "#9966ff" },
                                 { icon: "❄️", label: "Snow", color: "#88ddff" },
-                                { icon: "💨", label: "Fart", color: "#7aab4a" }
+                                { icon: "📟", label: "ASCII", color: "#00ff00" }
                             ]
 
                             Rectangle {
-                                width: 58
-                                height: 52
+                                width: 80
+                                height: 56
                                 radius: 14
                                 color: touchEffectStyle === index ? Qt.darker(modelData.color, 2) : "#1a1a28"
                                 border.color: touchEffectStyle === index ? modelData.color : "#2a2a3e"
@@ -273,18 +274,18 @@ Page {
 
                                 Column {
                                     anchors.centerIn: parent
-                                    spacing: 2
+                                    spacing: 4
 
                                     Text {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: modelData.icon
-                                        font.pixelSize: 18
+                                        font.pixelSize: 22
                                     }
 
                                     Text {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: modelData.label
-                                        font.pixelSize: 9
+                                        font.pixelSize: 11
                                         color: touchEffectStyle === index ? "#ffffff" : "#666677"
                                     }
                                 }
@@ -351,47 +352,44 @@ Page {
                     spacing: 8
 
                     Text {
-                        text: "Test Effects"
+                        text: "Quick Switch"
                         font.pixelSize: 14
                         color: "#888899"
                     }
 
                     Row {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 8
+                        spacing: 16
 
                         Repeater {
                             model: [
                                 { icon: "💧", label: "Water", style: 0, color: "#4a9eff" },
-                                { icon: "🔥", label: "Fire", style: 1, color: "#ff6b35" },
-                                { icon: "🔄", label: "Invert", style: 2, color: "#9966ff" },
-                                { icon: "❄️", label: "Snow", style: 3, color: "#88ddff" },
-                                { icon: "💨", label: "Fart", style: 4, color: "#7aab4a" }
+                                { icon: "❄️", label: "Snow", style: 1, color: "#88ddff" },
+                                { icon: "📟", label: "ASCII", style: 2, color: "#00ff00" }
                             ]
 
                             Rectangle {
-                                width: 54
-                                height: 42
-                                radius: 10
+                                width: 80
+                                height: 48
+                                radius: 12
                                 color: testArea.pressed ? Qt.darker(modelData.color, 1.5) : "#1a1a28"
-                                border.color: modelData.color
-                                border.width: 1
+                                border.color: touchEffectStyle === modelData.style ? modelData.color : "#2a2a3e"
+                                border.width: touchEffectStyle === modelData.style ? 2 : 1
 
-                                Column {
+                                Row {
                                     anchors.centerIn: parent
-                                    spacing: 1
+                                    spacing: 6
 
                                     Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
                                         text: modelData.icon
-                                        font.pixelSize: 16
+                                        font.pixelSize: 18
                                     }
 
                                     Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
                                         text: modelData.label
-                                        font.pixelSize: 8
-                                        color: "#888899"
+                                        font.pixelSize: 12
+                                        color: touchEffectStyle === modelData.style ? "#ffffff" : "#888899"
+                                        anchors.verticalCenter: parent.verticalCenter
                                     }
                                 }
 
@@ -399,25 +397,28 @@ Page {
                                     id: testArea
                                     anchors.fill: parent
                                     onClicked: {
-                                        // Temporarily switch to this style and trigger a test
-                                        var oldStyle = touchEffectStyle
                                         touchEffectStyle = modelData.style
                                         saveConfig()
-                                        // Flash feedback
-                                        parent.color = modelData.color
-                                        flashTimer.start()
                                     }
-                                }
-
-                                Timer {
-                                    id: flashTimer
-                                    interval: 200
-                                    onTriggered: parent.color = "#1a1a28"
                                 }
                             }
                         }
                     }
                 }
+            }
+
+            // ASCII density slider (only shown when ASCII mode is selected)
+            EffectSliderCard {
+                width: settingsColumn.width
+                visible: touchEffectsEnabled && touchEffectStyle === 2
+                title: "ASCII Settings"
+                icon: "📟"
+
+                sliders: [
+                    { label: "Density", value: asciiDensity, min: 4.0, max: 16.0, color: "#00ff00", suffix: "x",
+                      onChanged: function(v) { asciiDensity = v } }
+                ]
+                onSave: saveConfig()
             }
 
             Item { height: 16 }
@@ -804,7 +805,13 @@ Page {
                         }
                         Item { width: parent.width - 80; height: 1 }
                         Text {
-                            text: (modelData.suffix === "s" ? modelData.value.toFixed(1) : (modelData.value * 100).toFixed(0)) + (modelData.suffix || "%")
+                            text: {
+                                if (modelData.suffix === "s" || modelData.suffix === "x") {
+                                    return modelData.value.toFixed(1) + (modelData.suffix || "")
+                                } else {
+                                    return (modelData.value * 100).toFixed(0) + (modelData.suffix || "%")
+                                }
+                            }
                             font.pixelSize: 13
                             font.weight: Font.Bold
                             color: modelData.color

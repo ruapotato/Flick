@@ -3069,6 +3069,7 @@ mod gl {
     static mut DISTORT_UNIFORM_COUNT: i32 = -1;
     static mut DISTORT_UNIFORM_ASPECT: i32 = -1;
     static mut DISTORT_UNIFORM_STYLE: i32 = -1;
+    static mut DISTORT_UNIFORM_DENSITY: i32 = -1;
 
     // Vertex shader - simple pass-through
     const VERTEX_SHADER_SRC: &str = r#"
@@ -3092,7 +3093,7 @@ mod gl {
     "#;
 
     // Distortion fragment shader - STABLE version
-    // Style: 0=water, 1=fire, 2=invert, 3=snow, 4=fart (all use same stable base)
+    // Style: 0=water, 1=snow, 2=ascii (libaa style)
     const DISTORT_FRAGMENT_SRC: &str = r#"
         precision highp float;
         varying vec2 v_texcoord;
@@ -3102,13 +3103,129 @@ mod gl {
         uniform int u_count;
         uniform float u_aspect;
         uniform int u_style;
+        uniform float u_density;
 
         float hash(vec2 p) {
             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
         }
 
+        // ASCII character patterns - procedurally rendered
+        // Characters: space . : - = + * # @ (10 levels)
+        float getAsciiChar(float lum, vec2 cellUV) {
+            int charIdx = int(lum * 9.99);
+            float cx = cellUV.x;
+            float cy = cellUV.y;
+
+            // Space (charIdx 0) - return nothing
+            if (charIdx == 0) return 0.0;
+
+            // Period . (charIdx 1) - small dot at bottom center
+            if (charIdx == 1) {
+                if (cx > 0.35 && cx < 0.65 && cy > 0.1 && cy < 0.3) return 1.0;
+                return 0.0;
+            }
+
+            // Colon : (charIdx 2) - two dots
+            if (charIdx == 2) {
+                if (cx > 0.35 && cx < 0.65) {
+                    if ((cy > 0.2 && cy < 0.4) || (cy > 0.6 && cy < 0.8)) return 1.0;
+                }
+                return 0.0;
+            }
+
+            // Dash - (charIdx 3) - horizontal line middle
+            if (charIdx == 3) {
+                if (cy > 0.4 && cy < 0.6 && cx > 0.15 && cx < 0.85) return 1.0;
+                return 0.0;
+            }
+
+            // Equals = (charIdx 4) - two horizontal lines
+            if (charIdx == 4) {
+                if (cx > 0.15 && cx < 0.85) {
+                    if ((cy > 0.3 && cy < 0.45) || (cy > 0.55 && cy < 0.7)) return 1.0;
+                }
+                return 0.0;
+            }
+
+            // Plus + (charIdx 5) - cross
+            if (charIdx == 5) {
+                if ((cy > 0.4 && cy < 0.6 && cx > 0.15 && cx < 0.85) ||
+                    (cx > 0.4 && cx < 0.6 && cy > 0.15 && cy < 0.85)) return 1.0;
+                return 0.0;
+            }
+
+            // Asterisk * (charIdx 6) - star pattern
+            if (charIdx == 6) {
+                vec2 c = vec2(0.5, 0.5);
+                float d = length(cellUV - c);
+                if (d < 0.35) {
+                    float angle = atan(cellUV.y - 0.5, cellUV.x - 0.5);
+                    float spike = abs(sin(angle * 3.0));
+                    if (spike > 0.5 || d < 0.1) return 1.0;
+                }
+                return 0.0;
+            }
+
+            // Hash # (charIdx 7) - grid pattern
+            if (charIdx == 7) {
+                if ((cx > 0.25 && cx < 0.4) || (cx > 0.6 && cx < 0.75)) {
+                    if (cy > 0.15 && cy < 0.85) return 1.0;
+                }
+                if ((cy > 0.25 && cy < 0.4) || (cy > 0.6 && cy < 0.75)) {
+                    if (cx > 0.15 && cx < 0.85) return 1.0;
+                }
+                return 0.0;
+            }
+
+            // At @ (charIdx 8) - circle with center
+            if (charIdx == 8) {
+                vec2 c = vec2(0.5, 0.5);
+                float d = length(cellUV - c);
+                if (d > 0.25 && d < 0.4) return 1.0;
+                if (d < 0.15) return 1.0;
+                if (cx > 0.5 && cy > 0.3 && cy < 0.5 && d < 0.35) return 1.0;
+                return 0.0;
+            }
+
+            // Block (charIdx 9) - solid block
+            if (charIdx >= 9) {
+                if (cx > 0.1 && cx < 0.9 && cy > 0.1 && cy < 0.9) return 1.0;
+                return 0.0;
+            }
+
+            return 0.0;
+        }
+
         void main() {
             vec2 uv = v_texcoord;
+
+            // For ASCII mode, render entire screen as ASCII art
+            if (u_style == 2) {
+                // Calculate cell size based on density (higher = smaller cells)
+                float cellSize = 1.0 / u_density;
+                float cellAspect = u_aspect; // Adjust for screen aspect
+
+                // Find which cell this pixel is in
+                vec2 cellCoord = floor(uv / vec2(cellSize / cellAspect, cellSize));
+                vec2 cellUV = fract(uv / vec2(cellSize / cellAspect, cellSize));
+
+                // Sample center of the cell to get luminance
+                vec2 cellCenter = (cellCoord + 0.5) * vec2(cellSize / cellAspect, cellSize);
+                vec4 sampleColor = texture2D(u_texture, cellCenter);
+                float lum = dot(sampleColor.rgb, vec3(0.299, 0.587, 0.114));
+
+                // Get ASCII character pattern
+                float charPattern = getAsciiChar(lum, cellUV);
+
+                // Render: character color based on original, background dark
+                vec3 charColor = sampleColor.rgb * 1.2; // Slightly brighter
+                vec3 bgColor = vec3(0.02, 0.02, 0.03);  // Near black
+
+                gl_FragColor = vec4(mix(bgColor, charColor, charPattern), 1.0);
+                return;
+            }
+
+            // Normal distortion effects (water/snow)
             vec2 totalOffset = vec2(0.0);
             float totalInf = 0.0;
 
@@ -3170,26 +3287,12 @@ mod gl {
                     // WATER: Blue tint
                     color.rgb = mix(color.rgb, color.rgb * vec3(0.8, 0.9, 1.2), inf * 0.5);
                 } else if (u_style == 1) {
-                    // FIRE: Orange/red glow
-                    vec3 fire = vec3(1.0, 0.5, 0.1) * inf;
-                    color.rgb = color.rgb + fire * 0.8;
-                    color.rgb = min(color.rgb, vec3(1.0));
-                } else if (u_style == 2) {
-                    // INVERT: Color inversion
-                    vec3 inv = vec3(1.0) - color.rgb;
-                    color.rgb = mix(color.rgb, inv, inf);
-                } else if (u_style == 3) {
-                    // SNOW: White frost
+                    // SNOW: White frost with sparkles
                     float sparkle = pow(hash(sampleUV * 200.0), 8.0);
                     vec3 frost = vec3(0.9, 0.95, 1.0);
                     color.rgb = mix(color.rgb, frost, inf * 0.6);
                     color.rgb += sparkle * inf * 0.5;
                     color.rgb = min(color.rgb, vec3(1.0));
-                } else if (u_style == 4) {
-                    // FART: Green gas
-                    float n = hash(sampleUV * 30.0 + totalOffset * 10.0);
-                    vec3 gas = mix(vec3(0.3, 0.6, 0.1), vec3(0.5, 0.7, 0.2), n);
-                    color.rgb = mix(color.rgb, gas, inf * 0.7);
                 }
             }
 
@@ -3300,6 +3403,7 @@ mod gl {
             let count_uni = CString::new("u_count").unwrap();
             let aspect_uni = CString::new("u_aspect").unwrap();
             let style_uni = CString::new("u_style").unwrap();
+            let density_uni = CString::new("u_density").unwrap();
 
             if let Some(f) = FN_GET_ATTRIB_LOCATION {
                 DISTORT_ATTR_POSITION = f(program, pos_name.as_ptr());
@@ -3312,11 +3416,12 @@ mod gl {
                 DISTORT_UNIFORM_COUNT = f(program, count_uni.as_ptr());
                 DISTORT_UNIFORM_ASPECT = f(program, aspect_uni.as_ptr());
                 DISTORT_UNIFORM_STYLE = f(program, style_uni.as_ptr());
+                DISTORT_UNIFORM_DENSITY = f(program, density_uni.as_ptr());
             }
 
-            tracing::info!("Distortion shader created: program={}, positions={}, params={}, count={}, aspect={}, style={}",
+            tracing::info!("Distortion shader created: program={}, positions={}, params={}, count={}, aspect={}, style={}, density={}",
                 DISTORT_PROGRAM, DISTORT_UNIFORM_POSITIONS, DISTORT_UNIFORM_PARAMS,
-                DISTORT_UNIFORM_COUNT, DISTORT_UNIFORM_ASPECT, DISTORT_UNIFORM_STYLE);
+                DISTORT_UNIFORM_COUNT, DISTORT_UNIFORM_ASPECT, DISTORT_UNIFORM_STYLE, DISTORT_UNIFORM_DENSITY);
         }
 
         INITIALIZED = true;
@@ -3867,6 +3972,7 @@ mod gl {
         if let Some(f) = FN_UNIFORM1F {
             let aspect = screen_width as f32 / screen_height as f32;
             f(DISTORT_UNIFORM_ASPECT, aspect);
+            f(DISTORT_UNIFORM_DENSITY, shader_data.ascii_density);
         }
 
         // Fullscreen quad vertices

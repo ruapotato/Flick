@@ -17,19 +17,15 @@ pub const MAX_TOUCH_EFFECTS: usize = 10;
 pub enum EffectStyle {
     #[default]
     Water = 0,   // Blue water ripple
-    Fire = 1,    // Orange/red fire effect
-    Invert = 2,  // Color inversion ripple
-    Snow = 3,    // White/blue snow/frost effect
-    Fart = 4,    // Green gas cloud effect
+    Snow = 1,    // White/blue snow/frost effect
+    Ascii = 2,   // ASCII art mode (libaa style)
 }
 
 impl From<i32> for EffectStyle {
     fn from(v: i32) -> Self {
         match v {
-            1 => EffectStyle::Fire,
-            2 => EffectStyle::Invert,
-            3 => EffectStyle::Snow,
-            4 => EffectStyle::Fart,
+            1 => EffectStyle::Snow,
+            2 => EffectStyle::Ascii,
             _ => EffectStyle::Water,
         }
     }
@@ -38,12 +34,13 @@ impl From<i32> for EffectStyle {
 /// Configurable effect parameters
 #[derive(Clone, Debug)]
 pub struct EffectConfig {
-    pub effect_style: EffectStyle, // Visual style (water/fire/invert/snow)
+    pub effect_style: EffectStyle, // Visual style (water/snow/ascii)
     pub fisheye_size: f32,      // Radius as fraction of screen (0.05 - 0.30)
     pub fisheye_strength: f32,  // Distortion strength (0.0 - 0.50)
     pub ripple_size: f32,       // Max radius as fraction of screen (0.10 - 0.50)
     pub ripple_strength: f32,   // Distortion strength (0.0 - 0.50)
     pub ripple_duration: f32,   // Duration in seconds (0.2 - 1.0)
+    pub ascii_density: f32,     // ASCII character density (4.0 - 16.0, lower = larger chars)
 }
 
 impl Default for EffectConfig {
@@ -55,6 +52,7 @@ impl Default for EffectConfig {
             ripple_size: 0.30,       // 30% of screen
             ripple_strength: 0.07,   // 7% distortion (subtle)
             ripple_duration: 0.5,    // 0.5 seconds
+            ascii_density: 8.0,      // Medium density
         }
     }
 }
@@ -114,6 +112,10 @@ impl EffectConfig {
                         .and_then(|v| v.as_f64())
                         .map(|v| v as f32)
                         .unwrap_or(0.5),
+                    ascii_density: json.get("ascii_density")
+                        .and_then(|v| v.as_f64())
+                        .map(|v| v as f32)
+                        .unwrap_or(8.0),
                 };
             }
         }
@@ -304,6 +306,7 @@ impl TouchEffectManager {
     pub fn get_shader_data(&self, screen_width: f64, screen_height: f64) -> TouchEffectShaderData {
         let mut data = TouchEffectShaderData::default();
         data.effect_style = self.config.effect_style as i32;
+        data.ascii_density = self.config.ascii_density;
 
         for (i, effect) in self.effects.iter().take(MAX_TOUCH_EFFECTS).enumerate() {
             let (x, y, radius, strength, type_flag) = effect.get_shader_params(screen_width, screen_height, &self.config);
@@ -329,8 +332,10 @@ pub struct TouchEffectShaderData {
     pub params: [f32; MAX_TOUCH_EFFECTS * 4],
     /// Number of active effects
     pub count: i32,
-    /// Effect style: 0=water, 1=fire, 2=invert, 3=snow
+    /// Effect style: 0=water, 1=snow, 2=ascii
     pub effect_style: i32,
+    /// ASCII character density (for style 2)
+    pub ascii_density: f32,
 }
 
 impl Default for TouchEffectShaderData {
@@ -340,6 +345,7 @@ impl Default for TouchEffectShaderData {
             params: [0.0; MAX_TOUCH_EFFECTS * 4],
             count: 0,
             effect_style: 0,
+            ascii_density: 8.0,
         }
     }
 }
