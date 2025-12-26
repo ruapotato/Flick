@@ -126,10 +126,10 @@ where
         let wlegl = data_init.init(resource, ());
         info!("android_wlegl bound by client");
 
-        // Send supported HAL formats to client
-        // This lets the client know which formats it can use for buffers
-        AndroidWleglState::send_formats(&wlegl);
-        info!("android_wlegl: sent format events to client");
+        // NOTE: Format events cause client to crash - wayland-scanner issue
+        // The client disconnects immediately after receiving format events
+        // Clients seem to work without them (they probe formats themselves)
+        let _ = wlegl;
     }
 }
 
