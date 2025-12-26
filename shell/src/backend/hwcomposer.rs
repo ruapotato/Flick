@@ -1998,6 +1998,8 @@ pub fn run() -> Result<()> {
 
         // Check for app notifications (via ~/.local/state/flick/app_notifications.json)
         crate::shell::quick_settings::check_app_notifications();
+        // Check for dismiss requests from lock screen
+        crate::shell::quick_settings::check_dismiss_requests();
         // Export notifications for lock screen display
         crate::shell::quick_settings::export_notifications_for_lockscreen();
 

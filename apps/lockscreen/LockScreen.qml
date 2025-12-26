@@ -200,6 +200,9 @@ Item {
 
                 Rectangle {
                     id: notifCard
+                    property int notifIndex: index
+                    property real swipeOffset: notifSwipeOffsets[index] || 0
+                    x: swipeOffset
                     width: notificationList.width - 48
                     height: notifContent.height + 24
                     radius: 16
@@ -207,6 +210,10 @@ Item {
                     border.width: 1
                     border.color: modelData.urgency === "critical" ? "#e94560" :
                                   modelData.urgency === "low" ? "#4a6fa5" : "#2a2a4e"
+                    opacity: 1 - Math.abs(swipeOffset) / (lockScreen.width * 0.5)
+
+                    Behavior on x { NumberAnimation { duration: 100 } }
+                    Behavior on opacity { NumberAnimation { duration: 100 } }
 
                     // Urgency accent bar
                     Rectangle {
@@ -316,38 +323,128 @@ Item {
         }
     }
 
-    // Swipe gesture handler
+    // Swipe gesture handler - handles both unlock (vertical) and dismiss (horizontal)
     MouseArea {
         id: swipeArea
         anchors.fill: parent
         enabled: !showingUnlock
+        property real startX: 0
         property real startY: 0
         property bool isDragging: false
+        property bool isHorizontal: false
+        property bool gestureDecided: false
+        property int touchedNotifIndex: -1
 
         onPressed: {
+            startX = mouse.x
             startY = mouse.y
             isDragging = true
+            isHorizontal = false
+            gestureDecided = false
+            touchedNotifIndex = findNotificationAt(mouse.x, mouse.y)
         }
 
         onPositionChanged: {
-            if (isDragging) {
-                var dragDist = startY - mouse.y
-                swipeProgress = Math.max(0, Math.min(1, dragDist / (lockScreen.height * 0.3)))
+            if (!isDragging) return
 
-                if (swipeProgress > 0.7) {
-                    isDragging = false
-                    showingUnlock = true
-                    swipeProgress = 0
+            var dx = mouse.x - startX
+            var dy = startY - mouse.y  // Positive = up
+
+            // Decide gesture direction after some movement
+            if (!gestureDecided && (Math.abs(dx) > 20 || Math.abs(dy) > 20)) {
+                gestureDecided = true
+                // Only allow horizontal if touching a notification
+                isHorizontal = touchedNotifIndex >= 0 && Math.abs(dx) > Math.abs(dy)
+            }
+
+            if (gestureDecided) {
+                if (isHorizontal && touchedNotifIndex >= 0) {
+                    // Horizontal swipe on notification - update notification position
+                    updateNotificationSwipe(touchedNotifIndex, dx)
+                } else {
+                    // Vertical swipe - unlock gesture
+                    swipeProgress = Math.max(0, Math.min(1, dy / (lockScreen.height * 0.3)))
+
+                    if (swipeProgress > 0.7) {
+                        isDragging = false
+                        showingUnlock = true
+                        swipeProgress = 0
+                    }
                 }
             }
         }
 
         onReleased: {
+            if (isHorizontal && touchedNotifIndex >= 0) {
+                // Check if should dismiss
+                finishNotificationSwipe(touchedNotifIndex)
+            }
+
             isDragging = false
+            gestureDecided = false
+            isHorizontal = false
+            touchedNotifIndex = -1
+
             if (!showingUnlock) {
                 swipeProgress = 0
             }
         }
+    }
+
+    // Find which notification index was touched (if any)
+    function findNotificationAt(x, y) {
+        if (!notificationsContainer.visible || notifications.length === 0) return -1
+
+        // Calculate notification area bounds
+        var listTop = notificationsContainer.y + notifHeader.height + 12
+        var cardHeight = 90  // Approximate height
+        var spacing = 12
+
+        for (var i = 0; i < notifications.length; i++) {
+            var cardTop = listTop + i * (cardHeight + spacing)
+            var cardBottom = cardTop + cardHeight
+
+            if (y >= cardTop && y <= cardBottom && x >= 24 && x <= lockScreen.width - 24) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    // Track notification swipe offsets
+    property var notifSwipeOffsets: []
+
+    function updateNotificationSwipe(index, dx) {
+        // Ensure array is big enough
+        while (notifSwipeOffsets.length <= index) {
+            notifSwipeOffsets.push(0)
+        }
+        notifSwipeOffsets[index] = dx
+        notifSwipeOffsetsChanged()
+    }
+
+    function finishNotificationSwipe(index) {
+        if (index < 0 || index >= notifSwipeOffsets.length) return
+
+        var offset = notifSwipeOffsets[index]
+        if (Math.abs(offset) > lockScreen.width * 0.3) {
+            // Dismiss this notification
+            dismissNotification(notifications[index].id)
+        }
+        // Reset offset
+        notifSwipeOffsets[index] = 0
+        notifSwipeOffsetsChanged()
+    }
+
+    function dismissNotification(notifId) {
+        console.log("Dismissing notification:", notifId)
+        // Write dismiss request to file
+        var xhr = new XMLHttpRequest()
+        var url = "file://" + stateDir + "/dismiss_notification"
+        xhr.open("PUT", url)
+        xhr.send(notifId.toString())
+        // Reload notifications after a brief delay
+        Qt.callLater(loadNotifications)
     }
 
     // Unlock overlay - slides up from bottom

@@ -472,8 +472,11 @@ impl QuickSettingsPanel {
         }
 
         let notifications = if let Ok(store) = NOTIFICATIONS.lock() {
-            store.get_all()
+            let notifs = store.get_all();
+            tracing::debug!("Quick settings: {} notifications in store", notifs.len());
+            notifs
         } else {
+            tracing::warn!("Quick settings: Failed to lock NOTIFICATIONS");
             Vec::new()
         };
 
@@ -809,6 +812,34 @@ pub fn check_app_notifications() {
         if let Some(id) = add_notification_with_urgency(&req.app_name, &req.summary, &req.body, urgency) {
             tracing::info!("Added app notification #{}: {} - {}", id, req.app_name, req.summary);
         }
+    }
+}
+
+/// Check for dismiss requests from lock screen
+/// Reads from ~/.local/state/flick/dismiss_notification
+pub fn check_dismiss_requests() {
+    use std::fs;
+    use std::path::Path;
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/droidian".to_string());
+    let dismiss_path = format!("{}/.local/state/flick/dismiss_notification", home);
+    let path = Path::new(&dismiss_path);
+
+    if !path.exists() {
+        return;
+    }
+
+    // Read and delete
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let _ = fs::remove_file(path);
+
+    // Parse notification ID
+    if let Ok(id) = content.trim().parse::<u32>() {
+        tracing::info!("Dismissing notification #{}", id);
+        dismiss_notification(id);
     }
 }
 
