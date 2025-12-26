@@ -355,198 +355,703 @@ Window {
         }
     }
 
-    // ==================== Setup View (Add Account via GNOME Online Accounts) ====================
+    // ==================== Setup View (Add Account with App Password) ====================
     Rectangle {
         id: setupView
         anchors.fill: parent
         color: "#0a0a0f"
         visible: currentView === "setup"
 
-        property bool addingAccount: false
+        // Setup state
+        property string setupStep: "provider"  // "provider", "instructions", "form"
+        property string selectedProvider: ""
+        property string setupEmail: ""
+        property string setupPassword: ""
+        property string setupName: ""
+        property string setupImapServer: ""
+        property int setupImapPort: 993
+        property string setupSmtpServer: ""
+        property int setupSmtpPort: 587
+        property bool showAdvanced: false
 
-        function launchAccountSetup() {
-            addingAccount = true
+        // Provider configurations
+        readonly property var providers: ({
+            "gmail": {
+                "name": "Gmail",
+                "color": "#4285f4",
+                "icon": "G",
+                "imap": "imap.gmail.com",
+                "smtp": "smtp.gmail.com",
+                "appPasswordUrl": "https://myaccount.google.com/apppasswords",
+                "instructions": [
+                    "1. Tap 'Get App Password' below",
+                    "2. Sign in to your Google Account",
+                    "3. You may need to enable 2-Step Verification first",
+                    "4. Select 'Mail' and your device",
+                    "5. Copy the 16-character password",
+                    "6. Paste it in this app"
+                ]
+            },
+            "outlook": {
+                "name": "Outlook / Hotmail",
+                "color": "#0078d4",
+                "icon": "O",
+                "imap": "outlook.office365.com",
+                "smtp": "smtp.office365.com",
+                "appPasswordUrl": "https://account.live.com/proofs/AppPassword",
+                "instructions": [
+                    "1. Tap 'Get App Password' below",
+                    "2. Sign in to your Microsoft Account",
+                    "3. Go to Security > Advanced security",
+                    "4. Enable Two-step verification if needed",
+                    "5. Create a new App password",
+                    "6. Copy and paste it here"
+                ]
+            },
+            "yahoo": {
+                "name": "Yahoo Mail",
+                "color": "#6001d2",
+                "icon": "Y!",
+                "imap": "imap.mail.yahoo.com",
+                "smtp": "smtp.mail.yahoo.com",
+                "appPasswordUrl": "https://login.yahoo.com/account/security/app-passwords",
+                "instructions": [
+                    "1. Tap 'Get App Password' below",
+                    "2. Sign in to Yahoo",
+                    "3. Generate a new app password",
+                    "4. Select 'Other App' and name it 'Flick'",
+                    "5. Copy the generated password",
+                    "6. Paste it in this app"
+                ]
+            },
+            "icloud": {
+                "name": "iCloud Mail",
+                "color": "#999999",
+                "icon": "☁",
+                "imap": "imap.mail.me.com",
+                "smtp": "smtp.mail.me.com",
+                "appPasswordUrl": "https://appleid.apple.com/account/manage",
+                "instructions": [
+                    "1. Tap 'Get App Password' below",
+                    "2. Sign in to Apple ID",
+                    "3. Go to Sign-In and Security",
+                    "4. Select App-Specific Passwords",
+                    "5. Generate a password for 'Flick Email'",
+                    "6. Copy and paste it here"
+                ]
+            },
+            "other": {
+                "name": "Other (IMAP)",
+                "color": "#888888",
+                "icon": "@",
+                "imap": "",
+                "smtp": "",
+                "appPasswordUrl": "",
+                "instructions": [
+                    "Enter your email server details manually.",
+                    "You'll need your IMAP and SMTP server addresses.",
+                    "Check your email provider's help pages for these settings."
+                ]
+            }
+        })
+
+        function selectProvider(provider) {
+            selectedProvider = provider
+            var config = providers[provider]
+            setupImapServer = config.imap
+            setupSmtpServer = config.smtp
+            setupImapPort = 993
+            setupSmtpPort = 587
+            setupStep = provider === "other" ? "form" : "instructions"
+        }
+
+        function resetSetup() {
+            setupStep = "provider"
+            selectedProvider = ""
+            setupEmail = ""
+            setupPassword = ""
+            setupName = ""
+            showAdvanced = false
             errorMessage = ""
-            sendCommand({ action: "add_account" })
-
-            // Poll for new accounts after launching GOA
-            accountCheckTimer.start()
         }
 
-        Timer {
-            id: accountCheckTimer
-            interval: 2000  // Check every 2 seconds
-            repeat: true
-            property int checks: 0
-
-            onTriggered: {
-                checks++
-                if (checks > 60) {  // 2 minute timeout
-                    stop()
-                    setupView.addingAccount = false
-                    return
-                }
-
-                // Check if accounts were added
-                sendCommand({ action: "get_accounts" })
-                responseTimer.responseHandler = function(resp) {
-                    if (resp && resp.accounts && resp.accounts.length > 0) {
-                        accountCheckTimer.stop()
-                        setupView.addingAccount = false
-                        accounts = resp.accounts
-                        currentAccountId = accounts[0].id
-                        loadFolders()
-                        loadEmails()
-                        currentView = "inbox"
-                    }
-                }
-                responseTimer.start()
+        function submitAccount() {
+            if (!setupEmail || !setupPassword) {
+                errorMessage = "Please enter your email and app password"
+                return
+            }
+            if (!setupImapServer || !setupSmtpServer) {
+                errorMessage = "Please enter server addresses"
+                return
             }
 
-            function start() {
-                checks = 0
-                running = true
-            }
+            errorMessage = ""
+            loading = true
+
+            addAccount({
+                email: setupEmail,
+                name: setupName || setupEmail.split('@')[0],
+                username: setupEmail,
+                password: setupPassword,
+                imap_server: setupImapServer,
+                imap_port: setupImapPort,
+                smtp_server: setupSmtpServer,
+                smtp_port: setupSmtpPort,
+                use_ssl: true
+            })
         }
 
-        Column {
-            anchors.centerIn: parent
-            width: parent.width - 64
-            spacing: 32
+        Flickable {
+            anchors.fill: parent
+            anchors.bottomMargin: 100
+            contentHeight: setupContent.height + 32
+            clip: true
 
-            // Email icon
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "✉"
-                font.pixelSize: 80
-            }
-
-            // Title
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "Add Email Account"
-                color: "#ffffff"
-                font.pixelSize: 28 * textScale
-                font.weight: Font.Bold
-            }
-
-            // Description
-            Text {
+            Column {
+                id: setupContent
                 width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                text: setupView.addingAccount ?
-                    "Complete sign-in in the Settings window..." :
-                    "Sign in with Google, Microsoft, or other providers using your system accounts."
-                color: "#888888"
-                font.pixelSize: 16 * textScale
-                wrapMode: Text.Wrap
-            }
+                padding: 24
+                spacing: 20
 
-            Item { height: 16; width: 1 }
+                // ===== Step 1: Provider Selection =====
+                Column {
+                    width: parent.width - 48
+                    spacing: 16
+                    visible: setupView.setupStep === "provider"
 
-            // Add Account button
-            Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(parent.width, 300)
-                height: 64
-                radius: 32
-                color: setupView.addingAccount ? "#555555" : "#e94560"
-
-                Text {
-                    anchors.centerIn: parent
-                    text: setupView.addingAccount ? "Waiting for sign-in..." : "Add Account"
-                    color: "#ffffff"
-                    font.pixelSize: 18 * textScale
-                    font.weight: Font.Bold
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: !setupView.addingAccount
-                    onClicked: {
-                        Haptic.click()
-                        setupView.launchAccountSetup()
-                    }
-                }
-            }
-
-            // Provider icons hint
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 24
-                opacity: 0.6
-
-                // Google
-                Rectangle {
-                    width: 40
-                    height: 40
-                    radius: 20
-                    color: "#1a1a2e"
                     Text {
-                        anchors.centerIn: parent
-                        text: "G"
-                        font.pixelSize: 18
+                        text: "Add Email Account"
+                        color: "#ffffff"
+                        font.pixelSize: 28 * textScale
                         font.weight: Font.Bold
-                        color: "#4285f4"
                     }
-                }
 
-                // Microsoft
-                Rectangle {
-                    width: 40
-                    height: 40
-                    radius: 20
-                    color: "#1a1a2e"
-                    Grid {
-                        anchors.centerIn: parent
-                        columns: 2
-                        spacing: 1
-                        Rectangle { width: 8; height: 8; color: "#f25022" }
-                        Rectangle { width: 8; height: 8; color: "#7fba00" }
-                        Rectangle { width: 8; height: 8; color: "#00a4ef" }
-                        Rectangle { width: 8; height: 8; color: "#ffb900" }
-                    }
-                }
-
-                // Yahoo
-                Rectangle {
-                    width: 40
-                    height: 40
-                    radius: 20
-                    color: "#1a1a2e"
                     Text {
-                        anchors.centerIn: parent
-                        text: "Y!"
-                        font.pixelSize: 14
+                        width: parent.width
+                        text: "Select your email provider"
+                        color: "#888888"
+                        font.pixelSize: 16 * textScale
+                        wrapMode: Text.Wrap
+                    }
+
+                    Item { height: 8; width: 1 }
+
+                    // Provider buttons
+                    Repeater {
+                        model: ["gmail", "outlook", "yahoo", "icloud", "other"]
+
+                        Rectangle {
+                            width: parent.width
+                            height: 64
+                            radius: 16
+                            color: providerMouse.pressed ? "#2a2a4e" : "#1a1a2e"
+                            border.width: 2
+                            border.color: setupView.providers[modelData].color
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 16
+
+                                Rectangle {
+                                    width: 40
+                                    height: 40
+                                    radius: 20
+                                    color: setupView.providers[modelData].color + "33"
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: setupView.providers[modelData].icon
+                                        font.pixelSize: modelData === "icloud" ? 24 : 18
+                                        font.weight: Font.Bold
+                                        color: setupView.providers[modelData].color
+                                    }
+                                }
+
+                                Text {
+                                    text: setupView.providers[modelData].name
+                                    color: "#ffffff"
+                                    font.pixelSize: 18 * textScale
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            MouseArea {
+                                id: providerMouse
+                                anchors.fill: parent
+                                onClicked: {
+                                    Haptic.click()
+                                    setupView.selectProvider(modelData)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ===== Step 2: Instructions =====
+                Column {
+                    width: parent.width - 48
+                    spacing: 16
+                    visible: setupView.setupStep === "instructions"
+
+                    // Back button
+                    Rectangle {
+                        width: 80
+                        height: 40
+                        radius: 20
+                        color: "transparent"
+
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 8
+                            Text { text: "←"; color: "#888888"; font.pixelSize: 20 }
+                            Text { text: "Back"; color: "#888888"; font.pixelSize: 14 * textScale }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: { Haptic.tap(); setupView.resetSetup() }
+                        }
+                    }
+
+                    // Provider header
+                    Row {
+                        spacing: 16
+
+                        Rectangle {
+                            width: 56
+                            height: 56
+                            radius: 28
+                            color: setupView.providers[setupView.selectedProvider] ?
+                                   setupView.providers[setupView.selectedProvider].color + "33" : "#333"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: setupView.providers[setupView.selectedProvider] ?
+                                      setupView.providers[setupView.selectedProvider].icon : "?"
+                                font.pixelSize: 24
+                                font.weight: Font.Bold
+                                color: setupView.providers[setupView.selectedProvider] ?
+                                       setupView.providers[setupView.selectedProvider].color : "#888"
+                            }
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            Text {
+                                text: setupView.providers[setupView.selectedProvider] ?
+                                      setupView.providers[setupView.selectedProvider].name : ""
+                                color: "#ffffff"
+                                font.pixelSize: 22 * textScale
+                                font.weight: Font.Bold
+                            }
+                            Text {
+                                text: "App Password Required"
+                                color: "#e94560"
+                                font.pixelSize: 14 * textScale
+                            }
+                        }
+                    }
+
+                    Item { height: 8; width: 1 }
+
+                    // Instructions box
+                    Rectangle {
+                        width: parent.width
+                        height: instructionsCol.height + 32
+                        radius: 16
+                        color: "#1a1a2e"
+
+                        Column {
+                            id: instructionsCol
+                            width: parent.width - 32
+                            x: 16
+                            y: 16
+                            spacing: 12
+
+                            Text {
+                                text: "How to get your App Password:"
+                                color: "#ffffff"
+                                font.pixelSize: 16 * textScale
+                                font.weight: Font.Bold
+                            }
+
+                            Repeater {
+                                model: setupView.providers[setupView.selectedProvider] ?
+                                       setupView.providers[setupView.selectedProvider].instructions : []
+
+                                Text {
+                                    width: parent.width
+                                    text: modelData
+                                    color: "#cccccc"
+                                    font.pixelSize: 14 * textScale
+                                    wrapMode: Text.Wrap
+                                    lineHeight: 1.3
+                                }
+                            }
+                        }
+                    }
+
+                    Item { height: 8; width: 1 }
+
+                    // Open browser button
+                    Rectangle {
+                        width: parent.width
+                        height: 64
+                        radius: 32
+                        color: setupView.providers[setupView.selectedProvider] ?
+                               setupView.providers[setupView.selectedProvider].color : "#e94560"
+
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 12
+
+                            Text {
+                                text: "↗"
+                                color: "#ffffff"
+                                font.pixelSize: 24
+                            }
+
+                            Text {
+                                text: "Get App Password"
+                                color: "#ffffff"
+                                font.pixelSize: 18 * textScale
+                                font.weight: Font.Bold
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                Haptic.click()
+                                var url = setupView.providers[setupView.selectedProvider].appPasswordUrl
+                                if (url) {
+                                    // Launch Flick browser via backend
+                                    console.log("Opening browser: " + url)
+                                    sendCommand({ action: "open_url", url: url })
+                                }
+                            }
+                        }
+                    }
+
+                    // Continue button
+                    Rectangle {
+                        width: parent.width
+                        height: 56
+                        radius: 28
+                        color: "transparent"
+                        border.width: 2
+                        border.color: "#444466"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "I have my App Password →"
+                            color: "#ffffff"
+                            font.pixelSize: 16 * textScale
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                Haptic.click()
+                                setupView.setupStep = "form"
+                            }
+                        }
+                    }
+                }
+
+                // ===== Step 3: Account Form =====
+                Column {
+                    width: parent.width - 48
+                    spacing: 16
+                    visible: setupView.setupStep === "form"
+
+                    // Back button
+                    Rectangle {
+                        width: 80
+                        height: 40
+                        radius: 20
+                        color: "transparent"
+
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 8
+                            Text { text: "←"; color: "#888888"; font.pixelSize: 20 }
+                            Text { text: "Back"; color: "#888888"; font.pixelSize: 14 * textScale }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                Haptic.tap()
+                                if (setupView.selectedProvider === "other") {
+                                    setupView.resetSetup()
+                                } else {
+                                    setupView.setupStep = "instructions"
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Enter Account Details"
+                        color: "#ffffff"
+                        font.pixelSize: 24 * textScale
                         font.weight: Font.Bold
-                        color: "#6001d2"
                     }
-                }
 
-                // iCloud
-                Rectangle {
-                    width: 40
-                    height: 40
-                    radius: 20
-                    color: "#1a1a2e"
+                    // Email field
+                    Text { text: "Email Address"; color: "#888888"; font.pixelSize: 14 * textScale }
+                    Rectangle {
+                        width: parent.width
+                        height: 56
+                        radius: 12
+                        color: "#1a1a2e"
+
+                        TextInput {
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            color: "#ffffff"
+                            font.pixelSize: 16 * textScale
+                            verticalAlignment: TextInput.AlignVCenter
+                            inputMethodHints: Qt.ImhEmailCharactersOnly
+                            text: setupView.setupEmail
+                            onTextChanged: setupView.setupEmail = text
+
+                            Text {
+                                anchors.fill: parent
+                                verticalAlignment: Text.AlignVCenter
+                                text: "you@example.com"
+                                color: "#555555"
+                                font.pixelSize: 16 * textScale
+                                visible: !parent.text && !parent.focus
+                            }
+                        }
+                    }
+
+                    // App Password field
+                    Text { text: "App Password"; color: "#888888"; font.pixelSize: 14 * textScale }
+                    Rectangle {
+                        width: parent.width
+                        height: 56
+                        radius: 12
+                        color: "#1a1a2e"
+
+                        TextInput {
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            color: "#ffffff"
+                            font.pixelSize: 16 * textScale
+                            verticalAlignment: TextInput.AlignVCenter
+                            echoMode: TextInput.Password
+                            text: setupView.setupPassword
+                            onTextChanged: setupView.setupPassword = text
+
+                            Text {
+                                anchors.fill: parent
+                                verticalAlignment: Text.AlignVCenter
+                                text: "Paste your app password here"
+                                color: "#555555"
+                                font.pixelSize: 16 * textScale
+                                visible: !parent.text && !parent.focus
+                            }
+                        }
+                    }
+
+                    // Display Name field
+                    Text { text: "Your Name (optional)"; color: "#888888"; font.pixelSize: 14 * textScale }
+                    Rectangle {
+                        width: parent.width
+                        height: 56
+                        radius: 12
+                        color: "#1a1a2e"
+
+                        TextInput {
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            color: "#ffffff"
+                            font.pixelSize: 16 * textScale
+                            verticalAlignment: TextInput.AlignVCenter
+                            text: setupView.setupName
+                            onTextChanged: setupView.setupName = text
+
+                            Text {
+                                anchors.fill: parent
+                                verticalAlignment: Text.AlignVCenter
+                                text: "John Doe"
+                                color: "#555555"
+                                font.pixelSize: 16 * textScale
+                                visible: !parent.text && !parent.focus
+                            }
+                        }
+                    }
+
+                    // Advanced settings toggle (for "other" or manual config)
+                    Rectangle {
+                        width: parent.width
+                        height: 48
+                        color: "transparent"
+                        visible: setupView.selectedProvider === "other" || setupView.showAdvanced
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 8
+                            Text {
+                                text: "Server Settings"
+                                color: "#e94560"
+                                font.pixelSize: 14 * textScale
+                            }
+                            Text {
+                                text: setupView.showAdvanced ? "▲" : "▼"
+                                color: "#e94560"
+                                font.pixelSize: 12
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                setupView.showAdvanced = !setupView.showAdvanced
+                                Haptic.tap()
+                            }
+                        }
+                    }
+
+                    // Advanced settings
+                    Column {
+                        width: parent.width
+                        spacing: 12
+                        visible: setupView.showAdvanced || setupView.selectedProvider === "other"
+
+                        Text { text: "IMAP Server"; color: "#888888"; font.pixelSize: 14 * textScale }
+                        Row {
+                            width: parent.width
+                            spacing: 8
+                            Rectangle {
+                                width: parent.width - 88
+                                height: 48
+                                radius: 12
+                                color: "#1a1a2e"
+                                TextInput {
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+                                    color: "#ffffff"
+                                    font.pixelSize: 14 * textScale
+                                    verticalAlignment: TextInput.AlignVCenter
+                                    text: setupView.setupImapServer
+                                    onTextChanged: setupView.setupImapServer = text
+                                    Text {
+                                        anchors.fill: parent
+                                        verticalAlignment: Text.AlignVCenter
+                                        text: "imap.example.com"
+                                        color: "#555555"
+                                        font.pixelSize: 14 * textScale
+                                        visible: !parent.text && !parent.focus
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                width: 80
+                                height: 48
+                                radius: 12
+                                color: "#1a1a2e"
+                                TextInput {
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+                                    color: "#ffffff"
+                                    font.pixelSize: 14 * textScale
+                                    horizontalAlignment: TextInput.AlignHCenter
+                                    verticalAlignment: TextInput.AlignVCenter
+                                    inputMethodHints: Qt.ImhDigitsOnly
+                                    text: setupView.setupImapPort.toString()
+                                    onTextChanged: setupView.setupImapPort = parseInt(text) || 993
+                                }
+                            }
+                        }
+
+                        Text { text: "SMTP Server"; color: "#888888"; font.pixelSize: 14 * textScale }
+                        Row {
+                            width: parent.width
+                            spacing: 8
+                            Rectangle {
+                                width: parent.width - 88
+                                height: 48
+                                radius: 12
+                                color: "#1a1a2e"
+                                TextInput {
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+                                    color: "#ffffff"
+                                    font.pixelSize: 14 * textScale
+                                    verticalAlignment: TextInput.AlignVCenter
+                                    text: setupView.setupSmtpServer
+                                    onTextChanged: setupView.setupSmtpServer = text
+                                    Text {
+                                        anchors.fill: parent
+                                        verticalAlignment: Text.AlignVCenter
+                                        text: "smtp.example.com"
+                                        color: "#555555"
+                                        font.pixelSize: 14 * textScale
+                                        visible: !parent.text && !parent.focus
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                width: 80
+                                height: 48
+                                radius: 12
+                                color: "#1a1a2e"
+                                TextInput {
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+                                    color: "#ffffff"
+                                    font.pixelSize: 14 * textScale
+                                    horizontalAlignment: TextInput.AlignHCenter
+                                    verticalAlignment: TextInput.AlignVCenter
+                                    inputMethodHints: Qt.ImhDigitsOnly
+                                    text: setupView.setupSmtpPort.toString()
+                                    onTextChanged: setupView.setupSmtpPort = parseInt(text) || 587
+                                }
+                            }
+                        }
+                    }
+
+                    Item { height: 8; width: 1 }
+
+                    // Error message
                     Text {
-                        anchors.centerIn: parent
-                        text: "☁"
-                        font.pixelSize: 20
-                        color: "#999999"
+                        width: parent.width
+                        text: errorMessage
+                        color: "#e94560"
+                        font.pixelSize: 14 * textScale
+                        wrapMode: Text.Wrap
+                        visible: errorMessage.length > 0
+                    }
+
+                    // Add Account button
+                    Rectangle {
+                        width: parent.width
+                        height: 64
+                        radius: 32
+                        color: loading ? "#555555" : "#e94560"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: loading ? "Connecting..." : "Add Account"
+                            color: "#ffffff"
+                            font.pixelSize: 18 * textScale
+                            font.weight: Font.Bold
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: !loading
+                            onClicked: {
+                                Haptic.click()
+                                setupView.submitAccount()
+                            }
+                        }
                     }
                 }
-            }
-
-            // Error message
-            Text {
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                text: errorMessage
-                color: "#e94560"
-                font.pixelSize: 14 * textScale
-                wrapMode: Text.Wrap
-                visible: errorMessage.length > 0
             }
         }
 

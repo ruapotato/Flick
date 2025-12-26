@@ -52,8 +52,18 @@ Window {
         loadHistory()
         loadDownloads()
         loadSettings()
-        // Create initial tab
-        createTab(homepage)
+
+        // Check for URL argument (for opening links from other apps)
+        var args = Qt.application.arguments
+        var initialUrl = homepage
+        for (var i = 1; i < args.length; i++) {
+            var arg = args[i]
+            if (arg.indexOf("http://") === 0 || arg.indexOf("https://") === 0) {
+                initialUrl = arg
+                break
+            }
+        }
+        createTab(initialUrl)
     }
 
     // ==================== Data Functions ====================

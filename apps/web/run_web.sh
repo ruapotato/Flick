@@ -30,5 +30,5 @@ export QML_XHR_ALLOW_FILE_READ=1
 export QTWEBENGINE_DICTIONARIES_PATH="$STATE_DIR/webengine/dictionaries"
 mkdir -p "$STATE_DIR/webengine"
 
-# Run the browser
-exec qmlscene "$SCRIPT_DIR/main.qml" 2>> "$LOG_FILE"
+# Run the browser (pass any URL argument)
+exec qmlscene "$SCRIPT_DIR/main.qml" "$@" 2>> "$LOG_FILE"

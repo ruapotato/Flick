@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Flick Email Backend
-Uses GNOME Online Accounts for OAuth authentication
+Handles IMAP/SMTP operations for the email app
+Simple password/app-password authentication
 """
 
 import os
@@ -12,25 +13,22 @@ import smtplib
 import email
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from email.header import decode_header
 from email.utils import parseaddr, formataddr, parsedate_to_datetime
 import ssl
 import time
 import hashlib
 import re
-import base64
-import subprocess
 from datetime import datetime
 from pathlib import Path
-
-# GOA imports
-import gi
-gi.require_version('Goa', '1.0')
-from gi.repository import Goa, GLib
 
 # State directory
 STATE_DIR = Path.home() / ".local" / "state" / "flick" / "email"
 FLICK_STATE_DIR = Path.home() / ".local" / "state" / "flick"
+ACCOUNTS_FILE = STATE_DIR / "accounts.json"
+CACHE_DIR = STATE_DIR / "cache"
 COMMANDS_FILE = STATE_DIR / "commands.json"
 RESPONSE_FILE = STATE_DIR / "response.json"
 SEEN_EMAILS_FILE = STATE_DIR / "seen_emails.json"
@@ -38,6 +36,7 @@ APP_NOTIFICATIONS_FILE = FLICK_STATE_DIR / "app_notifications.json"
 
 # Ensure directories exist
 STATE_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def log(msg):
@@ -61,6 +60,28 @@ def send_notification(app_name, summary, body, urgency="normal"):
         log(f"Notification sent: {summary}")
     except Exception as e:
         log(f"Failed to send notification: {e}")
+
+
+def load_seen_emails():
+    """Load set of seen email IDs"""
+    try:
+        if SEEN_EMAILS_FILE.exists():
+            with open(SEEN_EMAILS_FILE) as f:
+                data = json.load(f)
+                return set(data.get("seen", []))
+    except:
+        pass
+    return set()
+
+
+def save_seen_emails(seen_set):
+    """Save set of seen email IDs"""
+    try:
+        seen_list = list(seen_set)[-1000:]
+        with open(SEEN_EMAILS_FILE, 'w') as f:
+            json.dump({"seen": seen_list}, f)
+    except Exception as e:
+        log(f"Failed to save seen emails: {e}")
 
 
 def decode_mime_words(s):
@@ -143,104 +164,46 @@ def get_attachments(msg):
     return attachments
 
 
-def generate_oauth2_string(username, access_token):
-    """Generate XOAUTH2 authentication string"""
-    auth_string = f"user={username}\x01auth=Bearer {access_token}\x01\x01"
-    return base64.b64encode(auth_string.encode()).decode()
+class EmailAccount:
+    """Represents an email account with IMAP/SMTP settings"""
 
-
-def load_seen_emails():
-    """Load set of seen email IDs"""
-    try:
-        if SEEN_EMAILS_FILE.exists():
-            with open(SEEN_EMAILS_FILE) as f:
-                data = json.load(f)
-                return set(data.get("seen", []))
-    except:
-        pass
-    return set()
-
-
-def save_seen_emails(seen_set):
-    """Save set of seen email IDs"""
-    try:
-        seen_list = list(seen_set)[-1000:]
-        with open(SEEN_EMAILS_FILE, 'w') as f:
-            json.dump({"seen": seen_list}, f)
-    except Exception as e:
-        log(f"Failed to save seen emails: {e}")
-
-
-class GOAEmailAccount:
-    """Email account backed by GNOME Online Accounts"""
-
-    def __init__(self, goa_object):
-        self.goa_object = goa_object
-        self.account = goa_object.get_account()
-        self.mail = goa_object.get_mail()
+    def __init__(self, data):
+        self.id = data.get("id", "")
+        self.email = data.get("email", "")
+        self.name = data.get("name", "")
+        self.imap_server = data.get("imap_server", "")
+        self.imap_port = data.get("imap_port", 993)
+        self.smtp_server = data.get("smtp_server", "")
+        self.smtp_port = data.get("smtp_port", 587)
+        self.username = data.get("username", "")
+        self.password = data.get("password", "")
+        self.use_ssl = data.get("use_ssl", True)
         self.imap_conn = None
-
-        # Extract account info
-        self.id = self.account.get_id()
-        self.email = self.mail.get_email_address() if self.mail else ""
-        self.name = self.account.get_presentation_identity() or self.email
-        self.provider = self.account.get_provider_name()
-
-        # Get server settings from GOA
-        if self.mail:
-            self.imap_server = self.mail.get_imap_host() or ""
-            self.smtp_server = self.mail.get_smtp_host() or ""
-            self.imap_use_ssl = self.mail.get_imap_use_ssl()
-            self.smtp_use_ssl = self.mail.get_smtp_use_ssl()
-        else:
-            self.imap_server = ""
-            self.smtp_server = ""
-            self.imap_use_ssl = True
-            self.smtp_use_ssl = True
-
-    def get_access_token(self):
-        """Get OAuth2 access token from GOA"""
-        try:
-            oauth2 = self.goa_object.get_oauth2_based()
-            if oauth2:
-                # This automatically refreshes if needed
-                success, token = oauth2.call_get_access_token_sync(None)
-                if success:
-                    return token
-        except Exception as e:
-            log(f"Failed to get access token: {e}")
-        return None
 
     def to_dict(self):
         return {
             "id": self.id,
             "email": self.email,
             "name": self.name,
-            "provider": self.provider
+            "imap_server": self.imap_server,
+            "imap_port": self.imap_port,
+            "smtp_server": self.smtp_server,
+            "smtp_port": self.smtp_port,
+            "username": self.username,
+            "password": self.password,
+            "use_ssl": self.use_ssl
         }
 
     def connect_imap(self):
-        """Connect to IMAP server using OAuth2 from GOA"""
+        """Connect to IMAP server"""
         try:
-            # Get fresh access token from GOA
-            access_token = self.get_access_token()
-            if not access_token:
-                log(f"No access token available for {self.email}")
-                return False
-
-            # Connect to IMAP
-            port = 993 if self.imap_use_ssl else 143
-            if self.imap_use_ssl:
-                self.imap_conn = imaplib.IMAP4_SSL(self.imap_server, port)
+            if self.use_ssl:
+                self.imap_conn = imaplib.IMAP4_SSL(self.imap_server, self.imap_port)
             else:
-                self.imap_conn = imaplib.IMAP4(self.imap_server, port)
-                self.imap_conn.starttls()
+                self.imap_conn = imaplib.IMAP4(self.imap_server, self.imap_port)
 
-            # Authenticate with XOAUTH2
-            auth_string = generate_oauth2_string(self.email, access_token)
-            self.imap_conn.authenticate('XOAUTH2', lambda x: auth_string.encode())
-
-            log(f"Connected to IMAP: {self.imap_server} as {self.email}")
+            self.imap_conn.login(self.username, self.password)
+            log(f"Connected to IMAP: {self.imap_server}")
             return True
         except Exception as e:
             log(f"IMAP connection failed: {e}")
@@ -304,7 +267,7 @@ class GOAEmailAccount:
                 return []
 
             message_ids = messages[0].split()
-            message_ids = message_ids[::-1]  # Newest first
+            message_ids = message_ids[::-1]
             message_ids = message_ids[offset:offset + limit]
 
             emails = []
@@ -335,8 +298,10 @@ class GOAEmailAccount:
                     try:
                         date_obj = parsedate_to_datetime(date_str)
                         date_formatted = date_obj.strftime('%Y-%m-%d %H:%M')
+                        timestamp = date_obj.timestamp()
                     except:
                         date_formatted = date_str[:20] if date_str else 'Unknown'
+                        timestamp = 0
 
                     from_name, from_email_addr = parseaddr(msg.get('From', ''))
                     from_name = decode_mime_words(from_name) or from_email_addr
@@ -348,8 +313,10 @@ class GOAEmailAccount:
                         "from_email": from_email_addr,
                         "subject": subject,
                         "date": date_formatted,
+                        "timestamp": timestamp,
                         "read": '\\Seen' in flags,
-                        "flagged": '\\Flagged' in flags
+                        "flagged": '\\Flagged' in flags,
+                        "has_attachment": False
                     })
                 except Exception as e:
                     log(f"Failed to parse email {msg_id}: {e}")
@@ -479,36 +446,61 @@ class GOAEmailAccount:
             log(f"Failed to delete email: {e}")
             return False
 
-    def send_email(self, to, cc, bcc, subject, body):
-        """Send email via SMTP with OAuth2"""
-        try:
-            access_token = self.get_access_token()
-            if not access_token:
-                log("No access token for sending")
+    def move_email(self, folder, msg_id, dest_folder):
+        """Move email to another folder"""
+        if not self.imap_conn:
+            if not self.connect_imap():
                 return False
 
+        try:
+            status, _ = self.imap_conn.select(folder)
+            if status != 'OK':
+                return False
+
+            self.imap_conn.copy(msg_id.encode(), dest_folder)
+            self.imap_conn.store(msg_id.encode(), '+FLAGS', '\\Deleted')
+            self.imap_conn.expunge()
+            return True
+        except Exception as e:
+            log(f"Failed to move email: {e}")
+            return False
+
+    def send_email(self, to, cc, bcc, subject, body, html_body=None, attachments=None):
+        """Send email via SMTP"""
+        try:
             msg = MIMEMultipart('alternative')
             msg['From'] = formataddr((self.name, self.email))
             msg['To'] = ', '.join(to)
             if cc:
                 msg['Cc'] = ', '.join(cc)
             msg['Subject'] = subject
+
             msg.attach(MIMEText(body, 'plain', 'utf-8'))
+
+            if html_body:
+                msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+
+            if attachments:
+                for att in attachments:
+                    if os.path.exists(att):
+                        with open(att, 'rb') as f:
+                            part = MIMEBase('application', 'octet-stream')
+                            part.set_payload(f.read())
+                            encoders.encode_base64(part)
+                            part.add_header('Content-Disposition', f'attachment; filename="{os.path.basename(att)}"')
+                            msg.attach(part)
 
             all_recipients = to + (cc or []) + (bcc or [])
             context = ssl.create_default_context()
 
-            port = 465 if self.smtp_use_ssl else 587
-            auth_string = generate_oauth2_string(self.email, access_token)
-
-            if self.smtp_use_ssl:
-                with smtplib.SMTP_SSL(self.smtp_server, port, context=context) as server:
-                    server.docmd('AUTH', 'XOAUTH2 ' + auth_string)
+            if self.smtp_port == 465:
+                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, context=context) as server:
+                    server.login(self.username, self.password)
                     server.sendmail(self.email, all_recipients, msg.as_string())
             else:
-                with smtplib.SMTP(self.smtp_server, port) as server:
+                with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
                     server.starttls(context=context)
-                    server.docmd('AUTH', 'XOAUTH2 ' + auth_string)
+                    server.login(self.username, self.password)
                     server.sendmail(self.email, all_recipients, msg.as_string())
 
             log(f"Email sent to {to}")
@@ -519,38 +511,61 @@ class GOAEmailAccount:
 
 
 class EmailBackend:
-    """Email backend using GNOME Online Accounts"""
+    """Main backend class for email operations"""
 
     def __init__(self):
-        self.goa_client = None
         self.accounts = []
-        self.init_goa()
+        self.load_accounts()
 
-    def init_goa(self):
-        """Initialize GNOME Online Accounts client"""
-        try:
-            self.goa_client = Goa.Client.new_sync(None)
-            self.refresh_accounts()
-            log("GOA client initialized")
-        except Exception as e:
-            log(f"Failed to initialize GOA: {e}")
-
-    def refresh_accounts(self):
-        """Refresh account list from GOA"""
+    def load_accounts(self):
+        """Load accounts from file"""
         self.accounts = []
-        if not self.goa_client:
-            return
+        if ACCOUNTS_FILE.exists():
+            try:
+                with open(ACCOUNTS_FILE) as f:
+                    data = json.load(f)
+                    for acc_data in data.get("accounts", []):
+                        self.accounts.append(EmailAccount(acc_data))
+                log(f"Loaded {len(self.accounts)} accounts")
+            except Exception as e:
+                log(f"Failed to load accounts: {e}")
 
+    def save_accounts(self):
+        """Save accounts to file"""
         try:
-            for goa_obj in self.goa_client.get_accounts():
-                # Only include accounts with mail capability
-                mail = goa_obj.get_mail()
-                if mail and mail.get_imap_host():
-                    account = GOAEmailAccount(goa_obj)
-                    self.accounts.append(account)
-                    log(f"Found mail account: {account.email} ({account.provider})")
+            data = {"accounts": [acc.to_dict() for acc in self.accounts]}
+            with open(ACCOUNTS_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+            log("Accounts saved")
         except Exception as e:
-            log(f"Failed to refresh accounts: {e}")
+            log(f"Failed to save accounts: {e}")
+
+    def add_account(self, account_data):
+        """Add a new account"""
+        account_data["id"] = hashlib.md5(account_data["email"].encode()).hexdigest()[:8]
+        account = EmailAccount(account_data)
+
+        if account.connect_imap():
+            account.disconnect_imap()
+            self.accounts.append(account)
+            self.save_accounts()
+            return {"success": True, "id": account.id}
+        else:
+            return {"success": False, "error": "Failed to connect. Check your email, app password, and server settings."}
+
+    def remove_account(self, account_id):
+        """Remove an account"""
+        self.accounts = [acc for acc in self.accounts if acc.id != account_id]
+        self.save_accounts()
+        return {"success": True}
+
+    def get_accounts(self):
+        """Get list of accounts (without passwords)"""
+        return [{
+            "id": acc.id,
+            "email": acc.email,
+            "name": acc.name
+        } for acc in self.accounts]
 
     def get_account(self, account_id):
         """Get account by ID"""
@@ -559,30 +574,55 @@ class EmailBackend:
                 return acc
         return None
 
-    def launch_account_setup(self):
-        """Launch GNOME Online Accounts settings"""
-        try:
-            subprocess.Popen(['gnome-control-center', 'online-accounts'])
-            return {"success": True}
-        except Exception as e:
-            log(f"Failed to launch GOA settings: {e}")
-            return {"error": str(e)}
+    def check_new_emails(self):
+        """Check all accounts for new emails and send notifications"""
+        if not self.accounts:
+            return {"new_count": 0}
+
+        seen = load_seen_emails()
+        new_count = 0
+        new_emails = []
+
+        for account in self.accounts:
+            try:
+                emails = account.get_emails("INBOX", limit=20, offset=0)
+                for email_info in emails:
+                    email_id = f"{account.id}:{email_info['id']}"
+                    if email_id not in seen and not email_info.get('read', True):
+                        seen.add(email_id)
+                        new_count += 1
+                        new_emails.append({
+                            "account": account.email,
+                            "from": email_info.get("from_name", "Unknown"),
+                            "subject": email_info.get("subject", "(No Subject)")
+                        })
+            except Exception as e:
+                log(f"Failed to check {account.email}: {e}")
+
+        save_seen_emails(seen)
+
+        if new_count > 0:
+            if new_count == 1:
+                em = new_emails[0]
+                send_notification("Email", em["from"], em["subject"])
+            else:
+                send_notification("Email", f"{new_count} new emails",
+                                f"From {new_emails[0]['from']} and others")
+
+        return {"new_count": new_count, "emails": new_emails}
 
     def process_command(self, cmd):
         """Process a command from the QML frontend"""
         action = cmd.get("action", "")
 
         if action == "get_accounts":
-            self.refresh_accounts()  # Always refresh to catch new accounts
-            return {"accounts": [acc.to_dict() for acc in self.accounts]}
+            return {"accounts": self.get_accounts()}
 
         elif action == "add_account":
-            # Launch GNOME Online Accounts
-            return self.launch_account_setup()
+            return self.add_account(cmd.get("account", {}))
 
         elif action == "remove_account":
-            # Can't remove from here - user must use GNOME Settings
-            return {"error": "Please remove accounts in Settings → Online Accounts"}
+            return self.remove_account(cmd.get("account_id", ""))
 
         elif action == "get_folders":
             account = self.get_account(cmd.get("account_id", ""))
@@ -635,6 +675,17 @@ class EmailBackend:
                 return {"success": success}
             return {"error": "Account not found"}
 
+        elif action == "move_email":
+            account = self.get_account(cmd.get("account_id", ""))
+            if account:
+                success = account.move_email(
+                    cmd.get("folder", "INBOX"),
+                    cmd.get("msg_id", ""),
+                    cmd.get("dest_folder", "")
+                )
+                return {"success": success}
+            return {"error": "Account not found"}
+
         elif action == "send_email":
             account = self.get_account(cmd.get("account_id", ""))
             if account:
@@ -643,56 +694,44 @@ class EmailBackend:
                     cmd.get("cc", []),
                     cmd.get("bcc", []),
                     cmd.get("subject", ""),
-                    cmd.get("body", "")
+                    cmd.get("body", ""),
+                    cmd.get("html_body"),
+                    cmd.get("attachments", [])
                 )
                 return {"success": success}
             return {"error": "Account not found"}
 
+        elif action == "test_connection":
+            account_data = cmd.get("account", {})
+            account = EmailAccount(account_data)
+            if account.connect_imap():
+                account.disconnect_imap()
+                return {"success": True}
+            return {"success": False, "error": "Connection failed"}
+
         elif action == "check_new_emails":
             return self.check_new_emails()
 
+        elif action == "open_url":
+            # Open URL in Flick browser
+            url = cmd.get("url", "")
+            if url:
+                import subprocess
+                try:
+                    browser_script = "/home/droidian/Flick/apps/web/run_web.sh"
+                    subprocess.Popen([browser_script, url], start_new_session=True)
+                    log(f"Opening URL in browser: {url}")
+                    return {"success": True}
+                except Exception as e:
+                    log(f"Failed to open URL: {e}")
+                    return {"error": str(e)}
+            return {"error": "No URL provided"}
+
         return {"error": f"Unknown action: {action}"}
 
-    def check_new_emails(self):
-        """Check all accounts for new emails"""
-        if not self.accounts:
-            return {"new_count": 0}
-
-        seen = load_seen_emails()
-        new_count = 0
-        new_emails = []
-
-        for account in self.accounts:
-            try:
-                emails = account.get_emails("INBOX", limit=20, offset=0)
-                for email_info in emails:
-                    email_id = f"{account.id}:{email_info['id']}"
-                    if email_id not in seen and not email_info.get('read', True):
-                        seen.add(email_id)
-                        new_count += 1
-                        new_emails.append({
-                            "account": account.email,
-                            "from": email_info.get("from_name", "Unknown"),
-                            "subject": email_info.get("subject", "(No Subject)")
-                        })
-            except Exception as e:
-                log(f"Failed to check {account.email}: {e}")
-
-        save_seen_emails(seen)
-
-        if new_count > 0:
-            if new_count == 1:
-                em = new_emails[0]
-                send_notification("Email", em["from"], em["subject"])
-            else:
-                send_notification("Email", f"{new_count} new emails",
-                                f"From {new_emails[0]['from']} and others")
-
-        return {"new_count": new_count, "emails": new_emails}
-
     def run(self):
-        """Main loop"""
-        log("Email backend started (GOA mode)")
+        """Main loop - watch for commands"""
+        log("Email backend started")
 
         last_mtime = 0
         last_check = 0
@@ -708,11 +747,13 @@ class EmailBackend:
                         with open(COMMANDS_FILE) as f:
                             cmd = json.load(f)
 
-                        log(f"Processing: {cmd.get('action', 'unknown')}")
+                        log(f"Processing command: {cmd.get('action', 'unknown')}")
                         response = self.process_command(cmd)
 
                         with open(RESPONSE_FILE, 'w') as f:
                             json.dump(response, f, indent=2)
+
+                        log(f"Response written")
 
                 # Background email check
                 now = time.time()
@@ -729,11 +770,12 @@ class EmailBackend:
             except KeyboardInterrupt:
                 break
             except Exception as e:
-                log(f"Error: {e}")
+                log(f"Error in main loop: {e}")
                 time.sleep(1)
 
         for acc in self.accounts:
             acc.disconnect_imap()
+
         log("Email backend stopped")
 
 
