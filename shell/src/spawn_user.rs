@@ -196,11 +196,9 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     // Note: QT_QUICK_BACKEND=software was blocking EGL video path
     command.env("QSG_RENDER_LOOP", "basic");
 
-    // Force Qt GStreamer to use qmlglsink for video rendering in QML
-    // qmlglsink integrates with Qt's scene graph, droideglsink doesn't
-    command.env("QT_GSTREAMER_WINDOW_VIDEOSINK", "qmlglsink");
-    // Enable Qt GStreamer OpenGL support
-    command.env("QT_GSTREAMER_USE_OPENGL_PLUGIN", "1");
+    // Note: GStreamer video sinks have format issues with droidcamsrc
+    // DroidMediaQueueBuffer format is only supported by droideglsink/droidvideotexturesink
+    // AAL backend bypasses GStreamer and may work better
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
