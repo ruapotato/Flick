@@ -650,6 +650,9 @@ fn handle_input_event(
             // Track touch position
             state.last_touch_pos.insert(slot_id, touch_pos);
 
+            // Create touch effect (ripple) at touch position
+            state.add_touch_effect(touch_pos.x, touch_pos.y, slot_id as u64);
+
             // Forward to gesture recognizer
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
                 debug!("Gesture touch_down: {:?}", gesture_event);
@@ -862,6 +865,9 @@ fn handle_input_event(
 
             // Update tracked touch position
             state.last_touch_pos.insert(slot_id, touch_pos);
+
+            // Update touch effect (adds ripples along swipe path)
+            state.update_touch_effect(touch_pos.x, touch_pos.y, slot_id as u64);
 
             // Forward to gesture recognizer
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
@@ -2043,6 +2049,9 @@ pub fn run() -> Result<()> {
             }
         }
 
+        // Clean up expired touch effects before rendering
+        state.cleanup_touch_effects();
+
         debug!("Loop {}: calling render_frame", loop_count);
         // Render frame
         if let Err(e) = render_frame(&mut hwc_display, &state, &output) {
@@ -2906,6 +2915,22 @@ fn render_frame(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // Render touch effects overlay (if enabled and any active effects)
+    if state.touch_effects_enabled && !state.touch_effects.is_empty() {
+        let touch_renderer = crate::touch_effects::TouchEffectRenderer::new(
+            display.width as u32,
+            display.height as u32,
+        );
+        if let Some(pixels) = touch_renderer.render(&state.touch_effects) {
+            if log_frame {
+                info!("TOUCH EFFECTS frame {}: {} effects", frame_num, state.touch_effects.len());
+            }
+            unsafe {
+                gl::render_texture(display.width as u32, display.height as u32, &pixels, display.width, display.height);
             }
         }
     }

@@ -1280,9 +1280,16 @@ impl Shell {
                             // App view is handled by end_home_gesture() in state.rs
                         }
                         Edge::Right => {
-                            // Swipe left from right edge - app switcher
-                            tracing::info!("Gesture completed: switching to Switcher view");
-                            self.set_view(ShellView::Switcher);
+                            // Swipe left from right edge
+                            // In QuickSettings: go to Home (app grid)
+                            // Otherwise: go to Switcher
+                            if self.view == ShellView::QuickSettings {
+                                tracing::info!("Gesture completed in QuickSettings: switching to Home view");
+                                self.set_view(ShellView::Home);
+                            } else {
+                                tracing::info!("Gesture completed: switching to Switcher view");
+                                self.set_view(ShellView::Switcher);
+                            }
                         }
                         Edge::Top => {
                             // Swipe down - close app (handled by compositor)
