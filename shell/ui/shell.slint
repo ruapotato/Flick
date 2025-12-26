@@ -207,6 +207,7 @@ export struct WindowCard {
     title: string,
     app-class: string,
     original-index: int,  // Original index for positioning (render order may differ)
+    preview: image,       // Screenshot of the app window
 }
 
 // Status bar at top of screen
@@ -1760,25 +1761,41 @@ component AppSwitcherPanel inherits Rectangle {
                         }
                     }
 
-                    // Window content placeholder - app title display
+                    // Window content - app preview image or fallback
                     Rectangle {
                         vertical-stretch: 1;
                         background: #252540;
                         border-radius: 8px;
+                        clip: true;
 
-                        VerticalLayout {
-                            padding: 16px;
-                            alignment: center;
+                        // App preview image
+                        Image {
+                            width: 100%;
+                            height: 100%;
+                            source: window.preview;
+                            image-fit: cover;
+                            visible: window.preview.width > 0;
+                        }
 
-                            // App title - large and centered, scales with card width
-                            Text {
-                                text: window.title;
-                                color: white;
-                                font-size: max(28px, parent.width * 0.08);
-                                font-weight: 600;
-                                overflow: elide;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
+                        // Fallback: show app title if no preview
+                        Rectangle {
+                            visible: window.preview.width == 0;
+                            width: 100%;
+                            height: 100%;
+
+                            VerticalLayout {
+                                padding: 16px;
+                                alignment: center;
+
+                                Text {
+                                    text: window.title;
+                                    color: white;
+                                    font-size: max(28px, parent.width * 0.08);
+                                    font-weight: 600;
+                                    overflow: elide;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
                             }
                         }
                     }

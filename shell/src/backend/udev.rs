@@ -993,8 +993,8 @@ fn render_surface(
                         slint_ui.set_view("switcher");
                         slint_ui.set_switcher_scroll(state.shell.switcher_scroll as f32);
 
-                        // Collect window data for Slint
-                        let windows: Vec<(i32, String, String)> = state.space.elements()
+                        // Collect window data for Slint with preview images
+                        let windows: Vec<_> = state.space.elements()
                             .enumerate()
                             .map(|(i, window)| {
                                 let id = i as i32;
@@ -1016,7 +1016,9 @@ fn render_surface(
                                 let app_class = window.x11_surface()
                                     .map(|x11| x11.class())
                                     .unwrap_or_default();
-                                (id, title, app_class)
+                                // For udev backend, preview capture not implemented yet
+                                let preview: Option<slint::Image> = None;
+                                (id, title, app_class, i as i32, preview)
                             })
                             .collect();
                         slint_ui.set_switcher_windows(windows);

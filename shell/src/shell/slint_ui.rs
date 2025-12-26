@@ -506,16 +506,17 @@ impl SlintShell {
         self.shell.set_categories(model_rc.into());
     }
 
-    /// Set switcher window cards (id, title, app_class, original_index)
+    /// Set switcher window cards (id, title, app_class, original_index, preview_image)
     /// Windows should be sorted by render order (furthest from center first, center last)
-    pub fn set_switcher_windows(&self, windows: Vec<(i32, String, String, i32)>) {
+    pub fn set_switcher_windows(&self, windows: Vec<(i32, String, String, i32, Option<slint::Image>)>) {
         let model: Vec<WindowCard> = windows
             .into_iter()
-            .map(|(id, title, app_class, original_index)| WindowCard {
+            .map(|(id, title, app_class, original_index, preview)| WindowCard {
                 id,
                 title: title.into(),
                 app_class: app_class.into(),
                 original_index,
+                preview: preview.unwrap_or_default(),
             })
             .collect();
 

@@ -1119,7 +1119,32 @@ fn handle_input_event(
                                             "app".to_string()
                                         };
 
-                                        (i as i32, title, app_class, i as i32)
+                                        // Capture window preview from SHM buffer
+                                        let preview: Option<slint::Image> = if let Some(toplevel) = window.toplevel() {
+                                            compositor::with_states(toplevel.wl_surface(), |states| {
+                                                use std::cell::RefCell;
+                                                use crate::state::SurfaceBufferData;
+                                                if let Some(buffer_data) = states.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                                    let bd = buffer_data.borrow();
+                                                    if let Some(ref buffer) = bd.buffer {
+                                                        let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                                            &buffer.pixels,
+                                                            buffer.width,
+                                                            buffer.height,
+                                                        );
+                                                        Some(slint::Image::from_rgba8(pixel_buffer))
+                                                    } else {
+                                                        None
+                                                    }
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                        } else {
+                                            None
+                                        };
+
+                                        (i as i32, title, app_class, i as i32, preview)
                                     })
                                     .collect();
 
@@ -2437,7 +2462,32 @@ fn render_frame(
                                             "app".to_string()
                                         };
 
-                                        (i as i32, title, app_class, i as i32)
+                                        // Capture window preview from SHM buffer
+                                        let preview: Option<slint::Image> = if let Some(toplevel) = window.toplevel() {
+                                            compositor::with_states(toplevel.wl_surface(), |states| {
+                                                use std::cell::RefCell;
+                                                use crate::state::SurfaceBufferData;
+                                                if let Some(buffer_data) = states.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                                    let bd = buffer_data.borrow();
+                                                    if let Some(ref buffer) = bd.buffer {
+                                                        let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                                            &buffer.pixels,
+                                                            buffer.width,
+                                                            buffer.height,
+                                                        );
+                                                        Some(slint::Image::from_rgba8(pixel_buffer))
+                                                    } else {
+                                                        None
+                                                    }
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                        } else {
+                                            None
+                                        };
+
+                                        (i as i32, title, app_class, i as i32, preview)
                                     })
                                     .collect();
 
@@ -2545,7 +2595,33 @@ fn render_frame(
                                 "app".to_string()
                             };
 
-                            (i as i32, title, app_class, i as i32)
+                            // Capture window preview from SHM buffer
+                            let preview: Option<slint::Image> = if let Some(toplevel) = window.toplevel() {
+                                compositor::with_states(toplevel.wl_surface(), |states| {
+                                    use std::cell::RefCell;
+                                    use crate::state::SurfaceBufferData;
+                                    if let Some(buffer_data) = states.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                        let bd = buffer_data.borrow();
+                                        if let Some(ref buffer) = bd.buffer {
+                                            // Convert RGBA pixels to slint::Image
+                                            let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                                &buffer.pixels,
+                                                buffer.width,
+                                                buffer.height,
+                                            );
+                                            Some(slint::Image::from_rgba8(pixel_buffer))
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                })
+                            } else {
+                                None
+                            };
+
+                            (i as i32, title, app_class, i as i32, preview)
                         })
                         .collect();
 
