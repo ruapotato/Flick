@@ -83,8 +83,8 @@ pub fn spawn_as_user(cmd: &str, socket_name: &str, text_scale: f64) -> Result<()
     command.env("WAYLAND_DISPLAY", socket_name);
     command.env("QT_QPA_PLATFORM", "wayland");
 
-    // Force software rendering for Qt Quick UI - required for hwcomposer backend
-    command.env("QT_QUICK_BACKEND", "software");
+    // EGL platform for clients
+    command.env("EGL_PLATFORM", "wayland");
     command.env("QSG_RENDER_LOOP", "basic");
 
     // Set scaling
@@ -189,12 +189,12 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     // Suppress dconf warnings (no D-Bus session in our environment)
     command.env("GSETTINGS_BACKEND", "memory");
 
-    // Force software rendering for Qt Quick UI - required for hwcomposer backend
-    // But allow Qt to use wayland-egl for buffer integration (required on this system)
-    command.env("QT_QUICK_BACKEND", "software");
-    command.env("QSG_RENDER_LOOP", "basic");
+    // EGL platform for clients
+    command.env("EGL_PLATFORM", "wayland");
 
-    // GStreamer should use android_wlegl for video buffers (provided by compositor)
+    // Try allowing Qt to use EGL (camera needs this for video)
+    // Note: QT_QUICK_BACKEND=software was blocking EGL video path
+    command.env("QSG_RENDER_LOOP", "basic");
 
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
