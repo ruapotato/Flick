@@ -1,10 +1,11 @@
 #!/bin/bash
-# Flick Email - Email app placeholder for Flick shell
+# Flick Email - Mobile email client for Flick shell
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STATE_DIR="/home/droidian/.local/state/flick"
+STATE_DIR="/home/droidian/.local/state/flick/email"
 LOG_FILE="${STATE_DIR}/email.log"
 
+# Ensure state directory exists
 mkdir -p "$STATE_DIR"
 
 echo "=== Flick Email started at $(date) ===" >> "$LOG_FILE"
@@ -18,5 +19,25 @@ export LIBGL_ALWAYS_SOFTWARE=1
 export QT_QUICK_BACKEND=software
 export QT_OPENGL=software
 
-# Run the app
-exec qmlscene "$SCRIPT_DIR/main.qml" 2>> "$LOG_FILE"
+# Allow XHR file reads for config and backend communication
+export QML_XHR_ALLOW_FILE_READ=1
+export QML_XHR_ALLOW_FILE_WRITE=1
+
+# Start the Python backend in background
+python3 "$SCRIPT_DIR/email_backend.py" >> "$LOG_FILE" 2>&1 &
+BACKEND_PID=$!
+echo "Backend started with PID: $BACKEND_PID" >> "$LOG_FILE"
+
+# Give backend time to start
+sleep 0.3
+
+# Run the QML frontend
+qmlscene "$SCRIPT_DIR/main.qml" 2>> "$LOG_FILE"
+QML_EXIT=$?
+
+# Stop the backend when QML exits
+echo "QML exited with code: $QML_EXIT, stopping backend" >> "$LOG_FILE"
+kill $BACKEND_PID 2>/dev/null
+
+echo "=== Flick Email stopped at $(date) ===" >> "$LOG_FILE"
+exit $QML_EXIT
