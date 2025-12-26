@@ -858,12 +858,15 @@ Window {
                 model: tabs.length
                 clip: true
 
-                delegate: Rectangle {
-                    width: parent.width / 2 - 16
-                    height: 180
-                    color: index === currentTabIndex ? "#2a2a3e" : "#1a1a2e"
-                    radius: 12
-                    margin: 8
+                delegate: Item {
+                    width: parent.width / 2
+                    height: 200
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        color: index === currentTabIndex ? "#2a2a3e" : "#1a1a2e"
+                        radius: 12
 
                     Column {
                         anchors.fill: parent
@@ -924,6 +927,7 @@ Window {
                         anchors.fill: parent
                         anchors.margins: 40
                         onClicked: switchTab(index)
+                    }
                     }
                 }
             }

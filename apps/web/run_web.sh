@@ -23,6 +23,9 @@ export LIBGL_ALWAYS_SOFTWARE=1
 export QT_QUICK_BACKEND=software
 export QT_OPENGL=software
 
+# Allow XHR file reads for config loading
+export QML_XHR_ALLOW_FILE_READ=1
+
 # WebEngine cache and data directories
 export QTWEBENGINE_DICTIONARIES_PATH="$STATE_DIR/webengine/dictionaries"
 mkdir -p "$STATE_DIR/webengine"
