@@ -158,9 +158,9 @@ Item {
     }
 
     // Notifications container (between media controls and swipe hint)
+    // No mouse handling here - main swipeArea handles all gestures
     Item {
         id: notificationsContainer
-        z: 5
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: clockMediaControls.visible ? clockMediaControls.bottom : clockContainer.bottom
@@ -184,101 +184,97 @@ Item {
             text: notificationCount + " NOTIFICATION" + (notificationCount !== 1 ? "S" : "")
         }
 
-        // Scrollable notification list
-        ListView {
+        // Notification list (no interaction - handled by main gesture area)
+        Column {
             id: notificationList
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: notifHeader.bottom
             anchors.topMargin: 12
-            anchors.bottom: parent.bottom
             anchors.leftMargin: 24
             anchors.rightMargin: 24
-            clip: true
             spacing: 12
-            model: notifications
 
-            delegate: Rectangle {
-                width: notificationList.width
-                height: notifContent.height + 24
-                radius: 16
-                color: "#1a1a2e"
-                border.width: 1
-                border.color: modelData.urgency === "critical" ? "#e94560" :
-                              modelData.urgency === "low" ? "#4a6fa5" : "#2a2a4e"
+            Repeater {
+                model: notifications
 
-                // Urgency accent bar
                 Rectangle {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: 4
-                    radius: 2
-                    color: modelData.urgency === "critical" ? "#e94560" :
-                           modelData.urgency === "low" ? "#4a9a5a" : "#4a6fa5"
-                }
+                    id: notifCard
+                    width: notificationList.width - 48
+                    height: notifContent.height + 24
+                    radius: 16
+                    color: "#1a1a2e"
+                    border.width: 1
+                    border.color: modelData.urgency === "critical" ? "#e94560" :
+                                  modelData.urgency === "low" ? "#4a6fa5" : "#2a2a4e"
 
-                Column {
-                    id: notifContent
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.leftMargin: 16
-                    anchors.rightMargin: 12
-                    anchors.topMargin: 12
-                    spacing: 4
+                    // Urgency accent bar
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: 4
+                        radius: 2
+                        color: modelData.urgency === "critical" ? "#e94560" :
+                               modelData.urgency === "low" ? "#4a9a5a" : "#4a6fa5"
+                    }
 
-                    // App name and time row
-                    Item {
-                        width: parent.width
-                        height: 16
+                    Column {
+                        id: notifContent
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 12
+                        anchors.topMargin: 12
+                        spacing: 4
 
+                        // App name and time row
+                        Item {
+                            width: parent.width
+                            height: 16
+
+                            Text {
+                                anchors.left: parent.left
+                                font.pixelSize: 12
+                                font.weight: Font.Medium
+                                font.letterSpacing: 0.5
+                                color: "#8888aa"
+                                text: modelData.app_name.toUpperCase()
+                            }
+
+                            Text {
+                                anchors.right: parent.right
+                                font.pixelSize: 11
+                                font.weight: Font.Light
+                                color: "#666688"
+                                text: modelData.time_ago
+                            }
+                        }
+
+                        // Summary (title)
                         Text {
-                            anchors.left: parent.left
-                            font.pixelSize: 12
+                            width: parent.width
+                            font.pixelSize: 15
                             font.weight: Font.Medium
-                            font.letterSpacing: 0.5
-                            color: "#8888aa"
-                            text: modelData.app_name.toUpperCase()
+                            color: "#ffffff"
+                            text: modelData.summary
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
                         }
 
+                        // Body
                         Text {
-                            anchors.right: parent.right
-                            font.pixelSize: 11
+                            width: parent.width
+                            font.pixelSize: 13
                             font.weight: Font.Light
-                            color: "#666688"
-                            text: modelData.time_ago
+                            color: "#aaaacc"
+                            text: modelData.body
+                            elide: Text.ElideRight
+                            maximumLineCount: 2
+                            wrapMode: Text.WordWrap
                         }
                     }
-
-                    // Summary (title)
-                    Text {
-                        width: parent.width
-                        font.pixelSize: 15
-                        font.weight: Font.Medium
-                        color: "#ffffff"
-                        text: modelData.summary
-                        elide: Text.ElideRight
-                        maximumLineCount: 1
-                    }
-
-                    // Body
-                    Text {
-                        width: parent.width
-                        font.pixelSize: 13
-                        font.weight: Font.Light
-                        color: "#aaaacc"
-                        text: modelData.body
-                        elide: Text.ElideRight
-                        maximumLineCount: 2
-                        wrapMode: Text.WordWrap
-                    }
-                }
-
-                // Tap to dismiss (on unlock screen)
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: false  // Disabled on lock screen for now
                 }
             }
         }
