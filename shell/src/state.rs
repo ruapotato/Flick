@@ -187,8 +187,8 @@ pub struct Flick {
     /// Per-window keyboard visibility state (surface ID -> keyboard was visible)
     pub window_keyboard_state: HashMap<smithay::reexports::wayland_server::backend::ObjectId, bool>,
 
-    // Touch visual effects (liquid ripples and wakes)
-    pub touch_effects: Vec<crate::touch_effects::TouchEffect>,
+    // Touch visual effects (distortion-based fisheye and ripples)
+    pub touch_effects: crate::touch_effects::TouchEffectManager,
     pub touch_effects_enabled: bool,
     pub settings_last_check: std::time::Instant,
 
@@ -340,7 +340,7 @@ impl Flick {
             keyboard_dismiss_offset: 0.0,
             keyboard_pointer_cleared: false,
             window_keyboard_state: HashMap::new(),
-            touch_effects: Vec::new(),
+            touch_effects: crate::touch_effects::TouchEffectManager::new(),
             touch_effects_enabled: Self::load_compositor_settings(),  // Load from config
             settings_last_check: Instant::now(),
             system_last_refresh: Instant::now(),
@@ -1023,45 +1023,41 @@ impl Flick {
     }
 
     // ========================================================================
-    // Touch Effects (simple fading circles)
+    // Touch Effects (distortion-based fisheye and ripples)
     // ========================================================================
 
-    /// Start a touch effect at the given position
+    /// Start a touch effect at the given position (finger down - fisheye)
     pub fn add_touch_effect(&mut self, x: f64, y: f64, touch_id: u64) {
         if !self.touch_effects_enabled {
             return;
         }
-        self.touch_effects.push(crate::touch_effects::TouchEffect::new(x, y, touch_id));
+        self.touch_effects.add_touch(x, y, touch_id);
     }
 
-    /// Update touch effect position (adds circles on swipe)
+    /// Update touch effect position (finger move - update fisheye position)
     pub fn update_touch_effect(&mut self, x: f64, y: f64, touch_id: u64) {
         if !self.touch_effects_enabled {
             return;
         }
-        for effect in &mut self.touch_effects {
-            if effect.touch_id == touch_id {
-                effect.update_position(x, y);
-                return;
-            }
-        }
-        // If no effect found, create one
-        self.touch_effects.push(crate::touch_effects::TouchEffect::new(x, y, touch_id));
+        self.touch_effects.update_touch(x, y, touch_id);
     }
 
-    /// End touch effect when finger lifts (just let it fade)
-    pub fn end_touch_effect(&mut self, _touch_id: u64) {
-        // Nothing to do - circles will fade out on their own
+    /// End touch effect (finger up - convert fisheye to expanding ripple)
+    pub fn end_touch_effect(&mut self, touch_id: u64) {
+        if !self.touch_effects_enabled {
+            return;
+        }
+        self.touch_effects.end_touch(touch_id);
     }
 
     /// Clean up expired touch effects
     pub fn cleanup_touch_effects(&mut self) {
-        // Clean up circles within each effect
-        for effect in &mut self.touch_effects {
-            effect.cleanup();
-        }
-        // Remove effects with no circles left
-        self.touch_effects.retain(|e| !e.is_expired());
+        self.touch_effects.cleanup();
+    }
+
+    /// Check if there are any active touch effects
+    pub fn has_touch_effects(&self) -> bool {
+        self.touch_effects_enabled && self.touch_effects.has_effects()
     }
 
     /// Toggle touch effects on/off

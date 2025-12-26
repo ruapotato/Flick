@@ -1608,6 +1608,9 @@ fn handle_input_event(
                     _ => {}
                 }
             }
+
+            // End touch effect (ripple) when finger is lifted
+            state.end_touch_effect(slot_id as u64);
         }
 
         _ => {}
@@ -2919,18 +2922,22 @@ fn render_frame(
         }
     }
 
-    // Render touch effects overlay (if enabled and any active effects)
-    if state.touch_effects_enabled && !state.touch_effects.is_empty() {
-        let touch_renderer = crate::touch_effects::TouchEffectRenderer::new(
-            display.width as u32,
-            display.height as u32,
+    // Render touch distortion effects (fisheye while touching, ripple on release)
+    if state.has_touch_effects() {
+        let shader_data = state.touch_effects.get_shader_data(
+            display.width as f64,
+            display.height as f64,
         );
-        if let Some(pixels) = touch_renderer.render(&state.touch_effects) {
+        if shader_data.count > 0 {
             if log_frame {
-                info!("TOUCH EFFECTS frame {}: {} effects", frame_num, state.touch_effects.len());
+                info!("TOUCH DISTORTION frame {}: {} effects", frame_num, shader_data.count);
             }
             unsafe {
-                gl::render_texture(display.width as u32, display.height as u32, &pixels, display.width, display.height);
+                gl::render_distortion(
+                    display.width as u32,
+                    display.height as u32,
+                    &shader_data,
+                );
             }
         }
     }
@@ -3000,6 +3007,10 @@ mod gl {
     type GetErrorFn = unsafe extern "C" fn() -> u32;
     type FlushFn = unsafe extern "C" fn();
     type FinishFn = unsafe extern "C" fn();
+    type CopyTexImage2DFn = unsafe extern "C" fn(u32, i32, u32, i32, i32, i32, i32, i32);
+    type Uniform1fFn = unsafe extern "C" fn(i32, f32);
+    type Uniform2fvFn = unsafe extern "C" fn(i32, i32, *const f32);
+    type Uniform4fvFn = unsafe extern "C" fn(i32, i32, *const f32);
 
     // Cached function pointers
     static mut FN_CLEAR_COLOR: Option<ClearColorFn> = None;
@@ -3034,12 +3045,26 @@ mod gl {
     static mut FN_GET_ERROR: Option<GetErrorFn> = None;
     static mut FN_FLUSH: Option<FlushFn> = None;
     static mut FN_FINISH: Option<FinishFn> = None;
+    static mut FN_COPY_TEX_IMAGE_2D: Option<CopyTexImage2DFn> = None;
+    static mut FN_UNIFORM1F: Option<Uniform1fFn> = None;
+    static mut FN_UNIFORM2FV: Option<Uniform2fvFn> = None;
+    static mut FN_UNIFORM4FV: Option<Uniform4fvFn> = None;
 
     static mut INITIALIZED: bool = false;
     static mut SHADER_PROGRAM: u32 = 0;
     static mut ATTR_POSITION: i32 = -1;
     static mut ATTR_TEXCOORD: i32 = -1;
     static mut UNIFORM_TEXTURE: i32 = -1;
+
+    // Distortion shader program and uniforms
+    static mut DISTORT_PROGRAM: u32 = 0;
+    static mut DISTORT_ATTR_POSITION: i32 = -1;
+    static mut DISTORT_ATTR_TEXCOORD: i32 = -1;
+    static mut DISTORT_UNIFORM_TEXTURE: i32 = -1;
+    static mut DISTORT_UNIFORM_POSITIONS: i32 = -1;
+    static mut DISTORT_UNIFORM_PARAMS: i32 = -1;
+    static mut DISTORT_UNIFORM_COUNT: i32 = -1;
+    static mut DISTORT_UNIFORM_ASPECT: i32 = -1;
 
     // Vertex shader - simple pass-through
     const VERTEX_SHADER_SRC: &str = r#"
@@ -3059,6 +3084,83 @@ mod gl {
         uniform sampler2D u_texture;
         void main() {
             gl_FragColor = texture2D(u_texture, v_texcoord);
+        }
+    "#;
+
+    // Distortion fragment shader - fisheye and ripple effects
+    // Maximum 10 simultaneous touch effects
+    const DISTORT_FRAGMENT_SRC: &str = r#"
+        precision highp float;
+        varying vec2 v_texcoord;
+        uniform sampler2D u_texture;
+        uniform vec2 u_positions[10];   // Touch positions (normalized 0-1)
+        uniform vec4 u_params[10];      // [radius, strength, type, reserved]
+        uniform int u_count;            // Number of active effects
+        uniform float u_aspect;         // Screen aspect ratio (width/height)
+
+        void main() {
+            vec2 uv = v_texcoord;
+            vec2 totalOffset = vec2(0.0);
+
+            for (int i = 0; i < 10; i++) {
+                if (i >= u_count) break;
+
+                vec2 center = u_positions[i];
+                float radius = u_params[i].x;
+                float strength = u_params[i].y;
+                float effectType = u_params[i].z;
+
+                // Calculate distance from touch center (aspect-corrected)
+                vec2 delta = uv - center;
+                delta.x *= u_aspect;
+                float dist = length(delta);
+
+                if (effectType < 0.5) {
+                    // FISHEYE effect (type 0) - magnify/pull toward center
+                    if (dist < radius && dist > 0.001) {
+                        // Smooth falloff from center to edge
+                        float normalizedDist = dist / radius;
+                        // Fisheye distortion: push pixels away from center (inverse magnify)
+                        float distortion = pow(normalizedDist, 1.0 + strength * 2.0);
+                        vec2 direction = normalize(delta);
+                        // Pull pixels toward center
+                        vec2 offset = direction * (dist - distortion * radius);
+                        offset.x /= u_aspect;
+                        totalOffset += offset * 0.5;
+                    }
+                } else {
+                    // RIPPLE effect (type 1+) - expanding ring distortion
+                    float progress = effectType - 1.0;  // 0 to 1 progress
+                    float ringRadius = radius;
+                    float ringWidth = 0.08 * (1.0 - progress * 0.5);  // Ring gets thinner
+
+                    // Distance from the ring edge
+                    float ringDist = abs(dist - ringRadius);
+
+                    if (ringDist < ringWidth) {
+                        // Smooth wave shape
+                        float wave = 1.0 - ringDist / ringWidth;
+                        wave = wave * wave * (3.0 - 2.0 * wave);  // Smoothstep
+
+                        // Direction from center
+                        vec2 direction = dist > 0.001 ? normalize(delta) : vec2(0.0, 1.0);
+
+                        // Displacement perpendicular to ring (outward then inward)
+                        float phase = (dist < ringRadius) ? 1.0 : -1.0;
+                        vec2 offset = direction * wave * strength * phase * 0.15;
+                        offset.x /= u_aspect;
+                        totalOffset += offset;
+                    }
+                }
+            }
+
+            // Apply displacement
+            vec2 sampleUV = uv - totalOffset;
+
+            // Clamp to valid texture coordinates
+            sampleUV = clamp(sampleUV, vec2(0.0), vec2(1.0));
+
+            gl_FragColor = texture2D(u_texture, sampleUV);
         }
     "#;
 
@@ -3128,6 +3230,10 @@ mod gl {
         FN_GET_ERROR = load_fn(lib, b"glGetError\0");
         FN_FLUSH = load_fn(lib, b"glFlush\0");
         FN_FINISH = load_fn(lib, b"glFinish\0");
+        FN_COPY_TEX_IMAGE_2D = load_fn(lib, b"glCopyTexImage2D\0");
+        FN_UNIFORM1F = load_fn(lib, b"glUniform1f\0");
+        FN_UNIFORM2FV = load_fn(lib, b"glUniform2fv\0");
+        FN_UNIFORM4FV = load_fn(lib, b"glUniform4fv\0");
 
         // Create shader program
         if let Some(program) = create_shader_program() {
@@ -3147,6 +3253,35 @@ mod gl {
 
             tracing::info!("GL shader program created: program={}, pos={}, tex={}, uni={}",
                 SHADER_PROGRAM, ATTR_POSITION, ATTR_TEXCOORD, UNIFORM_TEXTURE);
+        }
+
+        // Create distortion shader program
+        if let Some(program) = create_distort_shader_program() {
+            DISTORT_PROGRAM = program;
+
+            let pos_name = CString::new("a_position").unwrap();
+            let tex_name = CString::new("a_texcoord").unwrap();
+            let tex_uni = CString::new("u_texture").unwrap();
+            let pos_uni = CString::new("u_positions").unwrap();
+            let params_uni = CString::new("u_params").unwrap();
+            let count_uni = CString::new("u_count").unwrap();
+            let aspect_uni = CString::new("u_aspect").unwrap();
+
+            if let Some(f) = FN_GET_ATTRIB_LOCATION {
+                DISTORT_ATTR_POSITION = f(program, pos_name.as_ptr());
+                DISTORT_ATTR_TEXCOORD = f(program, tex_name.as_ptr());
+            }
+            if let Some(f) = FN_GET_UNIFORM_LOCATION {
+                DISTORT_UNIFORM_TEXTURE = f(program, tex_uni.as_ptr());
+                DISTORT_UNIFORM_POSITIONS = f(program, pos_uni.as_ptr());
+                DISTORT_UNIFORM_PARAMS = f(program, params_uni.as_ptr());
+                DISTORT_UNIFORM_COUNT = f(program, count_uni.as_ptr());
+                DISTORT_UNIFORM_ASPECT = f(program, aspect_uni.as_ptr());
+            }
+
+            tracing::info!("Distortion shader created: program={}, positions={}, params={}, count={}, aspect={}",
+                DISTORT_PROGRAM, DISTORT_UNIFORM_POSITIONS, DISTORT_UNIFORM_PARAMS,
+                DISTORT_UNIFORM_COUNT, DISTORT_UNIFORM_ASPECT);
         }
 
         INITIALIZED = true;
@@ -3199,6 +3334,58 @@ mod gl {
         get_programiv(program, LINK_STATUS, &mut status);
         if status == 0 {
             tracing::error!("Shader program linking failed");
+            return None;
+        }
+
+        Some(program)
+    }
+
+    unsafe fn create_distort_shader_program() -> Option<u32> {
+        let create_shader = FN_CREATE_SHADER?;
+        let shader_source = FN_SHADER_SOURCE?;
+        let compile_shader = FN_COMPILE_SHADER?;
+        let get_shaderiv = FN_GET_SHADERIV?;
+        let create_program = FN_CREATE_PROGRAM?;
+        let attach_shader = FN_ATTACH_SHADER?;
+        let link_program = FN_LINK_PROGRAM?;
+        let get_programiv = FN_GET_PROGRAMIV?;
+
+        // Create vertex shader (same as normal)
+        let vs = create_shader(VERTEX_SHADER);
+        let vs_src = CString::new(VERTEX_SHADER_SRC).unwrap();
+        let vs_ptr = vs_src.as_ptr();
+        shader_source(vs, 1, &vs_ptr, std::ptr::null());
+        compile_shader(vs);
+
+        let mut status: i32 = 0;
+        get_shaderiv(vs, COMPILE_STATUS, &mut status);
+        if status == 0 {
+            tracing::error!("Distortion vertex shader compilation failed");
+            return None;
+        }
+
+        // Create distortion fragment shader
+        let fs = create_shader(FRAGMENT_SHADER);
+        let fs_src = CString::new(DISTORT_FRAGMENT_SRC).unwrap();
+        let fs_ptr = fs_src.as_ptr();
+        shader_source(fs, 1, &fs_ptr, std::ptr::null());
+        compile_shader(fs);
+
+        get_shaderiv(fs, COMPILE_STATUS, &mut status);
+        if status == 0 {
+            tracing::error!("Distortion fragment shader compilation failed");
+            return None;
+        }
+
+        // Create program
+        let program = create_program();
+        attach_shader(program, vs);
+        attach_shader(program, fs);
+        link_program(program);
+
+        get_programiv(program, LINK_STATUS, &mut status);
+        if status == 0 {
+            tracing::error!("Distortion shader program linking failed");
             return None;
         }
 
@@ -3575,6 +3762,106 @@ mod gl {
         if let Some(f) = FN_DELETE_TEXTURES {
             f(1, &texture_id);
         }
+    }
+
+    /// Apply distortion effects to the current framebuffer
+    /// This captures the screen, applies fisheye/ripple distortion, and renders the result
+    pub unsafe fn render_distortion(
+        screen_width: u32,
+        screen_height: u32,
+        shader_data: &crate::touch_effects::TouchEffectShaderData,
+    ) {
+        if DISTORT_PROGRAM == 0 || DISTORT_ATTR_POSITION < 0 {
+            return;
+        }
+
+        if shader_data.count == 0 {
+            return;
+        }
+
+        // Clear any pending errors
+        while GetError() != 0 {}
+
+        // Create texture to capture framebuffer
+        let mut capture_texture: u32 = 0;
+        if let Some(f) = FN_GEN_TEXTURES { f(1, &mut capture_texture); }
+        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, capture_texture); }
+
+        // Copy framebuffer to texture
+        if let Some(f) = FN_COPY_TEX_IMAGE_2D {
+            f(TEXTURE_2D, 0, RGBA, 0, 0, screen_width as i32, screen_height as i32, 0);
+        }
+
+        // Set texture parameters
+        if let Some(f) = FN_TEX_PARAMETERI {
+            f(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
+            f(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
+        }
+
+        // Set viewport
+        if let Some(f) = FN_VIEWPORT {
+            f(0, 0, screen_width as i32, screen_height as i32);
+        }
+
+        // Use distortion shader
+        if let Some(f) = FN_USE_PROGRAM { f(DISTORT_PROGRAM); }
+
+        // Bind texture
+        if let Some(f) = FN_ACTIVE_TEXTURE { f(0x84C0); } // GL_TEXTURE0
+        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, capture_texture); }
+        if let Some(f) = FN_UNIFORM1I { f(DISTORT_UNIFORM_TEXTURE, 0); }
+
+        // Set uniforms
+        if let Some(f) = FN_UNIFORM2FV {
+            f(DISTORT_UNIFORM_POSITIONS, 10, shader_data.positions.as_ptr());
+        }
+        if let Some(f) = FN_UNIFORM4FV {
+            f(DISTORT_UNIFORM_PARAMS, 10, shader_data.params.as_ptr());
+        }
+        if let Some(f) = FN_UNIFORM1I {
+            f(DISTORT_UNIFORM_COUNT, shader_data.count);
+        }
+        if let Some(f) = FN_UNIFORM1F {
+            let aspect = screen_width as f32 / screen_height as f32;
+            f(DISTORT_UNIFORM_ASPECT, aspect);
+        }
+
+        // Fullscreen quad vertices
+        #[rustfmt::skip]
+        let vertices: [f32; 16] = [
+            // Position       // TexCoord
+            -1.0, -1.0,       0.0, 1.0,  // Bottom-left (flip Y for framebuffer)
+             1.0, -1.0,       1.0, 1.0,  // Bottom-right
+            -1.0,  1.0,       0.0, 0.0,  // Top-left
+             1.0,  1.0,       1.0, 0.0,  // Top-right
+        ];
+
+        // Set vertex attributes
+        if let Some(f) = FN_ENABLE_VERTEX_ATTRIB_ARRAY {
+            f(DISTORT_ATTR_POSITION as u32);
+            f(DISTORT_ATTR_TEXCOORD as u32);
+        }
+
+        if let Some(f) = FN_VERTEX_ATTRIB_POINTER {
+            let stride = 4 * std::mem::size_of::<f32>() as i32;
+            f(DISTORT_ATTR_POSITION as u32, 2, FLOAT, FALSE, stride, vertices.as_ptr() as *const c_void);
+            f(DISTORT_ATTR_TEXCOORD as u32, 2, FLOAT, FALSE, stride,
+              (vertices.as_ptr() as *const f32).add(2) as *const c_void);
+        }
+
+        // Draw fullscreen quad
+        if let Some(f) = FN_DRAW_ARRAYS {
+            f(TRIANGLE_STRIP, 0, 4);
+        }
+
+        // Flush
+        Flush();
+
+        // Cleanup
+        if let Some(f) = FN_DELETE_TEXTURES { f(1, &capture_texture); }
+
+        // Switch back to normal shader
+        if let Some(f) = FN_USE_PROGRAM { f(SHADER_PROGRAM); }
     }
 }
 
