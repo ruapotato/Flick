@@ -117,6 +117,13 @@ Page {
                 pageName: "DisplayPage"
             }
             ListElement {
+                title: "Effects"
+                icon: "✨"
+                gradStart: "#4a1a4a"
+                gradEnd: "#250d25"
+                pageName: "EffectsPage"
+            }
+            ListElement {
                 title: "Sound"
                 icon: "🔊"
                 gradStart: "#1a4a3a"

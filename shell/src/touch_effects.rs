@@ -4,11 +4,72 @@
 //! - Finger down: Fisheye/lens distortion under the finger
 //! - Finger up: Expanding ripple distortion ring (like water)
 //! - All effects are displacement-based, not color overlays
+//! - All parameters are configurable via effects_config.json
 
 use std::time::Instant;
 
 /// Maximum number of active touch effects (for shader uniforms)
 pub const MAX_TOUCH_EFFECTS: usize = 10;
+
+/// Configurable effect parameters
+#[derive(Clone, Debug)]
+pub struct EffectConfig {
+    pub fisheye_size: f32,      // Radius as fraction of screen (0.05 - 0.30)
+    pub fisheye_strength: f32,  // Distortion strength (0.0 - 0.50)
+    pub ripple_size: f32,       // Max radius as fraction of screen (0.10 - 0.50)
+    pub ripple_strength: f32,   // Distortion strength (0.0 - 0.50)
+    pub ripple_duration: f32,   // Duration in seconds (0.2 - 1.0)
+}
+
+impl Default for EffectConfig {
+    fn default() -> Self {
+        Self {
+            fisheye_size: 0.12,      // 12% of screen (smaller, subtler)
+            fisheye_strength: 0.20,  // 20% distortion
+            ripple_size: 0.25,       // 25% of screen
+            ripple_strength: 0.20,   // 20% distortion
+            ripple_duration: 0.5,    // 0.5 seconds
+        }
+    }
+}
+
+impl EffectConfig {
+    /// Load config from file, falling back to defaults
+    pub fn load() -> Self {
+        let config_path = std::env::var("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"))
+            .join(".local/state/flick/effects_config.json");
+
+        if let Ok(contents) = std::fs::read_to_string(&config_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                return Self {
+                    fisheye_size: json.get("fisheye_size")
+                        .and_then(|v| v.as_f64())
+                        .map(|v| v as f32)
+                        .unwrap_or(0.12),
+                    fisheye_strength: json.get("fisheye_strength")
+                        .and_then(|v| v.as_f64())
+                        .map(|v| v as f32)
+                        .unwrap_or(0.20),
+                    ripple_size: json.get("ripple_size")
+                        .and_then(|v| v.as_f64())
+                        .map(|v| v as f32)
+                        .unwrap_or(0.25),
+                    ripple_strength: json.get("ripple_strength")
+                        .and_then(|v| v.as_f64())
+                        .map(|v| v as f32)
+                        .unwrap_or(0.20),
+                    ripple_duration: json.get("ripple_duration")
+                        .and_then(|v| v.as_f64())
+                        .map(|v| v as f32)
+                        .unwrap_or(0.5),
+                };
+            }
+        }
+        Self::default()
+    }
+}
 
 /// Effect type determines the distortion behavior
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -64,21 +125,21 @@ impl TouchEffect {
         self.start_time.elapsed().as_secs_f64()
     }
 
-    /// Check if effect is expired
-    pub fn is_expired(&self) -> bool {
+    /// Check if effect is expired (uses config for ripple duration)
+    pub fn is_expired_with_config(&self, config: &EffectConfig) -> bool {
         match self.effect_type {
             EffectType::Fisheye => !self.active, // Fisheye expires when finger lifts (converted to ripple)
-            EffectType::Ripple => self.age() > 0.6, // Ripple lasts 0.6 seconds
+            EffectType::Ripple => self.age() > config.ripple_duration as f64,
         }
     }
 
-    /// Get effect parameters for shader
+    /// Get effect parameters for shader using config values
     /// Returns (x, y, radius, strength, type_flag)
     /// x, y: normalized 0-1 screen coordinates
     /// radius: effect radius in normalized units
     /// strength: effect intensity 0-1
-    /// type_flag: 0 = fisheye, 1 = ripple
-    pub fn get_shader_params(&self, screen_width: f64, screen_height: f64) -> (f32, f32, f32, f32, f32) {
+    /// type_flag: 0 = fisheye, 1+ = ripple (encodes progress)
+    pub fn get_shader_params(&self, screen_width: f64, screen_height: f64, config: &EffectConfig) -> (f32, f32, f32, f32, f32) {
         let nx = (self.x / screen_width) as f32;
         let ny = (self.y / screen_height) as f32;
 
@@ -87,42 +148,51 @@ impl TouchEffect {
                 // Fisheye: constant radius, strength based on age (quick ramp up)
                 let age = self.age();
                 let ramp = (age * 8.0).min(1.0); // Ramp up over 0.125s
-                let radius = 0.15; // 15% of screen
-                let strength = 0.3 * ramp; // 30% max distortion
-                (nx, ny, radius as f32, strength as f32, 0.0)
+                let radius = config.fisheye_size;
+                let strength = config.fisheye_strength * ramp as f32;
+                (nx, ny, radius, strength, 0.0)
             }
             EffectType::Ripple => {
                 // Ripple: expanding ring
                 let age = self.age();
-                let duration = 0.6;
+                let duration = config.ripple_duration as f64;
                 let progress = (age / duration).min(1.0);
 
                 // Smooth ease-out for expansion
                 let eased = 1.0 - (1.0 - progress).powi(3);
 
-                // Ring expands from 0 to 30% of screen
-                let radius = 0.30 * eased;
+                // Ring expands from 0 to configured max size
+                let radius = config.ripple_size * eased as f32;
 
-                // Ring thickness decreases as it expands
-                // Encoded in the strength: positive = ring inner edge, we use a formula
                 // Strength fades out
-                let strength = 0.25 * (1.0 - progress).powi(2);
+                let strength = config.ripple_strength * (1.0 - progress as f32).powi(2);
 
-                (nx, ny, radius as f32, strength as f32, 1.0 + progress as f32)
+                (nx, ny, radius, strength, 1.0 + progress as f32)
             }
         }
     }
 }
 
 /// Manager for all active touch effects
-#[derive(Default)]
 pub struct TouchEffectManager {
     effects: Vec<TouchEffect>,
+    config: EffectConfig,
+    config_check_counter: u32,
+}
+
+impl Default for TouchEffectManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TouchEffectManager {
     pub fn new() -> Self {
-        Self { effects: Vec::new() }
+        Self {
+            effects: Vec::new(),
+            config: EffectConfig::load(),
+            config_check_counter: 0,
+        }
     }
 
     /// Add a new touch (finger down) - creates fisheye effect
@@ -146,9 +216,17 @@ impl TouchEffectManager {
         }
     }
 
-    /// Clean up expired effects
+    /// Clean up expired effects and periodically reload config
     pub fn cleanup(&mut self) {
-        self.effects.retain(|e| !e.is_expired());
+        // Reload config every ~60 frames to pick up settings changes
+        self.config_check_counter += 1;
+        if self.config_check_counter >= 60 {
+            self.config_check_counter = 0;
+            self.config = EffectConfig::load();
+        }
+
+        let config = &self.config;
+        self.effects.retain(|e| !e.is_expired_with_config(config));
     }
 
     /// Clear all effects
@@ -166,13 +244,18 @@ impl TouchEffectManager {
         &self.effects
     }
 
+    /// Get current config
+    pub fn config(&self) -> &EffectConfig {
+        &self.config
+    }
+
     /// Get shader uniform data
     /// Returns arrays suitable for passing to GL uniforms
     pub fn get_shader_data(&self, screen_width: f64, screen_height: f64) -> TouchEffectShaderData {
         let mut data = TouchEffectShaderData::default();
 
         for (i, effect) in self.effects.iter().take(MAX_TOUCH_EFFECTS).enumerate() {
-            let (x, y, radius, strength, type_flag) = effect.get_shader_params(screen_width, screen_height);
+            let (x, y, radius, strength, type_flag) = effect.get_shader_params(screen_width, screen_height, &self.config);
             data.positions[i * 2] = x;
             data.positions[i * 2 + 1] = y;
             data.params[i * 4] = radius;
