@@ -24,10 +24,10 @@ pub struct EffectConfig {
 impl Default for EffectConfig {
     fn default() -> Self {
         Self {
-            fisheye_size: 0.12,      // 12% of screen (smaller, subtler)
-            fisheye_strength: 0.20,  // 20% distortion
-            ripple_size: 0.25,       // 25% of screen
-            ripple_strength: 0.20,   // 20% distortion
+            fisheye_size: 0.16,      // 16% of screen
+            fisheye_strength: 0.13,  // 13% distortion
+            ripple_size: 0.30,       // 30% of screen
+            ripple_strength: 0.07,   // 7% distortion (subtle)
             ripple_duration: 0.5,    // 0.5 seconds
         }
     }

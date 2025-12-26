@@ -5,22 +5,26 @@ import QtQuick.Layouts 1.15
 Page {
     id: effectsPage
 
-    // Effect settings
+    // Touch effect settings
     property bool touchEffectsEnabled: true
-    property real fisheyeSize: 0.12      // 12% of screen (smaller default)
-    property real fisheyeStrength: 0.20  // 20% distortion (subtler)
-    property real rippleSize: 0.25       // 25% of screen
-    property real rippleStrength: 0.20   // 20% distortion
-    property real rippleDuration: 0.5    // 0.5 seconds
+    property real fisheyeSize: 0.16
+    property real fisheyeStrength: 0.13
+    property real rippleSize: 0.30
+    property real rippleStrength: 0.07
+    property real rippleDuration: 0.5
 
-    // Window effects
-    property bool wobblyWindows: false
-    property bool windowAnimations: true
-    property int closeAnimation: 0       // 0=fade, 1=shrink, 2=explode
-    property int minimizeAnimation: 0    // 0=scale, 1=genie, 2=magic lamp
+    // System event effects
+    property bool volumeRippleEnabled: true      // Edge ripple on volume change
+    property bool notificationRippleEnabled: true // Edge ripple on notification
+    property bool edgeGlowEnabled: true          // Glow when swiping from edges
 
-    // Transition effects
-    property real transitionSpeed: 1.0   // Multiplier
+    // Lock screen effects
+    property bool starryNightEnabled: false      // Animated stars on lock screen
+    property bool rainEffectEnabled: false       // Rain that increases before lock
+    property real rainIntensity: 0.5             // How much rain
+
+    // Animation settings
+    property real transitionSpeed: 1.0
 
     property string configPath: "/home/droidian/.local/state/flick/effects_config.json"
 
@@ -33,16 +37,22 @@ Page {
             xhr.send()
             if (xhr.status === 200) {
                 var config = JSON.parse(xhr.responseText)
+                // Touch effects
                 if (config.touch_effects_enabled !== undefined) touchEffectsEnabled = config.touch_effects_enabled
                 if (config.fisheye_size !== undefined) fisheyeSize = config.fisheye_size
                 if (config.fisheye_strength !== undefined) fisheyeStrength = config.fisheye_strength
                 if (config.ripple_size !== undefined) rippleSize = config.ripple_size
                 if (config.ripple_strength !== undefined) rippleStrength = config.ripple_strength
                 if (config.ripple_duration !== undefined) rippleDuration = config.ripple_duration
-                if (config.wobbly_windows !== undefined) wobblyWindows = config.wobbly_windows
-                if (config.window_animations !== undefined) windowAnimations = config.window_animations
-                if (config.close_animation !== undefined) closeAnimation = config.close_animation
-                if (config.minimize_animation !== undefined) minimizeAnimation = config.minimize_animation
+                // System effects
+                if (config.volume_ripple_enabled !== undefined) volumeRippleEnabled = config.volume_ripple_enabled
+                if (config.notification_ripple_enabled !== undefined) notificationRippleEnabled = config.notification_ripple_enabled
+                if (config.edge_glow_enabled !== undefined) edgeGlowEnabled = config.edge_glow_enabled
+                // Lock screen
+                if (config.starry_night_enabled !== undefined) starryNightEnabled = config.starry_night_enabled
+                if (config.rain_effect_enabled !== undefined) rainEffectEnabled = config.rain_effect_enabled
+                if (config.rain_intensity !== undefined) rainIntensity = config.rain_intensity
+                // Animation
                 if (config.transition_speed !== undefined) transitionSpeed = config.transition_speed
             }
         } catch (e) {
@@ -52,25 +62,29 @@ Page {
 
     function saveConfig() {
         var config = {
+            // Touch effects
             touch_effects_enabled: touchEffectsEnabled,
             fisheye_size: fisheyeSize,
             fisheye_strength: fisheyeStrength,
             ripple_size: rippleSize,
             ripple_strength: rippleStrength,
             ripple_duration: rippleDuration,
-            wobbly_windows: wobblyWindows,
-            window_animations: windowAnimations,
-            close_animation: closeAnimation,
-            minimize_animation: minimizeAnimation,
+            // System effects
+            volume_ripple_enabled: volumeRippleEnabled,
+            notification_ripple_enabled: notificationRippleEnabled,
+            edge_glow_enabled: edgeGlowEnabled,
+            // Lock screen
+            starry_night_enabled: starryNightEnabled,
+            rain_effect_enabled: rainEffectEnabled,
+            rain_intensity: rainIntensity,
+            // Animation
             transition_speed: transitionSpeed
         }
 
-        // Write to temp file first, then move to final location
         var xhr = new XMLHttpRequest()
         xhr.open("PUT", "file://" + configPath, false)
         try {
             xhr.send(JSON.stringify(config, null, 2))
-            console.log("Effects config saved")
         } catch (e) {
             console.error("Failed to save effects config:", e)
         }
@@ -80,72 +94,93 @@ Page {
         color: "#0a0a0f"
     }
 
-    // Hero section
+    // Hero section with animated preview
     Rectangle {
         id: heroSection
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 260
+        height: 220
         color: "transparent"
 
-        // Animated gradient orbs
+        // Animated orbs
         Rectangle {
+            id: orb1
             anchors.centerIn: parent
-            anchors.horizontalCenterOffset: -60
-            width: 200
-            height: 200
-            radius: 100
+            anchors.horizontalCenterOffset: -50
+            width: 180
+            height: 180
+            radius: 90
             color: "#e94560"
-            opacity: 0.15
+            opacity: 0.12
 
             SequentialAnimation on opacity {
                 loops: Animation.Infinite
-                NumberAnimation { to: 0.25; duration: 2000; easing.type: Easing.InOutSine }
-                NumberAnimation { to: 0.15; duration: 2000; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 0.20; duration: 2000; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 0.12; duration: 2000; easing.type: Easing.InOutSine }
             }
         }
 
         Rectangle {
             anchors.centerIn: parent
-            anchors.horizontalCenterOffset: 60
-            width: 160
-            height: 160
-            radius: 80
+            anchors.horizontalCenterOffset: 50
+            anchors.verticalCenterOffset: -20
+            width: 120
+            height: 120
+            radius: 60
             color: "#4a9eff"
-            opacity: 0.12
+            opacity: 0.10
 
             SequentialAnimation on opacity {
                 loops: Animation.Infinite
-                NumberAnimation { to: 0.20; duration: 1500; easing.type: Easing.InOutSine }
-                NumberAnimation { to: 0.12; duration: 1500; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 0.18; duration: 1500; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 0.10; duration: 1500; easing.type: Easing.InOutSine }
+            }
+        }
+
+        // Stars preview (if enabled)
+        Repeater {
+            model: starryNightEnabled ? 20 : 0
+            Rectangle {
+                x: Math.random() * heroSection.width
+                y: Math.random() * heroSection.height
+                width: 2 + Math.random() * 3
+                height: width
+                radius: width / 2
+                color: "#ffffff"
+                opacity: 0.3 + Math.random() * 0.5
+
+                SequentialAnimation on opacity {
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.1; duration: 1000 + Math.random() * 2000 }
+                    NumberAnimation { to: 0.8; duration: 1000 + Math.random() * 2000 }
+                }
             }
         }
 
         Column {
             anchors.centerIn: parent
-            spacing: 12
+            spacing: 8
 
-            // Sparkle icon
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "✨"
-                font.pixelSize: 72
+                font.pixelSize: 56
             }
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Effects"
-                font.pixelSize: 42
+                font.pixelSize: 38
                 font.weight: Font.ExtraLight
-                font.letterSpacing: 6
+                font.letterSpacing: 4
                 color: "#ffffff"
             }
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "COMPIZ-STYLE MAGIC"
-                font.pixelSize: 12
+                text: "NEXT-GEN VISUALS"
+                font.pixelSize: 11
                 font.letterSpacing: 3
                 color: "#555566"
             }
@@ -169,670 +204,170 @@ Page {
             anchors.right: parent.right
             spacing: 12
 
-            // ===== TOUCH EFFECTS SECTION =====
+            // ===== TOUCH EFFECTS =====
             Text {
                 text: "TOUCH EFFECTS"
-                font.pixelSize: 12
+                font.pixelSize: 11
                 font.letterSpacing: 2
                 color: "#555566"
                 leftPadding: 8
             }
 
             // Master toggle
-            Rectangle {
+            EffectToggle {
                 width: settingsColumn.width
-                height: 100
-                radius: 24
-                color: touchMasterMouse.pressed ? "#1e1e2e" : "#14141e"
-                border.color: touchEffectsEnabled ? "#e94560" : "#1a1a2e"
-                border.width: touchEffectsEnabled ? 2 : 1
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 16
-
-                    Rectangle {
-                        Layout.preferredWidth: 56
-                        Layout.preferredHeight: 56
-                        radius: 14
-                        color: touchEffectsEnabled ? "#3a1a2a" : "#1a1a28"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "💧"
-                            font.pixelSize: 28
-                        }
-                    }
-
-                    Column {
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Text {
-                            text: "Touch Distortion"
-                            font.pixelSize: 20
-                            color: "#ffffff"
-                        }
-
-                        Text {
-                            text: "Fisheye lens & water ripple effects"
-                            font.pixelSize: 13
-                            color: "#666677"
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.preferredWidth: 64
-                        Layout.preferredHeight: 36
-                        radius: 18
-                        color: touchEffectsEnabled ? "#e94560" : "#2a2a3e"
-
-                        Behavior on color { ColorAnimation { duration: 200 } }
-
-                        Rectangle {
-                            x: touchEffectsEnabled ? parent.width - width - 4 : 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 28
-                            height: 28
-                            radius: 14
-                            color: "#ffffff"
-
-                            Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
-                        }
-                    }
-                }
-
-                MouseArea {
-                    id: touchMasterMouse
-                    anchors.fill: parent
-                    onClicked: {
-                        touchEffectsEnabled = !touchEffectsEnabled
-                        saveConfig()
-                    }
+                title: "Touch Distortion"
+                subtitle: "Fisheye lens & water ripple"
+                icon: "💧"
+                checked: touchEffectsEnabled
+                accentColor: "#e94560"
+                onToggled: {
+                    touchEffectsEnabled = !touchEffectsEnabled
+                    saveConfig()
                 }
             }
 
-            // Fisheye settings (only shown when enabled)
-            Rectangle {
+            // Fisheye settings
+            EffectSliderCard {
                 width: settingsColumn.width
-                height: fisheyeColumn.height + 40
-                radius: 24
-                color: "#14141e"
-                border.color: "#1a1a2e"
                 visible: touchEffectsEnabled
+                title: "Fisheye Lens"
+                icon: "🔍"
 
-                Column {
-                    id: fisheyeColumn
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: 20
-                    spacing: 20
-
-                    Row {
-                        spacing: 12
-                        Text {
-                            text: "🔍"
-                            font.pixelSize: 24
-                        }
-                        Text {
-                            text: "Fisheye Lens"
-                            font.pixelSize: 18
-                            font.weight: Font.Medium
-                            color: "#ffffff"
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
-                    // Size slider
-                    Column {
-                        width: parent.width
-                        spacing: 8
-
-                        Row {
-                            width: parent.width
-                            Text {
-                                text: "Size"
-                                font.pixelSize: 14
-                                color: "#888899"
-                            }
-                            Item { width: parent.width - 100; height: 1 }
-                            Text {
-                                text: (fisheyeSize * 100).toFixed(0) + "%"
-                                font.pixelSize: 14
-                                font.weight: Font.Bold
-                                color: "#e94560"
-                            }
-                        }
-
-                        Item {
-                            width: parent.width
-                            height: 40
-
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: parent.width
-                                height: 8
-                                radius: 4
-                                color: "#1a1a28"
-
-                                Rectangle {
-                                    width: parent.width * ((fisheyeSize - 0.05) / 0.25)
-                                    height: parent.height
-                                    radius: 4
-                                    gradient: Gradient {
-                                        orientation: Gradient.Horizontal
-                                        GradientStop { position: 0.0; color: "#993366" }
-                                        GradientStop { position: 1.0; color: "#e94560" }
-                                    }
-                                }
-                            }
-
-                            Rectangle {
-                                x: (parent.width - 32) * ((fisheyeSize - 0.05) / 0.25)
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 32
-                                height: 32
-                                radius: 16
-                                color: "#ffffff"
-                                border.color: "#e94560"
-                                border.width: 2
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onPressed: updateFisheyeSize(mouse)
-                                onPositionChanged: if (pressed) updateFisheyeSize(mouse)
-                                onReleased: saveConfig()
-
-                                function updateFisheyeSize(mouse) {
-                                    var ratio = Math.max(0, Math.min(1, mouse.x / parent.width))
-                                    fisheyeSize = 0.05 + ratio * 0.25  // 5% to 30%
-                                }
-                            }
-                        }
-                    }
-
-                    // Strength slider
-                    Column {
-                        width: parent.width
-                        spacing: 8
-
-                        Row {
-                            width: parent.width
-                            Text {
-                                text: "Strength"
-                                font.pixelSize: 14
-                                color: "#888899"
-                            }
-                            Item { width: parent.width - 100; height: 1 }
-                            Text {
-                                text: (fisheyeStrength * 100).toFixed(0) + "%"
-                                font.pixelSize: 14
-                                font.weight: Font.Bold
-                                color: "#e94560"
-                            }
-                        }
-
-                        Item {
-                            width: parent.width
-                            height: 40
-
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: parent.width
-                                height: 8
-                                radius: 4
-                                color: "#1a1a28"
-
-                                Rectangle {
-                                    width: parent.width * (fisheyeStrength / 0.5)
-                                    height: parent.height
-                                    radius: 4
-                                    gradient: Gradient {
-                                        orientation: Gradient.Horizontal
-                                        GradientStop { position: 0.0; color: "#993366" }
-                                        GradientStop { position: 1.0; color: "#e94560" }
-                                    }
-                                }
-                            }
-
-                            Rectangle {
-                                x: (parent.width - 32) * (fisheyeStrength / 0.5)
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 32
-                                height: 32
-                                radius: 16
-                                color: "#ffffff"
-                                border.color: "#e94560"
-                                border.width: 2
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onPressed: updateFisheyeStrength(mouse)
-                                onPositionChanged: if (pressed) updateFisheyeStrength(mouse)
-                                onReleased: saveConfig()
-
-                                function updateFisheyeStrength(mouse) {
-                                    var ratio = Math.max(0, Math.min(1, mouse.x / parent.width))
-                                    fisheyeStrength = ratio * 0.5  // 0% to 50%
-                                }
-                            }
-                        }
-                    }
-                }
+                sliders: [
+                    { label: "Size", value: fisheyeSize, min: 0.05, max: 0.30, color: "#e94560",
+                      onChanged: function(v) { fisheyeSize = v } },
+                    { label: "Strength", value: fisheyeStrength, min: 0, max: 0.5, color: "#e94560",
+                      onChanged: function(v) { fisheyeStrength = v } }
+                ]
+                onSave: saveConfig()
             }
 
             // Ripple settings
-            Rectangle {
+            EffectSliderCard {
                 width: settingsColumn.width
-                height: rippleColumn.height + 40
-                radius: 24
-                color: "#14141e"
-                border.color: "#1a1a2e"
                 visible: touchEffectsEnabled
+                title: "Water Ripple"
+                icon: "🌊"
 
-                Column {
-                    id: rippleColumn
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: 20
-                    spacing: 20
-
-                    Row {
-                        spacing: 12
-                        Text {
-                            text: "🌊"
-                            font.pixelSize: 24
-                        }
-                        Text {
-                            text: "Water Ripple"
-                            font.pixelSize: 18
-                            font.weight: Font.Medium
-                            color: "#ffffff"
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
-                    // Size slider
-                    Column {
-                        width: parent.width
-                        spacing: 8
-
-                        Row {
-                            width: parent.width
-                            Text {
-                                text: "Size"
-                                font.pixelSize: 14
-                                color: "#888899"
-                            }
-                            Item { width: parent.width - 100; height: 1 }
-                            Text {
-                                text: (rippleSize * 100).toFixed(0) + "%"
-                                font.pixelSize: 14
-                                font.weight: Font.Bold
-                                color: "#4a9eff"
-                            }
-                        }
-
-                        Item {
-                            width: parent.width
-                            height: 40
-
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: parent.width
-                                height: 8
-                                radius: 4
-                                color: "#1a1a28"
-
-                                Rectangle {
-                                    width: parent.width * ((rippleSize - 0.1) / 0.4)
-                                    height: parent.height
-                                    radius: 4
-                                    gradient: Gradient {
-                                        orientation: Gradient.Horizontal
-                                        GradientStop { position: 0.0; color: "#2a4a6a" }
-                                        GradientStop { position: 1.0; color: "#4a9eff" }
-                                    }
-                                }
-                            }
-
-                            Rectangle {
-                                x: (parent.width - 32) * ((rippleSize - 0.1) / 0.4)
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 32
-                                height: 32
-                                radius: 16
-                                color: "#ffffff"
-                                border.color: "#4a9eff"
-                                border.width: 2
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onPressed: updateRippleSize(mouse)
-                                onPositionChanged: if (pressed) updateRippleSize(mouse)
-                                onReleased: saveConfig()
-
-                                function updateRippleSize(mouse) {
-                                    var ratio = Math.max(0, Math.min(1, mouse.x / parent.width))
-                                    rippleSize = 0.1 + ratio * 0.4  // 10% to 50%
-                                }
-                            }
-                        }
-                    }
-
-                    // Strength slider
-                    Column {
-                        width: parent.width
-                        spacing: 8
-
-                        Row {
-                            width: parent.width
-                            Text {
-                                text: "Strength"
-                                font.pixelSize: 14
-                                color: "#888899"
-                            }
-                            Item { width: parent.width - 100; height: 1 }
-                            Text {
-                                text: (rippleStrength * 100).toFixed(0) + "%"
-                                font.pixelSize: 14
-                                font.weight: Font.Bold
-                                color: "#4a9eff"
-                            }
-                        }
-
-                        Item {
-                            width: parent.width
-                            height: 40
-
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: parent.width
-                                height: 8
-                                radius: 4
-                                color: "#1a1a28"
-
-                                Rectangle {
-                                    width: parent.width * (rippleStrength / 0.5)
-                                    height: parent.height
-                                    radius: 4
-                                    gradient: Gradient {
-                                        orientation: Gradient.Horizontal
-                                        GradientStop { position: 0.0; color: "#2a4a6a" }
-                                        GradientStop { position: 1.0; color: "#4a9eff" }
-                                    }
-                                }
-                            }
-
-                            Rectangle {
-                                x: (parent.width - 32) * (rippleStrength / 0.5)
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 32
-                                height: 32
-                                radius: 16
-                                color: "#ffffff"
-                                border.color: "#4a9eff"
-                                border.width: 2
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onPressed: updateRippleStrength(mouse)
-                                onPositionChanged: if (pressed) updateRippleStrength(mouse)
-                                onReleased: saveConfig()
-
-                                function updateRippleStrength(mouse) {
-                                    var ratio = Math.max(0, Math.min(1, mouse.x / parent.width))
-                                    rippleStrength = ratio * 0.5  // 0% to 50%
-                                }
-                            }
-                        }
-                    }
-
-                    // Duration slider
-                    Column {
-                        width: parent.width
-                        spacing: 8
-
-                        Row {
-                            width: parent.width
-                            Text {
-                                text: "Duration"
-                                font.pixelSize: 14
-                                color: "#888899"
-                            }
-                            Item { width: parent.width - 100; height: 1 }
-                            Text {
-                                text: rippleDuration.toFixed(1) + "s"
-                                font.pixelSize: 14
-                                font.weight: Font.Bold
-                                color: "#4a9eff"
-                            }
-                        }
-
-                        Item {
-                            width: parent.width
-                            height: 40
-
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: parent.width
-                                height: 8
-                                radius: 4
-                                color: "#1a1a28"
-
-                                Rectangle {
-                                    width: parent.width * ((rippleDuration - 0.2) / 0.8)
-                                    height: parent.height
-                                    radius: 4
-                                    gradient: Gradient {
-                                        orientation: Gradient.Horizontal
-                                        GradientStop { position: 0.0; color: "#2a4a6a" }
-                                        GradientStop { position: 1.0; color: "#4a9eff" }
-                                    }
-                                }
-                            }
-
-                            Rectangle {
-                                x: (parent.width - 32) * ((rippleDuration - 0.2) / 0.8)
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 32
-                                height: 32
-                                radius: 16
-                                color: "#ffffff"
-                                border.color: "#4a9eff"
-                                border.width: 2
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onPressed: updateRippleDuration(mouse)
-                                onPositionChanged: if (pressed) updateRippleDuration(mouse)
-                                onReleased: saveConfig()
-
-                                function updateRippleDuration(mouse) {
-                                    var ratio = Math.max(0, Math.min(1, mouse.x / parent.width))
-                                    rippleDuration = 0.2 + ratio * 0.8  // 0.2s to 1.0s
-                                }
-                            }
-                        }
-                    }
-                }
+                sliders: [
+                    { label: "Size", value: rippleSize, min: 0.1, max: 0.5, color: "#4a9eff",
+                      onChanged: function(v) { rippleSize = v } },
+                    { label: "Strength", value: rippleStrength, min: 0, max: 0.3, color: "#4a9eff",
+                      onChanged: function(v) { rippleStrength = v } },
+                    { label: "Duration", value: rippleDuration, min: 0.2, max: 1.0, color: "#4a9eff", suffix: "s",
+                      onChanged: function(v) { rippleDuration = v } }
+                ]
+                onSave: saveConfig()
             }
 
-            Item { height: 24 }
+            Item { height: 16 }
 
-            // ===== WINDOW EFFECTS SECTION =====
+            // ===== SYSTEM EFFECTS =====
             Text {
-                text: "WINDOW EFFECTS"
-                font.pixelSize: 12
+                text: "SYSTEM EFFECTS"
+                font.pixelSize: 11
                 font.letterSpacing: 2
                 color: "#555566"
                 leftPadding: 8
             }
 
-            // Wobbly Windows toggle
-            Rectangle {
+            EffectToggle {
                 width: settingsColumn.width
-                height: 100
-                radius: 24
-                color: wobblyMouse.pressed ? "#1e1e2e" : "#14141e"
-                border.color: wobblyWindows ? "#4a9eff" : "#1a1a2e"
-                border.width: wobblyWindows ? 2 : 1
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 16
-
-                    Rectangle {
-                        Layout.preferredWidth: 56
-                        Layout.preferredHeight: 56
-                        radius: 14
-                        color: wobblyWindows ? "#1a2a4a" : "#1a1a28"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "〰️"
-                            font.pixelSize: 28
-                        }
-                    }
-
-                    Column {
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Text {
-                            text: "Wobbly Windows"
-                            font.pixelSize: 20
-                            color: "#ffffff"
-                        }
-
-                        Text {
-                            text: "Windows wobble when moved (coming soon)"
-                            font.pixelSize: 13
-                            color: "#666677"
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.preferredWidth: 64
-                        Layout.preferredHeight: 36
-                        radius: 18
-                        color: wobblyWindows ? "#4a9eff" : "#2a2a3e"
-
-                        Behavior on color { ColorAnimation { duration: 200 } }
-
-                        Rectangle {
-                            x: wobblyWindows ? parent.width - width - 4 : 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 28
-                            height: 28
-                            radius: 14
-                            color: "#ffffff"
-
-                            Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
-                        }
-                    }
-                }
-
-                MouseArea {
-                    id: wobblyMouse
-                    anchors.fill: parent
-                    onClicked: {
-                        wobblyWindows = !wobblyWindows
-                        saveConfig()
-                    }
+                title: "Volume Edge Ripple"
+                subtitle: "Ripple inward when adjusting volume"
+                icon: "🔊"
+                checked: volumeRippleEnabled
+                accentColor: "#9966ff"
+                onToggled: {
+                    volumeRippleEnabled = !volumeRippleEnabled
+                    saveConfig()
                 }
             }
 
-            // Window animations toggle
-            Rectangle {
+            EffectToggle {
                 width: settingsColumn.width
-                height: 100
-                radius: 24
-                color: animMouse.pressed ? "#1e1e2e" : "#14141e"
-                border.color: windowAnimations ? "#4a9eff" : "#1a1a2e"
-                border.width: windowAnimations ? 2 : 1
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 16
-
-                    Rectangle {
-                        Layout.preferredWidth: 56
-                        Layout.preferredHeight: 56
-                        radius: 14
-                        color: windowAnimations ? "#1a2a4a" : "#1a1a28"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "🎬"
-                            font.pixelSize: 28
-                        }
-                    }
-
-                    Column {
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Text {
-                            text: "Window Animations"
-                            font.pixelSize: 20
-                            color: "#ffffff"
-                        }
-
-                        Text {
-                            text: "Animate window open/close"
-                            font.pixelSize: 13
-                            color: "#666677"
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.preferredWidth: 64
-                        Layout.preferredHeight: 36
-                        radius: 18
-                        color: windowAnimations ? "#4a9eff" : "#2a2a3e"
-
-                        Behavior on color { ColorAnimation { duration: 200 } }
-
-                        Rectangle {
-                            x: windowAnimations ? parent.width - width - 4 : 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 28
-                            height: 28
-                            radius: 14
-                            color: "#ffffff"
-
-                            Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
-                        }
-                    }
-                }
-
-                MouseArea {
-                    id: animMouse
-                    anchors.fill: parent
-                    onClicked: {
-                        windowAnimations = !windowAnimations
-                        saveConfig()
-                    }
+                title: "Notification Ripple"
+                subtitle: "Edge glow when notifications arrive"
+                icon: "🔔"
+                checked: notificationRippleEnabled
+                accentColor: "#9966ff"
+                onToggled: {
+                    notificationRippleEnabled = !notificationRippleEnabled
+                    saveConfig()
                 }
             }
 
-            Item { height: 24 }
+            EffectToggle {
+                width: settingsColumn.width
+                title: "Edge Swipe Glow"
+                subtitle: "Light trail when swiping from edges"
+                icon: "✋"
+                checked: edgeGlowEnabled
+                accentColor: "#9966ff"
+                onToggled: {
+                    edgeGlowEnabled = !edgeGlowEnabled
+                    saveConfig()
+                }
+            }
 
-            // ===== ANIMATION SPEED SECTION =====
+            Item { height: 16 }
+
+            // ===== LOCK SCREEN EFFECTS =====
+            Text {
+                text: "LOCK SCREEN"
+                font.pixelSize: 11
+                font.letterSpacing: 2
+                color: "#555566"
+                leftPadding: 8
+            }
+
+            EffectToggle {
+                width: settingsColumn.width
+                title: "Starry Night"
+                subtitle: "Animated twinkling stars"
+                icon: "⭐"
+                checked: starryNightEnabled
+                accentColor: "#ffaa00"
+                onToggled: {
+                    starryNightEnabled = !starryNightEnabled
+                    saveConfig()
+                }
+            }
+
+            EffectToggle {
+                width: settingsColumn.width
+                title: "Rain Effect"
+                subtitle: "Rain increases before screen locks"
+                icon: "🌧️"
+                checked: rainEffectEnabled
+                accentColor: "#4a9eff"
+                onToggled: {
+                    rainEffectEnabled = !rainEffectEnabled
+                    saveConfig()
+                }
+            }
+
+            // Rain intensity slider
+            EffectSliderCard {
+                width: settingsColumn.width
+                visible: rainEffectEnabled
+                title: "Rain Settings"
+                icon: "💦"
+
+                sliders: [
+                    { label: "Intensity", value: rainIntensity, min: 0.1, max: 1.0, color: "#4a9eff",
+                      onChanged: function(v) { rainIntensity = v } }
+                ]
+                onSave: saveConfig()
+            }
+
+            Item { height: 16 }
+
+            // ===== ANIMATION SPEED =====
             Text {
                 text: "ANIMATION SPEED"
-                font.pixelSize: 12
+                font.pixelSize: 11
                 font.letterSpacing: 2
                 color: "#555566"
                 leftPadding: 8
@@ -840,8 +375,8 @@ Page {
 
             Rectangle {
                 width: settingsColumn.width
-                height: 120
-                radius: 24
+                height: 140
+                radius: 20
                 color: "#14141e"
                 border.color: "#1a1a2e"
 
@@ -854,33 +389,34 @@ Page {
                         width: parent.width
                         Text {
                             text: "Global Speed"
-                            font.pixelSize: 16
+                            font.pixelSize: 15
                             color: "#ffffff"
                         }
-                        Item { width: parent.width - 160; height: 1 }
+                        Item { width: parent.width - 140; height: 1 }
                         Text {
                             text: transitionSpeed.toFixed(1) + "x"
-                            font.pixelSize: 18
+                            font.pixelSize: 16
                             font.weight: Font.Bold
                             color: "#9966ff"
                         }
                     }
 
+                    // Slider
                     Item {
                         width: parent.width
-                        height: 40
+                        height: 36
 
                         Rectangle {
                             anchors.centerIn: parent
                             width: parent.width
-                            height: 8
-                            radius: 4
+                            height: 6
+                            radius: 3
                             color: "#1a1a28"
 
                             Rectangle {
                                 width: parent.width * ((transitionSpeed - 0.5) / 1.5)
                                 height: parent.height
-                                radius: 4
+                                radius: 3
                                 gradient: Gradient {
                                     orientation: Gradient.Horizontal
                                     GradientStop { position: 0.0; color: "#663399" }
@@ -890,11 +426,11 @@ Page {
                         }
 
                         Rectangle {
-                            x: (parent.width - 32) * ((transitionSpeed - 0.5) / 1.5)
+                            x: (parent.width - 28) * ((transitionSpeed - 0.5) / 1.5)
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 32
-                            height: 32
-                            radius: 16
+                            width: 28
+                            height: 28
+                            radius: 14
                             color: "#ffffff"
                             border.color: "#9966ff"
                             border.width: 2
@@ -902,58 +438,56 @@ Page {
 
                         MouseArea {
                             anchors.fill: parent
-                            onPressed: updateSpeed(mouse)
-                            onPositionChanged: if (pressed) updateSpeed(mouse)
+                            onPressed: update(mouse)
+                            onPositionChanged: if (pressed) update(mouse)
                             onReleased: saveConfig()
+                            function update(mouse) {
+                                var r = Math.max(0, Math.min(1, mouse.x / parent.width))
+                                transitionSpeed = 0.5 + r * 1.5
+                            }
+                        }
+                    }
 
-                            function updateSpeed(mouse) {
-                                var ratio = Math.max(0, Math.min(1, mouse.x / parent.width))
-                                transitionSpeed = 0.5 + ratio * 1.5  // 0.5x to 2.0x
+                    // Presets
+                    Row {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: 8
+
+                        Repeater {
+                            model: [
+                                { label: "Slow", value: 0.5 },
+                                { label: "Normal", value: 1.0 },
+                                { label: "Fast", value: 1.5 },
+                                { label: "Instant", value: 2.0 }
+                            ]
+
+                            Rectangle {
+                                width: 70
+                                height: 32
+                                radius: 16
+                                color: Math.abs(transitionSpeed - modelData.value) < 0.1 ? "#9966ff" : "#1a1a28"
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    font.pixelSize: 11
+                                    color: Math.abs(transitionSpeed - modelData.value) < 0.1 ? "#ffffff" : "#666677"
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        transitionSpeed = modelData.value
+                                        saveConfig()
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Speed presets
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 12
-
-                Repeater {
-                    model: [
-                        { label: "Slow", value: 0.5 },
-                        { label: "Normal", value: 1.0 },
-                        { label: "Fast", value: 1.5 },
-                        { label: "Instant", value: 2.0 }
-                    ]
-
-                    Rectangle {
-                        width: 80
-                        height: 44
-                        radius: 22
-                        color: Math.abs(transitionSpeed - modelData.value) < 0.1 ? "#9966ff" : "#1a1a28"
-                        border.color: "#2a2a3e"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData.label
-                            font.pixelSize: 13
-                            color: Math.abs(transitionSpeed - modelData.value) < 0.1 ? "#ffffff" : "#888899"
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: {
-                                transitionSpeed = modelData.value
-                                saveConfig()
-                            }
-                        }
-                    }
-                }
-            }
-
-            Item { height: 40 }
+            Item { height: 60 }
         }
     }
 
@@ -963,18 +497,15 @@ Page {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
-        radius: 36
+        width: 64
+        height: 64
+        radius: 32
         color: backMouse.pressed ? "#c23a50" : "#e94560"
-
-        Behavior on color { ColorAnimation { duration: 150 } }
 
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
-            font.weight: Font.Medium
+            font.pixelSize: 28
             color: "#ffffff"
         }
 
@@ -985,14 +516,186 @@ Page {
         }
     }
 
-    // Home indicator
-    Rectangle {
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 8
-        width: 120
-        height: 4
-        radius: 2
-        color: "#333344"
+    // Reusable toggle component
+    component EffectToggle: Rectangle {
+        property string title
+        property string subtitle
+        property string icon
+        property bool checked
+        property color accentColor: "#e94560"
+        signal toggled()
+
+        height: 88
+        radius: 20
+        color: toggleMouse.pressed ? "#1e1e2e" : "#14141e"
+        border.color: checked ? accentColor : "#1a1a2e"
+        border.width: checked ? 2 : 1
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 14
+
+            Rectangle {
+                Layout.preferredWidth: 48
+                Layout.preferredHeight: 48
+                radius: 12
+                color: checked ? Qt.darker(accentColor, 2) : "#1a1a28"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: icon
+                    font.pixelSize: 24
+                }
+            }
+
+            Column {
+                Layout.fillWidth: true
+                spacing: 4
+
+                Text {
+                    text: title
+                    font.pixelSize: 17
+                    color: "#ffffff"
+                }
+
+                Text {
+                    text: subtitle
+                    font.pixelSize: 12
+                    color: "#666677"
+                }
+            }
+
+            Rectangle {
+                Layout.preferredWidth: 56
+                Layout.preferredHeight: 32
+                radius: 16
+                color: checked ? accentColor : "#2a2a3e"
+
+                Behavior on color { ColorAnimation { duration: 200 } }
+
+                Rectangle {
+                    x: checked ? parent.width - width - 3 : 3
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 26
+                    height: 26
+                    radius: 13
+                    color: "#ffffff"
+
+                    Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
+                }
+            }
+        }
+
+        MouseArea {
+            id: toggleMouse
+            anchors.fill: parent
+            onClicked: toggled()
+        }
+    }
+
+    // Reusable slider card component
+    component EffectSliderCard: Rectangle {
+        property string title
+        property string icon
+        property var sliders: []
+        signal save()
+
+        height: sliderColumn.height + 32
+        radius: 20
+        color: "#14141e"
+        border.color: "#1a1a2e"
+
+        Column {
+            id: sliderColumn
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 16
+            spacing: 16
+
+            Row {
+                spacing: 10
+                Text {
+                    text: icon
+                    font.pixelSize: 20
+                }
+                Text {
+                    text: title
+                    font.pixelSize: 16
+                    font.weight: Font.Medium
+                    color: "#ffffff"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            Repeater {
+                model: sliders
+
+                Column {
+                    width: sliderColumn.width - 32
+                    spacing: 6
+
+                    Row {
+                        width: parent.width
+                        Text {
+                            text: modelData.label
+                            font.pixelSize: 13
+                            color: "#888899"
+                        }
+                        Item { width: parent.width - 80; height: 1 }
+                        Text {
+                            text: (modelData.suffix === "s" ? modelData.value.toFixed(1) : (modelData.value * 100).toFixed(0)) + (modelData.suffix || "%")
+                            font.pixelSize: 13
+                            font.weight: Font.Bold
+                            color: modelData.color
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 32
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: parent.width
+                            height: 6
+                            radius: 3
+                            color: "#1a1a28"
+
+                            Rectangle {
+                                width: parent.width * ((modelData.value - modelData.min) / (modelData.max - modelData.min))
+                                height: parent.height
+                                radius: 3
+                                color: modelData.color
+                            }
+                        }
+
+                        Rectangle {
+                            x: (parent.width - 24) * ((modelData.value - modelData.min) / (modelData.max - modelData.min))
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 24
+                            height: 24
+                            radius: 12
+                            color: "#ffffff"
+                            border.color: modelData.color
+                            border.width: 2
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onPressed: update(mouse)
+                            onPositionChanged: if (pressed) update(mouse)
+                            onReleased: save()
+                            function update(mouse) {
+                                var r = Math.max(0, Math.min(1, mouse.x / parent.width))
+                                var v = modelData.min + r * (modelData.max - modelData.min)
+                                modelData.onChanged(v)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
