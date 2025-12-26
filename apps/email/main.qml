@@ -841,7 +841,11 @@ Window {
                         }
 
                         Text {
-                            text: accounts.length > 0 ? accounts.find(function(a) { return a.id === currentAccountId })?.email || "" : ""
+                            text: {
+                                if (accounts.length === 0) return ""
+                                var acc = accounts.find(function(a) { return a.id === currentAccountId })
+                                return acc ? acc.email : ""
+                            }
                             color: "#888888"
                             font.pixelSize: 12 * textScale
                             elide: Text.ElideRight
