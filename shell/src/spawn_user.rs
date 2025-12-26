@@ -196,6 +196,10 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
     // Note: QT_QUICK_BACKEND=software was blocking EGL video path
     command.env("QSG_RENDER_LOOP", "basic");
 
+    // Force Qt GStreamer to use droideglsink for video (works with droidcamsrc)
+    // This avoids the "Pipeline construction is invalid" error when using waylandsink
+    command.env("QT_GSTREAMER_WINDOW_VIDEOSINK", "droideglsink");
+
     // Set scaling
     command.env("QT_SCALE_FACTOR", &qt_scale);
     command.env("QT_FONT_DPI", format!("{}", (96.0 * text_scale) as i32));
