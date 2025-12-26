@@ -34,6 +34,8 @@ Droidian and similar Android-based Linux distributions require **HWComposer** in
 - Proper privilege dropping for app launching
 - Keyboard state save/restore when switching apps
 - SHM buffer rendering for external Wayland clients
+- EGL buffer import for hardware-accelerated apps (camera preview, etc.)
+- Camera with live video preview (via droidian-camera + AAL backend)
 
 ⚠️ **Known Issues:**
 - X11/XWayland apps do not work (Firefox, etc.) - native Wayland apps only
@@ -70,18 +72,19 @@ Flick comes with a set of QML apps. Status of each:
 |-----|--------|-------|
 | **Settings** | ✅ Working | WiFi, Bluetooth, Display, Sound, Battery, Storage, Date/Time, About |
 | **Calculator** | ✅ Working | Basic calculator with standard operations |
+| **Calendar** | ✅ Working | Basic calendar view |
+| **Music** | ✅ Working | Music player with playback controls |
+| **Audiobooks** | ✅ Working | Audiobook player with chapter support |
+| **Camera** | ✅ Working | Camera with live preview (uses droidian-camera on Droidian) |
 | **Notes** | ✅ Working | Simple note-taking app with audio recording |
 | **Files** | ✅ Working | File browser with context menu |
-| **Audiobooks** | ✅ Working | Audiobook player with chapter support |
-| **Phone** | ✅ Working | Dialer and call interface (requires modem) |
 | **Photos** | ✅ Working | Photo gallery viewer |
-| **Calendar** | ✅ Working | Basic calendar view |
 | **Terminal** | ✅ Working | Terminal emulator |
-| **Lock Screen** | ✅ Working | PIN entry, swipe to unlock |
-| **Music** | ⚠️ Basic | Music player (UI only, needs backend work) |
-| **Messages** | ⚠️ Basic | SMS interface (requires modem integration) |
-| **Email** | ⚠️ Basic | Email client (UI only, needs backend) |
-| **Web** | ⚠️ Basic | Web browser (UI only, needs browser engine) |
+| **Lock Screen** | ✅ Working | Pattern/PIN entry, swipe to unlock |
+| **Phone** | ⚠️ Partial | Dialer UI works, audio controls work, modem integration in progress |
+| **Messages** | 🚧 TODO | SMS interface (requires modem integration) |
+| **Email** | 🚧 TODO | Email client (UI only, needs backend) |
+| **Web** | 🚧 TODO | Web browser (UI only, needs browser engine) |
 
 ## Architecture
 
