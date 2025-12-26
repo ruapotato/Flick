@@ -2668,20 +2668,7 @@ fn render_frame(
                             info!("Window {} needs EGL re-import", i);
                         }
                         if let Some(imported) = try_import_egl_buffer(&wl_surface, display) {
-                            // Get old EGL resources before replacing
-                            let old_resources: Option<(u32, *mut std::ffi::c_void)> = compositor::with_states(&wl_surface, |data| {
-                                use std::cell::RefCell;
-                                use crate::state::SurfaceBufferData;
-                                if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
-                                    let bd = buffer_data.borrow();
-                                    if let Some(ref old_tex) = bd.egl_texture {
-                                        return Some((old_tex.texture_id, old_tex.egl_image));
-                                    }
-                                }
-                                None
-                            });
-
-                            // Store the imported texture
+                            // Store the imported texture (don't cleanup old - AAL may reuse buffers)
                             compositor::with_states(&wl_surface, |data| {
                                 use std::cell::RefCell;
                                 use crate::state::{SurfaceBufferData, EglTextureBuffer};
@@ -2698,26 +2685,6 @@ fn render_frame(
                                     bd.wl_buffer_ptr = None; // Clear after import
                                 }
                             });
-
-                            // Destroy old EGL resources (outside with_states to avoid holding locks)
-                            if let Some((old_texture_id, old_egl_image)) = old_resources {
-                                if log_frame {
-                                    info!("Cleaning up old EGL resources: texture={}, image={:?}", old_texture_id, old_egl_image);
-                                }
-                                // Destroy old EGL image
-                                if !old_egl_image.is_null() {
-                                    if let Some(destroy_fn) = display.egl_destroy_image {
-                                        let egl_display_ptr = display.egl_display.as_ptr() as *mut std::ffi::c_void;
-                                        unsafe {
-                                            destroy_fn(egl_display_ptr, old_egl_image);
-                                        }
-                                    }
-                                }
-                                // Delete old texture
-                                unsafe {
-                                    gl::delete_texture(old_texture_id);
-                                }
-                            }
 
                             // Render the newly imported texture
                             let window_pos = state.space.element_location(window).unwrap_or_default();
