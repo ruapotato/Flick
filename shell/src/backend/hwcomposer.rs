@@ -1801,6 +1801,23 @@ pub fn run() -> Result<()> {
     state.shell.screen_size = state.screen_size;
     state.shell.quick_settings.screen_size = state.screen_size;
 
+    // Update the Wayland output mode with correct dimensions
+    // This ensures Wayland clients receive the correct screen size
+    if let Some(output) = state.outputs.first() {
+        let correct_mode = Mode {
+            size: (width as i32, height as i32).into(),
+            refresh: 60_000,
+        };
+        output.change_current_state(
+            Some(correct_mode),
+            None,
+            None,
+            None,
+        );
+        output.set_preferred(correct_mode);
+        info!("Updated Wayland output mode to {}x{}", width, height);
+    }
+
     if let Some(ref mut slint_ui) = state.shell.slint_ui {
         slint_ui.set_size(state.screen_size);
     }

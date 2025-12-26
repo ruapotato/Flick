@@ -12,15 +12,6 @@ Window {
     title: "Web"
     color: "#0a0a0f"
 
-    // Force window to respect compositor size
-    Component.onCompleted: {
-        console.log("Window created - Screen:", Screen.width, "x", Screen.height, "Window:", width, "x", height)
-    }
-
-    onHeightChanged: {
-        console.log("Window height changed to:", height)
-    }
-
     // Display config
     property real textScale: 1.0
 
