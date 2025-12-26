@@ -1129,8 +1129,8 @@ impl Flick {
     /// Reload settings from config file if enough time has passed
     /// This allows the Settings app to change settings without restart
     pub fn reload_settings_if_needed(&mut self) {
-        // Check every 500ms
-        if self.settings_last_check.elapsed().as_millis() < 500 {
+        // Check every 100ms for responsive toggle
+        if self.settings_last_check.elapsed().as_millis() < 100 {
             return;
         }
         self.settings_last_check = Instant::now();
