@@ -8,9 +8,8 @@ import "../shared"
 Window {
     id: root
     visible: true
-    visibility: Window.FullScreen
-    width: Screen.width
-    height: Screen.height
+    width: 1080
+    height: 2340
     title: "Web"
     color: "#0a0a0f"
 
@@ -924,6 +923,7 @@ Window {
 
             // Tab grid
             GridView {
+                id: tabsGridView
                 width: parent.width
                 height: parent.height - 180
                 cellWidth: width / 2
@@ -932,7 +932,7 @@ Window {
                 clip: true
 
                 delegate: Item {
-                    width: parent.width / 2
+                    width: tabsGridView.width / 2
                     height: 200
 
                     Rectangle {
@@ -1479,6 +1479,7 @@ Window {
             }
 
             ListView {
+                id: bookmarksListView
                 width: parent.width
                 height: parent.height - 180
                 model: bookmarksList
@@ -1486,9 +1487,9 @@ Window {
                 spacing: 4
 
                 delegate: Rectangle {
-                    width: parent.width - 32
+                    width: bookmarksListView.width - 32
                     height: 80
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    x: 16
                     radius: 12
                     color: bookmarkItemMouse.pressed ? "#2a2a3e" : "#1a1a2e"
 
@@ -1649,6 +1650,7 @@ Window {
             }
 
             ListView {
+                id: historyListView
                 width: parent.width
                 height: parent.height - 180
                 model: historyList
@@ -1656,9 +1658,9 @@ Window {
                 spacing: 4
 
                 delegate: Rectangle {
-                    width: parent.width - 32
+                    width: historyListView.width - 32
                     height: 72
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    x: 16
                     radius: 12
                     color: historyItemMouse.pressed ? "#2a2a3e" : "#1a1a2e"
 
@@ -1760,6 +1762,7 @@ Window {
             }
 
             ListView {
+                id: downloadsListView
                 width: parent.width
                 height: parent.height - 180
                 model: downloadsList
@@ -1767,9 +1770,9 @@ Window {
                 spacing: 4
 
                 delegate: Rectangle {
-                    width: parent.width - 32
+                    width: downloadsListView.width - 32
                     height: 80
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    x: 16
                     radius: 12
                     color: "#1a1a2e"
 
