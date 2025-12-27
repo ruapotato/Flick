@@ -2950,7 +2950,13 @@ fn render_frame(
 
     // End scene FBO rendering if active, switch back to default framebuffer
     if using_scene_fbo {
-        unsafe { gl::end_scene_render(); }
+        unsafe {
+            gl::end_scene_render();
+            // Reset viewport for default framebuffer
+            if let Some(f) = gl::FN_VIEWPORT {
+                f(0, 0, display.width as i32, display.height as i32);
+            }
+        }
     }
 
     // Render touch distortion effects (fisheye while touching, ripple on release)
@@ -4298,6 +4304,10 @@ mod gl {
         if !SCENE_RENDERING_ACTIVE {
             return;
         }
+
+        // Flush to ensure all rendering to the FBO is complete before we use its texture
+        // This is critical on tiled GPUs to ensure tile resolve happens before texture read
+        Flush();
 
         // Unbind scene FBO, switch to default framebuffer
         if let Some(f) = FN_BIND_FRAMEBUFFER { f(GL_FRAMEBUFFER, 0); }
