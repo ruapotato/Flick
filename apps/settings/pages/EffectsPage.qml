@@ -18,7 +18,6 @@ Page {
     // Living pixels sub-toggles
     property bool lpStars: true          // Twinkling stars in dark areas
     property bool lpShootingStars: true  // Occasional shooting stars
-    property bool lpDust: true           // Floating dust motes
     property bool lpEyes: true           // Sprites on bright edges
     property bool rainEffectEnabled: false // Compiz-style rain ripples
 
@@ -49,7 +48,6 @@ Page {
                 // Living pixels sub-toggles
                 if (config.lp_stars !== undefined) lpStars = config.lp_stars
                 if (config.lp_shooting_stars !== undefined) lpShootingStars = config.lp_shooting_stars
-                if (config.lp_dust !== undefined) lpDust = config.lp_dust
                 if (config.lp_eyes !== undefined) lpEyes = config.lp_eyes
                 if (config.rain_effect_enabled !== undefined) rainEffectEnabled = config.rain_effect_enabled
                 // Animation
@@ -75,7 +73,6 @@ Page {
             // Living pixels sub-toggles
             lp_stars: lpStars,
             lp_shooting_stars: lpShootingStars,
-            lp_dust: lpDust,
             lp_eyes: lpEyes,
             rain_effect_enabled: rainEffectEnabled,
             // Animation
@@ -408,18 +405,6 @@ Page {
                             checked: lpShootingStars
                             onToggled: {
                                 lpShootingStars = !lpShootingStars
-                                saveConfig()
-                            }
-                        }
-
-                        // Dust
-                        LivingPixelSubToggle {
-                            width: (lpSubColumn.width - 8) / 2
-                            icon: "🌫️"
-                            label: "Dust"
-                            checked: lpDust
-                            onToggled: {
-                                lpDust = !lpDust
                                 saveConfig()
                             }
                         }
