@@ -3328,101 +3328,83 @@ mod gl {
             bool doEyes = (flags / 32) - (flags / 64) * 2 == 1;
             bool doRain = (flags / 64) - (flags / 128) * 2 == 1;
 
-            // === DARK AREAS (lum < 0.15): Night sky with stars ===
+            // === DARK AREAS (lum < 0.15): Night sky with sparse stars ===
             if (lum < 0.15 && doStars) {
                 float darkIntensity = 1.0 - lum / 0.15;
 
-                // Layer 1: Dense small stars - MORE VISIBLE TWINKLE
-                vec2 starGrid1 = uv * 300.0;
-                vec2 starCell1 = floor(starGrid1);
-                vec2 starUV1 = fract(starGrid1);
-                float starRand1 = hash(starCell1);
+                // Single layer of sparse, bright stars with twinkle
+                vec2 starGrid = uv * 80.0;  // Less dense
+                vec2 starCell = floor(starGrid);
+                vec2 starUV = fract(starGrid);
+                float starRand = hash(starCell + 50.0);
 
-                if (starRand1 > 0.85) {
-                    float phase = hash2(starCell1) * 6.28;
-                    float speed = 1.0 + hash(starCell1 * 1.3) * 2.0;
-                    // Much more visible twinkle - oscillate between dim and bright
-                    float twinkleBase = sin(time * speed + phase);
-                    float twinkle = 0.3 + 0.7 * pow(max(0.0, twinkleBase), 2.0);
-                    float dist = length(starUV1 - 0.5);
-                    float star = smoothstep(0.25, 0.0, dist) * twinkle;
-                    vec3 starColor = mix(vec3(0.7, 0.8, 1.0), vec3(1.0, 0.9, 0.7), hash(starCell1 * 2.1));
-                    color += starColor * star * 0.8 * darkIntensity;
-                }
-
-                // Layer 2: Bright feature stars with cross sparkle - STRONGER
-                vec2 starGrid2 = uv * 60.0;
-                vec2 starCell2 = floor(starGrid2);
-                vec2 starUV2 = fract(starGrid2);
-                float starRand2 = hash(starCell2 + 50.0);
-
-                if (starRand2 > 0.92) {
-                    float phase = hash2(starCell2) * 6.28;
-                    float speed = 0.5 + hash(starCell2 * 1.7) * 1.0;
-                    // Stronger twinkle with full on/off
+                if (starRand > 0.94) {  // Fewer stars
+                    float phase = hash2(starCell) * 6.28;
+                    float speed = 0.5 + hash(starCell * 1.7) * 0.8;
                     float twinkleRaw = sin(time * speed + phase);
-                    float twinkle = 0.2 + 0.8 * max(0.0, twinkleRaw);
-                    float dist = length(starUV2 - 0.5);
-                    float star = smoothstep(0.18, 0.0, dist);
-                    // Brighter cross sparkle
-                    float crossX = smoothstep(0.12, 0.0, abs(starUV2.x - 0.5)) * smoothstep(0.4, 0.1, dist);
-                    float crossY = smoothstep(0.12, 0.0, abs(starUV2.y - 0.5)) * smoothstep(0.4, 0.1, dist);
+                    float twinkle = 0.3 + 0.7 * max(0.0, twinkleRaw);
+                    float dist = length(starUV - 0.5);
+                    float star = smoothstep(0.15, 0.0, dist);
+                    // Cross sparkle for brighter stars
+                    float crossX = smoothstep(0.1, 0.0, abs(starUV.x - 0.5)) * smoothstep(0.35, 0.1, dist);
+                    float crossY = smoothstep(0.1, 0.0, abs(starUV.y - 0.5)) * smoothstep(0.35, 0.1, dist);
                     float cross = max(crossX, crossY);
-                    float brightness = (star + cross * 0.8) * twinkle;
-                    vec3 starColor;
-                    float colorPick = hash(starCell2 * 3.3);
-                    if (colorPick < 0.3) starColor = vec3(0.6, 0.8, 1.0);
-                    else if (colorPick < 0.6) starColor = vec3(1.0, 1.0, 0.98);
-                    else if (colorPick < 0.85) starColor = vec3(1.0, 0.95, 0.7);
-                    else starColor = vec3(1.0, 0.6, 0.4);
-                    color += starColor * brightness * 1.2 * darkIntensity;
+                    float brightness = (star + cross * 0.5) * twinkle;
+                    vec3 starColor = mix(vec3(0.8, 0.9, 1.0), vec3(1.0, 0.95, 0.8), hash(starCell * 3.3));
+                    color += starColor * brightness * 0.8 * darkIntensity;
                 }
             }
 
-            // Shooting stars (dark areas only)
+            // Shooting stars - streak across full screen (dark areas only)
             if (lum < 0.15 && doShooting) {
                 float darkIntensity = 1.0 - lum / 0.15;
-                float shootTime = time * 0.5;
-                float shootPhase = floor(shootTime / 3.0);
-                float shootProgress = fract(shootTime / 3.0) * 3.0;
-                if (shootProgress < 0.5) {
-                    vec2 shootStart = vec2(hash(vec2(shootPhase, 0.0)), hash(vec2(shootPhase, 1.0))) * 0.6 + 0.2;
-                    vec2 shootDir = normalize(vec2(0.7, -0.5));
-                    vec2 shootPos = shootStart + shootDir * shootProgress * 0.4;
-                    float shootDist = length(uv - shootPos);
-                    vec2 toPoint = uv - shootPos;
-                    float alongTrail = dot(toPoint, -shootDir);
-                    float perpDist = length(toPoint - alongTrail * (-shootDir));
-                    if (alongTrail > 0.0 && alongTrail < 0.08 && perpDist < 0.003) {
-                        float trailBright = (1.0 - alongTrail / 0.08) * (1.0 - perpDist / 0.003);
-                        color += vec3(1.0, 0.95, 0.8) * trailBright * 2.0 * darkIntensity;
-                    }
-                    if (shootDist < 0.008) {
-                        color += vec3(1.0, 1.0, 0.9) * (1.0 - shootDist / 0.008) * 2.0 * darkIntensity;
-                    }
-                }
-            }
 
-            // === DIM AREAS: Fireflies ===
-            if (lum > 0.05 && lum < 0.25 && doFireflies) {
-                float fireflyIntensity = 1.0 - abs(lum - 0.15) / 0.10;
-                fireflyIntensity = max(0.0, fireflyIntensity);
-                vec2 ffGrid = uv * 40.0;
-                vec2 ffCell = floor(ffGrid);
-                float ffRand = hash(ffCell + 200.0);
-                if (ffRand > 0.92) {
-                    float driftX = sin(time * 0.5 + hash(ffCell) * 6.28) * 0.3;
-                    float driftY = cos(time * 0.4 + hash2(ffCell) * 6.28) * 0.3;
-                    vec2 ffPos = vec2(0.5 + driftX, 0.5 + driftY);
-                    vec2 ffUV = fract(ffGrid);
-                    float ffDist = length(ffUV - ffPos);
-                    float glowPhase = hash(ffCell * 1.5) * 6.28;
-                    float glow = sin(time * 1.5 + glowPhase);
-                    glow = pow(max(0.0, glow * 0.5 + 0.5), 3.0);
-                    if (ffDist < 0.15) {
-                        float brightness = smoothstep(0.15, 0.0, ffDist) * glow;
-                        vec3 fireflyColor = mix(vec3(0.5, 1.0, 0.3), vec3(0.9, 1.0, 0.2), hash(ffCell * 2.2));
-                        color += fireflyColor * brightness * 0.5 * fireflyIntensity;
+                // Multiple shooting stars with different timings
+                for (float starIdx = 0.0; starIdx < 3.0; starIdx += 1.0) {
+                    float period = 4.0 + starIdx * 1.5;
+                    float shootTime = mod(time + starIdx * 2.0, period);
+                    float shootProgress = shootTime / period;
+
+                    if (shootProgress < 0.3) {  // Visible for 30% of period
+                        float seed = floor((time + starIdx * 2.0) / period);
+
+                        // Random start position on edges
+                        float startSide = hash(vec2(seed, starIdx));
+                        vec2 shootStart;
+                        vec2 shootEnd;
+
+                        if (startSide < 0.5) {
+                            // Start from top, go to bottom-right
+                            shootStart = vec2(hash(vec2(seed + 1.0, starIdx)) * 0.6, 0.9 + hash(vec2(seed + 2.0, starIdx)) * 0.1);
+                            shootEnd = vec2(shootStart.x + 0.8, -0.1);
+                        } else {
+                            // Start from left, go to right-bottom
+                            shootStart = vec2(-0.05, 0.5 + hash(vec2(seed + 1.0, starIdx)) * 0.4);
+                            shootEnd = vec2(1.1, shootStart.y - 0.4);
+                        }
+
+                        vec2 shootDir = normalize(shootEnd - shootStart);
+                        float totalDist = length(shootEnd - shootStart);
+                        float currentDist = shootProgress / 0.3 * totalDist;
+                        vec2 headPos = shootStart + shootDir * currentDist;
+
+                        // Trail behind the head
+                        float trailLen = 0.15;
+                        vec2 toPoint = uv - headPos;
+                        float alongTrail = dot(toPoint, -shootDir);
+                        float perpDist = length(toPoint - alongTrail * (-shootDir));
+
+                        if (alongTrail > 0.0 && alongTrail < trailLen && perpDist < 0.004) {
+                            float trailBright = (1.0 - alongTrail / trailLen) * (1.0 - perpDist / 0.004);
+                            trailBright = pow(trailBright, 0.5);
+                            color += vec3(1.0, 0.95, 0.85) * trailBright * 1.5 * darkIntensity;
+                        }
+
+                        // Bright head
+                        float headDist = length(uv - headPos);
+                        if (headDist < 0.008) {
+                            color += vec3(1.0, 1.0, 0.95) * (1.0 - headDist / 0.008) * 2.0 * darkIntensity;
+                        }
                     }
                 }
             }
@@ -3442,25 +3424,6 @@ mod gl {
                     if (dustDist < 0.1) {
                         float brightness = smoothstep(0.1, 0.0, dustDist);
                         color += vec3(1.0, 1.0, 0.95) * brightness * dustIntensity;
-                    }
-                }
-            }
-
-            // === BRIGHT AREAS: Shimmer ===
-            if (lum > 0.75 && doShimmer) {
-                float brightIntensity = (lum - 0.75) / 0.25;
-                vec2 shimmerGrid = uv * 200.0;
-                vec2 shimmerCell = floor(shimmerGrid);
-                float shimmerRand = hash(shimmerCell + 400.0);
-                if (shimmerRand > 0.9) {
-                    float phase = hash2(shimmerCell) * 6.28;
-                    float shimmer = sin(time * 3.0 + phase);
-                    shimmer = pow(max(0.0, shimmer), 8.0);
-                    vec2 shimmerUV = fract(shimmerGrid);
-                    float dist = length(shimmerUV - 0.5);
-                    if (dist < 0.2) {
-                        float spark = smoothstep(0.2, 0.0, dist) * shimmer;
-                        color += vec3(1.0, 1.0, 1.0) * spark * 0.3 * brightIntensity;
                     }
                 }
             }
@@ -3590,63 +3553,6 @@ mod gl {
                                     color = mix(color, vec3(1.0), (eye1 + eye2) * 0.95);
                                     color = mix(color, vec3(0.0), (pupil1 + pupil2) * 0.9);
                                 }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // === COMPIZ-STYLE RAIN RIPPLES - Random expanding ripples like puddles ===
-            if (doRain) {
-                // Create multiple ripple layers at different timings
-                for (float rippleIdx = 0.0; rippleIdx < 8.0; rippleIdx += 1.0) {
-                    // Each ripple has its own timing and position
-                    float ripplePeriod = 2.5 + rippleIdx * 0.3; // Stagger periods
-                    float rippleTime = mod(time + rippleIdx * 0.7, ripplePeriod);
-                    float ripplePhase = rippleTime / ripplePeriod;
-
-                    // Random position for this ripple (changes each period)
-                    float seed = floor((time + rippleIdx * 0.7) / ripplePeriod);
-                    vec2 rippleCenter = vec2(
-                        hash(vec2(seed + rippleIdx, 0.0)) * 0.8 + 0.1,
-                        hash(vec2(seed + rippleIdx, 1.0)) * 0.8 + 0.1
-                    );
-
-                    // Expanding ring
-                    float maxRadius = 0.15 + hash(vec2(seed, rippleIdx)) * 0.1;
-                    float ringRadius = ripplePhase * maxRadius;
-                    float ringWidth = 0.008 + ripplePhase * 0.012; // Widens as it expands
-
-                    // Distance from center
-                    vec2 diff = uv - rippleCenter;
-                    // Account for aspect ratio
-                    diff.y *= 2.2; // Approximate phone aspect ratio
-                    float dist = length(diff);
-
-                    // Ring shape - distance from the ring
-                    float ringDist = abs(dist - ringRadius);
-
-                    if (ringDist < ringWidth) {
-                        // Fade out as ripple expands
-                        float fadeOut = 1.0 - ripplePhase;
-                        fadeOut = fadeOut * fadeOut; // Quadratic fade
-
-                        // Sharp ring with soft edges
-                        float ringAlpha = smoothstep(ringWidth, ringWidth * 0.3, ringDist);
-                        ringAlpha *= fadeOut * 0.4;
-
-                        // Subtle blue-white water color
-                        vec3 rippleColor = vec3(0.85, 0.9, 1.0);
-                        color = mix(color, rippleColor, ringAlpha);
-
-                        // Inner second ring (smaller, fainter)
-                        if (ripplePhase > 0.15) {
-                            float innerRadius = ringRadius * 0.6;
-                            float innerDist = abs(dist - innerRadius);
-                            if (innerDist < ringWidth * 0.6) {
-                                float innerAlpha = smoothstep(ringWidth * 0.6, ringWidth * 0.2, innerDist);
-                                innerAlpha *= fadeOut * 0.2;
-                                color = mix(color, rippleColor, innerAlpha);
                             }
                         }
                     }
@@ -3791,6 +3697,58 @@ mod gl {
                             offset.x /= u_aspect;
                             totalOffset += offset;
                             totalInf += wave * fade * strength;
+                        }
+                    }
+                }
+            }
+
+            // === RAIN RIPPLE DISPLACEMENT (Compiz-style) ===
+            // Add displacement ripples if living pixels rain is enabled
+            if (u_living == 1) {
+                int flags = u_lp_flags;
+                bool doRain = (flags / 64) - (flags / 128) * 2 == 1;
+
+                if (doRain) {
+                    // Multiple ripples at different positions/timings
+                    for (float rippleIdx = 0.0; rippleIdx < 6.0; rippleIdx += 1.0) {
+                        float period = 3.0 + rippleIdx * 0.5;
+                        float rippleTime = mod(u_time + rippleIdx * 1.3, period);
+                        float progress = rippleTime / period;
+
+                        if (progress < 0.8) {  // Active for 80% of period
+                            float seed = floor((u_time + rippleIdx * 1.3) / period);
+                            vec2 center = vec2(
+                                hash(vec2(seed + rippleIdx, 0.0)) * 0.8 + 0.1,
+                                hash(vec2(seed + rippleIdx, 1.0)) * 0.8 + 0.1
+                            );
+
+                            vec2 delta = uv - center;
+                            delta.x *= u_aspect;
+                            float dist = length(delta);
+
+                            if (dist > 0.001) {
+                                vec2 dir = delta / dist;
+
+                                // Expanding ripple ring
+                                float maxRadius = 0.25;
+                                float ringPos = progress * maxRadius;
+                                float ringWidth = 0.04 * (1.0 - progress * 0.5);
+                                float ringDist = abs(dist - ringPos);
+
+                                if (ringDist < ringWidth) {
+                                    float wave = 1.0 - ringDist / ringWidth;
+                                    wave = wave * wave * (3.0 - 2.0 * wave);  // Smoothstep
+                                    float fade = 1.0 - progress;
+                                    fade = fade * fade;
+
+                                    // Displacement like water ripple
+                                    float phase = (dist < ringPos) ? 1.0 : -1.0;
+                                    float strength = 0.06 * wave * fade;
+                                    vec2 offset = dir * strength * phase;
+                                    offset.x /= u_aspect;
+                                    totalOffset += offset;
+                                }
+                            }
                         }
                     }
                 }

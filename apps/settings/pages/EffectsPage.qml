@@ -18,20 +18,9 @@ Page {
     // Living pixels sub-toggles
     property bool lpStars: true          // Twinkling stars in dark areas
     property bool lpShootingStars: true  // Occasional shooting stars
-    property bool lpFireflies: true      // Fireflies in dim areas
     property bool lpDust: true           // Floating dust motes
-    property bool lpShimmer: true        // Shimmer in bright areas
-    property bool lpEyes: true           // Eyes in very bright areas
-
-    // System event effects
-    property bool volumeRippleEnabled: true      // Edge ripple on volume change
-    property bool notificationRippleEnabled: true // Edge ripple on notification
-    property bool edgeGlowEnabled: true          // Glow when swiping from edges
-
-    // Lock screen effects
-    property bool starryNightEnabled: false      // Animated stars on lock screen
-    property bool rainEffectEnabled: false       // Rain that increases before lock
-    property real rainIntensity: 0.5             // How much rain
+    property bool lpEyes: true           // Sprites on bright edges
+    property bool rainEffectEnabled: false // Compiz-style rain ripples
 
     // Animation settings
     property real transitionSpeed: 1.0
@@ -60,18 +49,9 @@ Page {
                 // Living pixels sub-toggles
                 if (config.lp_stars !== undefined) lpStars = config.lp_stars
                 if (config.lp_shooting_stars !== undefined) lpShootingStars = config.lp_shooting_stars
-                if (config.lp_fireflies !== undefined) lpFireflies = config.lp_fireflies
                 if (config.lp_dust !== undefined) lpDust = config.lp_dust
-                if (config.lp_shimmer !== undefined) lpShimmer = config.lp_shimmer
                 if (config.lp_eyes !== undefined) lpEyes = config.lp_eyes
-                // System effects
-                if (config.volume_ripple_enabled !== undefined) volumeRippleEnabled = config.volume_ripple_enabled
-                if (config.notification_ripple_enabled !== undefined) notificationRippleEnabled = config.notification_ripple_enabled
-                if (config.edge_glow_enabled !== undefined) edgeGlowEnabled = config.edge_glow_enabled
-                // Lock screen
-                if (config.starry_night_enabled !== undefined) starryNightEnabled = config.starry_night_enabled
                 if (config.rain_effect_enabled !== undefined) rainEffectEnabled = config.rain_effect_enabled
-                if (config.rain_intensity !== undefined) rainIntensity = config.rain_intensity
                 // Animation
                 if (config.transition_speed !== undefined) transitionSpeed = config.transition_speed
             }
@@ -95,18 +75,9 @@ Page {
             // Living pixels sub-toggles
             lp_stars: lpStars,
             lp_shooting_stars: lpShootingStars,
-            lp_fireflies: lpFireflies,
             lp_dust: lpDust,
-            lp_shimmer: lpShimmer,
             lp_eyes: lpEyes,
-            // System effects
-            volume_ripple_enabled: volumeRippleEnabled,
-            notification_ripple_enabled: notificationRippleEnabled,
-            edge_glow_enabled: edgeGlowEnabled,
-            // Lock screen
-            starry_night_enabled: starryNightEnabled,
             rain_effect_enabled: rainEffectEnabled,
-            rain_intensity: rainIntensity,
             // Animation
             transition_speed: transitionSpeed
         }
@@ -441,18 +412,6 @@ Page {
                             }
                         }
 
-                        // Fireflies
-                        LivingPixelSubToggle {
-                            width: (lpSubColumn.width - 8) / 2
-                            icon: "🔥"
-                            label: "Fireflies"
-                            checked: lpFireflies
-                            onToggled: {
-                                lpFireflies = !lpFireflies
-                                saveConfig()
-                            }
-                        }
-
                         // Dust
                         LivingPixelSubToggle {
                             width: (lpSubColumn.width - 8) / 2
@@ -461,18 +420,6 @@ Page {
                             checked: lpDust
                             onToggled: {
                                 lpDust = !lpDust
-                                saveConfig()
-                            }
-                        }
-
-                        // Shimmer
-                        LivingPixelSubToggle {
-                            width: (lpSubColumn.width - 8) / 2
-                            icon: "✨"
-                            label: "Shimmer"
-                            checked: lpShimmer
-                            onToggled: {
-                                lpShimmer = !lpShimmer
                                 saveConfig()
                             }
                         }
@@ -516,56 +463,6 @@ Page {
                       onChanged: function(v) { asciiDensity = v } }
                 ]
                 onSave: saveConfig()
-            }
-
-            Item { height: 16 }
-
-            // ===== SYSTEM EFFECTS =====
-            Text {
-                text: "SYSTEM EFFECTS"
-                font.pixelSize: 11
-                font.letterSpacing: 2
-                color: "#555566"
-                leftPadding: 8
-            }
-
-            EffectToggle {
-                width: settingsColumn.width
-                title: "Volume Edge Ripple"
-                subtitle: "Ripple inward when adjusting volume"
-                icon: "🔊"
-                checked: volumeRippleEnabled
-                accentColor: "#9966ff"
-                onToggled: {
-                    volumeRippleEnabled = !volumeRippleEnabled
-                    saveConfig()
-                }
-            }
-
-            EffectToggle {
-                width: settingsColumn.width
-                title: "Notification Ripple"
-                subtitle: "Edge glow when notifications arrive"
-                icon: "🔔"
-                checked: notificationRippleEnabled
-                accentColor: "#9966ff"
-                onToggled: {
-                    notificationRippleEnabled = !notificationRippleEnabled
-                    saveConfig()
-                }
-            }
-
-            EffectToggle {
-                width: settingsColumn.width
-                title: "Edge Swipe Glow"
-                subtitle: "Light trail when swiping from edges"
-                icon: "✋"
-                checked: edgeGlowEnabled
-                accentColor: "#9966ff"
-                onToggled: {
-                    edgeGlowEnabled = !edgeGlowEnabled
-                    saveConfig()
-                }
             }
 
             Item { height: 16 }
