@@ -861,6 +861,12 @@ fn handle_input_event(
                             }
                         }
                     }
+                    crate::shell::ShellView::PickDefault => {
+                        // Forward to Slint for pick default app selection
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1065,6 +1071,12 @@ fn handle_input_event(
                                     slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
                                 }
                             }
+                        }
+                    }
+                    crate::shell::ShellView::PickDefault => {
+                        // Forward to Slint for pick default scrolling
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
                         }
                     }
                     _ => {}
@@ -1315,11 +1327,24 @@ fn handle_input_event(
                                         }
                                     }
                                 } else {
-                                    // This was a tap - show pick app popup
-                                    let category = state.shell.app_manager.config.grid_order.get(from_index).copied();
-                                    if let Some(cat) = category {
-                                        info!("Wiggle mode: tap on {} - showing app picker", cat.display_name());
-                                        state.shell.enter_pick_default(cat);
+                                    // This was a tap - check if in Done button zone first
+                                    let screen_height = state.shell.screen_size.h as f64;
+                                    let text_scale = state.shell.text_scale as f64;
+                                    // Done button is at: y = screen_height - (120 * text_scale) - 40
+                                    // With height: 100 * text_scale
+                                    // Use margin for easier tapping
+                                    let done_zone_top = screen_height - (120.0 * text_scale) - 60.0;
+
+                                    if end_pos.y > done_zone_top {
+                                        // Tap in Done button zone - don't open pick default
+                                        info!("Wiggle mode: tap in Done button zone (y={:.0} > {:.0})", end_pos.y, done_zone_top);
+                                    } else {
+                                        // Show pick app popup
+                                        let category = state.shell.app_manager.config.grid_order.get(from_index).copied();
+                                        if let Some(cat) = category {
+                                            info!("Wiggle mode: tap on {} - showing app picker", cat.display_name());
+                                            state.shell.enter_pick_default(cat);
+                                        }
                                     }
                                 }
                             }
@@ -1329,12 +1354,21 @@ fn handle_input_event(
                             state.shell.drag_start_position = None;
                             state.shell.drag_position = None;
 
-                            // Check for wiggle done button press
-                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                if slint_ui.take_wiggle_done() {
-                                    info!("Wiggle mode done - exiting");
-                                    state.shell.exit_wiggle_mode();
-                                }
+                            // Check for wiggle done and new category button presses
+                            // Extract values first to avoid borrow conflicts
+                            let (wiggle_done, new_category) = if let Some(ref slint_ui) = state.shell.slint_ui {
+                                (slint_ui.take_wiggle_done(), slint_ui.take_new_category())
+                            } else {
+                                (false, false)
+                            };
+
+                            if wiggle_done {
+                                info!("Wiggle mode done - exiting");
+                                state.shell.exit_wiggle_mode();
+                            }
+                            if new_category {
+                                info!("New category button pressed - TODO: show category creation dialog");
+                                // TODO: Implement category creation dialog
                             }
                         } else {
                             // Normal mode - end home touch tracking, returns pending app if it was a tap (not scroll)
@@ -1677,6 +1711,14 @@ fn handle_input_event(
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                    crate::shell::ShellView::PickDefault => {
+                        // Forward to Slint for pick default app selection
+                        if let Some(pos) = last_pos {
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
                             }
                         }
                     }

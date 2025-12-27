@@ -530,27 +530,98 @@ component PickDefaultView inherits Rectangle {
     }
 }
 
-// Done button for wiggle mode
+// Done button for wiggle mode - large touch-friendly button
 component WiggleDoneButton inherits Rectangle {
+    in property <float> text-scale: 2.0;
     callback clicked();
 
-    height: 56px;
+    height: 80px * text-scale;
     background: Theme.primary;
-    border-radius: 28px;
+    border-radius: 20px * text-scale;
 
     HorizontalLayout {
         alignment: center;
 
         Text {
             text: "Done";
-            color: Theme.on-surface;
-            font-size: 18px;
-            font-weight: 600;
+            color: #ffffff;
+            font-size: 24px * text-scale;
+            font-weight: 700;
             vertical-alignment: center;
         }
     }
 
     TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// New category tile - shown in wiggle mode to add new app categories
+component NewCategoryTile inherits Rectangle {
+    in property <float> wiggle-time: 0;
+
+    callback clicked();
+
+    width: 100%;
+    height: 100%;
+    background: transparent;
+
+    // Subtle wiggle animation like other tiles
+    property <length> wiggle-x: sin((wiggle-time * 12 + 17) * 1rad) * 2px;
+    property <length> wiggle-y: cos((wiggle-time * 10 + 17) * 1rad) * 1.5px;
+
+    // Calculate sizes
+    property <length> icon-size: min(root.width * 0.85, root.height * 0.70);
+    property <length> label-height: 40px;
+    property <length> total-content-height: icon-size + label-height + 8px;
+    property <length> vertical-offset: (root.height - total-content-height) / 2;
+
+    // Plus sign icon container
+    Rectangle {
+        x: (root.width - root.icon-size) / 2 + root.wiggle-x;
+        y: root.vertical-offset + root.wiggle-y;
+        width: root.icon-size;
+        height: root.icon-size;
+        border-radius: root.icon-size * 0.22;
+        background: Theme.surface-variant;
+        border-width: 3px;
+        border-color: Theme.on-surface-variant;
+
+        // Plus sign - horizontal bar
+        Rectangle {
+            x: (parent.width - parent.width * 0.5) / 2;
+            y: (parent.height - 6px) / 2;
+            width: parent.width * 0.5;
+            height: 6px;
+            border-radius: 3px;
+            background: Theme.on-surface-variant;
+        }
+
+        // Plus sign - vertical bar
+        Rectangle {
+            x: (parent.width - 6px) / 2;
+            y: (parent.height - parent.height * 0.5) / 2;
+            width: 6px;
+            height: parent.height * 0.5;
+            border-radius: 3px;
+            background: Theme.on-surface-variant;
+        }
+    }
+
+    // Label
+    Text {
+        x: root.wiggle-x;
+        y: root.vertical-offset + root.icon-size + 8px + root.wiggle-y;
+        width: 100%;
+        height: root.label-height;
+        text: "New";
+        color: Theme.on-surface-variant;
+        font-size: 24px;
+        horizontal-alignment: center;
+        overflow: elide;
+    }
+
+    touch-area := TouchArea {
         clicked => { root.clicked(); }
     }
 }
@@ -879,6 +950,7 @@ component HomeScreen inherits Rectangle {
     callback drag-started(int, float, float);
     callback drag-moved(int, float, float);
     callback drag-ended(int, float, float);
+    callback new-category-clicked();
 
     width: 100%;
     height: 100%;
@@ -1138,6 +1210,19 @@ component HomeScreen inherits Rectangle {
         wiggle-phase: 15;
         is-dragging: root.dragging-index == 15;
         clicked => { app-tapped(15); }
+    }
+
+    // New category tile - appears in wiggle mode at the next available position
+    // Only show when less than 16 categories (max grid size) and in wiggle mode
+    if wiggle-mode && categories.length < 16: NewCategoryTile {
+        // Position at index = categories.length (next available slot)
+        // Column = index % 4, Row = index / 4
+        x: grid-padding + (tile-width + grid-spacing) * mod(categories.length, 4);
+        y: grid-top + (tile-height + grid-spacing) * floor(categories.length / 4);
+        width: tile-width;
+        height: tile-height;
+        wiggle-time: root.wiggle-time;
+        clicked => { new-category-clicked(); }
     }
 
     // Home indicator at bottom
@@ -2204,6 +2289,7 @@ export component FlickShell inherits Window {
     callback popup-move();
     callback popup-close();
     callback wiggle-done();
+    callback new-category-clicked();
     callback pick-default-selected(string);  // exec command
     callback pick-default-back();
     callback switcher-window-tapped(int);  // Window ID
@@ -2240,6 +2326,7 @@ export component FlickShell inherits Window {
         drag-y: root.drag-y;
         text-scale: root.text-scale;
         app-tapped(i) => { app-tapped(i); }
+        new-category-clicked => { new-category-clicked(); }
     }
 
     // Quick settings - slides down as overlay on top of home
@@ -2340,15 +2427,19 @@ export component FlickShell inherits Window {
     }
 
     // Wiggle mode done button (shown at bottom when in wiggle mode)
+    // Full-width safe zone at bottom to prevent accidental app picks
     if wiggle-mode && current-view == "home": Rectangle {
-        x: (parent.width - 200px) / 2;
-        y: parent.height - 100px;
-        width: 200px;
-        height: 56px;
+        x: 20px;
+        y: parent.height - (120px * text-scale) - 40px;  // Above home indicator
+        width: parent.width - 40px;
+        height: 100px * text-scale;
+        background: transparent;
 
         WiggleDoneButton {
-            width: 100%;
-            height: 100%;
+            x: (parent.width - 300px * text-scale) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 300px * text-scale;
+            text-scale: root.text-scale;
             clicked => { wiggle-done(); }
         }
     }

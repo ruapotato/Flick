@@ -132,6 +132,8 @@ pub struct SlintShell {
     wiggle_mode: RefCell<bool>,
     /// Pending wiggle done action (set by callback, polled by compositor)
     pending_wiggle_done: Rc<RefCell<bool>>,
+    /// Pending new category action (set by callback, polled by compositor)
+    pending_new_category: Rc<RefCell<bool>>,
     /// Pending pick default app selection (exec command)
     pending_pick_default_selection: Rc<RefCell<Option<String>>>,
     /// Pending pick default back action
@@ -328,6 +330,14 @@ impl SlintShell {
             *wiggle_done_clone.borrow_mut() = true;
         });
 
+        // New category clicked callback
+        let pending_new_category = Rc::new(RefCell::new(false));
+        let new_cat_clone = pending_new_category.clone();
+        shell.on_new_category_clicked(move || {
+            info!("New category clicked callback");
+            *new_cat_clone.borrow_mut() = true;
+        });
+
         // Pick default app callbacks
         let pending_pick_default_selection = Rc::new(RefCell::new(None::<String>));
         let pending_pick_default_back = Rc::new(RefCell::new(false));
@@ -356,6 +366,7 @@ impl SlintShell {
             popup_can_pick: RefCell::new(true),
             wiggle_mode: RefCell::new(false),
             pending_wiggle_done,
+            pending_new_category,
             pending_pick_default_selection,
             pending_pick_default_back,
             pending_keyboard_actions,
@@ -509,6 +520,16 @@ impl SlintShell {
             *self.pending_wiggle_done.borrow_mut() = false;
         }
         done
+    }
+
+    /// Poll for pending new category action
+    /// Returns true if the "New" button was pressed, and clears the pending state
+    pub fn take_new_category(&self) -> bool {
+        let clicked = *self.pending_new_category.borrow();
+        if clicked {
+            *self.pending_new_category.borrow_mut() = false;
+        }
+        clicked
     }
 
     /// Poll for pending pick default selection
