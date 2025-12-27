@@ -3534,37 +3534,42 @@ mod gl {
                     float stableTime = floor(time * 0.5) * 0.5; // Changes every 2 seconds
                     float stabilityHash = hash(eyeCell + stableTime);
 
-                    // The eye radius is the minimum of horizontal/vertical extent (with padding)
-                    float eyeRadius = min(regionWidth, regionHeight * 0.7) * 0.45;
+                    // Eye size based on actual detected white region
+                    // Use the smaller dimension to ensure it fits, with some padding
+                    float eyeWidth = regionWidth * 0.85;
+                    float eyeHeight = regionHeight * 0.85;
+                    float eyeSize = min(eyeWidth, eyeHeight);
 
-                    // Position relative to detected region center
+                    // Position relative to detected region center (in screen coords)
                     vec2 eyePos = vec2(centerOffsetX, centerOffsetY);
-                    vec2 relPos = -eyePos / eyeRadius; // Pixel position relative to eye center
 
-                    // Only draw if we're close enough to be the "owning" pixel of this eye
-                    if (distFromRegionCenter < eyeRadius * 0.8) {
+                    // Calculate pixel position relative to eye center, normalized by eye size
+                    vec2 relPos = -eyePos / (eyeSize * 0.5);
+
+                    // Only draw if we're within the eye area
+                    if (length(relPos) < 1.5) {
                         // Animation phases based on touch time
                         float touchTime = u_touch_time;
                         float eyeOpen = 0.0;
-                        float lineAlpha = 0.0;
+                        float cubeAlpha = 0.0;
                         vec2 lookDir = vec2(0.0);
 
-                        // Phase 0: Line appears (0-1 seconds after touch)
-                        // Phase 1: Eye opens (1-2 seconds)
-                        // Phase 2: Eye looks at touch (2-7 seconds)
+                        // Phase 0: Cube appears (0-0.5 seconds after touch)
+                        // Phase 1: Cube morphs to eye (0.5-1.5 seconds)
+                        // Phase 2: Eye looks at touch (1.5-7 seconds)
                         // Phase 3: Eye wanders (7-20 seconds)
-                        // Phase 4: Eye gets sleepy, blinks more (20-30 seconds)
-                        // Phase 5: Eye closes to line (30-31 seconds)
-                        // Phase 6: Line fades (31-32 seconds)
+                        // Phase 4: Eye gets sleepy (20-30 seconds)
+                        // Phase 5: Eye closes to cube (30-31 seconds)
+                        // Phase 6: Cube fades (31-32 seconds)
 
-                        if (touchTime < 1.0) {
-                            // Line fades in
-                            lineAlpha = touchTime;
+                        if (touchTime < 0.5) {
+                            // Cube fades in
+                            cubeAlpha = touchTime * 2.0;
                             eyeOpen = 0.0;
-                        } else if (touchTime < 2.0) {
-                            // Eye opens from line
-                            lineAlpha = 1.0;
-                            eyeOpen = (touchTime - 1.0);
+                        } else if (touchTime < 1.5) {
+                            // Cube morphs into eye
+                            cubeAlpha = 1.0;
+                            eyeOpen = (touchTime - 0.5);
                         } else if (touchTime < 7.0) {
                             // Eye open, looking at touch
                             eyeOpen = 1.0;
@@ -3591,21 +3596,21 @@ mod gl {
                                 else eyeOpen *= (bp - 0.6) / 0.4;
                             }
                         } else if (touchTime < 31.0) {
-                            // Eye closing
+                            // Eye closing back to cube
                             eyeOpen = 1.0 - (touchTime - 30.0);
-                            lineAlpha = 1.0;
+                            cubeAlpha = 1.0;
                         } else if (touchTime < 32.0) {
-                            // Line fading out
+                            // Cube fading out
                             eyeOpen = 0.0;
-                            lineAlpha = 1.0 - (touchTime - 31.0);
+                            cubeAlpha = 1.0 - (touchTime - 31.0);
                         } else {
                             // Gone
                             eyeOpen = 0.0;
-                            lineAlpha = 0.0;
+                            cubeAlpha = 0.0;
                         }
 
                         // Regular blinking when eye is open
-                        if (eyeOpen > 0.5 && touchTime > 2.0 && touchTime < 30.0) {
+                        if (eyeOpen > 0.5 && touchTime > 1.5 && touchTime < 30.0) {
                             float blinkPhase = hash2(eyeCell) * 15.0;
                             float blinkCycle = mod(time * 0.15 + blinkPhase, 6.0);
                             if (blinkCycle > 4.0 && blinkCycle < 4.3) {
@@ -3616,20 +3621,16 @@ mod gl {
                             }
                         }
 
-                        // Draw the eye or line
-                        float distFromCenter = length(relPos);
-
-                        // The LINE (closed eye) - horizontal line
-                        if (lineAlpha > 0.0 && eyeOpen < 0.95) {
-                            float lineThickness = 0.08;
-                            float lineWidth = 0.9;
-                            // Line is thicker when fully closed, thinner as eye opens
-                            float currentThickness = lineThickness * (1.0 - eyeOpen * 0.7);
-                            if (abs(relPos.y) < currentThickness && abs(relPos.x) < lineWidth) {
-                                float lineMask = smoothstep(lineWidth, lineWidth - 0.1, abs(relPos.x));
-                                lineMask *= smoothstep(currentThickness, currentThickness - 0.03, abs(relPos.y));
-                                lineMask *= lineAlpha * (1.0 - eyeOpen);
-                                color = mix(color, vec3(0.1, 0.1, 0.1), lineMask * 0.9);
+                        // Draw the CUBE (closed state) - small square that morphs
+                        if (cubeAlpha > 0.0 && eyeOpen < 0.95) {
+                            // Cube size shrinks as eye opens, starts small and centered
+                            float cubeSize = 0.15 * (1.0 - eyeOpen * 0.8);
+                            float cubeDist = max(abs(relPos.x), abs(relPos.y));
+                            if (cubeDist < cubeSize) {
+                                float cubeMask = smoothstep(cubeSize, cubeSize - 0.03, cubeDist);
+                                cubeMask *= cubeAlpha * (1.0 - eyeOpen);
+                                // Dark cube with slight roundness
+                                color = mix(color, vec3(0.08, 0.08, 0.1), cubeMask * 0.95);
                             }
                         }
 
