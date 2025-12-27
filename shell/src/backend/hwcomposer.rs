@@ -121,30 +121,21 @@ fn char_to_evdev(c: char) -> Option<(u32, bool)> {
 // Use our C shim FFI bindings
 use super::hwc_shim_ffi::{HwcContext, FlickDisplayInfo};
 
-/// Transform touch coordinates based on screen orientation
-/// For hwcomposer, the physical display size doesn't change, but we rotate the coordinate space
-fn transform_touch_coords(
+/// Transform touch coordinates for app input when app rotation is enabled
+/// Shell always stays in portrait, only app content gets rotated
+fn transform_touch_for_rotated_app(
     x: f64,
     y: f64,
-    orientation: crate::system::Orientation,
-    physical_width: f64,
-    physical_height: f64,
+    app_rotation: bool,
+    screen_width: f64,
+    screen_height: f64,
 ) -> (f64, f64) {
-    use crate::system::Orientation;
-
-    match orientation {
-        Orientation::Portrait => {
-            // No transformation needed
-            (x, y)
-        }
-        Orientation::Landscape90 => {
-            // 90 degrees clockwise: (x, y) -> (screen_height - y, x)
-            (physical_height - y, x)
-        }
-        Orientation::Landscape270 => {
-            // 270 degrees clockwise: (x, y) -> (y, screen_width - x)
-            (y, physical_width - x)
-        }
+    if app_rotation {
+        // App is rotated 90° CW, so we need to transform touch coords
+        // Physical touch (x, y) -> App coords (y, screen_width - x)
+        (y, screen_width - x)
+    } else {
+        (x, y)
     }
 }
 
@@ -642,18 +633,20 @@ fn handle_input_event(
 
             let slot_id: i32 = event.slot().into();
             // Get raw position (in physical display coordinates)
+            // Shell always uses raw portrait coordinates for gestures and UI
             let raw_position = event.position();
+            let touch_pos = Point::from((raw_position.x, raw_position.y));
 
-            // Transform coordinates based on orientation
-            let orientation = state.system.rotation_lock.get_orientation();
-            let (transformed_x, transformed_y) = transform_touch_coords(
+            // For apps, transform coordinates if app rotation is enabled
+            let app_rotation_enabled = state.system.rotation_lock.get_orientation() != crate::system::Orientation::Portrait;
+            let (app_touch_x, app_touch_y) = transform_touch_for_rotated_app(
                 raw_position.x,
                 raw_position.y,
-                orientation,
+                app_rotation_enabled,
                 state.physical_display_size.w as f64,
                 state.physical_display_size.h as f64,
             );
-            let touch_pos = Point::from((transformed_x, transformed_y));
+            let app_touch_pos = Point::from((app_touch_x, app_touch_y));
 
             // Update last activity time for auto-lock
             state.last_activity = std::time::Instant::now();
@@ -822,12 +815,13 @@ fn handle_input_event(
                         .map(|surface| (surface, smithay::utils::Point::from((0.0, 0.0))));
 
                     if focus.is_some() {
+                        // Use app_touch_pos for Wayland clients (transformed if rotation enabled)
                         touch.down(
                             state,
                             focus,
                             &smithay::input::touch::DownEvent {
                                 slot: event.slot(),
-                                location: touch_pos.to_f64(),
+                                location: app_touch_pos.to_f64(),
                                 serial,
                                 time: event.time_msec(),
                             },
@@ -899,18 +893,20 @@ fn handle_input_event(
 
             let slot_id: i32 = event.slot().into();
             // Get raw position (in physical display coordinates)
+            // Shell always uses raw portrait coordinates for gestures and UI
             let raw_position = event.position();
+            let touch_pos = Point::from((raw_position.x, raw_position.y));
 
-            // Transform coordinates based on orientation
-            let orientation = state.system.rotation_lock.get_orientation();
-            let (transformed_x, transformed_y) = transform_touch_coords(
+            // For apps, transform coordinates if app rotation is enabled
+            let app_rotation_enabled = state.system.rotation_lock.get_orientation() != crate::system::Orientation::Portrait;
+            let (app_touch_x, app_touch_y) = transform_touch_for_rotated_app(
                 raw_position.x,
                 raw_position.y,
-                orientation,
+                app_rotation_enabled,
                 state.physical_display_size.w as f64,
                 state.physical_display_size.h as f64,
             );
-            let touch_pos = Point::from((transformed_x, transformed_y));
+            let app_touch_pos = Point::from((app_touch_x, app_touch_y));
 
             // Update tracked touch position
             state.last_touch_pos.insert(slot_id, touch_pos);
@@ -1011,12 +1007,13 @@ fn handle_input_event(
                         });
 
                     if focus.is_some() {
+                        // Use app_touch_pos for Wayland clients (transformed if rotation enabled)
                         touch.motion(
                             state,
                             focus,
                             &smithay::input::touch::MotionEvent {
                                 slot: event.slot(),
-                                location: touch_pos.to_f64(),
+                                location: app_touch_pos.to_f64(),
                                 time: event.time_msec(),
                             },
                         );
@@ -1369,15 +1366,13 @@ fn handle_input_event(
                                             info!("Airplane mode toggled");
                                         }
                                         QuickSettingsAction::RotationToggle => {
-                                            // Cycle orientation
+                                            // Cycle orientation - only affects app rendering, not shell
+                                            // Shell stays in portrait, only app windows get rotated
                                             state.system.rotation_lock.cycle_orientation();
                                             let new_orientation = state.system.rotation_lock.get_orientation();
-                                            info!("Rotation: {:?}", new_orientation);
+                                            info!("App rotation: {:?}", new_orientation);
 
-                                            // Apply rotation to compositor state
-                                            state.apply_rotation(new_orientation);
-
-                                            // Apply GL rotation for actual display transform
+                                            // Set GL rotation for app window rendering only
                                             use crate::system::Orientation;
                                             let gl_rotation = match new_orientation {
                                                 Orientation::Portrait => 0,
@@ -4351,8 +4346,14 @@ mod gl {
         check_error("uniform1i");
 
         // Full-screen quad vertices (position + texcoord interleaved)
-        // Uses get_rotated_vertices() to support display rotation
-        let vertices = get_rotated_vertices();
+        // Shell always renders in portrait - NO rotation applied here
+        let vertices: [f32; 16] = [
+            // Position (x, y)  // TexCoord (u, v)
+            -1.0, -1.0,         0.0, 1.0,  // Bottom-left
+             1.0, -1.0,         1.0, 1.0,  // Bottom-right
+            -1.0,  1.0,         0.0, 0.0,  // Top-left
+             1.0,  1.0,         1.0, 0.0,  // Top-right
+        ];
 
         // Set vertex attributes
         if let Some(f) = FN_ENABLE_VERTEX_ATTRIB_ARRAY {
@@ -4445,29 +4446,31 @@ mod gl {
         if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, texture); }
         if let Some(f) = FN_UNIFORM1I { f(UNIFORM_TEXTURE, 0); }
 
-        // Convert screen coordinates to normalized device coordinates (-1 to 1)
-        // Screen: (0,0) is top-left, (width, height) is bottom-right
-        // NDC: (-1,-1) is bottom-left, (1,1) is top-right
-        let sw = screen_width as f32;
-        let sh = screen_height as f32;
-        let tw = tex_width as f32;
-        let th = tex_height as f32;
-
-        // Calculate NDC positions
-        let left = (x as f32 / sw) * 2.0 - 1.0;
-        let right = ((x as f32 + tw) / sw) * 2.0 - 1.0;
-        let top = 1.0 - (y as f32 / sh) * 2.0;
-        let bottom = 1.0 - ((y as f32 + th) / sh) * 2.0;
-
-        // Quad vertices with position offset
-        #[rustfmt::skip]
-        let vertices: [f32; 16] = [
-            // Position (x, y)  // TexCoord (u, v)
-            left,  bottom,      0.0, 1.0,  // Bottom-left
-            right, bottom,      1.0, 1.0,  // Bottom-right
-            left,  top,         0.0, 0.0,  // Top-left
-            right, top,         1.0, 0.0,  // Top-right
-        ];
+        // Get vertices with rotation support (same as render_egl_texture_at)
+        let (phys_w, phys_h) = (PHYSICAL_WIDTH, PHYSICAL_HEIGHT);
+        let vertices = if DISPLAY_ROTATION != 0 && phys_w > 0 && phys_h > 0 {
+            get_rotated_positioned_vertices(
+                x, y, tex_width, tex_height,
+                screen_width, screen_height,
+                phys_w, phys_h,
+            )
+        } else {
+            // No rotation - use original logic
+            let sw = screen_width as f32;
+            let sh = screen_height as f32;
+            let tw = tex_width as f32;
+            let th = tex_height as f32;
+            let left = (x as f32 / sw) * 2.0 - 1.0;
+            let right = ((x as f32 + tw) / sw) * 2.0 - 1.0;
+            let top = 1.0 - (y as f32 / sh) * 2.0;
+            let bottom = 1.0 - ((y as f32 + th) / sh) * 2.0;
+            [
+                left,  bottom,      0.0, 1.0,
+                right, bottom,      1.0, 1.0,
+                left,  top,         0.0, 0.0,
+                right, top,         1.0, 0.0,
+            ]
+        };
 
         // Set vertex attributes
         if let Some(f) = FN_ENABLE_VERTEX_ATTRIB_ARRAY {
