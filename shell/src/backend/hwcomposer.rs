@@ -3339,25 +3339,35 @@ mod gl {
                 vec3 nebula2 = vec3(0.05, 0.1, 0.15) * nebulaY;  // Teal
                 color += (nebula1 + nebula2) * darkIntensity * 0.3;
 
-                // Sparse twinkling stars
-                vec2 starGrid = uv * 60.0;
+                // Twinkling stars - MUCH more twinkle
+                vec2 starGrid = uv * 50.0;
                 vec2 starCell = floor(starGrid);
                 vec2 starUV = fract(starGrid);
                 float starRand = hash(starCell + 50.0);
 
-                if (starRand > 0.93) {
-                    float phase = hash2(starCell) * 6.28;
-                    float speed = 0.3 + hash(starCell * 1.7) * 0.5;
-                    float twinkleRaw = sin(time * speed + phase);
-                    float twinkle = 0.2 + 0.8 * pow(max(0.0, twinkleRaw), 2.0);
+                if (starRand > 0.9) {
+                    // Multiple twinkle frequencies for more dynamic effect
+                    float phase1 = hash2(starCell) * 6.28;
+                    float phase2 = hash(starCell * 1.3) * 6.28;
+                    float speed1 = 1.5 + hash(starCell * 1.7) * 2.0;
+                    float speed2 = 2.5 + hash(starCell * 2.1) * 3.0;
+
+                    // Combine fast and slow twinkle
+                    float twinkle1 = sin(time * speed1 + phase1);
+                    float twinkle2 = sin(time * speed2 + phase2);
+                    float twinkle = twinkle1 * 0.5 + twinkle2 * 0.5;
+                    // Make it flash on and off more dramatically
+                    twinkle = pow(max(0.0, twinkle * 0.6 + 0.4), 1.5);
+
                     float dist = length(starUV - 0.5);
                     float star = smoothstep(0.12, 0.0, dist);
 
                     // 4-pointed sparkle for bright stars
-                    if (starRand > 0.97) {
-                        float sparkleX = smoothstep(0.08, 0.0, abs(starUV.x - 0.5)) * smoothstep(0.3, 0.05, dist);
-                        float sparkleY = smoothstep(0.08, 0.0, abs(starUV.y - 0.5)) * smoothstep(0.3, 0.05, dist);
-                        star += (sparkleX + sparkleY) * 0.6;
+                    if (starRand > 0.96) {
+                        float sparklePhase = sin(time * 3.0 + phase1) * 0.5 + 0.5;
+                        float sparkleX = smoothstep(0.1, 0.0, abs(starUV.x - 0.5)) * smoothstep(0.35, 0.05, dist);
+                        float sparkleY = smoothstep(0.1, 0.0, abs(starUV.y - 0.5)) * smoothstep(0.35, 0.05, dist);
+                        star += (sparkleX + sparkleY) * 0.7 * sparklePhase;
                     }
 
                     float brightness = star * twinkle;
@@ -3368,174 +3378,61 @@ mod gl {
                     else if (colorPick < 0.6) starColor = vec3(1.0, 1.0, 0.95); // White
                     else if (colorPick < 0.8) starColor = vec3(1.0, 0.9, 0.7);  // Yellow
                     else starColor = vec3(1.0, 0.7, 0.6);                        // Orange-red
-                    color += starColor * brightness * 0.9 * darkIntensity;
+                    color += starColor * brightness * darkIntensity;
                 }
             }
 
-            // Shooting stars - fast streaks across full screen
+            // Shooting stars - from ANY direction across screen
             if (lum < 0.15 && doShooting) {
                 float darkIntensity = 1.0 - lum / 0.15;
 
-                for (float starIdx = 0.0; starIdx < 2.0; starIdx += 1.0) {
-                    float period = 3.0 + starIdx * 2.0;
-                    float shootTime = mod(time + starIdx * 1.5, period);
+                for (float starIdx = 0.0; starIdx < 3.0; starIdx += 1.0) {
+                    float period = 2.5 + starIdx * 1.5;
+                    float shootTime = mod(time + starIdx * 1.1, period);
                     float shootProgress = shootTime / period;
 
-                    if (shootProgress < 0.15) {  // Fast - 15% of period
-                        float seed = floor((time + starIdx * 1.5) / period);
-                        float startSide = hash(vec2(seed, starIdx));
+                    if (shootProgress < 0.12) {  // Fast streak
+                        float seed = floor((time + starIdx * 1.1) / period);
 
-                        vec2 shootStart, shootEnd;
-                        if (startSide < 0.5) {
-                            shootStart = vec2(hash(vec2(seed + 1.0, starIdx)) * 0.5, 1.05);
-                            shootEnd = vec2(shootStart.x + 0.6, -0.1);
+                        // Random angle for ANY direction
+                        float angle = hash(vec2(seed, starIdx)) * 6.28;
+                        vec2 shootDir = vec2(cos(angle), sin(angle));
+
+                        // Start from random position near edge
+                        float edgeDist = 0.1;
+                        vec2 shootStart;
+                        float startPos = hash(vec2(seed + 1.0, starIdx));
+
+                        // Pick a starting edge based on direction
+                        if (abs(shootDir.x) > abs(shootDir.y)) {
+                            // More horizontal - start from left or right
+                            shootStart.x = shootDir.x > 0.0 ? -edgeDist : 1.0 + edgeDist;
+                            shootStart.y = startPos;
                         } else {
-                            shootStart = vec2(-0.05, 0.3 + hash(vec2(seed + 1.0, starIdx)) * 0.6);
-                            shootEnd = vec2(1.1, shootStart.y - 0.5);
+                            // More vertical - start from top or bottom
+                            shootStart.x = startPos;
+                            shootStart.y = shootDir.y > 0.0 ? -edgeDist : 1.0 + edgeDist;
                         }
 
-                        vec2 shootDir = normalize(shootEnd - shootStart);
-                        float totalDist = length(shootEnd - shootStart);
-                        float currentDist = shootProgress / 0.15 * totalDist;
+                        float travelDist = 1.5;  // Travel across screen
+                        float currentDist = shootProgress / 0.12 * travelDist;
                         vec2 headPos = shootStart + shootDir * currentDist;
 
                         // Long glowing trail
-                        float trailLen = 0.2;
+                        float trailLen = 0.18;
                         vec2 toPoint = uv - headPos;
                         float alongTrail = dot(toPoint, -shootDir);
                         float perpDist = length(toPoint - alongTrail * (-shootDir));
 
-                        if (alongTrail > 0.0 && alongTrail < trailLen && perpDist < 0.006) {
-                            float trailBright = (1.0 - alongTrail / trailLen) * (1.0 - perpDist / 0.006);
+                        if (alongTrail > 0.0 && alongTrail < trailLen && perpDist < 0.005) {
+                            float trailBright = (1.0 - alongTrail / trailLen) * (1.0 - perpDist / 0.005);
                             trailBright = pow(trailBright, 0.4);
                             color += vec3(1.0, 0.95, 0.9) * trailBright * 2.0 * darkIntensity;
                         }
 
                         float headDist = length(uv - headPos);
-                        if (headDist < 0.01) {
-                            color += vec3(1.0, 1.0, 1.0) * (1.0 - headDist / 0.01) * 2.5 * darkIntensity;
-                        }
-                    }
-                }
-            }
-
-            // === SOOT SPRITES - Walk along light/dark borders ===
-            if (doEyes) {
-                // Find edges in the scene
-                float edgeSample = 0.02;
-                float lumL = dot(texture2D(u_texture, uv + vec2(-edgeSample, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
-                float lumR = dot(texture2D(u_texture, uv + vec2(edgeSample, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
-                float lumU = dot(texture2D(u_texture, uv + vec2(0.0, edgeSample)).rgb, vec3(0.299, 0.587, 0.114));
-                float lumD = dot(texture2D(u_texture, uv + vec2(0.0, -edgeSample)).rgb, vec3(0.299, 0.587, 0.114));
-
-                float gradX = lumR - lumL;
-                float gradY = lumU - lumD;
-                float edgeStrength = length(vec2(gradX, gradY));
-
-                // Only draw sprites where there's a clear edge
-                if (edgeStrength > 0.25) {
-                    // Edge tangent (direction to walk along)
-                    vec2 edgeTangent = normalize(vec2(-gradY, gradX));
-
-                    // Grid for sprite placement
-                    float gridSize = 12.0;
-                    vec2 grid = uv * gridSize;
-                    vec2 cell = floor(grid);
-
-                    for (float dx = -1.0; dx <= 1.0; dx += 1.0) {
-                        for (float dy = -1.0; dy <= 1.0; dy += 1.0) {
-                            vec2 checkCell = cell + vec2(dx, dy);
-                            float cellSeed = hash(checkCell + 500.0);
-
-                            if (cellSeed < 0.6) continue;
-
-                            // Sprite walks along edge - FAST
-                            float spriteSpeed = 0.4 + hash(checkCell * 1.1) * 0.3;
-                            float walkPhase = hash(checkCell * 2.2);
-                            float walkTime = mod(time * spriteSpeed + walkPhase * 5.0, 2.0);
-
-                            // Walk full cell and beyond, then vanish
-                            float walkProgress = walkTime / 1.8;
-                            if (walkProgress > 1.0) continue;
-
-                            // Sprite position - walks along edge tangent
-                            vec2 cellCenter = (checkCell + 0.5) / gridSize;
-                            float walkDist = (walkProgress - 0.5) * 2.0 / gridSize;
-                            vec2 spritePos = cellCenter + edgeTangent * walkDist;
-
-                            // Check if sprite is still on an edge
-                            float spriteLum = dot(texture2D(u_texture, spritePos).rgb, vec3(0.299, 0.587, 0.114));
-                            float spriteLumL = dot(texture2D(u_texture, spritePos + vec2(-0.015, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
-                            float spriteLumR = dot(texture2D(u_texture, spritePos + vec2(0.015, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
-                            float spriteLumU = dot(texture2D(u_texture, spritePos + vec2(0.0, 0.015)).rgb, vec3(0.299, 0.587, 0.114));
-                            float spriteLumD = dot(texture2D(u_texture, spritePos + vec2(0.0, -0.015)).rgb, vec3(0.299, 0.587, 0.114));
-                            float spriteEdge = length(vec2(spriteLumR - spriteLumL, spriteLumU - spriteLumD));
-
-                            // Fade out if leaving edge
-                            float edgeFade = smoothstep(0.1, 0.25, spriteEdge);
-                            if (edgeFade < 0.1) continue;
-
-                            vec2 toSprite = uv - spritePos;
-                            float bodyRadius = 0.018;
-                            float bodyDist = length(toSprite);
-
-                            if (bodyDist < bodyRadius * 3.5) {
-                                // Fuzzy round body
-                                float angle = atan(toSprite.y, toSprite.x);
-                                float fuzz = sin(angle * 16.0 + cellSeed * 6.28) * 0.002;
-                                float bodyMask = smoothstep(bodyRadius + fuzz, bodyRadius * 0.3, bodyDist);
-
-                                // 8 legs ALL AROUND the body
-                                float legPhase = time * 12.0 * spriteSpeed;
-                                for (float i = 0.0; i < 8.0; i += 1.0) {
-                                    float legAngle = i * 0.785398;  // 360/8 degrees = 45 deg each
-                                    float legWiggle = sin(legPhase + i * 0.8) * 0.25;
-
-                                    vec2 legDir = vec2(cos(legAngle + legWiggle), sin(legAngle + legWiggle));
-                                    vec2 legStart = spritePos + legDir * bodyRadius * 0.7;
-                                    vec2 legEnd = spritePos + legDir * bodyRadius * 2.2;
-
-                                    vec2 legVec = legEnd - legStart;
-                                    float legLen = length(legVec);
-                                    if (legLen > 0.001) {
-                                        vec2 legNorm = legVec / legLen;
-                                        vec2 toPoint = uv - legStart;
-                                        float along = dot(toPoint, legNorm);
-                                        float perp = abs(dot(toPoint, vec2(-legNorm.y, legNorm.x)));
-                                        if (along > 0.0 && along < legLen && perp < 0.0025) {
-                                            bodyMask = max(bodyMask, 0.85);
-                                        }
-                                    }
-                                }
-
-                                // Blinking eyes
-                                float blinkCycle = mod(time * 0.5 + cellSeed * 5.0, 3.0);
-                                float eyeOpen = blinkCycle > 2.7 ? (1.0 - (blinkCycle - 2.7) / 0.3) : 1.0;
-                                if (blinkCycle > 2.85) eyeOpen = (blinkCycle - 2.85) / 0.15;
-
-                                float eyeSpacing = 0.006;
-                                float eyeSize = 0.004 * eyeOpen;
-                                vec2 eyeL = spritePos + vec2(-eyeSpacing, 0.002);
-                                vec2 eyeR = spritePos + vec2(eyeSpacing, 0.002);
-                                float eye1 = smoothstep(eyeSize + 0.002, eyeSize, length(uv - eyeL));
-                                float eye2 = smoothstep(eyeSize + 0.002, eyeSize, length(uv - eyeR));
-
-                                // Pupils
-                                float lookX = clamp((u_touch_x - spritePos.x) * 0.5, -0.002, 0.002);
-                                float lookY = clamp((u_touch_y - spritePos.y) * 0.5, -0.002, 0.002);
-                                float pupil1 = smoothstep(0.0025, 0.001, length(uv - eyeL - vec2(lookX, lookY)));
-                                float pupil2 = smoothstep(0.0025, 0.001, length(uv - eyeR - vec2(lookX, lookY)));
-
-                                // Render with edge fade
-                                if (bodyMask > 0.01) {
-                                    float alpha = bodyMask * edgeFade * 0.95;
-                                    color = mix(color, vec3(0.02, 0.02, 0.03), alpha);
-                                    if (eyeOpen > 0.1) {
-                                        color = mix(color, vec3(1.0), (eye1 + eye2) * edgeFade * 0.95);
-                                        color = mix(color, vec3(0.0), (pupil1 + pupil2) * edgeFade * 0.9);
-                                    }
-                                }
-                            }
+                        if (headDist < 0.008) {
+                            color += vec3(1.0, 1.0, 1.0) * (1.0 - headDist / 0.008) * 2.5 * darkIntensity;
                         }
                     }
                 }
@@ -3723,9 +3620,9 @@ mod gl {
                                     float fade = 1.0 - progress;
                                     fade = fade * fade;
 
-                                    // Displacement like water ripple - subtle
+                                    // Displacement like water ripple - very subtle
                                     float phase = (dist < ringPos) ? 1.0 : -1.0;
-                                    float strength = 0.025 * wave * fade;
+                                    float strength = 0.012 * wave * fade;
                                     vec2 offset = dir * strength * phase;
                                     offset.x /= u_aspect;
                                     totalOffset += offset;
