@@ -3581,77 +3581,97 @@ mod gl {
             }
 
             // Shooting stars - static streaks that flash briefly (cheap!)
-            // Variable sizes from tiny to full-screen diagonal
+            // Three fixed size categories for variety
             if (lum < 0.15 && doShooting) {
                 float darkIntensity = 1.0 - lum / 0.15;
 
-                for (float starIdx = 0.0; starIdx < 3.0; starIdx += 1.0) {
-                    float period = 8.0 + starIdx * 5.0;  // 8, 13, 18 second periods
-                    float shootFrame = floor(time * 12.0);
-                    float shootSlot = floor(shootFrame / (period * 12.0));
-                    float frameInSlot = mod(shootFrame, period * 12.0);
+                // Channel 0: Small streaks (most common, every 6 seconds)
+                {
+                    float period = 6.0;
+                    float shootSlot = floor(time / period);
+                    float timeInSlot = mod(time, period);
 
-                    // Only visible for 2 frames at start of each period
-                    if (frameInSlot < 2.0) {
-                        float seed = shootSlot + starIdx * 100.0;
-
-                        // Random angle
+                    if (timeInSlot < 0.15) {
+                        float seed = shootSlot * 17.3;
                         float angle = hash(vec2(seed, 1.0)) * 6.28;
                         vec2 shootDir = vec2(cos(angle), sin(angle));
+                        vec2 shootPos = vec2(
+                            hash(vec2(seed, 2.0)) * 0.7 + 0.15,
+                            hash(vec2(seed, 3.0)) * 0.7 + 0.15
+                        );
 
-                        // Variable trail length: 10% chance of full-screen, otherwise varied
-                        float lenRand = hash(vec2(seed, 4.0));
-                        float trailLen;
-                        float trailWidth;
-                        if (lenRand > 0.9) {
-                            // Full screen diagonal streak (rare, dramatic)
-                            trailLen = 1.5;
-                            trailWidth = 0.003;
-                        } else if (lenRand > 0.6) {
-                            // Medium streak
-                            trailLen = 0.3 + lenRand * 0.4;
-                            trailWidth = 0.004;
-                        } else {
-                            // Small streak (common)
-                            trailLen = 0.08 + lenRand * 0.15;
-                            trailWidth = 0.005;
-                        }
-
-                        // Position: long streaks start from edges, short ones anywhere
-                        vec2 shootPos;
-                        if (trailLen > 0.5) {
-                            // Start from edge for long streaks
-                            float edge = hash(vec2(seed, 5.0));
-                            if (abs(shootDir.x) > abs(shootDir.y)) {
-                                shootPos.x = shootDir.x > 0.0 ? 0.9 : 0.1;
-                                shootPos.y = edge * 0.8 + 0.1;
-                            } else {
-                                shootPos.x = edge * 0.8 + 0.1;
-                                shootPos.y = shootDir.y > 0.0 ? 0.9 : 0.1;
-                            }
-                        } else {
-                            // Random position for short streaks
-                            shootPos = vec2(
-                                hash(vec2(seed, 2.0)) * 0.7 + 0.15,
-                                hash(vec2(seed, 3.0)) * 0.7 + 0.15
-                            );
-                        }
-
-                        // Draw static streak with gradient (head bright, tail dim)
+                        float trailLen = 0.08 + hash(vec2(seed, 4.0)) * 0.07;
                         vec2 toPoint = uv - shootPos;
                         float alongTrail = dot(toPoint, shootDir);
                         float perpDist = length(toPoint - alongTrail * shootDir);
 
-                        // Trail: from -trailLen to 0 (head at shootPos)
-                        if (alongTrail > -trailLen && alongTrail < 0.005 && perpDist < trailWidth) {
-                            float trailFade = 1.0 + alongTrail / trailLen;
-                            float perpFade = 1.0 - perpDist / trailWidth;
-                            float brightness = trailFade * perpFade;
-                            // Second frame slightly dimmer
-                            brightness *= (frameInSlot < 1.0) ? 1.0 : 0.5;
-                            // Brighter for longer streaks
-                            float intensityMult = trailLen > 0.5 ? 2.5 : 2.0;
-                            color += vec3(1.0, 0.97, 0.92) * brightness * intensityMult * darkIntensity;
+                        if (alongTrail > -trailLen && alongTrail < 0.003 && perpDist < 0.004) {
+                            float fade = (1.0 + alongTrail / trailLen) * (1.0 - perpDist / 0.004);
+                            fade *= smoothstep(0.15, 0.0, timeInSlot);
+                            color += vec3(1.0, 0.97, 0.92) * fade * 1.8 * darkIntensity;
+                        }
+                    }
+                }
+
+                // Channel 1: Medium streaks (every 12 seconds)
+                {
+                    float period = 12.0;
+                    float shootSlot = floor(time / period);
+                    float timeInSlot = mod(time, period);
+
+                    if (timeInSlot < 0.15) {
+                        float seed = shootSlot * 31.7 + 500.0;
+                        float angle = hash(vec2(seed, 1.0)) * 6.28;
+                        vec2 shootDir = vec2(cos(angle), sin(angle));
+                        vec2 shootPos = vec2(
+                            hash(vec2(seed, 2.0)) * 0.6 + 0.2,
+                            hash(vec2(seed, 3.0)) * 0.6 + 0.2
+                        );
+
+                        float trailLen = 0.25 + hash(vec2(seed, 4.0)) * 0.15;
+                        vec2 toPoint = uv - shootPos;
+                        float alongTrail = dot(toPoint, shootDir);
+                        float perpDist = length(toPoint - alongTrail * shootDir);
+
+                        if (alongTrail > -trailLen && alongTrail < 0.004 && perpDist < 0.003) {
+                            float fade = (1.0 + alongTrail / trailLen) * (1.0 - perpDist / 0.003);
+                            fade *= smoothstep(0.15, 0.0, timeInSlot);
+                            color += vec3(1.0, 0.98, 0.95) * fade * 2.2 * darkIntensity;
+                        }
+                    }
+                }
+
+                // Channel 2: Full screen streaks (rare, every 25 seconds)
+                {
+                    float period = 25.0;
+                    float shootSlot = floor(time / period);
+                    float timeInSlot = mod(time, period);
+
+                    if (timeInSlot < 0.2) {
+                        float seed = shootSlot * 47.1 + 1000.0;
+                        float angle = hash(vec2(seed, 1.0)) * 6.28;
+                        vec2 shootDir = vec2(cos(angle), sin(angle));
+
+                        // Start from edge
+                        vec2 shootPos;
+                        float edge = hash(vec2(seed, 5.0));
+                        if (abs(shootDir.x) > abs(shootDir.y)) {
+                            shootPos.x = shootDir.x > 0.0 ? 0.95 : 0.05;
+                            shootPos.y = edge * 0.8 + 0.1;
+                        } else {
+                            shootPos.x = edge * 0.8 + 0.1;
+                            shootPos.y = shootDir.y > 0.0 ? 0.95 : 0.05;
+                        }
+
+                        float trailLen = 1.2 + hash(vec2(seed, 4.0)) * 0.5;
+                        vec2 toPoint = uv - shootPos;
+                        float alongTrail = dot(toPoint, shootDir);
+                        float perpDist = length(toPoint - alongTrail * shootDir);
+
+                        if (alongTrail > -trailLen && alongTrail < 0.008 && perpDist < 0.002) {
+                            float fade = (1.0 + alongTrail / trailLen) * (1.0 - perpDist / 0.002);
+                            fade *= smoothstep(0.2, 0.0, timeInSlot);
+                            color += vec3(1.0, 1.0, 0.98) * fade * 3.0 * darkIntensity;
                         }
                     }
                 }
