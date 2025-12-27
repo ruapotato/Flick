@@ -2783,9 +2783,14 @@ fn render_frame(
                                     }
 
                                     slint_ui.set_available_apps(available_apps);
-                                    // Set current selection
+                                    // Set current selection and check if it's a Flick default
                                     if let Some(exec) = state.shell.app_manager.get_exec(category) {
                                         slint_ui.set_current_app_selection(&exec);
+                                        // Check if using Flick default (no custom selection set)
+                                        let is_flick_default = state.shell.app_manager.config.get_selected(category).is_none();
+                                        slint_ui.set_using_flick_default(is_flick_default);
+                                    } else {
+                                        slint_ui.set_using_flick_default(true);
                                     }
                                 }
                             }

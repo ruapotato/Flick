@@ -414,6 +414,11 @@ impl AppConfig {
         self.selections.insert(category, exec);
     }
 
+    /// Clear the selected app for a category (reverts to default/Flick app)
+    pub fn clear_selected(&mut self, category: AppCategory) {
+        self.selections.remove(&category);
+    }
+
     /// Move a category to a new position in the grid
     pub fn move_category(&mut self, from: usize, to: usize) {
         if from < self.grid_order.len() && to < self.grid_order.len() {
@@ -625,6 +630,13 @@ impl AppManager {
     /// Update the selected app for a category and rebuild cache
     pub fn set_category_app(&mut self, category: AppCategory, exec: String) {
         self.config.set_selected(category, exec);
+        self.rebuild_cache();
+        self.config.save(); // Persist changes
+    }
+
+    /// Clear the selected app for a category (reverts to Flick default)
+    pub fn clear_category_app(&mut self, category: AppCategory) {
+        self.config.clear_selected(category);
         self.rebuild_cache();
         self.config.save(); // Persist changes
     }

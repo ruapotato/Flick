@@ -563,6 +563,11 @@ impl SlintShell {
         self.shell.set_current_app_selection(exec.into());
     }
 
+    /// Set whether the current selection is a Flick default app
+    pub fn set_using_flick_default(&self, is_default: bool) {
+        self.shell.set_using_flick_default(is_default);
+    }
+
     /// Set available apps for pick default view
     pub fn set_available_apps(&self, apps: Vec<(String, String)>) {
         let model: Vec<AvailableApp> = apps

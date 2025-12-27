@@ -432,11 +432,12 @@ component AppListItem inherits Rectangle {
     }
 }
 
-// Pick default app view - shows list of available apps for a category
+// Pick default app view - shows category config with default/custom choice
 component PickDefaultView inherits Rectangle {
     in property <string> category-name: "App";
     in property <[AvailableApp]> available-apps: [];
     in property <string> current-selection: "";
+    in property <bool> using-flick-default: true;  // Set from Rust - true if using native Flick app
     in property <float> text-scale: 2.0;
 
     callback app-selected(string);  // Returns exec command
@@ -446,81 +447,260 @@ component PickDefaultView inherits Rectangle {
     height: 100%;
     background: Theme.background;
 
+    // Track if user is in custom app selection mode
+    property <bool> show-custom-list: false;
+
+    // Use the property passed from Rust
+    property <bool> is-flick-default: using-flick-default;
+
     VerticalLayout {
-        // Header
+        padding: 20px;
+        spacing: 20px;
+
+        // Header with back button and category name
         Rectangle {
             height: 80px * text-scale;
             background: Theme.surface;
+            border-radius: 16px;
 
             HorizontalLayout {
-                padding: 20px;
+                padding: 16px;
                 spacing: 16px;
 
                 // Back button
                 Rectangle {
-                    width: 56px * text-scale;
-                    height: 56px * text-scale;
-                    border-radius: 28px * text-scale;
-                    background: back-touch.pressed ? Theme.primary-container : Theme.surface-variant;
+                    width: 60px * text-scale;
+                    height: 60px * text-scale;
+                    border-radius: 30px * text-scale;
+                    background: back-touch.pressed ? Theme.accent : Theme.surface-variant;
 
                     Text {
                         width: 100%;
                         height: 100%;
-                        text: "<";
+                        text: "←";
                         color: Theme.on-surface;
-                        font-size: 24px * text-scale;
+                        font-size: 28px * text-scale;
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
 
                     back-touch := TouchArea {
-                        clicked => { back-pressed(); }
+                        clicked => {
+                            if root.show-custom-list {
+                                root.show-custom-list = false;
+                            } else {
+                                back-pressed();
+                            }
+                        }
                     }
                 }
 
+                // Category name
                 VerticalLayout {
                     alignment: center;
-                    spacing: 4px;
+                    horizontal-stretch: 1;
 
                     Text {
-                        text: "Pick Default";
-                        color: Theme.on-surface;
-                        font-size: 22px * text-scale;
-                        font-weight: 600;
+                        text: root.show-custom-list ? "Select App" : "Configure";
+                        color: Theme.on-surface-variant;
+                        font-size: 14px * text-scale;
                     }
 
                     Text {
                         text: category-name;
-                        color: Theme.on-surface-variant;
-                        font-size: 16px * text-scale;
+                        color: Theme.on-surface;
+                        font-size: 24px * text-scale;
+                        font-weight: 700;
                     }
                 }
             }
         }
 
-        // App list
-        ScrollView {
+        // Main content - either choice cards or app list
+        if !show-custom-list: VerticalLayout {
+            spacing: 16px;
+            vertical-stretch: 1;
+
+            // Flick Default option - big touch target
+            Rectangle {
+                height: 140px * text-scale;
+                background: is-flick-default ? Theme.primary-container : Theme.surface;
+                border-radius: 20px;
+                border-width: is-flick-default ? 3px : 1px;
+                border-color: is-flick-default ? Theme.accent : Theme.surface-variant;
+
+                HorizontalLayout {
+                    padding: 24px;
+                    spacing: 20px;
+
+                    // Checkmark circle
+                    Rectangle {
+                        width: 48px * text-scale;
+                        height: 48px * text-scale;
+                        border-radius: 24px * text-scale;
+                        background: is-flick-default ? Theme.accent : Theme.surface-variant;
+
+                        Text {
+                            width: 100%;
+                            height: 100%;
+                            text: is-flick-default ? "✓" : "";
+                            color: #ffffff;
+                            font-size: 24px * text-scale;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: "Flick Default";
+                            color: Theme.on-surface;
+                            font-size: 22px * text-scale;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: "Use the native Flick app";
+                            color: Theme.on-surface-variant;
+                            font-size: 14px * text-scale;
+                        }
+                    }
+                }
+
+                TouchArea {
+                    clicked => {
+                        // Select Flick default - construct the exec path
+                        app-selected("flick-default");
+                    }
+                }
+            }
+
+            // Custom App option - big touch target
+            Rectangle {
+                height: 140px * text-scale;
+                background: !is-flick-default ? Theme.primary-container : Theme.surface;
+                border-radius: 20px;
+                border-width: !is-flick-default ? 3px : 1px;
+                border-color: !is-flick-default ? Theme.accent : Theme.surface-variant;
+
+                HorizontalLayout {
+                    padding: 24px;
+                    spacing: 20px;
+
+                    // Checkmark/arrow circle
+                    Rectangle {
+                        width: 48px * text-scale;
+                        height: 48px * text-scale;
+                        border-radius: 24px * text-scale;
+                        background: !is-flick-default ? Theme.accent : Theme.surface-variant;
+
+                        Text {
+                            width: 100%;
+                            height: 100%;
+                            text: !is-flick-default ? "✓" : "→";
+                            color: #ffffff;
+                            font-size: 24px * text-scale;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: "Custom App";
+                            color: Theme.on-surface;
+                            font-size: 22px * text-scale;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: !is-flick-default ? "Currently using a Linux app" : "Choose a Linux app";
+                            color: Theme.on-surface-variant;
+                            font-size: 14px * text-scale;
+                        }
+                    }
+                }
+
+                TouchArea {
+                    clicked => {
+                        root.show-custom-list = true;
+                    }
+                }
+            }
+
+            // Spacer
+            Rectangle {
+                vertical-stretch: 1;
+            }
+        }
+
+        // Custom app list (shown when selecting custom)
+        if show-custom-list: ScrollView {
             vertical-stretch: 1;
 
             VerticalLayout {
-                padding: 8px;
-                spacing: 4px;
+                spacing: 8px;
 
-                for app[i] in available-apps: AppListItem {
-                    name: app.name;
-                    is-selected: app.exec == current-selection;
-                    text-scale: root.text-scale;
-                    clicked => { app-selected(app.exec); }
+                for app[i] in available-apps: Rectangle {
+                    height: 80px * text-scale;
+                    background: app.exec == current-selection ? Theme.primary-container : Theme.surface;
+                    border-radius: 16px;
+                    border-width: app.exec == current-selection ? 2px : 0px;
+                    border-color: Theme.accent;
+
+                    HorizontalLayout {
+                        padding: 20px;
+                        spacing: 16px;
+
+                        // Selection indicator
+                        Rectangle {
+                            width: 32px * text-scale;
+                            height: 32px * text-scale;
+                            border-radius: 16px * text-scale;
+                            background: app.exec == current-selection ? Theme.accent : Theme.surface-variant;
+
+                            Text {
+                                width: 100%;
+                                height: 100%;
+                                text: app.exec == current-selection ? "✓" : "";
+                                color: #ffffff;
+                                font-size: 18px * text-scale;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        Text {
+                            text: app.name;
+                            color: Theme.on-surface;
+                            font-size: 20px * text-scale;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                        }
+                    }
+
+                    TouchArea {
+                        clicked => { app-selected(app.exec); }
+                    }
                 }
 
                 // Empty state
                 if available-apps.length == 0: Rectangle {
-                    height: 100px;
+                    height: 120px * text-scale;
 
                     Text {
-                        text: "No apps available";
+                        width: 100%;
+                        height: 100%;
+                        text: "No Linux apps found";
                         color: Theme.on-surface-variant;
-                        font-size: 16px;
+                        font-size: 18px * text-scale;
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
@@ -2251,6 +2431,7 @@ export component FlickShell inherits Window {
     in property <string> pick-default-category: "";
     in property <[AvailableApp]> available-apps: [];
     in property <string> current-app-selection: "";
+    in property <bool> using-flick-default: true;  // True if using native Flick app
 
     // App switcher state
     in property <[WindowCard]> switcher-windows: [];
@@ -2397,6 +2578,7 @@ export component FlickShell inherits Window {
         category-name: pick-default-category;
         available-apps: available-apps;
         current-selection: current-app-selection;
+        using-flick-default: root.using-flick-default;
         text-scale: root.text-scale;
         app-selected(exec) => { pick-default-selected(exec); }
         back-pressed => { pick-default-back(); }

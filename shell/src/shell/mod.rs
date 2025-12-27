@@ -963,6 +963,9 @@ impl Shell {
         self.dragging_index = None;
         self.drag_start_position = None;
         self.drag_position = None;
+        // Clear long press state to prevent immediate re-entry
+        self.long_press_start = None;
+        self.long_press_category = None;
         // Ensure all popup/menu state is cleared for clean long press detection
         self.long_press_menu = None;
         self.menu_just_opened = false;
@@ -1474,7 +1477,12 @@ impl Shell {
     /// Select a new default app for the current pick default category
     pub fn select_default_app(&mut self, exec: &str) {
         if let Some(category) = self.popup_category {
-            self.app_manager.set_category_app(category, exec.to_string());
+            if exec == "flick-default" {
+                // Clear the custom selection to revert to Flick default
+                self.app_manager.clear_category_app(category);
+            } else {
+                self.app_manager.set_category_app(category, exec.to_string());
+            }
             self.exit_pick_default();
         }
     }
