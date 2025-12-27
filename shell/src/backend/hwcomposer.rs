@@ -2368,7 +2368,12 @@ fn render_frame(
     // If distortion is active, render to scene FBO instead of default framebuffer
     // This avoids the tiled GPU issue of reading from the framebuffer we're writing to
     let using_scene_fbo = if distortion_active {
-        unsafe { gl::begin_scene_render(display.width as u32, display.height as u32) }
+        let result = unsafe { gl::begin_scene_render(display.width as u32, display.height as u32) };
+        if log_frame {
+            let fbo_support = unsafe { gl::has_fbo_support() };
+            info!("Scene FBO: active={}, fbo_support={}, result={}", distortion_active, fbo_support, result);
+        }
+        result
     } else {
         false
     };
