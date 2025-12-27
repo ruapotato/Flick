@@ -50,7 +50,8 @@ pub struct EffectConfig {
     pub lp_fireflies: bool,     // Fireflies in dim areas
     pub lp_dust: bool,          // Floating dust motes in mid-tones
     pub lp_shimmer: bool,       // Shimmer in bright areas
-    pub lp_eyes: bool,          // Eyes in very bright areas
+    pub lp_eyes: bool,          // Soot sprites on edges
+    pub lp_rain: bool,          // Compiz-style rain ripples
 }
 
 impl Default for EffectConfig {
@@ -70,6 +71,7 @@ impl Default for EffectConfig {
             lp_dust: true,
             lp_shimmer: true,
             lp_eyes: true,
+            lp_rain: false,          // Disabled by default
         }
     }
 }
@@ -154,6 +156,9 @@ impl EffectConfig {
                     lp_eyes: json.get("lp_eyes")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(true),
+                    lp_rain: json.get("rain_effect_enabled")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
                 };
             }
         }
@@ -364,7 +369,7 @@ impl TouchEffectManager {
         data.living_pixels = if self.config.living_pixels { 1 } else { 0 };
         data.time = time;
 
-        // Pack sub-toggles into flags: bit0=stars, bit1=shooting, bit2=fireflies, bit3=dust, bit4=shimmer, bit5=eyes
+        // Pack sub-toggles into flags: bit0=stars, bit1=shooting, bit2=fireflies, bit3=dust, bit4=shimmer, bit5=eyes, bit6=rain
         data.lp_flags = 0;
         if self.config.lp_stars { data.lp_flags |= 1; }
         if self.config.lp_shooting_stars { data.lp_flags |= 2; }
@@ -372,6 +377,7 @@ impl TouchEffectManager {
         if self.config.lp_dust { data.lp_flags |= 8; }
         if self.config.lp_shimmer { data.lp_flags |= 16; }
         if self.config.lp_eyes { data.lp_flags |= 32; }
+        if self.config.lp_rain { data.lp_flags |= 64; }
 
         // Last touch position for eye tracking
         data.last_touch_x = (self.last_touch_x / screen_width) as f32;
@@ -410,7 +416,7 @@ pub struct TouchEffectShaderData {
     pub living_pixels: i32,
     /// Time in seconds for animations
     pub time: f32,
-    /// Living pixels sub-toggles packed: bit0=stars, bit1=shooting, bit2=fireflies, bit3=dust, bit4=shimmer, bit5=eyes
+    /// Living pixels sub-toggles packed: bit0=stars, bit1=shooting, bit2=fireflies, bit3=dust, bit4=shimmer, bit5=eyes, bit6=rain
     pub lp_flags: i32,
     /// Last touch position (normalized 0-1), for eyes to look at
     pub last_touch_x: f32,

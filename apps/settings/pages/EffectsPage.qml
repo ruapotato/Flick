@@ -363,12 +363,11 @@ Page {
                 onSave: saveConfig()
             }
 
-            // Living Pixels toggle
+            // Living Pixels toggle - Always visible (not tied to touch distortion)
             EffectToggle {
                 width: settingsColumn.width
-                visible: touchEffectsEnabled
                 title: "Living Pixels"
-                subtitle: "Stars in black areas, eyes in white areas"
+                subtitle: "Stars, sprites, rain ripples on screen"
                 icon: "👁️"
                 checked: livingPixels
                 accentColor: "#ffaa00"
@@ -386,7 +385,7 @@ Page {
                 color: "#14141e"
                 border.color: "#ffaa00"
                 border.width: 1
-                visible: touchEffectsEnabled && livingPixels
+                visible: livingPixels
 
                 Column {
                     id: lpSubColumn
@@ -478,14 +477,26 @@ Page {
                             }
                         }
 
-                        // Eyes
+                        // Sprites (soot sprites on edges)
                         LivingPixelSubToggle {
                             width: (lpSubColumn.width - 8) / 2
                             icon: "👁️"
-                            label: "Eyes"
+                            label: "Sprites"
                             checked: lpEyes
                             onToggled: {
                                 lpEyes = !lpEyes
+                                saveConfig()
+                            }
+                        }
+
+                        // Rain ripples
+                        LivingPixelSubToggle {
+                            width: (lpSubColumn.width - 8) / 2
+                            icon: "💧"
+                            label: "Ripples"
+                            checked: rainEffectEnabled
+                            onToggled: {
+                                rainEffectEnabled = !rainEffectEnabled
                                 saveConfig()
                             }
                         }
@@ -555,57 +566,6 @@ Page {
                     edgeGlowEnabled = !edgeGlowEnabled
                     saveConfig()
                 }
-            }
-
-            Item { height: 16 }
-
-            // ===== LOCK SCREEN EFFECTS =====
-            Text {
-                text: "LOCK SCREEN"
-                font.pixelSize: 11
-                font.letterSpacing: 2
-                color: "#555566"
-                leftPadding: 8
-            }
-
-            EffectToggle {
-                width: settingsColumn.width
-                title: "Starry Night"
-                subtitle: "Animated twinkling stars"
-                icon: "⭐"
-                checked: starryNightEnabled
-                accentColor: "#ffaa00"
-                onToggled: {
-                    starryNightEnabled = !starryNightEnabled
-                    saveConfig()
-                }
-            }
-
-            EffectToggle {
-                width: settingsColumn.width
-                title: "Rain Effect"
-                subtitle: "Rain increases before screen locks"
-                icon: "🌧️"
-                checked: rainEffectEnabled
-                accentColor: "#4a9eff"
-                onToggled: {
-                    rainEffectEnabled = !rainEffectEnabled
-                    saveConfig()
-                }
-            }
-
-            // Rain intensity slider
-            EffectSliderCard {
-                width: settingsColumn.width
-                visible: rainEffectEnabled
-                title: "Rain Settings"
-                icon: "💦"
-
-                sliders: [
-                    { label: "Intensity", value: rainIntensity, min: 0.1, max: 1.0, color: "#4a9eff",
-                      onChanged: function(v) { rainIntensity = v } }
-                ]
-                onSave: saveConfig()
             }
 
             Item { height: 16 }

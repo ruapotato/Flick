@@ -3315,7 +3315,7 @@ mod gl {
         }
 
         // Living pixels: the screen comes alive with effects based on brightness
-        // Uses u_lp_flags for sub-toggles: bit0=stars, bit1=shooting, bit2=fireflies, bit3=dust, bit4=shimmer, bit5=eyes
+        // Uses u_lp_flags for sub-toggles: bit0=stars, bit1=shooting, bit2=fireflies, bit3=dust, bit4=shimmer, bit5=eyes, bit6=rain
         // Uses u_touch_x, u_touch_y, u_touch_time for eye behavior
         vec3 applyLivingPixels(vec3 color, vec2 uv, float time) {
             float lum = dot(color, vec3(0.299, 0.587, 0.114));
@@ -3326,6 +3326,7 @@ mod gl {
             bool doDust = (flags / 8) - (flags / 16) * 2 == 1;
             bool doShimmer = (flags / 16) - (flags / 32) * 2 == 1;
             bool doEyes = (flags / 32) - (flags / 64) * 2 == 1;
+            bool doRain = (flags / 64) - (flags / 128) * 2 == 1;
 
             // === DARK AREAS (lum < 0.15): Night sky with stars ===
             if (lum < 0.15 && doStars) {
@@ -3464,130 +3465,130 @@ mod gl {
                 }
             }
 
-            // === SOOT SPRITES - Fuzzy black creatures walking along bright/dark edges ===
+            // === SOOT SPRITES - Walk along horizontal bright/dark edges ===
+            // Sprites spawn on clear horizontal edges and walk across them
             if (doEyes) {
-                // Detect edges - where bright meets dark
-                float edgeThresh = 0.55;
-                float step = 0.012;
-                float lumL = dot(texture2D(u_texture, uv + vec2(-step, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
-                float lumR = dot(texture2D(u_texture, uv + vec2(step, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
-                float lumU = dot(texture2D(u_texture, uv + vec2(0.0, step)).rgb, vec3(0.299, 0.587, 0.114));
-                float lumD = dot(texture2D(u_texture, uv + vec2(0.0, -step)).rgb, vec3(0.299, 0.587, 0.114));
+                // Grid for sprite placement - check each cell for an edge
+                float gridSize = 8.0;
+                vec2 grid = uv * gridSize;
+                vec2 cell = floor(grid);
+                vec2 cellUV = fract(grid);
 
-                // Edge detection - gradient magnitude
-                float gradX = lumR - lumL;
-                float gradY = lumU - lumD;
-                float edgeStrength = length(vec2(gradX, gradY));
+                // Check this cell and neighbors to find sprites near us
+                for (float dx = -1.0; dx <= 1.0; dx += 1.0) {
+                    for (float dy = -1.0; dy <= 1.0; dy += 1.0) {
+                        vec2 checkCell = cell + vec2(dx, dy);
+                        vec2 checkCellCenter = (checkCell + 0.5) / gridSize;
 
-                // We want sprites near edges (high gradient) in bright areas
-                bool nearEdge = edgeStrength > 0.15 && lum > 0.5;
+                        // Seed for this cell
+                        float cellSeed = hash(checkCell + 500.0);
 
-                if (nearEdge) {
-                    // Edge direction (tangent to edge, for walking along it)
-                    vec2 edgeNormal = normalize(vec2(gradX, gradY));
-                    vec2 edgeTangent = vec2(-edgeNormal.y, edgeNormal.x);
+                        // Only some cells have sprites
+                        if (cellSeed < 0.25) continue;
 
-                    // Sprite grid - larger cells = bigger sprites
-                    float spriteGridSize = 12.0;
-                    vec2 spriteGrid = uv * spriteGridSize;
-                    vec2 spriteCell = floor(spriteGrid);
-                    vec2 spriteUV = fract(spriteGrid);
+                        // Check for horizontal edge at cell center
+                        float sampleStep = 0.03;
+                        float lumAbove = dot(texture2D(u_texture, checkCellCenter + vec2(0.0, sampleStep)).rgb, vec3(0.299, 0.587, 0.114));
+                        float lumBelow = dot(texture2D(u_texture, checkCellCenter + vec2(0.0, -sampleStep)).rgb, vec3(0.299, 0.587, 0.114));
+                        float lumCenter = dot(texture2D(u_texture, checkCellCenter).rgb, vec3(0.299, 0.587, 0.114));
 
-                    float spriteRand = hash(spriteCell + 500.0);
+                        // Need a clear horizontal edge: bright above, dark below OR dark above, bright below
+                        float vertGrad = lumAbove - lumBelow;
+                        bool hasHorizEdge = abs(vertGrad) > 0.3 && lumCenter > 0.3;
 
-                    if (spriteRand > 0.55) {
-                        // Sprite properties
-                        float spriteSpeed = 0.15 + hash(spriteCell * 1.1) * 0.25;
-                        float spritePhase = hash(spriteCell * 2.2) * 6.28;
+                        if (!hasHorizEdge) continue;
 
-                        // Walk along edge tangent direction
-                        float walkCycle = mod(time * spriteSpeed + spritePhase, 2.0);
-                        float walkOffset = (walkCycle < 1.0 ? walkCycle : 2.0 - walkCycle) - 0.5;
+                        // Sprite walks horizontally across the cell
+                        float spriteSpeed = 0.08 + hash(checkCell * 1.1) * 0.06;
+                        float walkPhase = hash(checkCell * 2.2);
 
-                        // Sprite position - centered with walk offset along edge
-                        vec2 spritePos = vec2(0.5, 0.5) + edgeTangent * walkOffset * 0.4;
-                        vec2 toSprite = spriteUV - spritePos;
+                        // Walk across and disappear
+                        float walkTime = mod(time * spriteSpeed + walkPhase * 10.0, 3.0);
+                        float walkX;
+                        float spriteVisible = 1.0;
 
-                        // BIGGER sprite body
-                        float bodyRadius = 0.22;
+                        if (walkTime < 2.5) {
+                            // Walking across
+                            walkX = walkTime / 2.5; // 0 to 1
+                        } else {
+                            // Disappeared, waiting to respawn
+                            spriteVisible = 0.0;
+                            walkX = 0.0;
+                        }
+
+                        if (spriteVisible < 0.5) continue;
+
+                        // Sprite position in screen UV
+                        vec2 spriteScreenPos = (checkCell + vec2(walkX, 0.5)) / gridSize;
+
+                        // Distance from current pixel to sprite
+                        vec2 toSprite = uv - spriteScreenPos;
+                        toSprite.x *= 0.45; // Stretch to make sprite rounder in aspect
+
+                        float bodyRadius = 0.025;
                         float bodyDist = length(toSprite);
 
-                        if (bodyDist < bodyRadius * 2.5) {
-                            // Fuzzy edge with spiky hair effect
+                        if (bodyDist < bodyRadius * 3.0) {
+                            // Fuzzy body with spiky hair
                             float angle = atan(toSprite.y, toSprite.x);
-                            float spikes = sin(angle * 8.0 + hash(spriteCell) * 6.28) * 0.04;
-                            float fuzz = hash(spriteUV * 50.0 + spriteCell) * 0.05;
-                            float bodyMask = smoothstep(bodyRadius + spikes + fuzz, bodyRadius * 0.3, bodyDist);
+                            float spikes = sin(angle * 12.0 + cellSeed * 6.28) * 0.003;
+                            float bodyMask = smoothstep(bodyRadius + spikes, bodyRadius * 0.4, bodyDist);
 
-                            // 6 LEGS - evenly distributed around bottom half
-                            float legPhase = time * 6.0 * spriteSpeed;
+                            // 6 legs walking animation
+                            float legPhase = time * 8.0;
                             for (float i = 0.0; i < 6.0; i += 1.0) {
-                                // Spread legs from -120 to +120 degrees (bottom arc)
-                                float legAngle = -2.1 + (i / 5.0) * 4.2; // -120 to +120 degrees
-                                legAngle += 3.14159 * 0.5; // Rotate so 0 is down
-
-                                // Alternating leg movement for walking
-                                float legMove = sin(legPhase + i * 3.14159) * 0.15;
-                                float legLift = max(0.0, sin(legPhase + i * 3.14159)) * 0.08;
+                                float legAngle = 3.14159 * 0.5 + (i - 2.5) * 0.35;
+                                float legMove = sin(legPhase + i * 1.05) * 0.004;
 
                                 vec2 legDir = vec2(cos(legAngle), sin(legAngle));
-                                vec2 legStart = spritePos + legDir * bodyRadius * 0.6;
-                                vec2 legMid = spritePos + legDir * bodyRadius * 1.1 + vec2(legMove * 0.3, -legLift);
-                                vec2 legEnd = spritePos + legDir * bodyRadius * 1.5 + vec2(legMove, -0.02);
+                                vec2 legStart = spriteScreenPos + legDir * bodyRadius * 0.6;
+                                legStart.y += legMove;
+                                vec2 legEnd = spriteScreenPos + legDir * bodyRadius * 1.8;
+                                legEnd.y += legMove * 2.0;
 
-                                // Draw leg segments
-                                for (float seg = 0.0; seg < 2.0; seg += 1.0) {
-                                    vec2 segStart = seg < 0.5 ? legStart : legMid;
-                                    vec2 segEnd = seg < 0.5 ? legMid : legEnd;
-                                    vec2 segVec = segEnd - segStart;
-                                    float segLen = length(segVec);
-                                    if (segLen > 0.001) {
-                                        vec2 segNorm = segVec / segLen;
-                                        vec2 toPoint = spriteUV - segStart;
-                                        float along = dot(toPoint, segNorm);
-                                        float perp = abs(dot(toPoint, vec2(-segNorm.y, segNorm.x)));
-                                        if (along > -0.01 && along < segLen + 0.01 && perp < 0.025) {
-                                            bodyMask = max(bodyMask, 0.85);
-                                        }
-                                    }
+                                // Draw leg as line
+                                vec2 legVec = legEnd - legStart;
+                                float legLen = length(legVec);
+                                vec2 legNorm = legVec / legLen;
+                                vec2 toPoint = uv - legStart;
+                                float along = dot(toPoint, legNorm);
+                                float perp = abs(dot(toPoint, vec2(-legNorm.y, legNorm.x)));
+
+                                if (along > 0.0 && along < legLen && perp < 0.003) {
+                                    bodyMask = max(bodyMask, 0.9);
                                 }
                             }
 
-                            // BLINKING eyes
-                            float blinkCycle = mod(time * 0.3 + hash(spriteCell * 5.5) * 10.0, 4.0);
+                            // Blinking eyes
+                            float blinkCycle = mod(time * 0.4 + cellSeed * 5.0, 3.5);
                             float eyeOpen = 1.0;
-                            if (blinkCycle > 3.7) {
-                                float blinkPhase = (blinkCycle - 3.7) / 0.3;
-                                if (blinkPhase < 0.5) eyeOpen = 1.0 - blinkPhase * 2.0;
-                                else eyeOpen = (blinkPhase - 0.5) * 2.0;
+                            if (blinkCycle > 3.2) {
+                                float bp = (blinkCycle - 3.2) / 0.3;
+                                eyeOpen = bp < 0.5 ? 1.0 - bp * 2.0 : (bp - 0.5) * 2.0;
                             }
 
-                            // Two white eyes - bigger
-                            float eyeSpacing = 0.07;
-                            float eyeSize = 0.045 * eyeOpen;
-                            vec2 eyeOffset1 = vec2(-eyeSpacing, 0.04);
-                            vec2 eyeOffset2 = vec2(eyeSpacing, 0.04);
-                            float eye1 = smoothstep(eyeSize + 0.01, eyeSize - 0.01, length(toSprite - eyeOffset1));
-                            float eye2 = smoothstep(eyeSize + 0.01, eyeSize - 0.01, length(toSprite - eyeOffset2));
+                            // Eyes
+                            float eyeSpacing = 0.008;
+                            float eyeSize = 0.005 * eyeOpen;
+                            vec2 eyeL = spriteScreenPos + vec2(-eyeSpacing, 0.003);
+                            vec2 eyeR = spriteScreenPos + vec2(eyeSpacing, 0.003);
+                            float eye1 = smoothstep(eyeSize + 0.002, eyeSize, length(uv - eyeL));
+                            float eye2 = smoothstep(eyeSize + 0.002, eyeSize, length(uv - eyeR));
 
-                            // Tiny pupils that look around
-                            float lookX = sin(time * 0.5 + spritePhase) * 0.015;
-                            float lookY = cos(time * 0.4 + spritePhase) * 0.01;
-                            vec2 pupilOffset = vec2(lookX, lookY);
-                            float pupil1 = smoothstep(0.02, 0.01, length(toSprite - eyeOffset1 - pupilOffset));
-                            float pupil2 = smoothstep(0.02, 0.01, length(toSprite - eyeOffset2 - pupilOffset));
+                            // Pupils looking at touch
+                            float lookX = (u_touch_x - spriteScreenPos.x) * 0.3;
+                            float lookY = (u_touch_y - spriteScreenPos.y) * 0.3;
+                            lookX = clamp(lookX, -0.002, 0.002);
+                            lookY = clamp(lookY, -0.002, 0.002);
+                            float pupil1 = smoothstep(0.003, 0.001, length(uv - eyeL - vec2(lookX, lookY)));
+                            float pupil2 = smoothstep(0.003, 0.001, length(uv - eyeR - vec2(lookX, lookY)));
 
-                            // Apply sprite
+                            // Render sprite
                             if (bodyMask > 0.01) {
-                                vec3 spriteColor = vec3(0.02, 0.02, 0.03);
-                                color = mix(color, spriteColor, bodyMask * 0.97);
-                                // White eyes
+                                color = mix(color, vec3(0.02, 0.02, 0.03), bodyMask * 0.95);
                                 if (eyeOpen > 0.1) {
-                                    color = mix(color, vec3(1.0), eye1 * 0.95);
-                                    color = mix(color, vec3(1.0), eye2 * 0.95);
-                                    // Black pupils
-                                    color = mix(color, vec3(0.0), pupil1 * 0.9);
-                                    color = mix(color, vec3(0.0), pupil2 * 0.9);
+                                    color = mix(color, vec3(1.0), (eye1 + eye2) * 0.95);
+                                    color = mix(color, vec3(0.0), (pupil1 + pupil2) * 0.9);
                                 }
                             }
                         }
@@ -3595,158 +3596,59 @@ mod gl {
                 }
             }
 
-            // === RAIN EFFECT - Falling raindrops with splash ===
-            // Adds atmosphere, especially nice before lock screen
-            {
-                float rainIntensity = 0.6; // Could be made configurable
+            // === COMPIZ-STYLE RAIN RIPPLES - Random expanding ripples like puddles ===
+            if (doRain) {
+                // Create multiple ripple layers at different timings
+                for (float rippleIdx = 0.0; rippleIdx < 8.0; rippleIdx += 1.0) {
+                    // Each ripple has its own timing and position
+                    float ripplePeriod = 2.5 + rippleIdx * 0.3; // Stagger periods
+                    float rippleTime = mod(time + rippleIdx * 0.7, ripplePeriod);
+                    float ripplePhase = rippleTime / ripplePeriod;
 
-                // Multiple rain layers for depth
-                for (float layer = 0.0; layer < 3.0; layer += 1.0) {
-                    float layerSpeed = 1.5 + layer * 0.5;
-                    float layerScale = 30.0 + layer * 20.0;
-                    float layerAlpha = 0.15 - layer * 0.03;
+                    // Random position for this ripple (changes each period)
+                    float seed = floor((time + rippleIdx * 0.7) / ripplePeriod);
+                    vec2 rippleCenter = vec2(
+                        hash(vec2(seed + rippleIdx, 0.0)) * 0.8 + 0.1,
+                        hash(vec2(seed + rippleIdx, 1.0)) * 0.8 + 0.1
+                    );
 
-                    vec2 rainUV = uv * vec2(layerScale, layerScale * 0.3);
-                    rainUV.y += time * layerSpeed;
+                    // Expanding ring
+                    float maxRadius = 0.15 + hash(vec2(seed, rippleIdx)) * 0.1;
+                    float ringRadius = ripplePhase * maxRadius;
+                    float ringWidth = 0.008 + ripplePhase * 0.012; // Widens as it expands
 
-                    vec2 rainCell = floor(rainUV);
-                    vec2 rainFract = fract(rainUV);
+                    // Distance from center
+                    vec2 diff = uv - rippleCenter;
+                    // Account for aspect ratio
+                    diff.y *= 2.2; // Approximate phone aspect ratio
+                    float dist = length(diff);
 
-                    float rainRand = hash(rainCell);
-                    if (rainRand > 1.0 - rainIntensity * 0.3) {
-                        // Raindrop position with slight horizontal drift
-                        float drift = sin(rainCell.y * 0.1 + time * 0.5) * 0.1;
-                        vec2 dropPos = vec2(0.5 + drift, fract(rainRand * 7.7 + time * layerSpeed * 0.2));
+                    // Ring shape - distance from the ring
+                    float ringDist = abs(dist - ringRadius);
 
-                        // Elongated drop shape
-                        vec2 toDrop = rainFract - dropPos;
-                        toDrop.y *= 0.15; // Stretch vertically
-                        float dropDist = length(toDrop);
+                    if (ringDist < ringWidth) {
+                        // Fade out as ripple expands
+                        float fadeOut = 1.0 - ripplePhase;
+                        fadeOut = fadeOut * fadeOut; // Quadratic fade
 
-                        if (dropDist < 0.08) {
-                            float dropAlpha = smoothstep(0.08, 0.02, dropDist) * layerAlpha;
-                            // Blue-white rain color
-                            vec3 rainColor = vec3(0.7, 0.8, 0.95);
-                            color = mix(color, rainColor, dropAlpha);
+                        // Sharp ring with soft edges
+                        float ringAlpha = smoothstep(ringWidth, ringWidth * 0.3, ringDist);
+                        ringAlpha *= fadeOut * 0.4;
+
+                        // Subtle blue-white water color
+                        vec3 rippleColor = vec3(0.85, 0.9, 1.0);
+                        color = mix(color, rippleColor, ringAlpha);
+
+                        // Inner second ring (smaller, fainter)
+                        if (ripplePhase > 0.15) {
+                            float innerRadius = ringRadius * 0.6;
+                            float innerDist = abs(dist - innerRadius);
+                            if (innerDist < ringWidth * 0.6) {
+                                float innerAlpha = smoothstep(ringWidth * 0.6, ringWidth * 0.2, innerDist);
+                                innerAlpha *= fadeOut * 0.2;
+                                color = mix(color, rippleColor, innerAlpha);
+                            }
                         }
-                    }
-                }
-
-                // Splash effects at bottom
-                float splashY = 0.05;
-                if (uv.y < splashY) {
-                    vec2 splashUV = uv * vec2(40.0, 1.0);
-                    float splashCell = floor(splashUV.x);
-                    float splashRand = hash(vec2(splashCell, floor(time * 3.0)));
-
-                    if (splashRand > 0.7) {
-                        float splashPhase = fract(time * 3.0 + splashRand);
-                        float splashX = fract(splashUV.x) - 0.5;
-                        float splashRadius = splashPhase * 0.4;
-                        float splashRing = abs(length(vec2(splashX, (uv.y - splashY * 0.5) * 10.0)) - splashRadius);
-
-                        if (splashRing < 0.05) {
-                            float ringAlpha = (1.0 - splashPhase) * 0.3 * smoothstep(0.05, 0.01, splashRing);
-                            color = mix(color, vec3(0.8, 0.85, 0.95), ringAlpha);
-                        }
-                    }
-                }
-            }
-
-            // === STARRY NIGHT OVERLAY - Subtle stars across dark areas ===
-            {
-                // Only show stars in darker areas
-                float starVisibility = smoothstep(0.4, 0.1, lum);
-                if (starVisibility > 0.0) {
-                    // Dense star field
-                    vec2 starGrid = uv * 200.0;
-                    vec2 starCell = floor(starGrid);
-                    float starRand = hash(starCell + 1000.0);
-
-                    if (starRand > 0.97) {
-                        vec2 starUV = fract(starGrid);
-                        float starDist = length(starUV - 0.5);
-                        float twinkle = sin(time * (2.0 + starRand * 3.0) + starRand * 6.28);
-                        twinkle = twinkle * 0.4 + 0.6;
-
-                        if (starDist < 0.15) {
-                            float starAlpha = smoothstep(0.15, 0.0, starDist) * twinkle * starVisibility * 0.7;
-                            vec3 starColor = mix(vec3(1.0, 0.95, 0.8), vec3(0.8, 0.9, 1.0), starRand);
-                            color = mix(color, starColor, starAlpha);
-                        }
-                    }
-                }
-            }
-
-            // === SCREEN EDGE GLOW - Subtle colored glow at edges ===
-            {
-                float edgeGlow = 0.0;
-                vec3 glowColor = vec3(0.0);
-
-                // Distance from each edge
-                float leftDist = uv.x;
-                float rightDist = 1.0 - uv.x;
-                float topDist = 1.0 - uv.y;
-                float bottomDist = uv.y;
-
-                float glowWidth = 0.08;
-                float glowStrength = 0.15;
-
-                // Animated glow colors
-                float glowPhase = time * 0.2;
-
-                // Left edge - blue/purple
-                if (leftDist < glowWidth) {
-                    float g = smoothstep(glowWidth, 0.0, leftDist) * glowStrength;
-                    g *= 0.5 + 0.5 * sin(uv.y * 10.0 + glowPhase);
-                    edgeGlow += g;
-                    glowColor += vec3(0.3, 0.4, 1.0) * g;
-                }
-                // Right edge - pink/red
-                if (rightDist < glowWidth) {
-                    float g = smoothstep(glowWidth, 0.0, rightDist) * glowStrength;
-                    g *= 0.5 + 0.5 * sin(uv.y * 10.0 - glowPhase);
-                    edgeGlow += g;
-                    glowColor += vec3(1.0, 0.3, 0.5) * g;
-                }
-                // Top edge - cyan
-                if (topDist < glowWidth * 0.5) {
-                    float g = smoothstep(glowWidth * 0.5, 0.0, topDist) * glowStrength * 0.5;
-                    edgeGlow += g;
-                    glowColor += vec3(0.3, 0.8, 1.0) * g;
-                }
-                // Bottom edge - warm
-                if (bottomDist < glowWidth * 0.5) {
-                    float g = smoothstep(glowWidth * 0.5, 0.0, bottomDist) * glowStrength * 0.5;
-                    edgeGlow += g;
-                    glowColor += vec3(1.0, 0.6, 0.3) * g;
-                }
-
-                if (edgeGlow > 0.0) {
-                    color = mix(color, glowColor / max(edgeGlow, 0.001), edgeGlow * 0.5);
-                }
-            }
-
-            // === FLOATING PARTICLES - Gentle dust/pollen drifting ===
-            {
-                vec2 particleUV = uv * 50.0;
-                particleUV.x += sin(uv.y * 3.0 + time * 0.3) * 2.0;
-                particleUV.y += time * 0.5;
-
-                vec2 particleCell = floor(particleUV);
-                float particleRand = hash(particleCell + 2000.0);
-
-                if (particleRand > 0.92) {
-                    vec2 pFract = fract(particleUV);
-                    float pDrift = sin(time * 0.5 + particleRand * 6.28) * 0.2;
-                    vec2 pPos = vec2(0.5 + pDrift, 0.5);
-                    float pDist = length(pFract - pPos);
-
-                    if (pDist < 0.08) {
-                        float pAlpha = smoothstep(0.08, 0.02, pDist) * 0.3;
-                        // Golden dust particles
-                        vec3 pColor = mix(vec3(1.0, 0.95, 0.7), vec3(1.0, 0.8, 0.5), particleRand);
-                        color = mix(color, pColor, pAlpha);
                     }
                 }
             }
