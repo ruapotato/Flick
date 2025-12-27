@@ -3464,131 +3464,247 @@ mod gl {
                 }
             }
 
-            // === VERY BRIGHT (lum > 0.80): XEYES-STYLE HUGE EYES ===
-            // Eyes fill the white space completely, like classic xeyes
-            if (lum > 0.80 && doEyes) {
-                // VERY coarse grid - just 3 cells across means HUGE eyes
-                float gridSize = 3.0;
-                vec2 eyeGrid = uv * gridSize;
-                vec2 eyeCell = floor(eyeGrid);
-                vec2 eyeUV = fract(eyeGrid);
+            // === WHITE SPACE EYES - Detect region, fit eye inside, animate open/close ===
+            // Eyes appear as a line, open up, look around, then close and fade
+            if (lum > 0.75 && doEyes) {
+                // Sample surrounding pixels to find white region boundaries
+                // This determines how big the eye can be without getting cut off
+                float sampleStep = 0.02; // Sample every 2% of screen
+                float whiteThresh = 0.75;
 
-                // ALWAYS draw an eye in bright areas - no random check
-                // Eye behavior based on time since last touch
-                float touchTime = u_touch_time;
-                float sleepiness = 0.0;
-                float eyeOpen = 1.0;
-                vec2 lookDir = vec2(0.0);
+                // Find extent of white region in each direction
+                float extentLeft = 0.0;
+                float extentRight = 0.0;
+                float extentUp = 0.0;
+                float extentDown = 0.0;
 
-                // Phase 1: Look at touch (0-5 seconds)
-                if (touchTime < 5.0) {
-                    vec2 touchPos = vec2(u_touch_x, 1.0 - u_touch_y);
-                    vec2 eyeWorldPos = (eyeCell + 0.5) / gridSize;
-                    vec2 toTouch = touchPos - eyeWorldPos;
-                    // Stronger look direction for big eyes
-                    lookDir = normalize(toTouch) * min(length(toTouch) * 3.0, 0.35);
+                // Sample left
+                for (float i = 1.0; i <= 15.0; i += 1.0) {
+                    vec2 samplePos = uv + vec2(-sampleStep * i, 0.0);
+                    if (samplePos.x < 0.0) break;
+                    float sampLum = dot(texture2D(u_texture, samplePos).rgb, vec3(0.299, 0.587, 0.114));
+                    if (sampLum < whiteThresh) break;
+                    extentLeft = i * sampleStep;
                 }
-                // Phase 2: Wander (5-15 seconds)
-                else if (touchTime < 15.0) {
-                    lookDir.x = sin(time * 0.4 + hash(eyeCell) * 6.28) * 0.25;
-                    lookDir.y = sin(time * 0.3 + hash2(eyeCell) * 6.28) * 0.2;
+                // Sample right
+                for (float i = 1.0; i <= 15.0; i += 1.0) {
+                    vec2 samplePos = uv + vec2(sampleStep * i, 0.0);
+                    if (samplePos.x > 1.0) break;
+                    float sampLum = dot(texture2D(u_texture, samplePos).rgb, vec3(0.299, 0.587, 0.114));
+                    if (sampLum < whiteThresh) break;
+                    extentRight = i * sampleStep;
                 }
-                // Phase 3: Sleepy (15-25 seconds)
-                else if (touchTime < 25.0) {
-                    sleepiness = (touchTime - 15.0) / 10.0;
-                    lookDir.x = sin(time * 0.2 + hash(eyeCell) * 6.28) * 0.15 * (1.0 - sleepiness);
-                    lookDir.y = sin(time * 0.15 + hash2(eyeCell) * 6.28) * 0.1 * (1.0 - sleepiness);
-                    float blinkCycle = mod(time * 0.3 + hash2(eyeCell) * 10.0, 2.0 + sleepiness * 3.0);
-                    if (blinkCycle < 0.3 + sleepiness * 0.5) {
-                        float blinkPhase = blinkCycle / (0.3 + sleepiness * 0.5);
-                        if (blinkPhase < 0.3) eyeOpen = 1.0 - blinkPhase / 0.3;
-                        else if (blinkPhase < 0.7) eyeOpen = 0.0;
-                        else eyeOpen = (blinkPhase - 0.7) / 0.3;
+                // Sample up
+                for (float i = 1.0; i <= 15.0; i += 1.0) {
+                    vec2 samplePos = uv + vec2(0.0, sampleStep * i);
+                    if (samplePos.y > 1.0) break;
+                    float sampLum = dot(texture2D(u_texture, samplePos).rgb, vec3(0.299, 0.587, 0.114));
+                    if (sampLum < whiteThresh) break;
+                    extentUp = i * sampleStep;
+                }
+                // Sample down
+                for (float i = 1.0; i <= 15.0; i += 1.0) {
+                    vec2 samplePos = uv + vec2(0.0, -sampleStep * i);
+                    if (samplePos.y < 0.0) break;
+                    float sampLum = dot(texture2D(u_texture, samplePos).rgb, vec3(0.299, 0.587, 0.114));
+                    if (sampLum < whiteThresh) break;
+                    extentDown = i * sampleStep;
+                }
+
+                // Calculate region size and center offset
+                float regionWidth = extentLeft + extentRight;
+                float regionHeight = extentUp + extentDown;
+                float centerOffsetX = (extentRight - extentLeft) * 0.5;
+                float centerOffsetY = (extentUp - extentDown) * 0.5;
+
+                // Only draw eye if region is large enough (minimum 8% of screen)
+                float minSize = 0.08;
+                if (regionWidth > minSize && regionHeight > minSize) {
+                    // Use coarse grid to ensure only ONE eye per large region
+                    // The grid cell determines which pixels "own" the eye
+                    float gridSize = 2.0;
+                    vec2 eyeCell = floor(uv * gridSize);
+
+                    // Check if this pixel is near the center of its region
+                    // Only the center-most pixels draw the eye
+                    float distFromRegionCenter = length(vec2(centerOffsetX, centerOffsetY));
+
+                    // Stability check: use floored time to create "stable" periods
+                    // Eye only appears after white has been stable
+                    float stableTime = floor(time * 0.5) * 0.5; // Changes every 2 seconds
+                    float stabilityHash = hash(eyeCell + stableTime);
+
+                    // The eye radius is the minimum of horizontal/vertical extent (with padding)
+                    float eyeRadius = min(regionWidth, regionHeight * 0.7) * 0.45;
+
+                    // Position relative to detected region center
+                    vec2 eyePos = vec2(centerOffsetX, centerOffsetY);
+                    vec2 relPos = -eyePos / eyeRadius; // Pixel position relative to eye center
+
+                    // Only draw if we're close enough to be the "owning" pixel of this eye
+                    if (distFromRegionCenter < eyeRadius * 0.8) {
+                        // Animation phases based on touch time
+                        float touchTime = u_touch_time;
+                        float eyeOpen = 0.0;
+                        float lineAlpha = 0.0;
+                        vec2 lookDir = vec2(0.0);
+
+                        // Phase 0: Line appears (0-1 seconds after touch)
+                        // Phase 1: Eye opens (1-2 seconds)
+                        // Phase 2: Eye looks at touch (2-7 seconds)
+                        // Phase 3: Eye wanders (7-20 seconds)
+                        // Phase 4: Eye gets sleepy, blinks more (20-30 seconds)
+                        // Phase 5: Eye closes to line (30-31 seconds)
+                        // Phase 6: Line fades (31-32 seconds)
+
+                        if (touchTime < 1.0) {
+                            // Line fades in
+                            lineAlpha = touchTime;
+                            eyeOpen = 0.0;
+                        } else if (touchTime < 2.0) {
+                            // Eye opens from line
+                            lineAlpha = 1.0;
+                            eyeOpen = (touchTime - 1.0);
+                        } else if (touchTime < 7.0) {
+                            // Eye open, looking at touch
+                            eyeOpen = 1.0;
+                            vec2 touchPos = vec2(u_touch_x, 1.0 - u_touch_y);
+                            vec2 toTouch = touchPos - uv;
+                            lookDir = normalize(toTouch) * min(length(toTouch) * 2.0, 0.3);
+                        } else if (touchTime < 20.0) {
+                            // Eye wandering
+                            eyeOpen = 1.0;
+                            lookDir.x = sin(time * 0.3 + hash(eyeCell) * 6.28) * 0.25;
+                            lookDir.y = sin(time * 0.25 + hash2(eyeCell) * 6.28) * 0.2;
+                        } else if (touchTime < 30.0) {
+                            // Getting sleepy - more blinking
+                            float sleepiness = (touchTime - 20.0) / 10.0;
+                            eyeOpen = 1.0 - sleepiness * 0.3;
+                            lookDir.x = sin(time * 0.15) * 0.1 * (1.0 - sleepiness);
+                            lookDir.y = sin(time * 0.1) * 0.08 * (1.0 - sleepiness);
+                            // Frequent blinks
+                            float blinkCycle = mod(time * 0.4 + hash2(eyeCell) * 5.0, 1.5 + (1.0 - sleepiness) * 2.0);
+                            if (blinkCycle < 0.3) {
+                                float bp = blinkCycle / 0.3;
+                                if (bp < 0.4) eyeOpen *= 1.0 - bp / 0.4;
+                                else if (bp < 0.6) eyeOpen *= 0.0;
+                                else eyeOpen *= (bp - 0.6) / 0.4;
+                            }
+                        } else if (touchTime < 31.0) {
+                            // Eye closing
+                            eyeOpen = 1.0 - (touchTime - 30.0);
+                            lineAlpha = 1.0;
+                        } else if (touchTime < 32.0) {
+                            // Line fading out
+                            eyeOpen = 0.0;
+                            lineAlpha = 1.0 - (touchTime - 31.0);
+                        } else {
+                            // Gone
+                            eyeOpen = 0.0;
+                            lineAlpha = 0.0;
+                        }
+
+                        // Regular blinking when eye is open
+                        if (eyeOpen > 0.5 && touchTime > 2.0 && touchTime < 30.0) {
+                            float blinkPhase = hash2(eyeCell) * 15.0;
+                            float blinkCycle = mod(time * 0.15 + blinkPhase, 6.0);
+                            if (blinkCycle > 4.0 && blinkCycle < 4.3) {
+                                float bp = (blinkCycle - 4.0) / 0.3;
+                                if (bp < 0.4) eyeOpen *= 1.0 - bp / 0.4;
+                                else if (bp < 0.6) eyeOpen = 0.05;
+                                else eyeOpen *= (bp - 0.6) / 0.4;
+                            }
+                        }
+
+                        // Draw the eye or line
+                        float distFromCenter = length(relPos);
+
+                        // The LINE (closed eye) - horizontal line
+                        if (lineAlpha > 0.0 && eyeOpen < 0.95) {
+                            float lineThickness = 0.08;
+                            float lineWidth = 0.9;
+                            // Line is thicker when fully closed, thinner as eye opens
+                            float currentThickness = lineThickness * (1.0 - eyeOpen * 0.7);
+                            if (abs(relPos.y) < currentThickness && abs(relPos.x) < lineWidth) {
+                                float lineMask = smoothstep(lineWidth, lineWidth - 0.1, abs(relPos.x));
+                                lineMask *= smoothstep(currentThickness, currentThickness - 0.03, abs(relPos.y));
+                                lineMask *= lineAlpha * (1.0 - eyeOpen);
+                                color = mix(color, vec3(0.1, 0.1, 0.1), lineMask * 0.9);
+                            }
+                        }
+
+                        // The EYE (when open)
+                        if (eyeOpen > 0.05) {
+                            // Eye shape - oval, squished vertically when closing
+                            vec2 eyeCoord = relPos;
+                            eyeCoord.y /= (0.6 + eyeOpen * 0.4); // Eye opens vertically
+                            float eyeDist = length(eyeCoord);
+
+                            // Almond eye shape - pointed at corners
+                            float almondShape = 1.0 - pow(abs(eyeCoord.x), 2.5) * 0.5;
+                            float eyeMask = smoothstep(0.95 * almondShape, 0.8 * almondShape, eyeDist);
+                            eyeMask *= eyeOpen;
+
+                            // Eyelid closing from top
+                            float lidClose = (1.0 - eyeOpen) * 1.5;
+                            if (relPos.y > 0.5 - lidClose) {
+                                eyeMask *= smoothstep(0.5 - lidClose + 0.1, 0.5 - lidClose, relPos.y);
+                            }
+
+                            if (eyeMask > 0.01) {
+                                // Iris and pupil
+                                vec2 irisCenter = lookDir * 0.3;
+                                vec2 toIris = eyeCoord - irisCenter;
+                                float irisDist = length(toIris);
+
+                                float irisRadius = 0.55;
+                                float pupilRadius = 0.25;
+
+                                float irisMask = smoothstep(irisRadius, irisRadius - 0.1, irisDist);
+                                float pupilMask = smoothstep(pupilRadius, pupilRadius - 0.08, irisDist);
+
+                                // Iris color
+                                vec3 irisColor;
+                                float irisPick = hash(eyeCell * 4.4);
+                                if (irisPick < 0.25) irisColor = vec3(0.15, 0.42, 0.22);
+                                else if (irisPick < 0.5) irisColor = vec3(0.38, 0.25, 0.1);
+                                else if (irisPick < 0.75) irisColor = vec3(0.18, 0.32, 0.55);
+                                else irisColor = vec3(0.45, 0.38, 0.18);
+
+                                // Iris pattern
+                                float irisAngle = atan(toIris.y, toIris.x);
+                                float irisPattern = sin(irisAngle * 20.0 + irisDist * 10.0) * 0.12 + 0.88;
+                                irisColor *= irisPattern;
+
+                                // Limbal ring
+                                float limbal = smoothstep(irisRadius - 0.02, irisRadius - 0.1, irisDist);
+                                irisColor *= 0.5 + 0.5 * limbal;
+
+                                // Build eye color
+                                vec3 eyeWhite = vec3(0.97, 0.95, 0.96);
+                                vec3 eyeColor = eyeWhite;
+
+                                // Slight pink at edges (blood vessels)
+                                float edgePink = smoothstep(0.5, 0.9, eyeDist);
+                                eyeColor = mix(eyeColor, vec3(0.98, 0.92, 0.93), edgePink * 0.3);
+
+                                eyeColor = mix(eyeColor, irisColor, irisMask * (1.0 - pupilMask));
+                                eyeColor = mix(eyeColor, vec3(0.02), pupilMask);
+
+                                // Highlight
+                                vec2 hlPos = irisCenter + vec2(-0.15, 0.18);
+                                float hl = smoothstep(0.18, 0.03, length(eyeCoord - hlPos));
+                                eyeColor = mix(eyeColor, vec3(1.0), hl * 0.85);
+
+                                // Small secondary highlight
+                                vec2 hl2Pos = irisCenter + vec2(0.1, 0.22);
+                                float hl2 = smoothstep(0.08, 0.01, length(eyeCoord - hl2Pos));
+                                eyeColor = mix(eyeColor, vec3(1.0), hl2 * 0.5);
+
+                                color = mix(color, eyeColor, eyeMask);
+                            }
+                        }
                     }
-                    eyeOpen *= (1.0 - sleepiness * 0.5);
-                }
-                // Phase 4: Closed (25+ seconds)
-                else {
-                    eyeOpen = 0.0;
-                }
-
-                // Regular blinking when awake
-                if (touchTime < 15.0) {
-                    float blinkPhase = hash2(eyeCell) * 20.0;
-                    float blinkCycle = mod(time * 0.2 + blinkPhase, 8.0);
-                    if (blinkCycle > 3.0 && blinkCycle < 3.3) {
-                        if (blinkCycle < 3.15) eyeOpen *= 1.0 - (blinkCycle - 3.0) / 0.15;
-                        else eyeOpen *= (blinkCycle - 3.15) / 0.15;
-                    }
-                }
-
-                if (eyeOpen > 0.05) {
-                    // Centered coords - eye FILLS the cell
-                    vec2 centered = (eyeUV - 0.5) * 2.0;
-                    centered.y *= 1.2; // Classic oval eye shape
-                    float eyeDist = length(centered);
-
-                    // Eye fills almost the entire cell - xeyes style
-                    float eyeShape = smoothstep(1.0, 0.85, eyeDist) * eyeOpen;
-
-                    // Sleepy droop from top
-                    if (sleepiness > 0.0 && centered.y > 0.0) {
-                        float droopAmount = centered.y * sleepiness * 2.0;
-                        eyeShape *= max(0.0, 1.0 - droopAmount);
-                    }
-
-                    // LARGE iris and pupil - like xeyes
-                    vec2 pupilCenter = lookDir;
-                    float pupilDist = length(centered - pupilCenter);
-
-                    // Big iris that dominates the eye
-                    float irisOuter = 0.7;
-                    float irisInner = 0.35;
-                    float iris = smoothstep(irisOuter, irisOuter - 0.1, pupilDist);
-                    float pupil = smoothstep(irisInner, irisInner - 0.1, pupilDist);
-
-                    // Iris color
-                    vec3 irisColor;
-                    float irisPick = hash(eyeCell * 4.4);
-                    if (irisPick < 0.25) irisColor = vec3(0.15, 0.45, 0.25);
-                    else if (irisPick < 0.5) irisColor = vec3(0.4, 0.28, 0.12);
-                    else if (irisPick < 0.75) irisColor = vec3(0.2, 0.35, 0.6);
-                    else irisColor = vec3(0.5, 0.4, 0.2);
-
-                    // Eye white with slight pink tint
-                    vec3 eyeWhite = vec3(0.98, 0.96, 0.97);
-                    vec3 pupilColor = vec3(0.0, 0.0, 0.0);
-                    vec3 eyeColor = eyeWhite;
-
-                    // Subtle blood vessels
-                    float vessels = hash(centered * 30.0 + eyeCell) * 0.04;
-                    eyeColor.r += vessels;
-
-                    // Iris pattern
-                    float irisAngle = atan(centered.y - pupilCenter.y, centered.x - pupilCenter.x);
-                    float irisPattern = sin(irisAngle * 16.0 + pupilDist * 6.0) * 0.15 + 0.85;
-                    vec3 irisShaded = irisColor * irisPattern;
-
-                    // Limbal ring (dark edge of iris)
-                    float limbalRing = smoothstep(irisOuter - 0.02, irisOuter - 0.08, pupilDist);
-                    irisShaded *= 0.6 + 0.4 * limbalRing;
-
-                    eyeColor = mix(eyeColor, irisShaded, iris * (1.0 - pupil));
-                    eyeColor = mix(eyeColor, pupilColor, pupil);
-
-                    // Big highlight - xeyes style
-                    vec2 highlight1Pos = pupilCenter + vec2(-0.2, 0.2);
-                    vec2 highlight2Pos = pupilCenter + vec2(0.15, 0.25);
-                    float highlight1 = smoothstep(0.2, 0.05, length(centered - highlight1Pos));
-                    float highlight2 = smoothstep(0.1, 0.02, length(centered - highlight2Pos));
-                    eyeColor = mix(eyeColor, vec3(1.0), highlight1 * 0.9);
-                    eyeColor = mix(eyeColor, vec3(1.0), highlight2 * 0.6);
-
-                    // Soft edge shadow
-                    float edgeShadow = smoothstep(1.0, 0.8, eyeDist);
-                    eyeColor *= 0.9 + 0.1 * edgeShadow;
-
-                    color = mix(color, eyeColor, eyeShape);
                 }
             }
 
