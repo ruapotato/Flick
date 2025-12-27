@@ -654,13 +654,6 @@ component PickDefaultView inherits Rectangle {
                     border-width: app.exec == current-selection ? 2px : 0px;
                     border-color: Theme.accent;
 
-                    // Touch area first so it covers everything
-                    item-touch := TouchArea {
-                        width: 100%;
-                        height: 100%;
-                        clicked => { app-selected(app.exec); }
-                    }
-
                     HorizontalLayout {
                         padding: 20px;
                         spacing: 16px;
@@ -691,6 +684,11 @@ component PickDefaultView inherits Rectangle {
                             horizontal-stretch: 1;
                             overflow: elide;
                         }
+                    }
+
+                    // TouchArea on top to receive all touches
+                    item-touch := TouchArea {
+                        clicked => { app-selected(app.exec); }
                     }
                 }
 
