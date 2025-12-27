@@ -265,7 +265,9 @@ pub struct Shell {
     pub wiggle_start_time: Option<std::time::Instant>,
     /// Category being dragged (index in grid_order)
     pub dragging_index: Option<usize>,
-    /// Current drag position
+    /// Initial drag start position (for detecting drag vs tap)
+    pub drag_start_position: Option<Point<f64, Logical>>,
+    /// Current drag position (updated during drag)
     pub drag_position: Option<Point<f64, Logical>>,
     /// Whether popup menu is showing (for Slint state sync)
     pub popup_showing: bool,
@@ -369,6 +371,7 @@ impl Shell {
             wiggle_mode: false,
             wiggle_start_time: None,
             dragging_index: None,
+            drag_start_position: None,
             drag_position: None,
             popup_showing: false,
             popup_category: None,
@@ -958,6 +961,7 @@ impl Shell {
         self.wiggle_mode = false;
         self.wiggle_start_time = None;
         self.dragging_index = None;
+        self.drag_start_position = None;
         self.drag_position = None;
         // Ensure all popup/menu state is cleared for clean long press detection
         self.long_press_menu = None;
@@ -970,7 +974,8 @@ impl Shell {
     pub fn start_drag(&mut self, index: usize, pos: Point<f64, Logical>) {
         if self.wiggle_mode {
             self.dragging_index = Some(index);
-            self.drag_position = Some(pos);
+            self.drag_start_position = Some(pos);  // Initial position for drag detection
+            self.drag_position = Some(pos);         // Current position (updated during drag)
         }
     }
 
@@ -984,6 +989,7 @@ impl Shell {
     /// End drag and reorder if needed - returns true if reordering happened
     pub fn end_drag(&mut self, drop_index: Option<usize>) -> bool {
         let dragging = self.dragging_index.take();
+        self.drag_start_position = None;
         self.drag_position = None;
 
         if let (Some(from), Some(to)) = (dragging, drop_index) {

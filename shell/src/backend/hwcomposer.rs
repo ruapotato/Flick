@@ -1299,11 +1299,12 @@ fn handle_input_event(
                         if state.shell.wiggle_mode {
                             // In wiggle mode - handle drag end or tap to pick app
                             let dragging_index = state.shell.dragging_index;
-                            let drag_start = state.shell.drag_position;
+                            let drag_start = state.shell.drag_start_position;  // Use INITIAL position
 
                             if let (Some(from_index), Some(start_pos), Some(end_pos)) = (dragging_index, drag_start, last_pos) {
                                 // Check if this was a drag (moved significantly) or a tap
                                 let drag_dist = ((end_pos.x - start_pos.x).powi(2) + (end_pos.y - start_pos.y).powi(2)).sqrt();
+                                info!("Wiggle mode: drag_dist = {:.1}px (threshold 50px)", drag_dist);
 
                                 if drag_dist > 50.0 {
                                     // This was a drag - reorder the grid
@@ -1325,6 +1326,7 @@ fn handle_input_event(
 
                             // Clear drag state
                             state.shell.dragging_index = None;
+                            state.shell.drag_start_position = None;
                             state.shell.drag_position = None;
 
                             // Check for wiggle done button press

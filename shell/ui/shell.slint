@@ -381,10 +381,11 @@ component LongPressPopup inherits Rectangle {
 component AppListItem inherits Rectangle {
     in property <string> name: "App Name";
     in property <bool> is-selected: false;
+    in property <float> text-scale: 2.0;
 
     callback clicked();
 
-    height: 64px;
+    height: 64px * text-scale;
     background: touch.pressed ? Theme.primary-container : (is-selected ? Theme.surface-variant : transparent);
 
     HorizontalLayout {
@@ -394,9 +395,9 @@ component AppListItem inherits Rectangle {
 
         // App icon placeholder
         Rectangle {
-            width: 44px;
-            height: 44px;
-            border-radius: 10px;
+            width: 44px * text-scale;
+            height: 44px * text-scale;
+            border-radius: 10px * text-scale;
             background: Theme.surface-variant;
 
             Text {
@@ -404,7 +405,7 @@ component AppListItem inherits Rectangle {
                 height: 100%;
                 text: "•";
                 color: Theme.on-surface;
-                font-size: 20px;
+                font-size: 20px * text-scale;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -413,7 +414,7 @@ component AppListItem inherits Rectangle {
         Text {
             text: name;
             color: Theme.on-surface;
-            font-size: 16px;
+            font-size: 18px * text-scale;
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
@@ -421,7 +422,7 @@ component AppListItem inherits Rectangle {
         if is-selected: Text {
             text: "✓";
             color: Theme.primary;
-            font-size: 20px;
+            font-size: 24px * text-scale;
             vertical-alignment: center;
         }
     }
@@ -436,6 +437,7 @@ component PickDefaultView inherits Rectangle {
     in property <string> category-name: "App";
     in property <[AvailableApp]> available-apps: [];
     in property <string> current-selection: "";
+    in property <float> text-scale: 2.0;
 
     callback app-selected(string);  // Returns exec command
     callback back-pressed();
@@ -447,7 +449,7 @@ component PickDefaultView inherits Rectangle {
     VerticalLayout {
         // Header
         Rectangle {
-            height: 80px;
+            height: 80px * text-scale;
             background: Theme.surface;
 
             HorizontalLayout {
@@ -456,9 +458,9 @@ component PickDefaultView inherits Rectangle {
 
                 // Back button
                 Rectangle {
-                    width: 44px;
-                    height: 44px;
-                    border-radius: 22px;
+                    width: 56px * text-scale;
+                    height: 56px * text-scale;
+                    border-radius: 28px * text-scale;
                     background: back-touch.pressed ? Theme.primary-container : Theme.surface-variant;
 
                     Text {
@@ -466,7 +468,7 @@ component PickDefaultView inherits Rectangle {
                         height: 100%;
                         text: "<";
                         color: Theme.on-surface;
-                        font-size: 20px;
+                        font-size: 24px * text-scale;
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
@@ -478,19 +480,19 @@ component PickDefaultView inherits Rectangle {
 
                 VerticalLayout {
                     alignment: center;
-                    spacing: 2px;
+                    spacing: 4px;
 
                     Text {
                         text: "Pick Default";
                         color: Theme.on-surface;
-                        font-size: 20px;
+                        font-size: 22px * text-scale;
                         font-weight: 600;
                     }
 
                     Text {
                         text: category-name;
                         color: Theme.on-surface-variant;
-                        font-size: 14px;
+                        font-size: 16px * text-scale;
                     }
                 }
             }
@@ -507,6 +509,7 @@ component PickDefaultView inherits Rectangle {
                 for app[i] in available-apps: AppListItem {
                     name: app.name;
                     is-selected: app.exec == current-selection;
+                    text-scale: root.text-scale;
                     clicked => { app-selected(app.exec); }
                 }
 
@@ -2307,6 +2310,7 @@ export component FlickShell inherits Window {
         category-name: pick-default-category;
         available-apps: available-apps;
         current-selection: current-app-selection;
+        text-scale: root.text-scale;
         app-selected(exec) => { pick-default-selected(exec); }
         back-pressed => { pick-default-back(); }
     }
