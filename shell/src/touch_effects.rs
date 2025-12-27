@@ -181,6 +181,9 @@ pub struct TouchEffect {
     pub touch_id: u64,
     pub x: f64,
     pub y: f64,
+    /// Initial touch position (for effects that should stay in place like snow)
+    pub initial_x: f64,
+    pub initial_y: f64,
     pub effect_type: EffectType,
     pub start_time: Instant,
     /// For fisheye: tracks if finger is still down
@@ -194,6 +197,8 @@ impl TouchEffect {
             touch_id,
             x,
             y,
+            initial_x: x,
+            initial_y: y,
             effect_type: EffectType::Fisheye,
             start_time: Instant::now(),
             active: true,
@@ -235,8 +240,14 @@ impl TouchEffect {
     /// strength: effect intensity 0-1
     /// type_flag: 0 = fisheye, 1+ = ripple (encodes progress)
     pub fn get_shader_params(&self, screen_width: f64, screen_height: f64, config: &EffectConfig) -> (f32, f32, f32, f32, f32) {
-        let nx = (self.x / screen_width) as f32;
-        let ny = (self.y / screen_height) as f32;
+        // For snow effect, use initial position so crystal stays in place
+        let (use_x, use_y) = if config.effect_style == EffectStyle::Snow {
+            (self.initial_x, self.initial_y)
+        } else {
+            (self.x, self.y)
+        };
+        let nx = (use_x / screen_width) as f32;
+        let ny = (use_y / screen_height) as f32;
 
         match self.effect_type {
             EffectType::Fisheye => {
