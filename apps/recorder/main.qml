@@ -12,26 +12,18 @@ Window {
     title: "Flick Recorder"
     color: "#0a0a0f"
 
-    // Settings from Flick config
     property real textScale: 2.0
-
-    // Recorder state
     property bool isRecording: false
     property string recordingTime: "00:00"
     property int recordingSeconds: 0
     property string currentRecordingFile: ""
     property string recordingsDir: "/home/droidian/Recordings"
     property int audioLevel: 0
-
-    // Playback state
     property bool isPlaying: false
     property string playingFile: ""
-    property int playbackPosition: 0
-    property int playbackDuration: 0
 
     Component.onCompleted: {
         loadConfig()
-        loadRecordings()
     }
 
     function loadConfig() {
@@ -46,9 +38,7 @@ Window {
                     textScale = config.text_scale
                 }
             }
-        } catch (e) {
-            console.log("Using default text scale")
-        }
+        } catch (e) {}
     }
 
     // Reload config periodically
@@ -59,79 +49,37 @@ Window {
         onTriggered: loadConfig()
     }
 
-    ListModel {
-        id: recordingsModel
-    }
-
-    function loadRecordings() {
-        recordingsModel.clear()
-        // Request scan from shell
+    // Send command to background processor
+    function sendCommand(cmd) {
         var xhr = new XMLHttpRequest()
-        xhr.open("PUT", "file:///tmp/flick_recorder_scan_request", false)
+        xhr.open("PUT", "file:///tmp/flick_recorder_cmd", false)
         try {
-            xhr.send(recordingsDir)
-        } catch (e) {}
-
-        loadRecordingsTimer.start()
+            xhr.send(cmd)
+            console.log("Sent command: " + cmd)
+        } catch (e) {
+            console.log("Error sending command: " + e)
+        }
     }
 
-    Timer {
-        id: loadRecordingsTimer
-        interval: 500
-        repeat: true
-        property int attempts: 0
-        onTriggered: {
-            attempts++
-            var xhr = new XMLHttpRequest()
-            xhr.open("GET", "file:///tmp/flick_recorder_files", false)
-            try {
-                xhr.send()
-                if (xhr.status === 200 || xhr.status === 0) {
-                    var content = xhr.responseText.trim()
-                    if (content.length > 0 && content !== "scanned") {
-                        var files = content.split("\n")
-                        recordingsModel.clear()
-                        for (var i = 0; i < files.length; i++) {
-                            var file = files[i].trim()
-                            if (file !== "" && (file.endsWith(".wav") || file.endsWith(".opus"))) {
-                                var displayName = file.replace(/\.(wav|opus)$/, "")
-                                recordingsModel.append({
-                                    fileName: file,
-                                    displayName: displayName,
-                                    filePath: recordingsDir + "/" + file
-                                })
-                            }
-                        }
-                        // Mark as processed and stop polling
-                        var clearXhr = new XMLHttpRequest()
-                        clearXhr.open("PUT", "file:///tmp/flick_recorder_files", false)
-                        try {
-                            clearXhr.send("scanned")
-                        } catch (e) {}
-                        loadRecordingsTimer.stop()
-                        attempts = 0
-                    }
-                }
-            } catch (e) {}
-            // Stop after 20 attempts (10 seconds)
-            if (attempts > 20) {
-                loadRecordingsTimer.stop()
-                attempts = 0
-            }
-        }
+    // Folder model for recordings
+    FolderListModel {
+        id: folderModel
+        folder: "file://" + recordingsDir
+        nameFilters: ["*.wav", "*.opus", "*.ogg", "*.mp3"]
+        showDirs: false
+        sortField: FolderListModel.Time
+        sortReversed: true  // Newest first
     }
 
     function startRecording() {
         Haptic.click()
         var timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").substring(0, 19)
-        currentRecordingFile = "recording_" + timestamp + ".wav"
+        currentRecordingFile = recordingsDir + "/recording_" + timestamp + ".wav"
         recordingSeconds = 0
         recordingTime = "00:00"
         isRecording = true
 
-        // Signal to shell to start recording
-        console.log("START_RECORDING:" + recordingsDir + "/" + currentRecordingFile)
-
+        sendCommand("START:" + currentRecordingFile)
         recordingTimer.start()
     }
 
@@ -140,48 +88,43 @@ Window {
         isRecording = false
         recordingTimer.stop()
 
-        // Signal to shell to stop recording
-        console.log("STOP_RECORDING")
+        sendCommand("STOP")
 
-        // Reload recordings list after a delay to let the file be written
-        setTimeout(function() {
-            loadRecordings()
-        }, 1000)
-        // And again after a bit more time
-        setTimeout(function() {
-            loadRecordings()
-        }, 2000)
+        // Refresh folder model after a delay
+        refreshTimer.start()
     }
 
-    function setTimeout(callback, delay) {
-        var timer = Qt.createQmlObject("import QtQuick 2.15; Timer {}", root)
-        timer.interval = delay
-        timer.repeat = false
-        timer.triggered.connect(callback)
-        timer.start()
+    Timer {
+        id: refreshTimer
+        interval: 1000
+        repeat: false
+        onTriggered: {
+            // Force folder model refresh
+            var oldFolder = folderModel.folder
+            folderModel.folder = ""
+            folderModel.folder = oldFolder
+        }
     }
 
     function playRecording(filePath) {
         Haptic.tap()
         if (isPlaying && playingFile === filePath) {
-            // Stop playback
-            console.log("STOP_PLAYBACK")
+            sendCommand("STOPPLAY")
             isPlaying = false
             playingFile = ""
         } else {
-            // Start playback
-            console.log("PLAY_RECORDING:" + filePath)
+            sendCommand("PLAY:" + filePath)
             isPlaying = true
             playingFile = filePath
         }
     }
 
-    function deleteRecording(fileName) {
+    function deleteRecording(filePath) {
         Haptic.heavy()
-        console.log("DELETE_RECORDING:" + recordingsDir + "/" + fileName)
-        setTimeout(function() {
-            loadRecordings()
-        }, 200)
+        sendCommand("DELETE:" + filePath)
+        // Refresh after delete
+        refreshTimer.interval = 500
+        refreshTimer.start()
     }
 
     function formatTime(seconds) {
@@ -198,8 +141,6 @@ Window {
         onTriggered: {
             recordingSeconds++
             recordingTime = formatTime(recordingSeconds)
-
-            // Update audio level (simulate waveform)
             audioLevel = Math.floor(Math.random() * 60) + 20
         }
     }
@@ -211,12 +152,12 @@ Window {
         repeat: true
         onTriggered: {
             var xhr = new XMLHttpRequest()
-            xhr.open("GET", "file:///tmp/flick_recorder_playback_status", false)
+            xhr.open("GET", "file:///tmp/flick_recorder_status", false)
             try {
                 xhr.send()
                 if (xhr.status === 200 || xhr.status === 0) {
                     var status = xhr.responseText.trim()
-                    if (status === "stopped") {
+                    if (status === "idle" && isPlaying) {
                         isPlaying = false
                         playingFile = ""
                     }
@@ -235,7 +176,6 @@ Window {
         color: "transparent"
         z: 1
 
-        // Ambient glow effect
         Rectangle {
             anchors.centerIn: parent
             width: 300
@@ -271,7 +211,7 @@ Window {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: isRecording ? "RECORDING" : (recordingsModel.count + " RECORDINGS")
+                text: isRecording ? "RECORDING" : (folderModel.count + " RECORDINGS")
                 font.pixelSize: 12 * textScale
                 font.weight: Font.Medium
                 font.letterSpacing: 3
@@ -279,7 +219,6 @@ Window {
             }
         }
 
-        // Bottom fade line
         Rectangle {
             anchors.bottom: parent.bottom
             anchors.left: parent.left
@@ -318,7 +257,9 @@ Window {
                 anchors.fill: parent
                 onClicked: {
                     Haptic.tap()
-                    loadRecordings()
+                    var oldFolder = folderModel.folder
+                    folderModel.folder = ""
+                    folderModel.folder = oldFolder
                 }
             }
         }
@@ -350,7 +291,6 @@ Window {
 
                 Behavior on border.color { ColorAnimation { duration: 300 } }
 
-                // Simple waveform visualization
                 Row {
                     anchors.centerIn: parent
                     spacing: 4
@@ -371,7 +311,6 @@ Window {
                     }
                 }
 
-                // Recording icon when not recording
                 Text {
                     anchors.centerIn: parent
                     text: "🎙"
@@ -396,7 +335,7 @@ Window {
             // Recording filename
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: isRecording ? currentRecordingFile : "Ready to record"
+                text: isRecording ? currentRecordingFile.split("/").pop() : "Ready to record"
                 font.pixelSize: 14 * textScale
                 color: "#888899"
                 width: 400
@@ -410,7 +349,7 @@ Window {
                 width: 100
                 height: 100
                 radius: 50
-                color: recordMouse.pressed ? (isRecording ? "#c23a50" : "#c23a50") : (isRecording ? "#e94560" : "#e94560")
+                color: recordMouse.pressed ? "#c23a50" : "#e94560"
                 border.color: "#ffffff"
                 border.width: 4
 
@@ -426,7 +365,6 @@ Window {
                     Behavior on radius { NumberAnimation { duration: 200 } }
                 }
 
-                // Record dot when not recording
                 Rectangle {
                     anchors.centerIn: parent
                     width: isRecording ? 0 : 60
@@ -453,7 +391,7 @@ Window {
         }
     }
 
-    // Recordings list
+    // Recordings list header
     Rectangle {
         id: listHeader
         anchors.top: recordingArea.bottom
@@ -484,15 +422,15 @@ Window {
         spacing: 8
         clip: true
 
-        model: recordingsModel
+        model: folderModel
 
         delegate: Rectangle {
             width: recordingsList.width
             height: 80
             radius: 12
             color: itemMouse.pressed ? "#1a1a2e" : "#15151f"
-            border.color: (isPlaying && playingFile === model.filePath) ? "#e94560" : "#222233"
-            border.width: (isPlaying && playingFile === model.filePath) ? 2 : 1
+            border.color: (isPlaying && playingFile === (recordingsDir + "/" + fileName)) ? "#e94560" : "#222233"
+            border.width: (isPlaying && playingFile === (recordingsDir + "/" + fileName)) ? 2 : 1
 
             Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -511,7 +449,7 @@ Window {
 
                     Text {
                         anchors.centerIn: parent
-                        text: (isPlaying && playingFile === model.filePath) ? "⏸" : "▶"
+                        text: (isPlaying && playingFile === (recordingsDir + "/" + fileName)) ? "⏸" : "▶"
                         font.pixelSize: 24
                         color: "#e94560"
                     }
@@ -524,7 +462,7 @@ Window {
                     spacing: 4
 
                     Text {
-                        text: model.displayName
+                        text: fileBaseName
                         font.pixelSize: 16 * textScale
                         font.weight: Font.Medium
                         color: "#ffffff"
@@ -533,7 +471,7 @@ Window {
                     }
 
                     Text {
-                        text: model.fileName
+                        text: fileName
                         font.pixelSize: 12 * textScale
                         color: "#888899"
                         elide: Text.ElideRight
@@ -560,7 +498,8 @@ Window {
                         id: deleteMouse
                         anchors.fill: parent
                         onClicked: {
-                            deleteDialog.recordingToDelete = model.fileName
+                            deleteDialog.recordingToDelete = recordingsDir + "/" + fileName
+                            deleteDialog.displayName = fileBaseName
                             deleteDialog.visible = true
                         }
                     }
@@ -571,7 +510,7 @@ Window {
                 id: itemMouse
                 anchors.fill: parent
                 anchors.rightMargin: 60
-                onClicked: playRecording(model.filePath)
+                onClicked: playRecording(recordingsDir + "/" + fileName)
             }
         }
 
@@ -582,7 +521,7 @@ Window {
             font.pixelSize: 18
             color: "#555566"
             horizontalAlignment: Text.AlignHCenter
-            visible: recordingsModel.count === 0
+            visible: folderModel.count === 0
         }
 
         ScrollBar.vertical: ScrollBar {
@@ -600,6 +539,7 @@ Window {
         z: 100
 
         property string recordingToDelete: ""
+        property string displayName: ""
 
         MouseArea {
             anchors.fill: parent
@@ -622,6 +562,16 @@ Window {
                     text: "Delete recording?"
                     font.pixelSize: 20
                     color: "#ffffff"
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: deleteDialog.displayName
+                    font.pixelSize: 14
+                    color: "#888899"
+                    width: 280
+                    elide: Text.ElideMiddle
+                    horizontalAlignment: Text.AlignHCenter
                 }
 
                 Row {
