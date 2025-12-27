@@ -812,6 +812,7 @@ impl Shell {
             sun: load_icon("sun"),
             volume: load_icon("volume-2"),
             volume_off: load_icon("volume-off"),
+            wand: load_icon("wand"),
         }
     }
 

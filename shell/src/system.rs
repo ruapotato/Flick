@@ -631,13 +631,23 @@ impl RotationLock {
 pub struct Flashlight;
 
 impl Flashlight {
-    /// Find flashlight LED path
+    /// Primary torch LED path (Pixel 3a and similar devices)
+    const PRIMARY_TORCH: &'static str = "/sys/class/leds/led:torch_0";
+
+    /// Find flashlight LED path - prefer torch_0, fallback to search
     fn find_led() -> Option<String> {
+        // First try the primary torch LED
+        if std::path::Path::new(Self::PRIMARY_TORCH).exists() {
+            return Some(Self::PRIMARY_TORCH.to_string());
+        }
+
+        // Fallback: search for any torch LED
         let leds_dir = "/sys/class/leds";
         if let Ok(entries) = fs::read_dir(leds_dir) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if name.contains("flash") || name.contains("torch") {
+                // Prefer torch over flash (flash is for camera, torch is flashlight)
+                if name.contains("torch") {
                     return Some(entry.path().to_string_lossy().to_string());
                 }
             }
@@ -645,20 +655,42 @@ impl Flashlight {
         None
     }
 
+    /// Get max brightness for the LED
+    fn get_max_brightness(path: &str) -> u32 {
+        fs::read_to_string(format!("{}/max_brightness", path))
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(500) // Default to 500 (common for torch LEDs)
+    }
+
     /// Check if flashlight is on
     pub fn is_on() -> bool {
         Self::find_led()
             .and_then(|path| fs::read_to_string(format!("{}/brightness", path)).ok())
-            .map(|s| s.trim() != "0")
+            .map(|s| s.trim().parse::<u32>().unwrap_or(0) > 0)
             .unwrap_or(false)
     }
 
     /// Toggle flashlight
     pub fn toggle() -> bool {
         if let Some(path) = Self::find_led() {
-            let brightness = if Self::is_on() { "0" } else { "1" };
-            fs::write(format!("{}/brightness", path), brightness).is_ok()
+            let brightness = if Self::is_on() {
+                "0".to_string()
+            } else {
+                Self::get_max_brightness(&path).to_string()
+            };
+            match fs::write(format!("{}/brightness", path), &brightness) {
+                Ok(_) => {
+                    tracing::info!("Flashlight set to {} at {}", brightness, path);
+                    true
+                }
+                Err(e) => {
+                    tracing::error!("Failed to set flashlight: {} at {}", e, path);
+                    false
+                }
+            }
         } else {
+            tracing::warn!("No flashlight LED found");
             false
         }
     }

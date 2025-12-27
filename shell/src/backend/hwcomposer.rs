@@ -1329,6 +1329,10 @@ fn handle_input_event(
                                             state.set_touch_effects_enabled(enabled);
                                             // Also toggle living pixels in the config
                                             state.set_living_pixels_enabled(enabled);
+                                            // Immediately update UI for instant feedback
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                slint_ui.set_touch_effects_enabled(enabled);
+                                            }
                                             info!("All effects (FX): {}", if enabled { "ON" } else { "OFF" });
                                         }
                                         QuickSettingsAction::Lock => {
@@ -2601,11 +2605,6 @@ fn render_frame(
                             }
                             _ => {}
                         }
-
-                        // Volume overlay - shown on top of all views when hardware buttons pressed
-                        slint_ui.set_show_volume_overlay(state.system.should_show_volume_overlay());
-                        slint_ui.set_volume(state.system.volume as i32);
-                        slint_ui.set_muted(state.system.muted);
                     }
 
                     // Get Slint rendered pixels
@@ -2622,6 +2621,14 @@ fn render_frame(
                     }
                 }
                 _ => {}
+            }
+
+            // Volume overlay - shown on top of ALL views when hardware buttons pressed
+            // This must be outside the view-specific match so it works in App view too
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                slint_ui.set_show_volume_overlay(state.system.should_show_volume_overlay());
+                slint_ui.set_volume(state.system.volume as i32);
+                slint_ui.set_muted(state.system.muted);
             }
 
             // Render switcher preview during edge gesture (while still in App view)

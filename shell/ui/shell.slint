@@ -232,6 +232,7 @@ export struct UiIcons {
     sun: image,
     volume: image,
     volume-off: image,
+    wand: image,
 }
 
 // Status bar at top of screen
@@ -1389,7 +1390,7 @@ component QuickSettingsPanel inherits Rectangle {
 
                     QuickToggle {
                         label: "FX";
-                        icon: root.icons.volume;
+                        icon: root.icons.wand;
                         enabled: touch-effects-enabled;
                         tile-color: #4a2a5a;
                         toggled => { touch-effects-toggled(); }

@@ -106,6 +106,7 @@ pub struct UiIconImages {
     pub sun: slint::Image,
     pub volume: slint::Image,
     pub volume_off: slint::Image,
+    pub wand: slint::Image,
 }
 
 /// Slint UI state for the shell
@@ -579,6 +580,7 @@ impl SlintShell {
             sun: icons.sun,
             volume: icons.volume,
             volume_off: icons.volume_off,
+            wand: icons.wand,
         });
     }
 
