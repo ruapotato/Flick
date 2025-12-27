@@ -3071,6 +3071,11 @@ mod gl {
     static mut DISTORT_UNIFORM_STYLE: i32 = -1;
     static mut DISTORT_UNIFORM_DENSITY: i32 = -1;
 
+    // Persistent capture texture for distortion effects (avoids create/delete each frame)
+    static mut CAPTURE_TEXTURE: u32 = 0;
+    static mut CAPTURE_TEX_WIDTH: u32 = 0;
+    static mut CAPTURE_TEX_HEIGHT: u32 = 0;
+
     // Vertex shader - simple pass-through
     const VERTEX_SHADER_SRC: &str = r#"
         attribute vec2 a_position;
@@ -4021,24 +4026,36 @@ mod gl {
         // Clear any pending errors
         while GetError() != 0 {}
 
-        // IMPORTANT: Wait for all GPU rendering to complete before capturing
-        // This prevents flickering where parts of the screen haven't been rendered yet
-        Finish();
+        // Use persistent capture texture (create only once or when size changes)
+        let need_new_texture = CAPTURE_TEXTURE == 0
+            || CAPTURE_TEX_WIDTH != screen_width
+            || CAPTURE_TEX_HEIGHT != screen_height;
 
-        // Create texture to capture framebuffer
-        let mut capture_texture: u32 = 0;
-        if let Some(f) = FN_GEN_TEXTURES { f(1, &mut capture_texture); }
-        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, capture_texture); }
+        if need_new_texture {
+            // Delete old texture if exists
+            if CAPTURE_TEXTURE != 0 {
+                if let Some(f) = FN_DELETE_TEXTURES { f(1, &CAPTURE_TEXTURE); }
+            }
+            // Create new texture
+            if let Some(f) = FN_GEN_TEXTURES { f(1, &mut CAPTURE_TEXTURE); }
+            CAPTURE_TEX_WIDTH = screen_width;
+            CAPTURE_TEX_HEIGHT = screen_height;
 
-        // Copy framebuffer to texture
-        if let Some(f) = FN_COPY_TEX_IMAGE_2D {
-            f(TEXTURE_2D, 0, RGBA, 0, 0, screen_width as i32, screen_height as i32, 0);
+            // Set texture parameters once
+            if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, CAPTURE_TEXTURE); }
+            if let Some(f) = FN_TEX_PARAMETERI {
+                f(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
+                f(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
+                f(TEXTURE_2D, 0x2802, 0x812F); // CLAMP_TO_EDGE
+                f(TEXTURE_2D, 0x2803, 0x812F); // CLAMP_TO_EDGE
+            }
+        } else {
+            if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, CAPTURE_TEXTURE); }
         }
 
-        // Set texture parameters
-        if let Some(f) = FN_TEX_PARAMETERI {
-            f(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
-            f(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
+        // Copy framebuffer to texture (no glFinish - let GPU pipeline naturally)
+        if let Some(f) = FN_COPY_TEX_IMAGE_2D {
+            f(TEXTURE_2D, 0, RGBA, 0, 0, screen_width as i32, screen_height as i32, 0);
         }
 
         // Set viewport
@@ -4049,9 +4066,9 @@ mod gl {
         // Use distortion shader
         if let Some(f) = FN_USE_PROGRAM { f(DISTORT_PROGRAM); }
 
-        // Bind texture
+        // Bind the capture texture
         if let Some(f) = FN_ACTIVE_TEXTURE { f(0x84C0); } // GL_TEXTURE0
-        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, capture_texture); }
+        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, CAPTURE_TEXTURE); }
         if let Some(f) = FN_UNIFORM1I { f(DISTORT_UNIFORM_TEXTURE, 0); }
 
         // Set uniforms
@@ -4107,11 +4124,10 @@ mod gl {
             f(TRIANGLE_STRIP, 0, 4);
         }
 
-        // Flush
+        // Flush to send commands (non-blocking)
         Flush();
 
-        // Cleanup
-        if let Some(f) = FN_DELETE_TEXTURES { f(1, &capture_texture); }
+        // Note: Don't delete CAPTURE_TEXTURE - it's persistent and reused each frame
 
         // Switch back to normal shader
         if let Some(f) = FN_USE_PROGRAM { f(SHADER_PROGRAM); }
