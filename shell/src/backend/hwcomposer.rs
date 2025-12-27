@@ -1365,6 +1365,10 @@ fn handle_input_event(
                             if wiggle_done {
                                 info!("Wiggle mode done - exiting");
                                 state.shell.exit_wiggle_mode();
+                                // Also clear Slint's dragging index
+                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    slint_ui.set_dragging_index(-1);
+                                }
                             }
                             if new_category {
                                 info!("New category button pressed - TODO: show category creation dialog");
@@ -3530,45 +3534,38 @@ mod gl {
             bool doRain = (flags / 64) - (flags / 128) * 2 == 1;
 
             // === DARK AREAS: Night sky with stars and nebula colors ===
+            // Use stepped time for ~12fps updates (cheaper on CPU/GPU)
+            float starTime = floor(time * 12.0) / 12.0;
+
             if (lum < 0.15 && doStars) {
                 float darkIntensity = 1.0 - lum / 0.15;
 
-                // Subtle nebula color wash
-                float nebulaX = sin(uv.x * 3.0 + uv.y * 2.0 + time * 0.1) * 0.5 + 0.5;
-                float nebulaY = cos(uv.y * 4.0 - uv.x * 1.5 + time * 0.08) * 0.5 + 0.5;
+                // Static nebula color wash (no time dependency - free!)
+                float nebulaX = sin(uv.x * 3.0 + uv.y * 2.0) * 0.5 + 0.5;
+                float nebulaY = cos(uv.y * 4.0 - uv.x * 1.5) * 0.5 + 0.5;
                 vec3 nebula1 = vec3(0.1, 0.05, 0.15) * nebulaX;  // Purple
                 vec3 nebula2 = vec3(0.05, 0.1, 0.15) * nebulaY;  // Teal
                 color += (nebula1 + nebula2) * darkIntensity * 0.3;
 
-                // Twinkling stars - MUCH more twinkle
+                // Twinkling stars - stepped time for cheaper updates
                 vec2 starGrid = uv * 50.0;
                 vec2 starCell = floor(starGrid);
                 vec2 starUV = fract(starGrid);
                 float starRand = hash(starCell + 50.0);
 
                 if (starRand > 0.9) {
-                    // Multiple twinkle frequencies for more dynamic effect
-                    float phase1 = hash2(starCell) * 6.28;
-                    float phase2 = hash(starCell * 1.3) * 6.28;
-                    float speed1 = 1.5 + hash(starCell * 1.7) * 2.0;
-                    float speed2 = 2.5 + hash(starCell * 2.1) * 3.0;
-
-                    // Combine fast and slow twinkle - NEVER goes dark
-                    float twinkle1 = sin(time * speed1 + phase1);
-                    float twinkle2 = sin(time * speed2 + phase2);
-                    float twinkle = twinkle1 * 0.5 + twinkle2 * 0.5;
-                    // Range 0.3 to 1.0 - stars always visible, just dimmer at minimum
-                    twinkle = 0.3 + (twinkle * 0.5 + 0.5) * 0.7;
+                    // Simpler twinkle with stepped time
+                    float phase = hash2(starCell) * 6.28;
+                    float twinkle = sin(starTime * 2.0 + phase) * 0.35 + 0.65;
 
                     float dist = length(starUV - 0.5);
                     float star = smoothstep(0.12, 0.0, dist);
 
-                    // 4-pointed sparkle for bright stars
+                    // 4-pointed sparkle for bright stars (simpler)
                     if (starRand > 0.96) {
-                        float sparklePhase = sin(time * 3.0 + phase1) * 0.5 + 0.5;
                         float sparkleX = smoothstep(0.1, 0.0, abs(starUV.x - 0.5)) * smoothstep(0.35, 0.05, dist);
                         float sparkleY = smoothstep(0.1, 0.0, abs(starUV.y - 0.5)) * smoothstep(0.35, 0.05, dist);
-                        star += (sparkleX + sparkleY) * 0.7 * sparklePhase;
+                        star += (sparkleX + sparkleY) * 0.5;
                     }
 
                     float brightness = star * twinkle;
@@ -3583,57 +3580,43 @@ mod gl {
                 }
             }
 
-            // Shooting stars - from ANY direction across screen (rare)
+            // Shooting stars - static streaks that flash briefly (cheap!)
             if (lum < 0.15 && doShooting) {
                 float darkIntensity = 1.0 - lum / 0.15;
 
                 for (float starIdx = 0.0; starIdx < 2.0; starIdx += 1.0) {
-                    float period = 8.0 + starIdx * 5.0;  // Much rarer: 8-13 second periods
-                    float shootTime = mod(time + starIdx * 3.7, period);
-                    float shootProgress = shootTime / period;
+                    float period = 10.0 + starIdx * 7.0;  // 10-17 second periods
+                    float shootFrame = floor(time * 12.0);  // Which frame we're on
+                    float shootSlot = floor(shootFrame / (period * 12.0));  // Which "slot"
+                    float frameInSlot = mod(shootFrame, period * 12.0);
 
-                    if (shootProgress < 0.06) {  // Very fast streak
-                        float seed = floor((time + starIdx * 1.1) / period);
+                    // Only visible for 2 frames at start of each period
+                    if (frameInSlot < 2.0) {
+                        float seed = shootSlot + starIdx * 100.0;
 
-                        // Random angle for ANY direction
-                        float angle = hash(vec2(seed, starIdx)) * 6.28;
+                        // Random position and angle
+                        float angle = hash(vec2(seed, 1.0)) * 6.28;
                         vec2 shootDir = vec2(cos(angle), sin(angle));
+                        vec2 shootPos = vec2(
+                            hash(vec2(seed, 2.0)) * 0.6 + 0.2,  // Keep away from edges
+                            hash(vec2(seed, 3.0)) * 0.6 + 0.2
+                        );
 
-                        // Start from random position near edge
-                        float edgeDist = 0.1;
-                        vec2 shootStart;
-                        float startPos = hash(vec2(seed + 1.0, starIdx));
+                        // Draw static streak with gradient (head bright, tail dim)
+                        float trailLen = 0.15;
+                        vec2 toPoint = uv - shootPos;
+                        float alongTrail = dot(toPoint, shootDir);
+                        float perpDist = length(toPoint - alongTrail * shootDir);
 
-                        // Pick a starting edge based on direction
-                        if (abs(shootDir.x) > abs(shootDir.y)) {
-                            // More horizontal - start from left or right
-                            shootStart.x = shootDir.x > 0.0 ? -edgeDist : 1.0 + edgeDist;
-                            shootStart.y = startPos;
-                        } else {
-                            // More vertical - start from top or bottom
-                            shootStart.x = startPos;
-                            shootStart.y = shootDir.y > 0.0 ? -edgeDist : 1.0 + edgeDist;
-                        }
-
-                        float travelDist = 1.5;  // Travel across screen
-                        float currentDist = shootProgress / 0.12 * travelDist;
-                        vec2 headPos = shootStart + shootDir * currentDist;
-
-                        // Long glowing trail
-                        float trailLen = 0.18;
-                        vec2 toPoint = uv - headPos;
-                        float alongTrail = dot(toPoint, -shootDir);
-                        float perpDist = length(toPoint - alongTrail * (-shootDir));
-
-                        if (alongTrail > 0.0 && alongTrail < trailLen && perpDist < 0.005) {
-                            float trailBright = (1.0 - alongTrail / trailLen) * (1.0 - perpDist / 0.005);
-                            trailBright = pow(trailBright, 0.4);
-                            color += vec3(1.0, 0.95, 0.9) * trailBright * 2.0 * darkIntensity;
-                        }
-
-                        float headDist = length(uv - headPos);
-                        if (headDist < 0.008) {
-                            color += vec3(1.0, 1.0, 1.0) * (1.0 - headDist / 0.008) * 2.5 * darkIntensity;
+                        // Trail: from -trailLen to 0 (head at shootPos)
+                        if (alongTrail > -trailLen && alongTrail < 0.005 && perpDist < 0.004) {
+                            // Fade: 1.0 at head (alongTrail=0), 0.0 at tail (alongTrail=-trailLen)
+                            float trailFade = 1.0 + alongTrail / trailLen;
+                            float perpFade = 1.0 - perpDist / 0.004;
+                            float brightness = trailFade * perpFade;
+                            // Second frame slightly dimmer for fade-out effect
+                            brightness *= (frameInSlot < 1.0) ? 1.0 : 0.5;
+                            color += vec3(1.0, 0.97, 0.92) * brightness * 2.0 * darkIntensity;
                         }
                     }
                 }
