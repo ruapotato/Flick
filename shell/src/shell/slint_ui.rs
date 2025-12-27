@@ -132,6 +132,10 @@ pub struct SlintShell {
     wiggle_mode: RefCell<bool>,
     /// Pending wiggle done action (set by callback, polled by compositor)
     pending_wiggle_done: Rc<RefCell<bool>>,
+    /// Pending pick default app selection (exec command)
+    pending_pick_default_selection: Rc<RefCell<Option<String>>>,
+    /// Pending pick default back action
+    pending_pick_default_back: Rc<RefCell<bool>>,
     /// Pending keyboard actions (set by callbacks, polled by compositor)
     pending_keyboard_actions: Rc<RefCell<Vec<KeyboardAction>>>,
     /// Pending lock screen actions (set by callbacks, polled by compositor)
@@ -324,6 +328,22 @@ impl SlintShell {
             *wiggle_done_clone.borrow_mut() = true;
         });
 
+        // Pick default app callbacks
+        let pending_pick_default_selection = Rc::new(RefCell::new(None::<String>));
+        let pending_pick_default_back = Rc::new(RefCell::new(false));
+
+        let pick_clone = pending_pick_default_selection.clone();
+        shell.on_pick_default_selected(move |exec| {
+            info!("Pick default selected: {}", exec);
+            *pick_clone.borrow_mut() = Some(exec.to_string());
+        });
+
+        let back_clone = pending_pick_default_back.clone();
+        shell.on_pick_default_back(move || {
+            info!("Pick default back pressed");
+            *back_clone.borrow_mut() = true;
+        });
+
         Self {
             window,
             shell,
@@ -336,6 +356,8 @@ impl SlintShell {
             popup_can_pick: RefCell::new(true),
             wiggle_mode: RefCell::new(false),
             pending_wiggle_done,
+            pending_pick_default_selection,
+            pending_pick_default_back,
             pending_keyboard_actions,
             pending_lock_actions,
             pending_phone_actions,
@@ -487,6 +509,22 @@ impl SlintShell {
             *self.pending_wiggle_done.borrow_mut() = false;
         }
         done
+    }
+
+    /// Poll for pending pick default selection
+    /// Returns the exec command if an app was selected, and clears the pending state
+    pub fn take_pick_default_selection(&self) -> Option<String> {
+        self.pending_pick_default_selection.borrow_mut().take()
+    }
+
+    /// Poll for pending pick default back action
+    /// Returns true if the back button was pressed, and clears the pending state
+    pub fn take_pick_default_back(&self) -> bool {
+        let back = *self.pending_pick_default_back.borrow();
+        if back {
+            *self.pending_pick_default_back.borrow_mut() = false;
+        }
+        back
     }
 
     /// Check if wiggle mode is active

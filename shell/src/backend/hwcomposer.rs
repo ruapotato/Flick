@@ -1305,7 +1305,7 @@ fn handle_input_event(
                                 // Check if this was a drag (moved significantly) or a tap
                                 let drag_dist = ((end_pos.x - start_pos.x).powi(2) + (end_pos.y - start_pos.y).powi(2)).sqrt();
 
-                                if drag_dist > 30.0 {
+                                if drag_dist > 50.0 {
                                     // This was a drag - reorder the grid
                                     if let Some(to_index) = state.shell.hit_test_category_index(end_pos) {
                                         if from_index != to_index {
@@ -2032,6 +2032,25 @@ pub fn run() -> Result<()> {
             }
         }
 
+        // Poll for pick default callbacks (runs every frame when in PickDefault view)
+        if state.shell.view == crate::shell::ShellView::PickDefault {
+            // Get pending actions from Slint first (to avoid borrow conflicts)
+            let (selected_exec, back_pressed) = if let Some(ref slint_ui) = state.shell.slint_ui {
+                (slint_ui.take_pick_default_selection(), slint_ui.take_pick_default_back())
+            } else {
+                (None, false)
+            };
+
+            // Now handle the actions with mutable access
+            if let Some(exec) = selected_exec {
+                info!("App selected from pick default: {}", exec);
+                state.shell.select_default_app(&exec);
+            } else if back_pressed {
+                info!("Pick default back pressed");
+                state.shell.exit_pick_default();
+            }
+        }
+
         // Skip rendering if session not active
         if !*session_active.borrow() {
             debug!("Loop {}: session not active, skipping render", loop_count);
@@ -2701,6 +2720,30 @@ fn render_frame(
                             }
                             ShellView::PickDefault => {
                                 slint_ui.set_view("pick-default");
+                                if let Some(category) = state.shell.popup_category {
+                                    slint_ui.set_pick_default_category(category.display_name());
+                                    // Get available apps for this category (includes discovered + Flick apps)
+                                    let apps = state.shell.app_manager.apps_for_category(category);
+                                    let mut available_apps: Vec<(String, String)> = apps
+                                        .iter()
+                                        .map(|app| (app.name.clone(), app.exec.clone()))
+                                        .collect();
+
+                                    // Always add Flick native app if it exists and not already in list
+                                    let flick_exec = format!(r#"sh -c "$HOME/Flick/apps/{}/run_{}.sh""#,
+                                        category.display_name().to_lowercase(),
+                                        category.display_name().to_lowercase());
+                                    let flick_name = format!("Flick {}", category.display_name());
+                                    if !available_apps.iter().any(|(_, exec)| exec.contains("/Flick/apps/")) {
+                                        available_apps.insert(0, (flick_name, flick_exec));
+                                    }
+
+                                    slint_ui.set_available_apps(available_apps);
+                                    // Set current selection
+                                    if let Some(exec) = state.shell.app_manager.get_exec(category) {
+                                        slint_ui.set_current_app_selection(&exec);
+                                    }
+                                }
                             }
                             _ => {}
                         }
