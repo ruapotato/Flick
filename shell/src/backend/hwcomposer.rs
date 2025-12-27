@@ -121,23 +121,6 @@ fn char_to_evdev(c: char) -> Option<(u32, bool)> {
 // Use our C shim FFI bindings
 use super::hwc_shim_ffi::{HwcContext, FlickDisplayInfo};
 
-/// Transform touch coordinates for app input when app rotation is enabled
-/// Shell always stays in portrait, only app content gets rotated
-fn transform_touch_for_rotated_app(
-    x: f64,
-    y: f64,
-    app_rotation: bool,
-    screen_width: f64,
-    screen_height: f64,
-) -> (f64, f64) {
-    if app_rotation {
-        // App is rotated 90° CW, so we need to transform touch coords
-        // Physical touch (x, y) -> App coords (y, screen_width - x)
-        (y, screen_width - x)
-    } else {
-        (x, y)
-    }
-}
 
 // Re-use khronos-egl for raw EGL access
 use khronos_egl as egl;
@@ -633,20 +616,8 @@ fn handle_input_event(
 
             let slot_id: i32 = event.slot().into();
             // Get raw position (in physical display coordinates)
-            // Shell always uses raw portrait coordinates for gestures and UI
             let raw_position = event.position();
             let touch_pos = Point::from((raw_position.x, raw_position.y));
-
-            // For apps, transform coordinates if app rotation is enabled
-            let app_rotation_enabled = state.system.rotation_lock.get_orientation() != crate::system::Orientation::Portrait;
-            let (app_touch_x, app_touch_y) = transform_touch_for_rotated_app(
-                raw_position.x,
-                raw_position.y,
-                app_rotation_enabled,
-                state.physical_display_size.w as f64,
-                state.physical_display_size.h as f64,
-            );
-            let app_touch_pos = Point::from((app_touch_x, app_touch_y));
 
             // Update last activity time for auto-lock
             state.last_activity = std::time::Instant::now();
@@ -815,13 +786,12 @@ fn handle_input_event(
                         .map(|surface| (surface, smithay::utils::Point::from((0.0, 0.0))));
 
                     if focus.is_some() {
-                        // Use app_touch_pos for Wayland clients (transformed if rotation enabled)
                         touch.down(
                             state,
                             focus,
                             &smithay::input::touch::DownEvent {
                                 slot: event.slot(),
-                                location: app_touch_pos.to_f64(),
+                                location: touch_pos.to_f64(),
                                 serial,
                                 time: event.time_msec(),
                             },
@@ -893,20 +863,8 @@ fn handle_input_event(
 
             let slot_id: i32 = event.slot().into();
             // Get raw position (in physical display coordinates)
-            // Shell always uses raw portrait coordinates for gestures and UI
             let raw_position = event.position();
             let touch_pos = Point::from((raw_position.x, raw_position.y));
-
-            // For apps, transform coordinates if app rotation is enabled
-            let app_rotation_enabled = state.system.rotation_lock.get_orientation() != crate::system::Orientation::Portrait;
-            let (app_touch_x, app_touch_y) = transform_touch_for_rotated_app(
-                raw_position.x,
-                raw_position.y,
-                app_rotation_enabled,
-                state.physical_display_size.w as f64,
-                state.physical_display_size.h as f64,
-            );
-            let app_touch_pos = Point::from((app_touch_x, app_touch_y));
 
             // Update tracked touch position
             state.last_touch_pos.insert(slot_id, touch_pos);
@@ -1007,13 +965,12 @@ fn handle_input_event(
                         });
 
                     if focus.is_some() {
-                        // Use app_touch_pos for Wayland clients (transformed if rotation enabled)
                         touch.motion(
                             state,
                             focus,
                             &smithay::input::touch::MotionEvent {
                                 slot: event.slot(),
-                                location: app_touch_pos.to_f64(),
+                                location: touch_pos.to_f64(),
                                 time: event.time_msec(),
                             },
                         );
@@ -1364,48 +1321,6 @@ fn handle_input_event(
                                             state.system.wifi_enabled = WifiManager::is_enabled();
                                             state.system.bluetooth_enabled = BluetoothManager::is_enabled();
                                             info!("Airplane mode toggled");
-                                        }
-                                        QuickSettingsAction::RotationToggle => {
-                                            // Cycle orientation - only affects app rendering, not shell
-                                            // Shell stays in portrait, only app windows get rotated
-                                            state.system.rotation_lock.cycle_orientation();
-                                            let new_orientation = state.system.rotation_lock.get_orientation();
-                                            info!("App rotation: {:?}", new_orientation);
-
-                                            // Set GL rotation for app window rendering only
-                                            use crate::system::Orientation;
-                                            let gl_rotation = match new_orientation {
-                                                Orientation::Portrait => 0,
-                                                Orientation::Landscape90 => 1,
-                                                Orientation::Landscape270 => 2,
-                                            };
-                                            unsafe { gl::set_rotation(gl_rotation); }
-
-                                            // Resize app windows to rotated dimensions
-                                            // Physical is 1080x2400, landscape is 2400x1080
-                                            let (app_w, app_h) = match new_orientation {
-                                                Orientation::Portrait => (
-                                                    state.physical_display_size.w,
-                                                    state.physical_display_size.h,
-                                                ),
-                                                Orientation::Landscape90 | Orientation::Landscape270 => (
-                                                    state.physical_display_size.h,  // Swap for landscape
-                                                    state.physical_display_size.w,
-                                                ),
-                                            };
-                                            info!("Resizing app windows to {}x{}", app_w, app_h);
-
-                                            // Resize all Wayland windows
-                                            for window in state.space.elements() {
-                                                if let Some(toplevel) = window.toplevel() {
-                                                    let new_size: smithay::utils::Size<i32, smithay::utils::Logical> =
-                                                        (app_w, app_h).into();
-                                                    toplevel.with_pending_state(|s| {
-                                                        s.size = Some(new_size);
-                                                    });
-                                                    toplevel.send_configure();
-                                                }
-                                            }
                                         }
                                         QuickSettingsAction::TouchEffectsToggle => {
                                             // Toggle both touch effects AND living pixels
@@ -1899,8 +1814,6 @@ pub fn run() -> Result<()> {
     state.screen_size = (width as i32, height as i32).into();
     state.physical_display_size = (width as i32, height as i32).into(); // Store physical size
     state.gesture_recognizer.screen_size = state.screen_size;
-    // Set GL physical dimensions for rotation support
-    unsafe { gl::set_physical_dimensions(width, height); }
     state.shell.screen_size = state.screen_size;
     state.shell.quick_settings.screen_size = state.screen_size;
 
@@ -3240,144 +3153,6 @@ mod gl {
     static mut SCENE_HEIGHT: u32 = 0;
     static mut SCENE_RENDERING_ACTIVE: bool = false;
 
-    // Display rotation (0 = portrait, 1 = landscape 90°, 2 = landscape 270°)
-    static mut DISPLAY_ROTATION: u8 = 0;
-
-    /// Set the display rotation mode
-    /// 0 = Portrait (no rotation)
-    /// 1 = Landscape (90° clockwise)
-    /// 2 = Landscape (270° clockwise / 90° counter-clockwise)
-    pub unsafe fn set_rotation(rotation: u8) {
-        DISPLAY_ROTATION = rotation;
-        tracing::info!("GL rotation set to: {}", rotation);
-    }
-
-    /// Get vertices for a full-screen quad with rotation applied
-    /// Returns (position + texcoord interleaved) vertices
-    fn get_rotated_vertices() -> [f32; 16] {
-        unsafe {
-            match DISPLAY_ROTATION {
-                1 => {
-                    // 90° clockwise - rotate texture coordinates
-                    // Screen stays same, but we sample texture rotated
-                    [
-                        // Position (x, y)  // TexCoord (u, v) - rotated 90° CW
-                        -1.0, -1.0,         1.0, 1.0,  // Bottom-left gets bottom-right of texture
-                         1.0, -1.0,         1.0, 0.0,  // Bottom-right gets top-right
-                        -1.0,  1.0,         0.0, 1.0,  // Top-left gets bottom-left
-                         1.0,  1.0,         0.0, 0.0,  // Top-right gets top-left
-                    ]
-                }
-                2 => {
-                    // 270° clockwise (90° counter-clockwise)
-                    [
-                        // Position (x, y)  // TexCoord (u, v) - rotated 270° CW
-                        -1.0, -1.0,         0.0, 0.0,  // Bottom-left gets top-left
-                         1.0, -1.0,         0.0, 1.0,  // Bottom-right gets bottom-left
-                        -1.0,  1.0,         1.0, 0.0,  // Top-left gets top-right
-                         1.0,  1.0,         1.0, 1.0,  // Top-right gets bottom-right
-                    ]
-                }
-                _ => {
-                    // No rotation (portrait)
-                    [
-                        // Position (x, y)  // TexCoord (u, v)
-                        -1.0, -1.0,         0.0, 1.0,  // Bottom-left
-                         1.0, -1.0,         1.0, 1.0,  // Bottom-right
-                        -1.0,  1.0,         0.0, 0.0,  // Top-left
-                         1.0,  1.0,         1.0, 0.0,  // Top-right
-                    ]
-                }
-            }
-        }
-    }
-
-    /// Get vertices for a positioned quad with rotation applied
-    /// Transforms logical coordinates to physical rotated space
-    fn get_rotated_positioned_vertices(
-        x: i32, y: i32,
-        tex_width: u32, tex_height: u32,
-        logical_width: u32, logical_height: u32,
-        physical_width: u32, physical_height: u32,
-    ) -> [f32; 16] {
-        unsafe {
-            match DISPLAY_ROTATION {
-                1 => {
-                    // 90° clockwise: logical (x,y) -> physical (ph - y - h, x)
-                    // Logical coordinate to physical rotated space
-                    let px = (physical_height as i32 - y - tex_height as i32) as f32;
-                    let py = x as f32;
-                    let pw = tex_height as f32;  // Width/height swap
-                    let ph = tex_width as f32;
-
-                    // Convert to NDC using physical dimensions
-                    let sw = physical_width as f32;
-                    let sh = physical_height as f32;
-                    let left = (px / sw) * 2.0 - 1.0;
-                    let right = ((px + pw) / sw) * 2.0 - 1.0;
-                    let bottom = (py / sh) * 2.0 - 1.0;
-                    let top = ((py + ph) / sh) * 2.0 - 1.0;
-
-                    [
-                        left,  bottom,      1.0, 1.0,
-                        right, bottom,      1.0, 0.0,
-                        left,  top,         0.0, 1.0,
-                        right, top,         0.0, 0.0,
-                    ]
-                }
-                2 => {
-                    // 270° clockwise: logical (x,y) -> physical (y, pw - x - w)
-                    let px = y as f32;
-                    let py = (physical_width as i32 - x - tex_width as i32) as f32;
-                    let pw = tex_height as f32;
-                    let ph = tex_width as f32;
-
-                    let sw = physical_width as f32;
-                    let sh = physical_height as f32;
-                    let left = (px / sw) * 2.0 - 1.0;
-                    let right = ((px + pw) / sw) * 2.0 - 1.0;
-                    let bottom = (py / sh) * 2.0 - 1.0;
-                    let top = ((py + ph) / sh) * 2.0 - 1.0;
-
-                    [
-                        left,  bottom,      0.0, 0.0,
-                        right, bottom,      0.0, 1.0,
-                        left,  top,         1.0, 0.0,
-                        right, top,         1.0, 1.0,
-                    ]
-                }
-                _ => {
-                    // No rotation - use logical dimensions directly
-                    let sw = logical_width as f32;
-                    let sh = logical_height as f32;
-                    let tw = tex_width as f32;
-                    let th = tex_height as f32;
-                    let left = (x as f32 / sw) * 2.0 - 1.0;
-                    let right = ((x as f32 + tw) / sw) * 2.0 - 1.0;
-                    let top = 1.0 - (y as f32 / sh) * 2.0;
-                    let bottom = 1.0 - ((y as f32 + th) / sh) * 2.0;
-
-                    [
-                        left,  bottom,      0.0, 1.0,
-                        right, bottom,      1.0, 1.0,
-                        left,  top,         0.0, 0.0,
-                        right, top,         1.0, 0.0,
-                    ]
-                }
-            }
-        }
-    }
-
-    /// Get physical display dimensions (stored during init)
-    static mut PHYSICAL_WIDTH: u32 = 0;
-    static mut PHYSICAL_HEIGHT: u32 = 0;
-
-    pub unsafe fn set_physical_dimensions(width: u32, height: u32) {
-        PHYSICAL_WIDTH = width;
-        PHYSICAL_HEIGHT = height;
-        tracing::info!("GL physical dimensions set: {}x{}", width, height);
-    }
-
     // FBO function pointers
     static mut FN_GEN_FRAMEBUFFERS: Option<unsafe extern "C" fn(i32, *mut u32)> = None;
     static mut FN_BIND_FRAMEBUFFER: Option<unsafe extern "C" fn(u32, u32)> = None;
@@ -4472,31 +4247,21 @@ mod gl {
         if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, texture); }
         if let Some(f) = FN_UNIFORM1I { f(UNIFORM_TEXTURE, 0); }
 
-        // Get vertices with rotation support (same as render_egl_texture_at)
-        let (phys_w, phys_h) = (PHYSICAL_WIDTH, PHYSICAL_HEIGHT);
-        let vertices = if DISPLAY_ROTATION != 0 && phys_w > 0 && phys_h > 0 {
-            get_rotated_positioned_vertices(
-                x, y, tex_width, tex_height,
-                screen_width, screen_height,
-                phys_w, phys_h,
-            )
-        } else {
-            // No rotation - use original logic
-            let sw = screen_width as f32;
-            let sh = screen_height as f32;
-            let tw = tex_width as f32;
-            let th = tex_height as f32;
-            let left = (x as f32 / sw) * 2.0 - 1.0;
-            let right = ((x as f32 + tw) / sw) * 2.0 - 1.0;
-            let top = 1.0 - (y as f32 / sh) * 2.0;
-            let bottom = 1.0 - ((y as f32 + th) / sh) * 2.0;
-            [
-                left,  bottom,      0.0, 1.0,
-                right, bottom,      1.0, 1.0,
-                left,  top,         0.0, 0.0,
-                right, top,         1.0, 0.0,
-            ]
-        };
+        // Calculate positioned vertices
+        let sw = screen_width as f32;
+        let sh = screen_height as f32;
+        let tw = tex_width as f32;
+        let th = tex_height as f32;
+        let left = (x as f32 / sw) * 2.0 - 1.0;
+        let right = ((x as f32 + tw) / sw) * 2.0 - 1.0;
+        let top = 1.0 - (y as f32 / sh) * 2.0;
+        let bottom = 1.0 - ((y as f32 + th) / sh) * 2.0;
+        let vertices: [f32; 16] = [
+            left,  bottom,      0.0, 1.0,
+            right, bottom,      1.0, 1.0,
+            left,  top,         0.0, 0.0,
+            right, top,         1.0, 0.0,
+        ];
 
         // Set vertex attributes
         if let Some(f) = FN_ENABLE_VERTEX_ATTRIB_ARRAY {
@@ -4562,32 +4327,21 @@ mod gl {
         if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, texture_id); }
         if let Some(f) = FN_UNIFORM1I { f(UNIFORM_TEXTURE, 0); }
 
-        // Get vertices with rotation support
-        // Use physical dimensions for rotated rendering
-        let (phys_w, phys_h) = (PHYSICAL_WIDTH, PHYSICAL_HEIGHT);
-        let vertices = if DISPLAY_ROTATION != 0 && phys_w > 0 && phys_h > 0 {
-            get_rotated_positioned_vertices(
-                x, y, tex_width, tex_height,
-                screen_width, screen_height,
-                phys_w, phys_h,
-            )
-        } else {
-            // No rotation - use original logic
-            let sw = screen_width as f32;
-            let sh = screen_height as f32;
-            let tw = tex_width as f32;
-            let th = tex_height as f32;
-            let left = (x as f32 / sw) * 2.0 - 1.0;
-            let right = ((x as f32 + tw) / sw) * 2.0 - 1.0;
-            let top = 1.0 - (y as f32 / sh) * 2.0;
-            let bottom = 1.0 - ((y as f32 + th) / sh) * 2.0;
-            [
-                left,  bottom,      0.0, 1.0,
-                right, bottom,      1.0, 1.0,
-                left,  top,         0.0, 0.0,
-                right, top,         1.0, 0.0,
-            ]
-        };
+        // Calculate positioned vertices
+        let sw = screen_width as f32;
+        let sh = screen_height as f32;
+        let tw = tex_width as f32;
+        let th = tex_height as f32;
+        let left = (x as f32 / sw) * 2.0 - 1.0;
+        let right = ((x as f32 + tw) / sw) * 2.0 - 1.0;
+        let top = 1.0 - (y as f32 / sh) * 2.0;
+        let bottom = 1.0 - ((y as f32 + th) / sh) * 2.0;
+        let vertices: [f32; 16] = [
+            left,  bottom,      0.0, 1.0,
+            right, bottom,      1.0, 1.0,
+            left,  top,         0.0, 0.0,
+            right, top,         1.0, 0.0,
+        ];
 
         if let Some(f) = FN_ENABLE_VERTEX_ATTRIB_ARRAY {
             f(ATTR_POSITION as u32);

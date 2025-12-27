@@ -350,9 +350,25 @@ impl AppConfig {
             match fs::read_to_string(&path) {
                 Ok(contents) => {
                     tracing::info!("Read app config file: {}", contents);
-                    match serde_json::from_str(&contents) {
-                        Ok(config) => {
+                    match serde_json::from_str::<Self>(&contents) {
+                        Ok(mut config) => {
                             tracing::info!("Loaded app config from {:?}", path);
+                            // Ensure all current categories are in the grid
+                            // This handles new categories added after config was saved
+                            let all_categories = AppCategory::all();
+                            let defaults = Self::default();
+                            for cat in &all_categories {
+                                if !config.grid_order.contains(cat) {
+                                    tracing::info!("Adding missing category to grid: {:?}", cat);
+                                    config.grid_order.push(*cat);
+                                }
+                                // Also add default selection if missing
+                                if !config.selections.contains_key(cat) {
+                                    if let Some(default_exec) = defaults.selections.get(cat) {
+                                        config.selections.insert(*cat, default_exec.clone());
+                                    }
+                                }
+                            }
                             return config;
                         }
                         Err(e) => {

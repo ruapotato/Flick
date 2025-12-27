@@ -32,7 +32,6 @@ pub enum QuickSettingsAction {
     DndToggle,
     FlashlightToggle,
     AirplaneToggle,
-    RotationToggle,
     TouchEffectsToggle,
     Lock,
     Settings,  // Now launches Flutter Settings app
@@ -209,12 +208,6 @@ impl SlintShell {
         shell.on_airplane_toggled(move || {
             info!("Slint Airplane toggle callback");
             qs_clone.borrow_mut().push(QuickSettingsAction::AirplaneToggle);
-        });
-
-        let qs_clone = pending_qs_actions.clone();
-        shell.on_rotation_toggled(move || {
-            info!("Slint Rotation toggle callback");
-            qs_clone.borrow_mut().push(QuickSettingsAction::RotationToggle);
         });
 
         let qs_clone = pending_qs_actions.clone();

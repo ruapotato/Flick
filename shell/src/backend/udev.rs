@@ -3793,10 +3793,6 @@ fn handle_input_event(
                                     state.system.bluetooth_enabled = BluetoothManager::is_enabled();
                                     info!("Airplane mode toggled");
                                 }
-                                QuickSettingsAction::RotationToggle => {
-                                    state.system.rotation_lock.toggle();
-                                    info!("Rotation lock: {}", if state.system.rotation_lock.locked { "ON" } else { "OFF" });
-                                }
                                 QuickSettingsAction::TouchEffectsToggle => {
                                     // Toggle both touch effects AND living pixels
                                     let enabled = !state.touch_effects_enabled;
