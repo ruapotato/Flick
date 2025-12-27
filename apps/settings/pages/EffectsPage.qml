@@ -20,9 +20,6 @@ Page {
     property bool lpShootingStars: true  // Occasional shooting stars
     property bool rainEffectEnabled: false // Compiz-style rain ripples
 
-    // Animation settings
-    property real transitionSpeed: 1.0
-
     property string configPath: "/home/droidian/.local/state/flick/effects_config.json"
 
     Component.onCompleted: loadConfig()
@@ -48,8 +45,6 @@ Page {
                 if (config.lp_stars !== undefined) lpStars = config.lp_stars
                 if (config.lp_shooting_stars !== undefined) lpShootingStars = config.lp_shooting_stars
                 if (config.rain_effect_enabled !== undefined) rainEffectEnabled = config.rain_effect_enabled
-                // Animation
-                if (config.transition_speed !== undefined) transitionSpeed = config.transition_speed
             }
         } catch (e) {
             console.log("Using default effects config")
@@ -71,9 +66,7 @@ Page {
             // Living pixels sub-toggles
             lp_stars: lpStars,
             lp_shooting_stars: lpShootingStars,
-            rain_effect_enabled: rainEffectEnabled,
-            // Animation
-            transition_speed: transitionSpeed
+            rain_effect_enabled: rainEffectEnabled
         }
 
         var xhr = new XMLHttpRequest()
@@ -295,37 +288,109 @@ Page {
             }
 
             // Fisheye settings
-            EffectSliderCard {
+            Rectangle {
                 width: settingsColumn.width
+                height: fisheyeColumn.height + 32
+                radius: 20
+                color: "#14141e"
+                border.color: "#1a1a2e"
                 visible: touchEffectsEnabled
-                title: "Fisheye Lens"
-                icon: "🔍"
 
-                sliders: [
-                    { label: "Size", value: fisheyeSize, min: 0.05, max: 0.30, color: "#e94560",
-                      onChanged: function(v) { fisheyeSize = v } },
-                    { label: "Strength", value: fisheyeStrength, min: 0, max: 0.5, color: "#e94560",
-                      onChanged: function(v) { fisheyeStrength = v } }
-                ]
-                onSave: saveConfig()
+                Column {
+                    id: fisheyeColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 16
+
+                    Row {
+                        spacing: 10
+                        Text { text: "🔍"; font.pixelSize: 20 }
+                        Text { text: "Fisheye Lens"; font.pixelSize: 16; font.weight: Font.Medium; color: "#ffffff" }
+                    }
+
+                    // Size slider
+                    EffectSlider {
+                        width: parent.width - 32
+                        label: "Size"
+                        value: fisheyeSize
+                        minVal: 0.05
+                        maxVal: 0.30
+                        accentColor: "#e94560"
+                        onValueChanged: { fisheyeSize = value; saveConfig() }
+                    }
+
+                    // Strength slider
+                    EffectSlider {
+                        width: parent.width - 32
+                        label: "Strength"
+                        value: fisheyeStrength
+                        minVal: 0.0
+                        maxVal: 0.5
+                        accentColor: "#e94560"
+                        onValueChanged: { fisheyeStrength = value; saveConfig() }
+                    }
+                }
             }
 
             // Ripple settings
-            EffectSliderCard {
+            Rectangle {
                 width: settingsColumn.width
+                height: rippleColumn.height + 32
+                radius: 20
+                color: "#14141e"
+                border.color: "#1a1a2e"
                 visible: touchEffectsEnabled
-                title: "Water Ripple"
-                icon: "🌊"
 
-                sliders: [
-                    { label: "Size", value: rippleSize, min: 0.1, max: 0.5, color: "#4a9eff",
-                      onChanged: function(v) { rippleSize = v } },
-                    { label: "Strength", value: rippleStrength, min: 0, max: 0.3, color: "#4a9eff",
-                      onChanged: function(v) { rippleStrength = v } },
-                    { label: "Duration", value: rippleDuration, min: 0.2, max: 1.0, color: "#4a9eff", suffix: "s",
-                      onChanged: function(v) { rippleDuration = v } }
-                ]
-                onSave: saveConfig()
+                Column {
+                    id: rippleColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 16
+
+                    Row {
+                        spacing: 10
+                        Text { text: "🌊"; font.pixelSize: 20 }
+                        Text { text: "Water Ripple"; font.pixelSize: 16; font.weight: Font.Medium; color: "#ffffff" }
+                    }
+
+                    // Size slider
+                    EffectSlider {
+                        width: parent.width - 32
+                        label: "Size"
+                        value: rippleSize
+                        minVal: 0.1
+                        maxVal: 0.5
+                        accentColor: "#4a9eff"
+                        onValueChanged: { rippleSize = value; saveConfig() }
+                    }
+
+                    // Strength slider
+                    EffectSlider {
+                        width: parent.width - 32
+                        label: "Strength"
+                        value: rippleStrength
+                        minVal: 0.0
+                        maxVal: 0.3
+                        accentColor: "#4a9eff"
+                        onValueChanged: { rippleStrength = value; saveConfig() }
+                    }
+
+                    // Duration slider
+                    EffectSlider {
+                        width: parent.width - 32
+                        label: "Duration"
+                        value: rippleDuration
+                        minVal: 0.2
+                        maxVal: 1.0
+                        accentColor: "#4a9eff"
+                        suffix: "s"
+                        onValueChanged: { rippleDuration = value; saveConfig() }
+                    }
+                }
             }
 
             // Living Pixels toggle - Always visible (not tied to touch distortion)
@@ -422,140 +487,37 @@ Page {
             }
 
             // ASCII density slider (only shown when Terminal Ripple mode is selected)
-            EffectSliderCard {
-                width: settingsColumn.width
-                visible: touchEffectsEnabled && touchEffectStyle === 3
-                title: "Terminal Settings"
-                icon: "📟"
-
-                sliders: [
-                    { label: "Density", value: asciiDensity, min: 4.0, max: 16.0, color: "#00ff00", suffix: "x",
-                      onChanged: function(v) { asciiDensity = v } }
-                ]
-                onSave: saveConfig()
-            }
-
-            Item { height: 16 }
-
-            // ===== ANIMATION SPEED =====
-            Text {
-                text: "ANIMATION SPEED"
-                font.pixelSize: 11
-                font.letterSpacing: 2
-                color: "#555566"
-                leftPadding: 8
-            }
-
             Rectangle {
                 width: settingsColumn.width
-                height: 140
+                height: termColumn.height + 32
                 radius: 20
                 color: "#14141e"
                 border.color: "#1a1a2e"
+                visible: touchEffectsEnabled && touchEffectStyle === 3
 
                 Column {
-                    anchors.fill: parent
-                    anchors.margins: 20
+                    id: termColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
                     spacing: 16
 
                     Row {
-                        width: parent.width
-                        Text {
-                            text: "Global Speed"
-                            font.pixelSize: 15
-                            color: "#ffffff"
-                        }
-                        Item { width: parent.width - 140; height: 1 }
-                        Text {
-                            text: transitionSpeed.toFixed(1) + "x"
-                            font.pixelSize: 16
-                            font.weight: Font.Bold
-                            color: "#9966ff"
-                        }
+                        spacing: 10
+                        Text { text: "📟"; font.pixelSize: 20 }
+                        Text { text: "Terminal Settings"; font.pixelSize: 16; font.weight: Font.Medium; color: "#ffffff" }
                     }
 
-                    // Slider
-                    Item {
-                        width: parent.width
-                        height: 36
-
-                        Rectangle {
-                            anchors.centerIn: parent
-                            width: parent.width
-                            height: 6
-                            radius: 3
-                            color: "#1a1a28"
-
-                            Rectangle {
-                                width: parent.width * ((transitionSpeed - 0.5) / 1.5)
-                                height: parent.height
-                                radius: 3
-                                gradient: Gradient {
-                                    orientation: Gradient.Horizontal
-                                    GradientStop { position: 0.0; color: "#663399" }
-                                    GradientStop { position: 1.0; color: "#9966ff" }
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            x: (parent.width - 28) * ((transitionSpeed - 0.5) / 1.5)
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 28
-                            height: 28
-                            radius: 14
-                            color: "#ffffff"
-                            border.color: "#9966ff"
-                            border.width: 2
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onPressed: update(mouse)
-                            onPositionChanged: if (pressed) update(mouse)
-                            onReleased: saveConfig()
-                            function update(mouse) {
-                                var r = Math.max(0, Math.min(1, mouse.x / parent.width))
-                                transitionSpeed = 0.5 + r * 1.5
-                            }
-                        }
-                    }
-
-                    // Presets
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 8
-
-                        Repeater {
-                            model: [
-                                { label: "Slow", value: 0.5 },
-                                { label: "Normal", value: 1.0 },
-                                { label: "Fast", value: 1.5 },
-                                { label: "Instant", value: 2.0 }
-                            ]
-
-                            Rectangle {
-                                width: 70
-                                height: 32
-                                radius: 16
-                                color: Math.abs(transitionSpeed - modelData.value) < 0.1 ? "#9966ff" : "#1a1a28"
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: modelData.label
-                                    font.pixelSize: 11
-                                    color: Math.abs(transitionSpeed - modelData.value) < 0.1 ? "#ffffff" : "#666677"
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        transitionSpeed = modelData.value
-                                        saveConfig()
-                                    }
-                                }
-                            }
-                        }
+                    EffectSlider {
+                        width: parent.width - 32
+                        label: "Density"
+                        value: asciiDensity
+                        minVal: 4.0
+                        maxVal: 16.0
+                        accentColor: "#00ff00"
+                        suffix: "x"
+                        onValueChanged: { asciiDensity = value; saveConfig() }
                     }
                 }
             }
@@ -667,117 +629,6 @@ Page {
         }
     }
 
-    // Reusable slider card component
-    component EffectSliderCard: Rectangle {
-        property string title
-        property string icon
-        property var sliders: []
-        signal save()
-
-        height: sliderColumn.height + 32
-        radius: 20
-        color: "#14141e"
-        border.color: "#1a1a2e"
-
-        Column {
-            id: sliderColumn
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: 16
-            spacing: 16
-
-            Row {
-                spacing: 10
-                Text {
-                    text: icon
-                    font.pixelSize: 20
-                }
-                Text {
-                    text: title
-                    font.pixelSize: 16
-                    font.weight: Font.Medium
-                    color: "#ffffff"
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-            }
-
-            Repeater {
-                model: sliders
-
-                Column {
-                    width: sliderColumn.width - 32
-                    spacing: 6
-
-                    Row {
-                        width: parent.width
-                        Text {
-                            text: modelData.label
-                            font.pixelSize: 13
-                            color: "#888899"
-                        }
-                        Item { width: parent.width - 80; height: 1 }
-                        Text {
-                            text: {
-                                if (modelData.suffix === "s" || modelData.suffix === "x") {
-                                    return modelData.value.toFixed(1) + (modelData.suffix || "")
-                                } else {
-                                    return (modelData.value * 100).toFixed(0) + (modelData.suffix || "%")
-                                }
-                            }
-                            font.pixelSize: 13
-                            font.weight: Font.Bold
-                            color: modelData.color
-                        }
-                    }
-
-                    Item {
-                        width: parent.width
-                        height: 32
-
-                        Rectangle {
-                            anchors.centerIn: parent
-                            width: parent.width
-                            height: 6
-                            radius: 3
-                            color: "#1a1a28"
-
-                            Rectangle {
-                                width: parent.width * ((modelData.value - modelData.min) / (modelData.max - modelData.min))
-                                height: parent.height
-                                radius: 3
-                                color: modelData.color
-                            }
-                        }
-
-                        Rectangle {
-                            x: (parent.width - 24) * ((modelData.value - modelData.min) / (modelData.max - modelData.min))
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 24
-                            height: 24
-                            radius: 12
-                            color: "#ffffff"
-                            border.color: modelData.color
-                            border.width: 2
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onPressed: update(mouse)
-                            onPositionChanged: if (pressed) update(mouse)
-                            onReleased: save()
-                            function update(mouse) {
-                                var r = Math.max(0, Math.min(1, mouse.x / parent.width))
-                                var v = modelData.min + r * (modelData.max - modelData.min)
-                                modelData.onChanged(v)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // Sub-toggle for living pixels effects
     component LivingPixelSubToggle: Rectangle {
         property string icon
@@ -831,6 +682,81 @@ Page {
             id: lpSubMouse
             anchors.fill: parent
             onClicked: toggled()
+        }
+    }
+
+    // Individual slider with proper binding
+    component EffectSlider: Column {
+        property string label
+        property real value
+        property real minVal: 0.0
+        property real maxVal: 1.0
+        property color accentColor: "#e94560"
+        property string suffix: "%"
+
+        spacing: 6
+
+        Row {
+            width: parent.width
+            Text {
+                text: label
+                font.pixelSize: 13
+                color: "#888899"
+            }
+            Item { width: parent.width - 80; height: 1 }
+            Text {
+                text: {
+                    if (suffix === "s" || suffix === "x") {
+                        return value.toFixed(2) + suffix
+                    } else {
+                        return (value * 100).toFixed(0) + suffix
+                    }
+                }
+                font.pixelSize: 13
+                font.weight: Font.Bold
+                color: accentColor
+            }
+        }
+
+        Item {
+            width: parent.width
+            height: 32
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width
+                height: 6
+                radius: 3
+                color: "#1a1a28"
+
+                Rectangle {
+                    width: parent.width * ((value - minVal) / (maxVal - minVal))
+                    height: parent.height
+                    radius: 3
+                    color: accentColor
+                }
+            }
+
+            Rectangle {
+                x: (parent.width - 24) * ((value - minVal) / (maxVal - minVal))
+                anchors.verticalCenter: parent.verticalCenter
+                width: 24
+                height: 24
+                radius: 12
+                color: "#ffffff"
+                border.color: accentColor
+                border.width: 2
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onPressed: updateSlider(mouse)
+                onPositionChanged: if (pressed) updateSlider(mouse)
+                function updateSlider(mouse) {
+                    var r = Math.max(0, Math.min(1, mouse.x / parent.width))
+                    value = minVal + r * (maxVal - minVal)
+                }
+            }
         }
     }
 }
