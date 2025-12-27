@@ -121,6 +121,33 @@ fn char_to_evdev(c: char) -> Option<(u32, bool)> {
 // Use our C shim FFI bindings
 use super::hwc_shim_ffi::{HwcContext, FlickDisplayInfo};
 
+/// Transform touch coordinates based on screen orientation
+/// For hwcomposer, the physical display size doesn't change, but we rotate the coordinate space
+fn transform_touch_coords(
+    x: f64,
+    y: f64,
+    orientation: crate::system::Orientation,
+    physical_width: f64,
+    physical_height: f64,
+) -> (f64, f64) {
+    use crate::system::Orientation;
+
+    match orientation {
+        Orientation::Portrait => {
+            // No transformation needed
+            (x, y)
+        }
+        Orientation::Landscape90 => {
+            // 90 degrees clockwise: (x, y) -> (screen_height - y, x)
+            (physical_height - y, x)
+        }
+        Orientation::Landscape270 => {
+            // 270 degrees clockwise: (x, y) -> (y, screen_width - x)
+            (y, physical_width - x)
+        }
+    }
+}
+
 // Re-use khronos-egl for raw EGL access
 use khronos_egl as egl;
 
@@ -614,8 +641,19 @@ fn handle_input_event(
             use smithay::utils::Point;
 
             let slot_id: i32 = event.slot().into();
-            let position = event.position_transformed(state.screen_size);
-            let touch_pos = Point::from((position.x, position.y));
+            // Get raw position (in physical display coordinates)
+            let raw_position = event.position();
+
+            // Transform coordinates based on orientation
+            let orientation = state.system.rotation_lock.get_orientation();
+            let (transformed_x, transformed_y) = transform_touch_coords(
+                raw_position.x,
+                raw_position.y,
+                orientation,
+                state.physical_display_size.w as f64,
+                state.physical_display_size.h as f64,
+            );
+            let touch_pos = Point::from((transformed_x, transformed_y));
 
             // Update last activity time for auto-lock
             state.last_activity = std::time::Instant::now();
@@ -860,8 +898,19 @@ fn handle_input_event(
             use smithay::utils::Point;
 
             let slot_id: i32 = event.slot().into();
-            let position = event.position_transformed(state.screen_size);
-            let touch_pos = Point::from((position.x, position.y));
+            // Get raw position (in physical display coordinates)
+            let raw_position = event.position();
+
+            // Transform coordinates based on orientation
+            let orientation = state.system.rotation_lock.get_orientation();
+            let (transformed_x, transformed_y) = transform_touch_coords(
+                raw_position.x,
+                raw_position.y,
+                orientation,
+                state.physical_display_size.w as f64,
+                state.physical_display_size.h as f64,
+            );
+            let touch_pos = Point::from((transformed_x, transformed_y));
 
             // Update tracked touch position
             state.last_touch_pos.insert(slot_id, touch_pos);
@@ -1320,8 +1369,16 @@ fn handle_input_event(
                                             info!("Airplane mode toggled");
                                         }
                                         QuickSettingsAction::RotationToggle => {
-                                            state.system.rotation_lock.toggle();
-                                            info!("Rotation lock: {}", if state.system.rotation_lock.locked { "ON" } else { "OFF" });
+                                            // Cycle orientation
+                                            state.system.rotation_lock.cycle_orientation();
+                                            let new_orientation = state.system.rotation_lock.get_orientation();
+                                            info!("Rotation: {:?}", new_orientation);
+
+                                            // Apply rotation to compositor state
+                                            state.apply_rotation(new_orientation);
+
+                                            // NOTE: The actual display transform will be applied in render_frame
+                                            // by checking state.system.rotation_lock.get_orientation()
                                         }
                                         QuickSettingsAction::TouchEffectsToggle => {
                                             // Toggle both touch effects AND living pixels
@@ -1813,6 +1870,7 @@ pub fn run() -> Result<()> {
     let width = hwc_display.width;
     let height = hwc_display.height;
     state.screen_size = (width as i32, height as i32).into();
+    state.physical_display_size = (width as i32, height as i32).into(); // Store physical size
     state.gesture_recognizer.screen_size = state.screen_size;
     state.shell.screen_size = state.screen_size;
     state.shell.quick_settings.screen_size = state.screen_size;

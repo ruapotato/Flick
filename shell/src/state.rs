@@ -143,8 +143,10 @@ pub struct Flick {
     pub viewports: HashMap<u32, Viewport>,
     pub next_viewport_id: u32,
 
-    // Screen size
+    // Screen size (logical - may be swapped when rotated)
     pub screen_size: Size<i32, Logical>,
+    // Physical display size (never changes, used for touch coordinate transformation)
+    pub physical_display_size: Size<i32, Logical>,
 
     // XWayland
     pub xwayland: Option<XWayland>,
@@ -320,6 +322,7 @@ impl Flick {
             viewports: HashMap::new(),
             next_viewport_id: 0,
             screen_size,
+            physical_display_size: screen_size, // Initially same as logical size
             xwayland: None,
             xwm: None,
             xwayland_shell_state: None,
@@ -1173,6 +1176,87 @@ impl Flick {
                 self.touch_effects.clear();
             }
         }
+    }
+
+    /// Apply rotation to the compositor
+    /// This will be called by the backend when rotation changes
+    pub fn apply_rotation(&mut self, orientation: crate::system::Orientation) {
+        use crate::system::Orientation;
+
+        tracing::info!("Applying rotation: {:?}", orientation);
+
+        // Calculate new logical screen dimensions based on orientation
+        // (physical_display_size stays unchanged - only logical size rotates)
+        let (new_width, new_height) = match orientation {
+            Orientation::Portrait => {
+                // Portrait: use physical dimensions as-is
+                (self.physical_display_size.w, self.physical_display_size.h)
+            }
+            Orientation::Landscape90 | Orientation::Landscape270 => {
+                // Landscape: swap width and height
+                (self.physical_display_size.h, self.physical_display_size.w)
+            }
+        };
+
+        tracing::info!("Screen dimensions changing from {}x{} to {}x{}",
+            self.screen_size.w, self.screen_size.h, new_width, new_height);
+
+        // Update logical screen size (apps see this size)
+        self.screen_size = Size::from((new_width, new_height));
+
+        // Update gesture recognizer with new screen size
+        self.gesture_recognizer = crate::input::GestureRecognizer::new(self.screen_size);
+
+        // Resize all app windows to fit new screen dimensions
+        for window in self.space.elements() {
+            if let Some(toplevel) = window.toplevel() {
+                let new_size: smithay::utils::Size<i32, smithay::utils::Logical> =
+                    (new_width, new_height).into();
+                toplevel.with_pending_state(|state| {
+                    state.size = Some(new_size);
+                });
+                toplevel.send_configure();
+                tracing::debug!("Resized Wayland window to {}x{}", new_width, new_height);
+            }
+
+            // Handle X11 windows
+            if let Some(x11_surface) = window.x11_surface() {
+                let new_geo = smithay::utils::Rectangle::from_loc_and_size(
+                    (0, 0),
+                    (new_width, new_height),
+                );
+                let _ = x11_surface.configure(new_geo);
+                tracing::debug!("Resized X11 window to {}x{}", new_width, new_height);
+            }
+        }
+
+        // Update Slint UI if available
+        if let Some(ref mut slint_ui) = self.shell.slint_ui {
+            slint_ui.set_size(Size::from((new_width, new_height)));
+            tracing::info!("Updated Slint UI size to {}x{}", new_width, new_height);
+        }
+
+        // Update output transform for hwcomposer
+        if let Some(output) = self.outputs.first() {
+            use smithay::utils::Transform;
+
+            let transform = match orientation {
+                Orientation::Portrait => Transform::Normal,
+                Orientation::Landscape90 => Transform::_90,
+                Orientation::Landscape270 => Transform::_270,
+            };
+
+            // Update output transform (keeps mode unchanged)
+            output.change_current_state(
+                None, // Don't change mode
+                Some(transform),
+                None, // Don't change scale
+                None, // Don't change location
+            );
+            tracing::info!("Updated output transform to {:?}", transform);
+        }
+
+        tracing::info!("Rotation applied successfully");
     }
 }
 

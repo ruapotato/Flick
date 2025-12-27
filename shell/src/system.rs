@@ -611,19 +611,50 @@ impl DoNotDisturb {
     }
 }
 
+/// Screen orientation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Orientation {
+    Portrait,
+    Landscape90,   // 90 degrees clockwise
+    Landscape270,  // 270 degrees clockwise (90 counter-clockwise)
+}
+
 /// Rotation lock
 pub struct RotationLock {
     pub locked: bool,
+    pub current_orientation: Orientation,
 }
 
 impl RotationLock {
     pub fn new() -> Self {
-        Self { locked: false }
+        Self {
+            locked: false,
+            current_orientation: Orientation::Portrait,
+        }
     }
 
     pub fn toggle(&mut self) {
         self.locked = !self.locked;
         // In a real implementation, this would prevent screen rotation
+    }
+
+    /// Get current orientation
+    pub fn get_orientation(&self) -> Orientation {
+        self.current_orientation
+    }
+
+    /// Set orientation (cycles between Portrait and Landscape90 for now)
+    pub fn set_orientation(&mut self, orientation: Orientation) {
+        self.current_orientation = orientation;
+    }
+
+    /// Cycle to next orientation (Portrait -> Landscape90 -> Portrait)
+    pub fn cycle_orientation(&mut self) {
+        self.current_orientation = match self.current_orientation {
+            Orientation::Portrait => Orientation::Landscape90,
+            Orientation::Landscape90 => Orientation::Portrait,
+            Orientation::Landscape270 => Orientation::Portrait,
+        };
     }
 }
 

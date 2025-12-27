@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=Messages
-Comment=Messages app placeholder for Flick shell
+Comment=SMS/MMS messaging with ModemManager integration
 Exec=sh -c "$HOME/Flick/apps/messages/run_messages.sh"
 Icon=mail-message
 Terminal=false
-Categories=Network;Chat;
-Keywords=messages;sms;chat;text;
+Categories=Network;Chat;Telephony;
+Keywords=messages;sms;mms;chat;text;messaging;
