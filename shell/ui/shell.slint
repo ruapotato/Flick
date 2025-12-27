@@ -1195,7 +1195,6 @@ component QuickSettingsPanel inherits Rectangle {
     in property <bool> dnd-enabled: false;
     in property <bool> flashlight-enabled: false;
     in property <bool> airplane-enabled: false;
-    in property <bool> rotation-locked: false;
     in property <bool> touch-effects-enabled: true;
     in property <string> wifi-ssid: "Home WiFi";
     in property <int> battery-percent: 85;
@@ -1210,7 +1209,6 @@ component QuickSettingsPanel inherits Rectangle {
     callback dnd-toggled();
     callback flashlight-toggled();
     callback airplane-toggled();
-    callback rotation-toggled();
     callback touch-effects-toggled();
     callback lock-pressed();
     callback settings-pressed();
@@ -1360,7 +1358,7 @@ component QuickSettingsPanel inherits Rectangle {
                     }
                 }
 
-                // Row 2: Airplane, Rotate, Lock, Ripples
+                // Row 2: Airplane, Lock, FX
                 HorizontalLayout {
                     spacing: 12px;
 
@@ -1370,14 +1368,6 @@ component QuickSettingsPanel inherits Rectangle {
                         enabled: airplane-enabled;
                         tile-color: #3a3a4a;
                         toggled => { airplane-toggled(); }
-                    }
-
-                    QuickToggle {
-                        label: "Rotate";
-                        icon: root.icons.rotate;
-                        enabled: rotation-locked;
-                        tile-color: #2a4a3a;
-                        toggled => { rotation-toggled(); }
                     }
 
                     QuickToggle {
@@ -2145,7 +2135,6 @@ export component FlickShell inherits Window {
     in property <bool> dnd-enabled: false;
     in property <bool> flashlight-enabled: false;
     in property <bool> airplane-enabled: false;
-    in property <bool> rotation-locked: false;
     in property <bool> touch-effects-enabled: true;
     in property <string> wifi-ssid: "WiFi";
     in property <int> battery-percent: 85;
@@ -2200,7 +2189,6 @@ export component FlickShell inherits Window {
     callback dnd-toggled();
     callback flashlight-toggled();
     callback airplane-toggled();
-    callback rotation-toggled();
     callback touch-effects-toggled();
     callback lock-pressed();
     callback settings-pressed();
@@ -2265,7 +2253,6 @@ export component FlickShell inherits Window {
         dnd-enabled: dnd-enabled;
         flashlight-enabled: flashlight-enabled;
         airplane-enabled: airplane-enabled;
-        rotation-locked: rotation-locked;
         touch-effects-enabled: touch-effects-enabled;
         wifi-ssid: wifi-ssid;
         battery-percent: battery-percent;
@@ -2279,7 +2266,6 @@ export component FlickShell inherits Window {
         dnd-toggled => { dnd-toggled(); }
         flashlight-toggled => { flashlight-toggled(); }
         airplane-toggled => { airplane-toggled(); }
-        rotation-toggled => { rotation-toggled(); }
         touch-effects-toggled => { touch-effects-toggled(); }
         lock-pressed => { lock-pressed(); }
         settings-pressed => { settings-pressed(); }

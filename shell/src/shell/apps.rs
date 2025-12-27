@@ -98,11 +98,11 @@ impl AppCategory {
             Self::Photos,
             Self::Music,
             Self::Audiobooks,
+            Self::Recorder,  // Next to audio apps
             Self::Files,
             Self::Calendar,
             Self::Notes,
             Self::Calculator,
-            Self::Recorder,
             Self::Terminal,
             Self::Settings,
         ]
@@ -148,7 +148,7 @@ impl AppCategory {
             Self::Calculator => (vec!["Calculator"], vec!["Math"]),
             Self::Calendar => (vec!["Calendar"], vec!["ProjectManagement"]),
             Self::Notes => (vec!["TextEditor"], vec!["WordProcessor"]),
-            Self::Recorder => (vec!["Recorder"], vec!["Audio", "AudioVideo"]),
+            Self::Recorder => (vec!["Recorder"], vec![]),  // No fallback categories - use Flick recorder
             Self::Settings => (vec!["Settings", "DesktopSettings"], vec![]),
         }
     }

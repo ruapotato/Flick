@@ -404,11 +404,6 @@ impl SlintShell {
         self.shell.set_airplane_enabled(enabled);
     }
 
-    /// Set Rotation locked state
-    pub fn set_rotation_locked(&self, locked: bool) {
-        self.shell.set_rotation_locked(locked);
-    }
-
     /// Set Touch Effects enabled state
     pub fn set_touch_effects_enabled(&self, enabled: bool) {
         self.shell.set_touch_effects_enabled(enabled);
