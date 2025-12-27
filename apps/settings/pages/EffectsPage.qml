@@ -15,6 +15,13 @@ Page {
     property real rippleDuration: 0.5
     property real asciiDensity: 8.0      // ASCII character density (4-16)
     property bool livingPixels: false    // Stars in black, eyes in white
+    // Living pixels sub-toggles
+    property bool lpStars: true          // Twinkling stars in dark areas
+    property bool lpShootingStars: true  // Occasional shooting stars
+    property bool lpFireflies: true      // Fireflies in dim areas
+    property bool lpDust: true           // Floating dust motes
+    property bool lpShimmer: true        // Shimmer in bright areas
+    property bool lpEyes: true           // Eyes in very bright areas
 
     // System event effects
     property bool volumeRippleEnabled: true      // Edge ripple on volume change
@@ -50,6 +57,13 @@ Page {
                 if (config.ripple_duration !== undefined) rippleDuration = config.ripple_duration
                 if (config.ascii_density !== undefined) asciiDensity = config.ascii_density
                 if (config.living_pixels !== undefined) livingPixels = config.living_pixels
+                // Living pixels sub-toggles
+                if (config.lp_stars !== undefined) lpStars = config.lp_stars
+                if (config.lp_shooting_stars !== undefined) lpShootingStars = config.lp_shooting_stars
+                if (config.lp_fireflies !== undefined) lpFireflies = config.lp_fireflies
+                if (config.lp_dust !== undefined) lpDust = config.lp_dust
+                if (config.lp_shimmer !== undefined) lpShimmer = config.lp_shimmer
+                if (config.lp_eyes !== undefined) lpEyes = config.lp_eyes
                 // System effects
                 if (config.volume_ripple_enabled !== undefined) volumeRippleEnabled = config.volume_ripple_enabled
                 if (config.notification_ripple_enabled !== undefined) notificationRippleEnabled = config.notification_ripple_enabled
@@ -78,6 +92,13 @@ Page {
             ripple_duration: rippleDuration,
             ascii_density: asciiDensity,
             living_pixels: livingPixels,
+            // Living pixels sub-toggles
+            lp_stars: lpStars,
+            lp_shooting_stars: lpShootingStars,
+            lp_fireflies: lpFireflies,
+            lp_dust: lpDust,
+            lp_shimmer: lpShimmer,
+            lp_eyes: lpEyes,
             // System effects
             volume_ripple_enabled: volumeRippleEnabled,
             notification_ripple_enabled: notificationRippleEnabled,
@@ -354,6 +375,121 @@ Page {
                 onToggled: {
                     livingPixels = !livingPixels
                     saveConfig()
+                }
+            }
+
+            // Living Pixels sub-toggles card
+            Rectangle {
+                width: settingsColumn.width
+                height: lpSubColumn.height + 24
+                radius: 20
+                color: "#14141e"
+                border.color: "#ffaa00"
+                border.width: 1
+                visible: touchEffectsEnabled && livingPixels
+
+                Column {
+                    id: lpSubColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 12
+                    spacing: 0
+
+                    // Header
+                    Row {
+                        spacing: 8
+                        leftPadding: 4
+                        bottomPadding: 8
+                        Text {
+                            text: "✨"
+                            font.pixelSize: 14
+                        }
+                        Text {
+                            text: "Effect Types"
+                            font.pixelSize: 13
+                            color: "#888899"
+                        }
+                    }
+
+                    // Sub-toggles in a grid
+                    Grid {
+                        width: parent.width
+                        columns: 2
+                        spacing: 8
+
+                        // Stars
+                        LivingPixelSubToggle {
+                            width: (lpSubColumn.width - 8) / 2
+                            icon: "⭐"
+                            label: "Stars"
+                            checked: lpStars
+                            onToggled: {
+                                lpStars = !lpStars
+                                saveConfig()
+                            }
+                        }
+
+                        // Shooting Stars
+                        LivingPixelSubToggle {
+                            width: (lpSubColumn.width - 8) / 2
+                            icon: "💫"
+                            label: "Shooting"
+                            checked: lpShootingStars
+                            onToggled: {
+                                lpShootingStars = !lpShootingStars
+                                saveConfig()
+                            }
+                        }
+
+                        // Fireflies
+                        LivingPixelSubToggle {
+                            width: (lpSubColumn.width - 8) / 2
+                            icon: "🔥"
+                            label: "Fireflies"
+                            checked: lpFireflies
+                            onToggled: {
+                                lpFireflies = !lpFireflies
+                                saveConfig()
+                            }
+                        }
+
+                        // Dust
+                        LivingPixelSubToggle {
+                            width: (lpSubColumn.width - 8) / 2
+                            icon: "🌫️"
+                            label: "Dust"
+                            checked: lpDust
+                            onToggled: {
+                                lpDust = !lpDust
+                                saveConfig()
+                            }
+                        }
+
+                        // Shimmer
+                        LivingPixelSubToggle {
+                            width: (lpSubColumn.width - 8) / 2
+                            icon: "✨"
+                            label: "Shimmer"
+                            checked: lpShimmer
+                            onToggled: {
+                                lpShimmer = !lpShimmer
+                                saveConfig()
+                            }
+                        }
+
+                        // Eyes
+                        LivingPixelSubToggle {
+                            width: (lpSubColumn.width - 8) / 2
+                            icon: "👁️"
+                            label: "Eyes"
+                            checked: lpEyes
+                            onToggled: {
+                                lpEyes = !lpEyes
+                                saveConfig()
+                            }
+                        }
+                    }
                 }
             }
 
@@ -812,6 +948,62 @@ Page {
                     }
                 }
             }
+        }
+    }
+
+    // Sub-toggle for living pixels effects
+    component LivingPixelSubToggle: Rectangle {
+        property string icon
+        property string label
+        property bool checked
+        signal toggled()
+
+        height: 48
+        radius: 12
+        color: lpSubMouse.pressed ? "#2a2a3e" : (checked ? "#2a2a38" : "#1a1a28")
+        border.color: checked ? "#ffaa00" : "#2a2a3e"
+        border.width: checked ? 1 : 0
+
+        Behavior on color { ColorAnimation { duration: 150 } }
+
+        Row {
+            anchors.centerIn: parent
+            spacing: 8
+
+            Text {
+                text: icon
+                font.pixelSize: 18
+                opacity: checked ? 1.0 : 0.5
+            }
+
+            Text {
+                text: label
+                font.pixelSize: 13
+                color: checked ? "#ffffff" : "#666677"
+            }
+
+            // Small check indicator
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 18
+                height: 18
+                radius: 9
+                color: checked ? "#ffaa00" : "#2a2a3e"
+                visible: checked
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "✓"
+                    font.pixelSize: 11
+                    color: "#000000"
+                }
+            }
+        }
+
+        MouseArea {
+            id: lpSubMouse
+            anchors.fill: parent
+            onClicked: toggled()
         }
     }
 }

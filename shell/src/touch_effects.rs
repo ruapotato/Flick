@@ -43,7 +43,14 @@ pub struct EffectConfig {
     pub ripple_strength: f32,   // Distortion strength (0.0 - 0.50)
     pub ripple_duration: f32,   // Duration in seconds (0.2 - 1.0)
     pub ascii_density: f32,     // ASCII character density (4.0 - 16.0, lower = larger chars)
-    pub living_pixels: bool,    // Enable living pixels (stars in black, eyes in white)
+    pub living_pixels: bool,    // Enable living pixels master toggle
+    // Living pixels sub-toggles
+    pub lp_stars: bool,         // Twinkling stars in dark areas
+    pub lp_shooting_stars: bool, // Occasional shooting stars
+    pub lp_fireflies: bool,     // Fireflies in dim areas
+    pub lp_dust: bool,          // Floating dust motes in mid-tones
+    pub lp_shimmer: bool,       // Shimmer in bright areas
+    pub lp_eyes: bool,          // Eyes in very bright areas
 }
 
 impl Default for EffectConfig {
@@ -57,6 +64,12 @@ impl Default for EffectConfig {
             ripple_duration: 0.5,    // 0.5 seconds
             ascii_density: 8.0,      // Medium density
             living_pixels: false,    // Disabled by default
+            lp_stars: true,
+            lp_shooting_stars: true,
+            lp_fireflies: true,
+            lp_dust: true,
+            lp_shimmer: true,
+            lp_eyes: true,
         }
     }
 }
@@ -123,6 +136,24 @@ impl EffectConfig {
                     living_pixels: json.get("living_pixels")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false),
+                    lp_stars: json.get("lp_stars")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true),
+                    lp_shooting_stars: json.get("lp_shooting_stars")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true),
+                    lp_fireflies: json.get("lp_fireflies")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true),
+                    lp_dust: json.get("lp_dust")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true),
+                    lp_shimmer: json.get("lp_shimmer")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true),
+                    lp_eyes: json.get("lp_eyes")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true),
                 };
             }
         }
@@ -237,6 +268,11 @@ pub struct TouchEffectManager {
     effects: Vec<TouchEffect>,
     config: EffectConfig,
     config_check_counter: u32,
+    /// Last touch position for eye tracking (screen coordinates)
+    last_touch_x: f64,
+    last_touch_y: f64,
+    /// When the last touch occurred
+    last_touch_time: Instant,
 }
 
 impl Default for TouchEffectManager {
@@ -251,11 +287,18 @@ impl TouchEffectManager {
             effects: Vec::new(),
             config: EffectConfig::load(),
             config_check_counter: 0,
+            last_touch_x: 0.0,
+            last_touch_y: 0.0,
+            last_touch_time: Instant::now(),
         }
     }
 
     /// Add a new touch (finger down) - creates fisheye effect
     pub fn add_touch(&mut self, x: f64, y: f64, touch_id: u64) {
+        // Track last touch for eye behavior
+        self.last_touch_x = x;
+        self.last_touch_y = y;
+        self.last_touch_time = Instant::now();
         // Remove any existing effect for this touch
         self.effects.retain(|e| e.touch_id != touch_id);
         self.effects.push(TouchEffect::new_fisheye(x, y, touch_id));
@@ -263,6 +306,10 @@ impl TouchEffectManager {
 
     /// Update touch position (finger move)
     pub fn update_touch(&mut self, x: f64, y: f64, touch_id: u64) {
+        // Track last touch for eye behavior
+        self.last_touch_x = x;
+        self.last_touch_y = y;
+        self.last_touch_time = Instant::now();
         if let Some(effect) = self.effects.iter_mut().find(|e| e.touch_id == touch_id) {
             effect.update_position(x, y);
         }
@@ -317,6 +364,20 @@ impl TouchEffectManager {
         data.living_pixels = if self.config.living_pixels { 1 } else { 0 };
         data.time = time;
 
+        // Pack sub-toggles into flags: bit0=stars, bit1=shooting, bit2=fireflies, bit3=dust, bit4=shimmer, bit5=eyes
+        data.lp_flags = 0;
+        if self.config.lp_stars { data.lp_flags |= 1; }
+        if self.config.lp_shooting_stars { data.lp_flags |= 2; }
+        if self.config.lp_fireflies { data.lp_flags |= 4; }
+        if self.config.lp_dust { data.lp_flags |= 8; }
+        if self.config.lp_shimmer { data.lp_flags |= 16; }
+        if self.config.lp_eyes { data.lp_flags |= 32; }
+
+        // Last touch position for eye tracking
+        data.last_touch_x = (self.last_touch_x / screen_width) as f32;
+        data.last_touch_y = (self.last_touch_y / screen_height) as f32;
+        data.time_since_touch = self.last_touch_time.elapsed().as_secs_f32();
+
         for (i, effect) in self.effects.iter().take(MAX_TOUCH_EFFECTS).enumerate() {
             let (x, y, radius, strength, type_flag) = effect.get_shader_params(screen_width, screen_height, &self.config);
             data.positions[i * 2] = x;
@@ -349,6 +410,13 @@ pub struct TouchEffectShaderData {
     pub living_pixels: i32,
     /// Time in seconds for animations
     pub time: f32,
+    /// Living pixels sub-toggles packed: bit0=stars, bit1=shooting, bit2=fireflies, bit3=dust, bit4=shimmer, bit5=eyes
+    pub lp_flags: i32,
+    /// Last touch position (normalized 0-1), for eyes to look at
+    pub last_touch_x: f32,
+    pub last_touch_y: f32,
+    /// Time since last touch (seconds), for eye sleepiness
+    pub time_since_touch: f32,
 }
 
 impl Default for TouchEffectShaderData {
@@ -361,6 +429,10 @@ impl Default for TouchEffectShaderData {
             ascii_density: 8.0,
             living_pixels: 0,
             time: 0.0,
+            lp_flags: 0x3F, // All enabled by default
+            last_touch_x: 0.5,
+            last_touch_y: 0.5,
+            time_since_touch: 999.0,
         }
     }
 }

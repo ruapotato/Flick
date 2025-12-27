@@ -3116,6 +3116,10 @@ mod gl {
     static mut DISTORT_UNIFORM_DENSITY: i32 = -1;
     static mut DISTORT_UNIFORM_LIVING: i32 = -1;
     static mut DISTORT_UNIFORM_TIME: i32 = -1;
+    static mut DISTORT_UNIFORM_LP_FLAGS: i32 = -1;
+    static mut DISTORT_UNIFORM_TOUCH_X: i32 = -1;
+    static mut DISTORT_UNIFORM_TOUCH_Y: i32 = -1;
+    static mut DISTORT_UNIFORM_TOUCH_TIME: i32 = -1;
 
     // Time tracking for animated effects
     pub static mut EFFECT_START_TIME: Option<std::time::Instant> = None;
@@ -3192,6 +3196,10 @@ mod gl {
         uniform float u_density;
         uniform int u_living;
         uniform float u_time;
+        uniform int u_lp_flags;     // Sub-toggles: bit0=stars, bit1=shooting, bit2=fireflies, bit3=dust, bit4=shimmer, bit5=eyes
+        uniform float u_touch_x;    // Last touch X (normalized 0-1)
+        uniform float u_touch_y;    // Last touch Y (normalized 0-1)
+        uniform float u_touch_time; // Seconds since last touch
 
         float hash(vec2 p) {
             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -3307,67 +3315,80 @@ mod gl {
         }
 
         // Living pixels: the screen comes alive with effects based on brightness
+        // Uses u_lp_flags for sub-toggles: bit0=stars, bit1=shooting, bit2=fireflies, bit3=dust, bit4=shimmer, bit5=eyes
+        // Uses u_touch_x, u_touch_y, u_touch_time for eye behavior
         vec3 applyLivingPixels(vec3 color, vec2 uv, float time) {
             float lum = dot(color, vec3(0.299, 0.587, 0.114));
+            int flags = u_lp_flags;
+            bool doStars = (flags / 1) - (flags / 2) * 2 == 1;
+            bool doShooting = (flags / 2) - (flags / 4) * 2 == 1;
+            bool doFireflies = (flags / 4) - (flags / 8) * 2 == 1;
+            bool doDust = (flags / 8) - (flags / 16) * 2 == 1;
+            bool doShimmer = (flags / 16) - (flags / 32) * 2 == 1;
+            bool doEyes = (flags / 32) - (flags / 64) * 2 == 1;
 
             // === DARK AREAS (lum < 0.15): Night sky with stars ===
-            if (lum < 0.15) {
-                float darkIntensity = 1.0 - lum / 0.15; // Stronger in darker areas
+            if (lum < 0.15 && doStars) {
+                float darkIntensity = 1.0 - lum / 0.15;
 
-                // Layer 1: Dense small stars
+                // Layer 1: Dense small stars - MORE VISIBLE TWINKLE
                 vec2 starGrid1 = uv * 300.0;
                 vec2 starCell1 = floor(starGrid1);
                 vec2 starUV1 = fract(starGrid1);
                 float starRand1 = hash(starCell1);
 
-                if (starRand1 > 0.88) {
+                if (starRand1 > 0.85) {
                     float phase = hash2(starCell1) * 6.28;
-                    float speed = 0.5 + hash(starCell1 * 1.3) * 1.5;
-                    float twinkle = pow(sin(time * speed + phase) * 0.5 + 0.5, 4.0);
+                    float speed = 1.0 + hash(starCell1 * 1.3) * 2.0;
+                    // Much more visible twinkle - oscillate between dim and bright
+                    float twinkleBase = sin(time * speed + phase);
+                    float twinkle = 0.3 + 0.7 * pow(max(0.0, twinkleBase), 2.0);
                     float dist = length(starUV1 - 0.5);
-                    float star = smoothstep(0.2, 0.0, dist) * twinkle;
+                    float star = smoothstep(0.25, 0.0, dist) * twinkle;
                     vec3 starColor = mix(vec3(0.7, 0.8, 1.0), vec3(1.0, 0.9, 0.7), hash(starCell1 * 2.1));
-                    color += starColor * star * 0.6 * darkIntensity;
+                    color += starColor * star * 0.8 * darkIntensity;
                 }
 
-                // Layer 2: Bright feature stars with cross sparkle
-                vec2 starGrid2 = uv * 80.0;
+                // Layer 2: Bright feature stars with cross sparkle - STRONGER
+                vec2 starGrid2 = uv * 60.0;
                 vec2 starCell2 = floor(starGrid2);
                 vec2 starUV2 = fract(starGrid2);
                 float starRand2 = hash(starCell2 + 50.0);
 
-                if (starRand2 > 0.94) {
+                if (starRand2 > 0.92) {
                     float phase = hash2(starCell2) * 6.28;
-                    float speed = 0.3 + hash(starCell2 * 1.7) * 0.5;
-                    float twinkle = pow(sin(time * speed + phase) * 0.5 + 0.5, 2.0);
+                    float speed = 0.5 + hash(starCell2 * 1.7) * 1.0;
+                    // Stronger twinkle with full on/off
+                    float twinkleRaw = sin(time * speed + phase);
+                    float twinkle = 0.2 + 0.8 * max(0.0, twinkleRaw);
                     float dist = length(starUV2 - 0.5);
-                    float star = smoothstep(0.15, 0.0, dist);
-                    // Cross sparkle
-                    float cross = max(
-                        smoothstep(0.08, 0.0, abs(starUV2.x - 0.5)),
-                        smoothstep(0.08, 0.0, abs(starUV2.y - 0.5))
-                    ) * smoothstep(0.3, 0.05, dist);
-                    float brightness = (star + cross * 0.7) * twinkle;
-                    // Colored stars: blue, white, yellow, orange
+                    float star = smoothstep(0.18, 0.0, dist);
+                    // Brighter cross sparkle
+                    float crossX = smoothstep(0.12, 0.0, abs(starUV2.x - 0.5)) * smoothstep(0.4, 0.1, dist);
+                    float crossY = smoothstep(0.12, 0.0, abs(starUV2.y - 0.5)) * smoothstep(0.4, 0.1, dist);
+                    float cross = max(crossX, crossY);
+                    float brightness = (star + cross * 0.8) * twinkle;
                     vec3 starColor;
                     float colorPick = hash(starCell2 * 3.3);
-                    if (colorPick < 0.3) starColor = vec3(0.6, 0.7, 1.0); // Blue
-                    else if (colorPick < 0.6) starColor = vec3(1.0, 1.0, 0.95); // White
-                    else if (colorPick < 0.85) starColor = vec3(1.0, 0.95, 0.7); // Yellow
-                    else starColor = vec3(1.0, 0.7, 0.5); // Orange giant
-                    color += starColor * brightness * darkIntensity;
+                    if (colorPick < 0.3) starColor = vec3(0.6, 0.8, 1.0);
+                    else if (colorPick < 0.6) starColor = vec3(1.0, 1.0, 0.98);
+                    else if (colorPick < 0.85) starColor = vec3(1.0, 0.95, 0.7);
+                    else starColor = vec3(1.0, 0.6, 0.4);
+                    color += starColor * brightness * 1.2 * darkIntensity;
                 }
+            }
 
-                // Shooting stars (rare, fast)
+            // Shooting stars (dark areas only)
+            if (lum < 0.15 && doShooting) {
+                float darkIntensity = 1.0 - lum / 0.15;
                 float shootTime = time * 0.5;
-                float shootPhase = floor(shootTime / 3.0); // New shooting star every 3 seconds
-                float shootProgress = fract(shootTime / 3.0) * 3.0; // 0-3 seconds
-                if (shootProgress < 0.5) { // Only visible for 0.5 seconds
+                float shootPhase = floor(shootTime / 3.0);
+                float shootProgress = fract(shootTime / 3.0) * 3.0;
+                if (shootProgress < 0.5) {
                     vec2 shootStart = vec2(hash(vec2(shootPhase, 0.0)), hash(vec2(shootPhase, 1.0))) * 0.6 + 0.2;
                     vec2 shootDir = normalize(vec2(0.7, -0.5));
                     vec2 shootPos = shootStart + shootDir * shootProgress * 0.4;
                     float shootDist = length(uv - shootPos);
-                    // Trail
                     vec2 toPoint = uv - shootPos;
                     float alongTrail = dot(toPoint, -shootDir);
                     float perpDist = length(toPoint - alongTrail * (-shootDir));
@@ -3375,36 +3396,28 @@ mod gl {
                         float trailBright = (1.0 - alongTrail / 0.08) * (1.0 - perpDist / 0.003);
                         color += vec3(1.0, 0.95, 0.8) * trailBright * 2.0 * darkIntensity;
                     }
-                    // Head
                     if (shootDist < 0.008) {
                         color += vec3(1.0, 1.0, 0.9) * (1.0 - shootDist / 0.008) * 2.0 * darkIntensity;
                     }
                 }
             }
 
-            // === DIM AREAS (0.05 < lum < 0.25): Fireflies ===
-            if (lum > 0.05 && lum < 0.25) {
+            // === DIM AREAS: Fireflies ===
+            if (lum > 0.05 && lum < 0.25 && doFireflies) {
                 float fireflyIntensity = 1.0 - abs(lum - 0.15) / 0.10;
                 fireflyIntensity = max(0.0, fireflyIntensity);
-
                 vec2 ffGrid = uv * 40.0;
                 vec2 ffCell = floor(ffGrid);
                 float ffRand = hash(ffCell + 200.0);
-
                 if (ffRand > 0.92) {
-                    // Firefly position drifts slowly
                     float driftX = sin(time * 0.5 + hash(ffCell) * 6.28) * 0.3;
                     float driftY = cos(time * 0.4 + hash2(ffCell) * 6.28) * 0.3;
                     vec2 ffPos = vec2(0.5 + driftX, 0.5 + driftY);
                     vec2 ffUV = fract(ffGrid);
                     float ffDist = length(ffUV - ffPos);
-
-                    // Glow pattern - slow pulse
                     float glowPhase = hash(ffCell * 1.5) * 6.28;
                     float glow = sin(time * 1.5 + glowPhase);
-                    glow = glow * 0.5 + 0.5;
-                    glow = pow(glow, 3.0); // Sharp on/off
-
+                    glow = pow(max(0.0, glow * 0.5 + 0.5), 3.0);
                     if (ffDist < 0.15) {
                         float brightness = smoothstep(0.15, 0.0, ffDist) * glow;
                         vec3 fireflyColor = mix(vec3(0.5, 1.0, 0.3), vec3(0.9, 1.0, 0.2), hash(ffCell * 2.2));
@@ -3413,22 +3426,18 @@ mod gl {
                 }
             }
 
-            // === MID TONES (0.2 < lum < 0.7): Floating dust motes ===
-            if (lum > 0.2 && lum < 0.7) {
+            // === MID TONES: Floating dust motes ===
+            if (lum > 0.2 && lum < 0.7 && doDust) {
                 float dustIntensity = 1.0 - abs(lum - 0.45) / 0.25;
                 dustIntensity = max(0.0, dustIntensity) * 0.3;
-
                 vec2 dustGrid = uv * 150.0;
                 vec2 dustCell = floor(dustGrid);
                 float dustRand = hash(dustCell + 300.0);
-
                 if (dustRand > 0.95) {
-                    // Dust drifts upward slowly
                     float driftY = fract(time * 0.1 + hash(dustCell));
                     vec2 dustPos = vec2(0.5, fract(0.5 + driftY));
                     vec2 dustUV = fract(dustGrid);
                     float dustDist = length(dustUV - dustPos);
-
                     if (dustDist < 0.1) {
                         float brightness = smoothstep(0.1, 0.0, dustDist);
                         color += vec3(1.0, 1.0, 0.95) * brightness * dustIntensity;
@@ -3436,19 +3445,16 @@ mod gl {
                 }
             }
 
-            // === BRIGHT AREAS (lum > 0.75): Shimmer and sparkle ===
-            if (lum > 0.75) {
+            // === BRIGHT AREAS: Shimmer ===
+            if (lum > 0.75 && doShimmer) {
                 float brightIntensity = (lum - 0.75) / 0.25;
-
                 vec2 shimmerGrid = uv * 200.0;
                 vec2 shimmerCell = floor(shimmerGrid);
                 float shimmerRand = hash(shimmerCell + 400.0);
-
                 if (shimmerRand > 0.9) {
                     float phase = hash2(shimmerCell) * 6.28;
                     float shimmer = sin(time * 3.0 + phase);
-                    shimmer = pow(max(0.0, shimmer), 8.0); // Brief sparkles
-
+                    shimmer = pow(max(0.0, shimmer), 8.0);
                     vec2 shimmerUV = fract(shimmerGrid);
                     float dist = length(shimmerUV - 0.5);
                     if (dist < 0.2) {
@@ -3458,76 +3464,136 @@ mod gl {
                 }
             }
 
-            // === VERY BRIGHT (lum > 0.92): Blinking eyes ===
-            if (lum > 0.92) {
-                vec2 eyeGrid = uv * 60.0;
+            // === VERY BRIGHT (lum > 0.80): XEYES-STYLE HUGE EYES ===
+            // Eyes fill the white space completely, like classic xeyes
+            if (lum > 0.80 && doEyes) {
+                // VERY coarse grid - just 3 cells across means HUGE eyes
+                float gridSize = 3.0;
+                vec2 eyeGrid = uv * gridSize;
                 vec2 eyeCell = floor(eyeGrid);
                 vec2 eyeUV = fract(eyeGrid);
 
-                float eyeRand = hash(eyeCell + 100.0);
-                if (eyeRand > 0.94) {
-                    // Blinking animation
+                // ALWAYS draw an eye in bright areas - no random check
+                // Eye behavior based on time since last touch
+                float touchTime = u_touch_time;
+                float sleepiness = 0.0;
+                float eyeOpen = 1.0;
+                vec2 lookDir = vec2(0.0);
+
+                // Phase 1: Look at touch (0-5 seconds)
+                if (touchTime < 5.0) {
+                    vec2 touchPos = vec2(u_touch_x, 1.0 - u_touch_y);
+                    vec2 eyeWorldPos = (eyeCell + 0.5) / gridSize;
+                    vec2 toTouch = touchPos - eyeWorldPos;
+                    // Stronger look direction for big eyes
+                    lookDir = normalize(toTouch) * min(length(toTouch) * 3.0, 0.35);
+                }
+                // Phase 2: Wander (5-15 seconds)
+                else if (touchTime < 15.0) {
+                    lookDir.x = sin(time * 0.4 + hash(eyeCell) * 6.28) * 0.25;
+                    lookDir.y = sin(time * 0.3 + hash2(eyeCell) * 6.28) * 0.2;
+                }
+                // Phase 3: Sleepy (15-25 seconds)
+                else if (touchTime < 25.0) {
+                    sleepiness = (touchTime - 15.0) / 10.0;
+                    lookDir.x = sin(time * 0.2 + hash(eyeCell) * 6.28) * 0.15 * (1.0 - sleepiness);
+                    lookDir.y = sin(time * 0.15 + hash2(eyeCell) * 6.28) * 0.1 * (1.0 - sleepiness);
+                    float blinkCycle = mod(time * 0.3 + hash2(eyeCell) * 10.0, 2.0 + sleepiness * 3.0);
+                    if (blinkCycle < 0.3 + sleepiness * 0.5) {
+                        float blinkPhase = blinkCycle / (0.3 + sleepiness * 0.5);
+                        if (blinkPhase < 0.3) eyeOpen = 1.0 - blinkPhase / 0.3;
+                        else if (blinkPhase < 0.7) eyeOpen = 0.0;
+                        else eyeOpen = (blinkPhase - 0.7) / 0.3;
+                    }
+                    eyeOpen *= (1.0 - sleepiness * 0.5);
+                }
+                // Phase 4: Closed (25+ seconds)
+                else {
+                    eyeOpen = 0.0;
+                }
+
+                // Regular blinking when awake
+                if (touchTime < 15.0) {
                     float blinkPhase = hash2(eyeCell) * 20.0;
                     float blinkCycle = mod(time * 0.2 + blinkPhase, 8.0);
-                    float eyeOpen = 0.0;
+                    if (blinkCycle > 3.0 && blinkCycle < 3.3) {
+                        if (blinkCycle < 3.15) eyeOpen *= 1.0 - (blinkCycle - 3.0) / 0.15;
+                        else eyeOpen *= (blinkCycle - 3.15) / 0.15;
+                    }
+                }
 
-                    // Eyes open for longer, with occasional slow blinks
-                    if (blinkCycle < 3.0) {
-                        eyeOpen = 1.0;
-                    } else if (blinkCycle < 3.15) {
-                        eyeOpen = 1.0 - (blinkCycle - 3.0) / 0.15; // Close
-                    } else if (blinkCycle < 3.3) {
-                        eyeOpen = (blinkCycle - 3.15) / 0.15; // Open
-                    } else if (blinkCycle < 6.0) {
-                        eyeOpen = 1.0;
+                if (eyeOpen > 0.05) {
+                    // Centered coords - eye FILLS the cell
+                    vec2 centered = (eyeUV - 0.5) * 2.0;
+                    centered.y *= 1.2; // Classic oval eye shape
+                    float eyeDist = length(centered);
+
+                    // Eye fills almost the entire cell - xeyes style
+                    float eyeShape = smoothstep(1.0, 0.85, eyeDist) * eyeOpen;
+
+                    // Sleepy droop from top
+                    if (sleepiness > 0.0 && centered.y > 0.0) {
+                        float droopAmount = centered.y * sleepiness * 2.0;
+                        eyeShape *= max(0.0, 1.0 - droopAmount);
                     }
 
-                    if (eyeOpen > 0.1) {
-                        vec2 centered = (eyeUV - 0.5) * 2.0;
+                    // LARGE iris and pupil - like xeyes
+                    vec2 pupilCenter = lookDir;
+                    float pupilDist = length(centered - pupilCenter);
 
-                        // Eye looks around!
-                        float lookX = sin(time * 0.4 + hash(eyeCell) * 6.28) * 0.15;
-                        float lookY = sin(time * 0.3 + hash2(eyeCell) * 6.28) * 0.1;
+                    // Big iris that dominates the eye
+                    float irisOuter = 0.7;
+                    float irisInner = 0.35;
+                    float iris = smoothstep(irisOuter, irisOuter - 0.1, pupilDist);
+                    float pupil = smoothstep(irisInner, irisInner - 0.1, pupilDist);
 
-                        centered.y *= 1.4; // Oval
-                        float eyeDist = length(centered);
-                        float eyeShape = smoothstep(0.75, 0.55, eyeDist) * eyeOpen;
+                    // Iris color
+                    vec3 irisColor;
+                    float irisPick = hash(eyeCell * 4.4);
+                    if (irisPick < 0.25) irisColor = vec3(0.15, 0.45, 0.25);
+                    else if (irisPick < 0.5) irisColor = vec3(0.4, 0.28, 0.12);
+                    else if (irisPick < 0.75) irisColor = vec3(0.2, 0.35, 0.6);
+                    else irisColor = vec3(0.5, 0.4, 0.2);
 
-                        // Pupil with look direction
-                        vec2 pupilCenter = vec2(lookX, lookY);
-                        float pupilDist = length(centered - pupilCenter);
-                        float pupil = smoothstep(0.35, 0.2, pupilDist);
+                    // Eye white with slight pink tint
+                    vec3 eyeWhite = vec3(0.98, 0.96, 0.97);
+                    vec3 pupilColor = vec3(0.0, 0.0, 0.0);
+                    vec3 eyeColor = eyeWhite;
 
-                        // Iris color varies
-                        vec3 irisColor;
-                        float irisPick = hash(eyeCell * 4.4);
-                        if (irisPick < 0.3) irisColor = vec3(0.3, 0.5, 0.2); // Green
-                        else if (irisPick < 0.6) irisColor = vec3(0.4, 0.3, 0.2); // Brown
-                        else if (irisPick < 0.8) irisColor = vec3(0.3, 0.4, 0.6); // Blue
-                        else irisColor = vec3(0.5, 0.4, 0.2); // Hazel
+                    // Subtle blood vessels
+                    float vessels = hash(centered * 30.0 + eyeCell) * 0.04;
+                    eyeColor.r += vessels;
 
-                        float irisDist = length(centered - pupilCenter);
-                        float iris = smoothstep(0.35, 0.25, irisDist) * (1.0 - pupil);
+                    // Iris pattern
+                    float irisAngle = atan(centered.y - pupilCenter.y, centered.x - pupilCenter.x);
+                    float irisPattern = sin(irisAngle * 16.0 + pupilDist * 6.0) * 0.15 + 0.85;
+                    vec3 irisShaded = irisColor * irisPattern;
 
-                        vec3 eyeWhite = vec3(0.95, 0.95, 0.97);
-                        vec3 pupilColor = vec3(0.05, 0.05, 0.05);
-                        vec3 eyeColor = eyeWhite;
-                        eyeColor = mix(eyeColor, irisColor, iris);
-                        eyeColor = mix(eyeColor, pupilColor, pupil);
+                    // Limbal ring (dark edge of iris)
+                    float limbalRing = smoothstep(irisOuter - 0.02, irisOuter - 0.08, pupilDist);
+                    irisShaded *= 0.6 + 0.4 * limbalRing;
 
-                        // Highlight
-                        vec2 highlightPos = pupilCenter + vec2(-0.1, 0.1);
-                        float highlight = smoothstep(0.12, 0.05, length(centered - highlightPos));
-                        eyeColor = mix(eyeColor, vec3(1.0), highlight * 0.7);
+                    eyeColor = mix(eyeColor, irisShaded, iris * (1.0 - pupil));
+                    eyeColor = mix(eyeColor, pupilColor, pupil);
 
-                        color = mix(color, eyeColor, eyeShape * 0.95);
-                    }
+                    // Big highlight - xeyes style
+                    vec2 highlight1Pos = pupilCenter + vec2(-0.2, 0.2);
+                    vec2 highlight2Pos = pupilCenter + vec2(0.15, 0.25);
+                    float highlight1 = smoothstep(0.2, 0.05, length(centered - highlight1Pos));
+                    float highlight2 = smoothstep(0.1, 0.02, length(centered - highlight2Pos));
+                    eyeColor = mix(eyeColor, vec3(1.0), highlight1 * 0.9);
+                    eyeColor = mix(eyeColor, vec3(1.0), highlight2 * 0.6);
+
+                    // Soft edge shadow
+                    float edgeShadow = smoothstep(1.0, 0.8, eyeDist);
+                    eyeColor *= 0.9 + 0.1 * edgeShadow;
+
+                    color = mix(color, eyeColor, eyeShape);
                 }
             }
 
-            // === SUBTLE GLOBAL BREATHING ===
-            // Very subtle color shift across everything
-            float breathe = sin(time * 0.5) * 0.02;
+            // Subtle global breathing
+            float breathe = sin(time * 0.5) * 0.015;
             color = color * (1.0 + breathe);
 
             return color;
@@ -3838,6 +3904,10 @@ mod gl {
             let density_uni = CString::new("u_density").unwrap();
             let living_uni = CString::new("u_living").unwrap();
             let time_uni = CString::new("u_time").unwrap();
+            let lp_flags_uni = CString::new("u_lp_flags").unwrap();
+            let touch_x_uni = CString::new("u_touch_x").unwrap();
+            let touch_y_uni = CString::new("u_touch_y").unwrap();
+            let touch_time_uni = CString::new("u_touch_time").unwrap();
 
             if let Some(f) = FN_GET_ATTRIB_LOCATION {
                 DISTORT_ATTR_POSITION = f(program, pos_name.as_ptr());
@@ -3853,12 +3923,17 @@ mod gl {
                 DISTORT_UNIFORM_DENSITY = f(program, density_uni.as_ptr());
                 DISTORT_UNIFORM_LIVING = f(program, living_uni.as_ptr());
                 DISTORT_UNIFORM_TIME = f(program, time_uni.as_ptr());
+                DISTORT_UNIFORM_LP_FLAGS = f(program, lp_flags_uni.as_ptr());
+                DISTORT_UNIFORM_TOUCH_X = f(program, touch_x_uni.as_ptr());
+                DISTORT_UNIFORM_TOUCH_Y = f(program, touch_y_uni.as_ptr());
+                DISTORT_UNIFORM_TOUCH_TIME = f(program, touch_time_uni.as_ptr());
             }
 
-            tracing::info!("Distortion shader created: program={}, positions={}, params={}, count={}, aspect={}, style={}, density={}, living={}, time={}",
+            tracing::info!("Distortion shader created: program={}, positions={}, params={}, count={}, aspect={}, style={}, density={}, living={}, time={}, lp_flags={}, touch_x={}, touch_y={}, touch_time={}",
                 DISTORT_PROGRAM, DISTORT_UNIFORM_POSITIONS, DISTORT_UNIFORM_PARAMS,
                 DISTORT_UNIFORM_COUNT, DISTORT_UNIFORM_ASPECT, DISTORT_UNIFORM_STYLE, DISTORT_UNIFORM_DENSITY,
-                DISTORT_UNIFORM_LIVING, DISTORT_UNIFORM_TIME);
+                DISTORT_UNIFORM_LIVING, DISTORT_UNIFORM_TIME,
+                DISTORT_UNIFORM_LP_FLAGS, DISTORT_UNIFORM_TOUCH_X, DISTORT_UNIFORM_TOUCH_Y, DISTORT_UNIFORM_TOUCH_TIME);
         }
 
         INITIALIZED = true;
@@ -4104,8 +4179,8 @@ mod gl {
         }
         check_error("drawArrays");
 
-        // Flush to ensure commands are sent to GPU
-        Flush();
+        // Finish to ensure GPU completes all rendering (prevents tearing on tiled GPUs)
+        Finish();
 
         // Cleanup
         if let Some(f) = FN_DISABLE { f(BLEND); }
@@ -4215,8 +4290,8 @@ mod gl {
             f(TRIANGLE_STRIP, 0, 4);
         }
 
-        // Flush
-        Flush();
+        // Finish to ensure GPU completes all rendering (prevents tearing on tiled GPUs)
+        Finish();
 
         // Cleanup
         if let Some(f) = FN_DISABLE { f(BLEND); }
@@ -4295,7 +4370,8 @@ mod gl {
             f(TRIANGLE_STRIP, 0, 4);
         }
 
-        Flush();
+        // Finish to ensure GPU completes all rendering (prevents tearing on tiled GPUs)
+        Finish();
 
         if let Some(f) = FN_DISABLE { f(BLEND); }
         // Note: Don't delete the texture - it's cached for reuse
@@ -4430,12 +4506,13 @@ mod gl {
             f(DISTORT_UNIFORM_COUNT, shader_data.count);
             f(DISTORT_UNIFORM_STYLE, shader_data.effect_style);
             f(DISTORT_UNIFORM_LIVING, shader_data.living_pixels);
+            f(DISTORT_UNIFORM_LP_FLAGS, shader_data.lp_flags);
             // Debug: log style every 60 frames
             static mut DEBUG_COUNTER: u32 = 0;
             DEBUG_COUNTER += 1;
             if DEBUG_COUNTER % 60 == 0 {
-                tracing::info!("Touch effect uniforms: style={}, living={}, time={:.2}",
-                    shader_data.effect_style, shader_data.living_pixels, shader_data.time);
+                tracing::info!("Touch effect uniforms: style={}, living={}, time={:.2}, lp_flags=0x{:02X}",
+                    shader_data.effect_style, shader_data.living_pixels, shader_data.time, shader_data.lp_flags);
             }
         }
         if let Some(f) = FN_UNIFORM1F {
@@ -4443,6 +4520,9 @@ mod gl {
             f(DISTORT_UNIFORM_ASPECT, aspect);
             f(DISTORT_UNIFORM_DENSITY, shader_data.ascii_density);
             f(DISTORT_UNIFORM_TIME, shader_data.time);
+            f(DISTORT_UNIFORM_TOUCH_X, shader_data.last_touch_x);
+            f(DISTORT_UNIFORM_TOUCH_Y, shader_data.last_touch_y);
+            f(DISTORT_UNIFORM_TOUCH_TIME, shader_data.time_since_touch);
         }
 
         // Fullscreen quad vertices
@@ -4474,8 +4554,8 @@ mod gl {
             f(TRIANGLE_STRIP, 0, 4);
         }
 
-        // Flush to send commands (non-blocking)
-        Flush();
+        // Finish to ensure GPU completes all rendering (prevents tearing on tiled GPUs)
+        Finish();
 
         // Note: Don't delete CAPTURE_TEXTURE - it's persistent and reused each frame
 
@@ -4566,9 +4646,9 @@ mod gl {
             return;
         }
 
-        // Flush to ensure all rendering to the FBO is complete before we use its texture
-        // This is critical on tiled GPUs to ensure tile resolve happens before texture read
-        Flush();
+        // Use glFinish to ensure all rendering to the FBO is complete before we use its texture
+        // glFlush wasn't enough - tiled GPUs need full sync to avoid diagonal tear artifacts
+        Finish();
 
         // Unbind scene FBO, switch to default framebuffer
         if let Some(f) = FN_BIND_FRAMEBUFFER { f(GL_FRAMEBUFFER, 0); }
