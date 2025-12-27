@@ -807,14 +807,23 @@ fn handle_input_event(
                     crate::shell::ShellView::Home => {
                         // Hit test to find which category was touched
                         let touched_category = state.shell.hit_test_category(touch_pos);
+                        let touched_index = state.shell.hit_test_category_index(touch_pos);
 
-                        // If touching a category, use start_category_touch for app launching
-                        if let Some(category) = touched_category {
-                            info!("Touch down on category {:?}", category);
-                            state.shell.start_category_touch(touch_pos, category);
+                        if state.shell.wiggle_mode {
+                            // In wiggle mode - track for potential drag or tap to select app
+                            if let Some(index) = touched_index {
+                                info!("Wiggle mode: touch down on index {}", index);
+                                state.shell.start_drag(index, touch_pos);
+                            }
                         } else {
-                            // Not on a category - just track for scrolling
-                            state.shell.start_home_touch(touch_pos.y, None);
+                            // Normal mode - track for app launching
+                            if let Some(category) = touched_category {
+                                info!("Touch down on category {:?}", category);
+                                state.shell.start_category_touch(touch_pos, category);
+                            } else {
+                                // Not on a category - just track for scrolling
+                                state.shell.start_home_touch(touch_pos.y, None);
+                            }
                         }
 
                         // Forward to Slint for visual feedback
@@ -981,6 +990,10 @@ fn handle_input_event(
                 // Forward to Slint UI based on current view
                 match shell_view {
                     crate::shell::ShellView::Home => {
+                        // Update drag position in wiggle mode
+                        if state.shell.wiggle_mode && state.shell.dragging_index.is_some() {
+                            state.shell.update_drag(touch_pos);
+                        }
                         // Forward to Slint for scroll/drag feedback
                         if let Some(ref slint_ui) = state.shell.slint_ui {
                             slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
@@ -1269,20 +1282,60 @@ fn handle_input_event(
                             }
                         }
 
-                        // End home touch tracking - returns pending app if it was a tap (not scroll)
-                        if let Some(exec) = state.shell.end_home_touch() {
-                            info!("Launching app from home touch: {}", exec);
-                            // Get socket name for WAYLAND_DISPLAY
-                            let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
-                            // Get text scale for app scaling
-                            let text_scale = state.shell.text_scale as f64;
-                            // Launch app as user with hwcomposer-specific settings
-                            if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(&exec, socket_name, text_scale) {
-                                error!("Failed to launch app: {}", e);
+                        if state.shell.wiggle_mode {
+                            // In wiggle mode - handle drag end or tap to pick app
+                            let dragging_index = state.shell.dragging_index;
+                            let drag_start = state.shell.drag_position;
+
+                            if let (Some(from_index), Some(start_pos), Some(end_pos)) = (dragging_index, drag_start, last_pos) {
+                                // Check if this was a drag (moved significantly) or a tap
+                                let drag_dist = ((end_pos.x - start_pos.x).powi(2) + (end_pos.y - start_pos.y).powi(2)).sqrt();
+
+                                if drag_dist > 30.0 {
+                                    // This was a drag - reorder the grid
+                                    if let Some(to_index) = state.shell.hit_test_category_index(end_pos) {
+                                        if from_index != to_index {
+                                            info!("Wiggle mode: reordering {} -> {}", from_index, to_index);
+                                            state.shell.app_manager.move_category(from_index, to_index);
+                                        }
+                                    }
+                                } else {
+                                    // This was a tap - show pick app popup
+                                    let category = state.shell.app_manager.config.grid_order.get(from_index).copied();
+                                    if let Some(cat) = category {
+                                        info!("Wiggle mode: tap on {} - showing app picker", cat.display_name());
+                                        state.shell.enter_pick_default(cat);
+                                    }
+                                }
                             }
 
-                            // Switch to App view to show the window
-                            state.shell.view = crate::shell::ShellView::App;
+                            // Clear drag state
+                            state.shell.dragging_index = None;
+                            state.shell.drag_position = None;
+
+                            // Check for wiggle done button press
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                if slint_ui.take_wiggle_done() {
+                                    info!("Wiggle mode done - exiting");
+                                    state.shell.exit_wiggle_mode();
+                                }
+                            }
+                        } else {
+                            // Normal mode - end home touch tracking, returns pending app if it was a tap (not scroll)
+                            if let Some(exec) = state.shell.end_home_touch() {
+                                info!("Launching app from home touch: {}", exec);
+                                // Get socket name for WAYLAND_DISPLAY
+                                let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
+                                // Get text scale for app scaling
+                                let text_scale = state.shell.text_scale as f64;
+                                // Launch app as user with hwcomposer-specific settings
+                                if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(&exec, socket_name, text_scale) {
+                                    error!("Failed to launch app: {}", e);
+                                }
+
+                                // Switch to App view to show the window
+                                state.shell.view = crate::shell::ShellView::App;
+                            }
                         }
                     }
                     crate::shell::ShellView::QuickSettings => {
@@ -2490,6 +2543,26 @@ fn render_frame(
                                 slint_ui.set_categories(slint_categories);
                                 slint_ui.set_show_popup(state.shell.popup_showing);
                                 slint_ui.set_wiggle_mode(state.shell.wiggle_mode);
+
+                                // Update wiggle mode animation and state
+                                if state.shell.wiggle_mode {
+                                    // Update wiggle animation time
+                                    if let Some(start) = state.shell.wiggle_start_time {
+                                        let elapsed = start.elapsed().as_secs_f32();
+                                        slint_ui.set_wiggle_time(elapsed);
+                                    }
+
+                                    // Sync drag state to Slint
+                                    let drag_idx = state.shell.dragging_index.map(|i| i as i32).unwrap_or(-1);
+                                    slint_ui.set_dragging_index(drag_idx);
+                                    if let Some(pos) = state.shell.drag_position {
+                                        slint_ui.set_drag_position(pos.x as f32, pos.y as f32);
+                                    }
+
+                                    // Check wiggle done button - handled in main loop with mutable state
+                                    // (can't mutate here since render_frame takes immutable state)
+                                }
+
                                 // Update time for status bar
                                 let now = chrono::Local::now();
                                 slint_ui.set_time(&now.format("%H:%M").to_string());

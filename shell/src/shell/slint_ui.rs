@@ -130,6 +130,8 @@ pub struct SlintShell {
     popup_can_pick: RefCell<bool>,
     /// Wiggle mode state
     wiggle_mode: RefCell<bool>,
+    /// Pending wiggle done action (set by callback, polled by compositor)
+    pending_wiggle_done: Rc<RefCell<bool>>,
     /// Pending keyboard actions (set by callbacks, polled by compositor)
     pending_keyboard_actions: Rc<RefCell<Vec<KeyboardAction>>>,
     /// Pending lock screen actions (set by callbacks, polled by compositor)
@@ -314,6 +316,14 @@ impl SlintShell {
             phone_clone.borrow_mut().push(PhoneCallAction::Reject);
         });
 
+        // Wiggle mode done callback
+        let pending_wiggle_done = Rc::new(RefCell::new(false));
+        let wiggle_done_clone = pending_wiggle_done.clone();
+        shell.on_wiggle_done(move || {
+            info!("Wiggle mode done callback");
+            *wiggle_done_clone.borrow_mut() = true;
+        });
+
         Self {
             window,
             shell,
@@ -325,6 +335,7 @@ impl SlintShell {
             popup_showing: RefCell::new(false),
             popup_can_pick: RefCell::new(true),
             wiggle_mode: RefCell::new(false),
+            pending_wiggle_done,
             pending_keyboard_actions,
             pending_lock_actions,
             pending_phone_actions,
@@ -466,6 +477,16 @@ impl SlintShell {
     /// Check if popup is showing
     pub fn is_popup_showing(&self) -> bool {
         *self.popup_showing.borrow()
+    }
+
+    /// Poll for pending wiggle done action
+    /// Returns true if the "Done" button was pressed, and clears the pending state
+    pub fn take_wiggle_done(&self) -> bool {
+        let done = *self.pending_wiggle_done.borrow();
+        if done {
+            *self.pending_wiggle_done.borrow_mut() = false;
+        }
+        done
     }
 
     /// Check if wiggle mode is active
