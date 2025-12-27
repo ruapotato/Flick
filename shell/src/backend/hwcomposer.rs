@@ -2786,8 +2786,8 @@ fn render_frame(
                                     // Set current selection and check if it's a Flick default
                                     if let Some(exec) = state.shell.app_manager.get_exec(category) {
                                         slint_ui.set_current_app_selection(&exec);
-                                        // Check if using Flick default (no custom selection set)
-                                        let is_flick_default = state.shell.app_manager.config.get_selected(category).is_none();
+                                        // Check if using Flick default by looking at the exec path
+                                        let is_flick_default = exec.contains("/Flick/apps/");
                                         slint_ui.set_using_flick_default(is_flick_default);
                                     } else {
                                         slint_ui.set_using_flick_default(true);

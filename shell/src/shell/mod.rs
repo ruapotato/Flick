@@ -1478,8 +1478,13 @@ impl Shell {
     pub fn select_default_app(&mut self, exec: &str) {
         if let Some(category) = self.popup_category {
             if exec == "flick-default" {
-                // Clear the custom selection to revert to Flick default
-                self.app_manager.clear_category_app(category);
+                // Set to the Flick native app path
+                let flick_exec = format!(
+                    r#"sh -c "$HOME/Flick/apps/{}/run_{}.sh""#,
+                    category.display_name().to_lowercase(),
+                    category.display_name().to_lowercase()
+                );
+                self.app_manager.set_category_app(category, flick_exec);
             } else {
                 self.app_manager.set_category_app(category, exec.to_string());
             }
