@@ -1377,8 +1377,14 @@ fn handle_input_event(
                                             // Apply rotation to compositor state
                                             state.apply_rotation(new_orientation);
 
-                                            // NOTE: The actual display transform will be applied in render_frame
-                                            // by checking state.system.rotation_lock.get_orientation()
+                                            // Apply GL rotation for actual display transform
+                                            use crate::system::Orientation;
+                                            let gl_rotation = match new_orientation {
+                                                Orientation::Portrait => 0,
+                                                Orientation::Landscape90 => 1,
+                                                Orientation::Landscape270 => 2,
+                                            };
+                                            unsafe { gl::set_rotation(gl_rotation); }
                                         }
                                         QuickSettingsAction::TouchEffectsToggle => {
                                             // Toggle both touch effects AND living pixels
@@ -1872,6 +1878,8 @@ pub fn run() -> Result<()> {
     state.screen_size = (width as i32, height as i32).into();
     state.physical_display_size = (width as i32, height as i32).into(); // Store physical size
     state.gesture_recognizer.screen_size = state.screen_size;
+    // Set GL physical dimensions for rotation support
+    unsafe { gl::set_physical_dimensions(width, height); }
     state.shell.screen_size = state.screen_size;
     state.shell.quick_settings.screen_size = state.screen_size;
 
@@ -3211,6 +3219,144 @@ mod gl {
     static mut SCENE_HEIGHT: u32 = 0;
     static mut SCENE_RENDERING_ACTIVE: bool = false;
 
+    // Display rotation (0 = portrait, 1 = landscape 90°, 2 = landscape 270°)
+    static mut DISPLAY_ROTATION: u8 = 0;
+
+    /// Set the display rotation mode
+    /// 0 = Portrait (no rotation)
+    /// 1 = Landscape (90° clockwise)
+    /// 2 = Landscape (270° clockwise / 90° counter-clockwise)
+    pub unsafe fn set_rotation(rotation: u8) {
+        DISPLAY_ROTATION = rotation;
+        tracing::info!("GL rotation set to: {}", rotation);
+    }
+
+    /// Get vertices for a full-screen quad with rotation applied
+    /// Returns (position + texcoord interleaved) vertices
+    fn get_rotated_vertices() -> [f32; 16] {
+        unsafe {
+            match DISPLAY_ROTATION {
+                1 => {
+                    // 90° clockwise - rotate texture coordinates
+                    // Screen stays same, but we sample texture rotated
+                    [
+                        // Position (x, y)  // TexCoord (u, v) - rotated 90° CW
+                        -1.0, -1.0,         1.0, 1.0,  // Bottom-left gets bottom-right of texture
+                         1.0, -1.0,         1.0, 0.0,  // Bottom-right gets top-right
+                        -1.0,  1.0,         0.0, 1.0,  // Top-left gets bottom-left
+                         1.0,  1.0,         0.0, 0.0,  // Top-right gets top-left
+                    ]
+                }
+                2 => {
+                    // 270° clockwise (90° counter-clockwise)
+                    [
+                        // Position (x, y)  // TexCoord (u, v) - rotated 270° CW
+                        -1.0, -1.0,         0.0, 0.0,  // Bottom-left gets top-left
+                         1.0, -1.0,         0.0, 1.0,  // Bottom-right gets bottom-left
+                        -1.0,  1.0,         1.0, 0.0,  // Top-left gets top-right
+                         1.0,  1.0,         1.0, 1.0,  // Top-right gets bottom-right
+                    ]
+                }
+                _ => {
+                    // No rotation (portrait)
+                    [
+                        // Position (x, y)  // TexCoord (u, v)
+                        -1.0, -1.0,         0.0, 1.0,  // Bottom-left
+                         1.0, -1.0,         1.0, 1.0,  // Bottom-right
+                        -1.0,  1.0,         0.0, 0.0,  // Top-left
+                         1.0,  1.0,         1.0, 0.0,  // Top-right
+                    ]
+                }
+            }
+        }
+    }
+
+    /// Get vertices for a positioned quad with rotation applied
+    /// Transforms logical coordinates to physical rotated space
+    fn get_rotated_positioned_vertices(
+        x: i32, y: i32,
+        tex_width: u32, tex_height: u32,
+        logical_width: u32, logical_height: u32,
+        physical_width: u32, physical_height: u32,
+    ) -> [f32; 16] {
+        unsafe {
+            match DISPLAY_ROTATION {
+                1 => {
+                    // 90° clockwise: logical (x,y) -> physical (ph - y - h, x)
+                    // Logical coordinate to physical rotated space
+                    let px = (physical_height as i32 - y - tex_height as i32) as f32;
+                    let py = x as f32;
+                    let pw = tex_height as f32;  // Width/height swap
+                    let ph = tex_width as f32;
+
+                    // Convert to NDC using physical dimensions
+                    let sw = physical_width as f32;
+                    let sh = physical_height as f32;
+                    let left = (px / sw) * 2.0 - 1.0;
+                    let right = ((px + pw) / sw) * 2.0 - 1.0;
+                    let bottom = (py / sh) * 2.0 - 1.0;
+                    let top = ((py + ph) / sh) * 2.0 - 1.0;
+
+                    [
+                        left,  bottom,      1.0, 1.0,
+                        right, bottom,      1.0, 0.0,
+                        left,  top,         0.0, 1.0,
+                        right, top,         0.0, 0.0,
+                    ]
+                }
+                2 => {
+                    // 270° clockwise: logical (x,y) -> physical (y, pw - x - w)
+                    let px = y as f32;
+                    let py = (physical_width as i32 - x - tex_width as i32) as f32;
+                    let pw = tex_height as f32;
+                    let ph = tex_width as f32;
+
+                    let sw = physical_width as f32;
+                    let sh = physical_height as f32;
+                    let left = (px / sw) * 2.0 - 1.0;
+                    let right = ((px + pw) / sw) * 2.0 - 1.0;
+                    let bottom = (py / sh) * 2.0 - 1.0;
+                    let top = ((py + ph) / sh) * 2.0 - 1.0;
+
+                    [
+                        left,  bottom,      0.0, 0.0,
+                        right, bottom,      0.0, 1.0,
+                        left,  top,         1.0, 0.0,
+                        right, top,         1.0, 1.0,
+                    ]
+                }
+                _ => {
+                    // No rotation - use logical dimensions directly
+                    let sw = logical_width as f32;
+                    let sh = logical_height as f32;
+                    let tw = tex_width as f32;
+                    let th = tex_height as f32;
+                    let left = (x as f32 / sw) * 2.0 - 1.0;
+                    let right = ((x as f32 + tw) / sw) * 2.0 - 1.0;
+                    let top = 1.0 - (y as f32 / sh) * 2.0;
+                    let bottom = 1.0 - ((y as f32 + th) / sh) * 2.0;
+
+                    [
+                        left,  bottom,      0.0, 1.0,
+                        right, bottom,      1.0, 1.0,
+                        left,  top,         0.0, 0.0,
+                        right, top,         1.0, 0.0,
+                    ]
+                }
+            }
+        }
+    }
+
+    /// Get physical display dimensions (stored during init)
+    static mut PHYSICAL_WIDTH: u32 = 0;
+    static mut PHYSICAL_HEIGHT: u32 = 0;
+
+    pub unsafe fn set_physical_dimensions(width: u32, height: u32) {
+        PHYSICAL_WIDTH = width;
+        PHYSICAL_HEIGHT = height;
+        tracing::info!("GL physical dimensions set: {}x{}", width, height);
+    }
+
     // FBO function pointers
     static mut FN_GEN_FRAMEBUFFERS: Option<unsafe extern "C" fn(i32, *mut u32)> = None;
     static mut FN_BIND_FRAMEBUFFER: Option<unsafe extern "C" fn(u32, u32)> = None;
@@ -4205,15 +4351,8 @@ mod gl {
         check_error("uniform1i");
 
         // Full-screen quad vertices (position + texcoord interleaved)
-        // Note: Y is flipped for texcoord because Slint renders top-down
-        #[rustfmt::skip]
-        let vertices: [f32; 16] = [
-            // Position (x, y)  // TexCoord (u, v)
-            -1.0, -1.0,         0.0, 1.0,  // Bottom-left
-             1.0, -1.0,         1.0, 1.0,  // Bottom-right
-            -1.0,  1.0,         0.0, 0.0,  // Top-left
-             1.0,  1.0,         1.0, 0.0,  // Top-right
-        ];
+        // Uses get_rotated_vertices() to support display rotation
+        let vertices = get_rotated_vertices();
 
         // Set vertex attributes
         if let Some(f) = FN_ENABLE_VERTEX_ATTRIB_ARRAY {
@@ -4394,24 +4533,32 @@ mod gl {
         if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, texture_id); }
         if let Some(f) = FN_UNIFORM1I { f(UNIFORM_TEXTURE, 0); }
 
-        // Convert screen coordinates to normalized device coordinates
-        let sw = screen_width as f32;
-        let sh = screen_height as f32;
-        let tw = tex_width as f32;
-        let th = tex_height as f32;
-
-        let left = (x as f32 / sw) * 2.0 - 1.0;
-        let right = ((x as f32 + tw) / sw) * 2.0 - 1.0;
-        let top = 1.0 - (y as f32 / sh) * 2.0;
-        let bottom = 1.0 - ((y as f32 + th) / sh) * 2.0;
-
-        #[rustfmt::skip]
-        let vertices: [f32; 16] = [
-            left,  bottom,      0.0, 1.0,
-            right, bottom,      1.0, 1.0,
-            left,  top,         0.0, 0.0,
-            right, top,         1.0, 0.0,
-        ];
+        // Get vertices with rotation support
+        // Use physical dimensions for rotated rendering
+        let (phys_w, phys_h) = (PHYSICAL_WIDTH, PHYSICAL_HEIGHT);
+        let vertices = if DISPLAY_ROTATION != 0 && phys_w > 0 && phys_h > 0 {
+            get_rotated_positioned_vertices(
+                x, y, tex_width, tex_height,
+                screen_width, screen_height,
+                phys_w, phys_h,
+            )
+        } else {
+            // No rotation - use original logic
+            let sw = screen_width as f32;
+            let sh = screen_height as f32;
+            let tw = tex_width as f32;
+            let th = tex_height as f32;
+            let left = (x as f32 / sw) * 2.0 - 1.0;
+            let right = ((x as f32 + tw) / sw) * 2.0 - 1.0;
+            let top = 1.0 - (y as f32 / sh) * 2.0;
+            let bottom = 1.0 - ((y as f32 + th) / sh) * 2.0;
+            [
+                left,  bottom,      0.0, 1.0,
+                right, bottom,      1.0, 1.0,
+                left,  top,         0.0, 0.0,
+                right, top,         1.0, 0.0,
+            ]
+        };
 
         if let Some(f) = FN_ENABLE_VERTEX_ATTRIB_ARRAY {
             f(ATTR_POSITION as u32);

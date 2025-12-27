@@ -82,6 +82,7 @@ pub enum AppCategory {
     Calculator,
     Calendar,
     Notes,
+    Recorder,
     Settings,
 }
 
@@ -101,6 +102,7 @@ impl AppCategory {
             Self::Calendar,
             Self::Notes,
             Self::Calculator,
+            Self::Recorder,
             Self::Terminal,
             Self::Settings,
         ]
@@ -123,6 +125,7 @@ impl AppCategory {
             Self::Calculator => "Calculator",
             Self::Calendar => "Calendar",
             Self::Notes => "Notes",
+            Self::Recorder => "Recorder",
             Self::Settings => "Settings",
         }
     }
@@ -135,7 +138,7 @@ impl AppCategory {
             Self::Email => (vec!["Email"], vec!["ContactManagement"]),
             Self::Messages => (vec!["InstantMessaging", "Chat"], vec!["IRCClient"]),
             Self::Phone => (vec!["Telephony"], vec![]),
-            Self::Camera => (vec!["Camera"], vec!["Photography", "Recorder"]),
+            Self::Camera => (vec!["Camera"], vec!["Photography"]),
             Self::Photos => (vec!["Photography", "Viewer"], vec!["Graphics", "2DGraphics"]),
             Self::Music => (vec!["Music", "Audio"], vec!["Player"]),
             Self::Audiobooks => (vec!["AudioBook"], vec!["Audio", "AudioVideo"]),
@@ -145,6 +148,7 @@ impl AppCategory {
             Self::Calculator => (vec!["Calculator"], vec!["Math"]),
             Self::Calendar => (vec!["Calendar"], vec!["ProjectManagement"]),
             Self::Notes => (vec!["TextEditor"], vec!["WordProcessor"]),
+            Self::Recorder => (vec!["Recorder"], vec!["Audio", "AudioVideo"]),
             Self::Settings => (vec!["Settings", "DesktopSettings"], vec![]),
         }
     }
@@ -172,6 +176,7 @@ impl AppCategory {
             Self::Calculator => [0.3, 0.3, 0.7, 1.0], // Indigo
             Self::Calendar => [0.2, 0.6, 0.9, 1.0],  // Light Blue
             Self::Notes => [0.9, 0.9, 0.3, 1.0],     // Yellow
+            Self::Recorder => [0.9, 0.27, 0.38, 1.0], // Accent red (matches Flick theme)
             Self::Settings => [0.5, 0.5, 0.6, 1.0],  // Gray-Blue
         }
     }
@@ -321,6 +326,7 @@ impl Default for AppConfig {
         selections.insert(AppCategory::Calendar, r#"sh -c "$HOME/Flick/apps/calendar/run_calendar.sh""#.to_string());
         selections.insert(AppCategory::Notes, r#"sh -c "$HOME/Flick/apps/notes/run_notes.sh""#.to_string());
         selections.insert(AppCategory::Calculator, r#"sh -c "$HOME/Flick/apps/calculator/run_calculator.sh""#.to_string());
+        selections.insert(AppCategory::Recorder, r#"sh -c "$HOME/Flick/apps/recorder/run_recorder.sh""#.to_string());
         selections.insert(AppCategory::Terminal, r#"sh -c "$HOME/Flick/apps/terminal/run_terminal.sh""#.to_string());
 
         Self {

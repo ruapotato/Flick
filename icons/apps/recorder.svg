@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" version="1.1">
+ <circle style="opacity:0.2" cx="32" cy="33" r="28"/>
+ <circle style="fill:#666f7f" cx="32" cy="32" r="28"/>
+ <!-- Microphone body -->
+ <rect style="opacity:0.2" x="26" y="16" width="12" height="22" rx="6" ry="6"/>
+ <rect style="fill:#e94560" x="26" y="15" width="12" height="22" rx="6" ry="6"/>
+ <!-- Microphone stand arc -->
+ <path style="opacity:0.2" d="M 22 33 C 22 40 26 45 32 45 C 38 45 42 40 42 33" fill="none" stroke="#ffffff" stroke-width="3"/>
+ <path style="fill:none;stroke:#ffffff;stroke-width:3" d="M 22 32 C 22 39 26 44 32 44 C 38 44 42 39 42 32"/>
+ <!-- Stand pole -->
+ <rect style="opacity:0.2" x="30" y="44" width="4" height="8"/>
+ <rect style="fill:#ffffff" x="30" y="43" width="4" height="8"/>
+ <!-- Base -->
+ <rect style="opacity:0.2" x="25" y="51" width="14" height="3" rx="1.5"/>
+ <rect style="fill:#ffffff" x="25" y="50" width="14" height="3" rx="1.5"/>
+ <!-- Highlight -->
+ <path style="fill:#ffffff;opacity:0.1" d="M 32 4 A 28 28 0 0 0 4 32 A 28 28 0 0 0 4.0214844 32.585938 A 28 28 0 0 1 32 5 A 28 28 0 0 1 59.978516 32.414062 A 28 28 0 0 0 60 32 A 28 28 0 0 0 32 4 z"/>
+</svg>
