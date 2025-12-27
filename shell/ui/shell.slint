@@ -641,18 +641,30 @@ component PickDefaultView inherits Rectangle {
         }
 
         // Custom app list (shown when selecting custom)
-        if show-custom-list: ScrollView {
+        if show-custom-list: Flickable {
             vertical-stretch: 1;
+            viewport-height: available-apps.length * (88px * text-scale) + 20px;
 
             VerticalLayout {
                 spacing: 8px;
+                padding-bottom: 20px;
 
                 for app[i] in available-apps: Rectangle {
+                    property <string> exec-cmd: app.exec;
                     height: 80px * text-scale;
                     background: item-touch.pressed ? Theme.primary-container : (app.exec == current-selection ? Theme.primary-container : Theme.surface);
                     border-radius: 16px;
                     border-width: app.exec == current-selection ? 2px : 0px;
                     border-color: Theme.accent;
+
+                    // TouchArea first, covering entire item
+                    item-touch := TouchArea {
+                        x: 0;
+                        y: 0;
+                        width: parent.width;
+                        height: parent.height;
+                        clicked => { root.app-selected(exec-cmd); }
+                    }
 
                     HorizontalLayout {
                         padding: 20px;
@@ -684,11 +696,6 @@ component PickDefaultView inherits Rectangle {
                             horizontal-stretch: 1;
                             overflow: elide;
                         }
-                    }
-
-                    // TouchArea on top to receive all touches
-                    item-touch := TouchArea {
-                        clicked => { app-selected(app.exec); }
                     }
                 }
 
