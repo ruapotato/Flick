@@ -2372,7 +2372,10 @@ fn render_frame(
         display.height as f64,
         effect_time,
     );
-    let distortion_active = shader_data_preview.count > 0 || shader_data_preview.effect_style == 2;
+    // Living pixels needs rendering even with no touches, CRT mode always renders
+    let distortion_active = shader_data_preview.count > 0
+        || shader_data_preview.effect_style == 2
+        || shader_data_preview.living_pixels == 1;
 
     // If distortion is active, render to scene FBO instead of default framebuffer
     // This avoids the tiled GPU issue of reading from the framebuffer we're writing to
@@ -3303,79 +3306,229 @@ mod gl {
             return mix(sampleColor.rgb, asciiColor, influence);
         }
 
-        // Living pixels: twinkling stars in pure black, blinking eyes in pure white
+        // Living pixels: the screen comes alive with effects based on brightness
         vec3 applyLivingPixels(vec3 color, vec2 uv, float time) {
             float lum = dot(color, vec3(0.299, 0.587, 0.114));
 
-            // Pure black detection (stars)
-            if (lum < 0.02) {
-                // Create star grid
-                vec2 starGrid = uv * 200.0;
-                vec2 starCell = floor(starGrid);
-                vec2 starUV = fract(starGrid);
+            // === DARK AREAS (lum < 0.15): Night sky with stars ===
+            if (lum < 0.15) {
+                float darkIntensity = 1.0 - lum / 0.15; // Stronger in darker areas
 
-                float starRand = hash(starCell);
-                if (starRand > 0.92) { // ~8% chance of star
-                    // Twinkle with different phases per star
-                    float phase = hash2(starCell) * 6.28;
-                    float speed = 1.0 + hash(starCell * 1.5) * 2.0;
-                    float twinkle = sin(time * speed + phase) * 0.5 + 0.5;
-                    twinkle = pow(twinkle, 3.0); // Sharper twinkle
+                // Layer 1: Dense small stars
+                vec2 starGrid1 = uv * 300.0;
+                vec2 starCell1 = floor(starGrid1);
+                vec2 starUV1 = fract(starGrid1);
+                float starRand1 = hash(starCell1);
 
-                    // Star shape - bright center
-                    float dist = length(starUV - 0.5);
-                    float star = smoothstep(0.3, 0.0, dist);
+                if (starRand1 > 0.88) {
+                    float phase = hash2(starCell1) * 6.28;
+                    float speed = 0.5 + hash(starCell1 * 1.3) * 1.5;
+                    float twinkle = pow(sin(time * speed + phase) * 0.5 + 0.5, 4.0);
+                    float dist = length(starUV1 - 0.5);
+                    float star = smoothstep(0.2, 0.0, dist) * twinkle;
+                    vec3 starColor = mix(vec3(0.7, 0.8, 1.0), vec3(1.0, 0.9, 0.7), hash(starCell1 * 2.1));
+                    color += starColor * star * 0.6 * darkIntensity;
+                }
 
-                    // Cross pattern for sparkle
+                // Layer 2: Bright feature stars with cross sparkle
+                vec2 starGrid2 = uv * 80.0;
+                vec2 starCell2 = floor(starGrid2);
+                vec2 starUV2 = fract(starGrid2);
+                float starRand2 = hash(starCell2 + 50.0);
+
+                if (starRand2 > 0.94) {
+                    float phase = hash2(starCell2) * 6.28;
+                    float speed = 0.3 + hash(starCell2 * 1.7) * 0.5;
+                    float twinkle = pow(sin(time * speed + phase) * 0.5 + 0.5, 2.0);
+                    float dist = length(starUV2 - 0.5);
+                    float star = smoothstep(0.15, 0.0, dist);
+                    // Cross sparkle
                     float cross = max(
-                        smoothstep(0.15, 0.0, abs(starUV.x - 0.5)),
-                        smoothstep(0.15, 0.0, abs(starUV.y - 0.5))
-                    ) * smoothstep(0.4, 0.1, dist);
+                        smoothstep(0.08, 0.0, abs(starUV2.x - 0.5)),
+                        smoothstep(0.08, 0.0, abs(starUV2.y - 0.5))
+                    ) * smoothstep(0.3, 0.05, dist);
+                    float brightness = (star + cross * 0.7) * twinkle;
+                    // Colored stars: blue, white, yellow, orange
+                    vec3 starColor;
+                    float colorPick = hash(starCell2 * 3.3);
+                    if (colorPick < 0.3) starColor = vec3(0.6, 0.7, 1.0); // Blue
+                    else if (colorPick < 0.6) starColor = vec3(1.0, 1.0, 0.95); // White
+                    else if (colorPick < 0.85) starColor = vec3(1.0, 0.95, 0.7); // Yellow
+                    else starColor = vec3(1.0, 0.7, 0.5); // Orange giant
+                    color += starColor * brightness * darkIntensity;
+                }
 
-                    float brightness = (star + cross * 0.5) * twinkle;
-                    vec3 starColor = mix(vec3(0.8, 0.85, 1.0), vec3(1.0, 0.95, 0.8), starRand);
-                    color = color + starColor * brightness * 0.8;
+                // Shooting stars (rare, fast)
+                float shootTime = time * 0.5;
+                float shootPhase = floor(shootTime / 3.0); // New shooting star every 3 seconds
+                float shootProgress = fract(shootTime / 3.0) * 3.0; // 0-3 seconds
+                if (shootProgress < 0.5) { // Only visible for 0.5 seconds
+                    vec2 shootStart = vec2(hash(vec2(shootPhase, 0.0)), hash(vec2(shootPhase, 1.0))) * 0.6 + 0.2;
+                    vec2 shootDir = normalize(vec2(0.7, -0.5));
+                    vec2 shootPos = shootStart + shootDir * shootProgress * 0.4;
+                    float shootDist = length(uv - shootPos);
+                    // Trail
+                    vec2 toPoint = uv - shootPos;
+                    float alongTrail = dot(toPoint, -shootDir);
+                    float perpDist = length(toPoint - alongTrail * (-shootDir));
+                    if (alongTrail > 0.0 && alongTrail < 0.08 && perpDist < 0.003) {
+                        float trailBright = (1.0 - alongTrail / 0.08) * (1.0 - perpDist / 0.003);
+                        color += vec3(1.0, 0.95, 0.8) * trailBright * 2.0 * darkIntensity;
+                    }
+                    // Head
+                    if (shootDist < 0.008) {
+                        color += vec3(1.0, 1.0, 0.9) * (1.0 - shootDist / 0.008) * 2.0 * darkIntensity;
+                    }
                 }
             }
 
-            // Pure white detection (eyes)
-            if (lum > 0.95) {
-                vec2 eyeGrid = uv * 80.0;
+            // === DIM AREAS (0.05 < lum < 0.25): Fireflies ===
+            if (lum > 0.05 && lum < 0.25) {
+                float fireflyIntensity = 1.0 - abs(lum - 0.15) / 0.10;
+                fireflyIntensity = max(0.0, fireflyIntensity);
+
+                vec2 ffGrid = uv * 40.0;
+                vec2 ffCell = floor(ffGrid);
+                float ffRand = hash(ffCell + 200.0);
+
+                if (ffRand > 0.92) {
+                    // Firefly position drifts slowly
+                    float driftX = sin(time * 0.5 + hash(ffCell) * 6.28) * 0.3;
+                    float driftY = cos(time * 0.4 + hash2(ffCell) * 6.28) * 0.3;
+                    vec2 ffPos = vec2(0.5 + driftX, 0.5 + driftY);
+                    vec2 ffUV = fract(ffGrid);
+                    float ffDist = length(ffUV - ffPos);
+
+                    // Glow pattern - slow pulse
+                    float glowPhase = hash(ffCell * 1.5) * 6.28;
+                    float glow = sin(time * 1.5 + glowPhase);
+                    glow = glow * 0.5 + 0.5;
+                    glow = pow(glow, 3.0); // Sharp on/off
+
+                    if (ffDist < 0.15) {
+                        float brightness = smoothstep(0.15, 0.0, ffDist) * glow;
+                        vec3 fireflyColor = mix(vec3(0.5, 1.0, 0.3), vec3(0.9, 1.0, 0.2), hash(ffCell * 2.2));
+                        color += fireflyColor * brightness * 0.5 * fireflyIntensity;
+                    }
+                }
+            }
+
+            // === MID TONES (0.2 < lum < 0.7): Floating dust motes ===
+            if (lum > 0.2 && lum < 0.7) {
+                float dustIntensity = 1.0 - abs(lum - 0.45) / 0.25;
+                dustIntensity = max(0.0, dustIntensity) * 0.3;
+
+                vec2 dustGrid = uv * 150.0;
+                vec2 dustCell = floor(dustGrid);
+                float dustRand = hash(dustCell + 300.0);
+
+                if (dustRand > 0.95) {
+                    // Dust drifts upward slowly
+                    float driftY = fract(time * 0.1 + hash(dustCell));
+                    vec2 dustPos = vec2(0.5, fract(0.5 + driftY));
+                    vec2 dustUV = fract(dustGrid);
+                    float dustDist = length(dustUV - dustPos);
+
+                    if (dustDist < 0.1) {
+                        float brightness = smoothstep(0.1, 0.0, dustDist);
+                        color += vec3(1.0, 1.0, 0.95) * brightness * dustIntensity;
+                    }
+                }
+            }
+
+            // === BRIGHT AREAS (lum > 0.75): Shimmer and sparkle ===
+            if (lum > 0.75) {
+                float brightIntensity = (lum - 0.75) / 0.25;
+
+                vec2 shimmerGrid = uv * 200.0;
+                vec2 shimmerCell = floor(shimmerGrid);
+                float shimmerRand = hash(shimmerCell + 400.0);
+
+                if (shimmerRand > 0.9) {
+                    float phase = hash2(shimmerCell) * 6.28;
+                    float shimmer = sin(time * 3.0 + phase);
+                    shimmer = pow(max(0.0, shimmer), 8.0); // Brief sparkles
+
+                    vec2 shimmerUV = fract(shimmerGrid);
+                    float dist = length(shimmerUV - 0.5);
+                    if (dist < 0.2) {
+                        float spark = smoothstep(0.2, 0.0, dist) * shimmer;
+                        color += vec3(1.0, 1.0, 1.0) * spark * 0.3 * brightIntensity;
+                    }
+                }
+            }
+
+            // === VERY BRIGHT (lum > 0.92): Blinking eyes ===
+            if (lum > 0.92) {
+                vec2 eyeGrid = uv * 60.0;
                 vec2 eyeCell = floor(eyeGrid);
                 vec2 eyeUV = fract(eyeGrid);
 
                 float eyeRand = hash(eyeCell + 100.0);
-                if (eyeRand > 0.96) { // ~4% chance of eye
-                    // Blinking animation - closed most of the time, quick open
-                    float blinkPhase = hash2(eyeCell) * 10.0;
-                    float blinkCycle = mod(time * 0.3 + blinkPhase, 5.0); // 5 second cycle
+                if (eyeRand > 0.94) {
+                    // Blinking animation
+                    float blinkPhase = hash2(eyeCell) * 20.0;
+                    float blinkCycle = mod(time * 0.2 + blinkPhase, 8.0);
                     float eyeOpen = 0.0;
-                    if (blinkCycle < 0.3) {
-                        // Quick blink open and close
-                        eyeOpen = sin(blinkCycle / 0.3 * 3.14159);
+
+                    // Eyes open for longer, with occasional slow blinks
+                    if (blinkCycle < 3.0) {
+                        eyeOpen = 1.0;
+                    } else if (blinkCycle < 3.15) {
+                        eyeOpen = 1.0 - (blinkCycle - 3.0) / 0.15; // Close
+                    } else if (blinkCycle < 3.3) {
+                        eyeOpen = (blinkCycle - 3.15) / 0.15; // Open
+                    } else if (blinkCycle < 6.0) {
+                        eyeOpen = 1.0;
                     }
 
                     if (eyeOpen > 0.1) {
-                        // Draw eye shape - oval with pupil
                         vec2 centered = (eyeUV - 0.5) * 2.0;
-                        centered.y *= 1.5; // Oval shape
 
+                        // Eye looks around!
+                        float lookX = sin(time * 0.4 + hash(eyeCell) * 6.28) * 0.15;
+                        float lookY = sin(time * 0.3 + hash2(eyeCell) * 6.28) * 0.1;
+
+                        centered.y *= 1.4; // Oval
                         float eyeDist = length(centered);
-                        float eyeShape = smoothstep(0.8, 0.6, eyeDist) * eyeOpen;
+                        float eyeShape = smoothstep(0.75, 0.55, eyeDist) * eyeOpen;
 
-                        // Pupil
-                        float pupilDist = length(centered);
-                        float pupil = smoothstep(0.3, 0.2, pupilDist);
+                        // Pupil with look direction
+                        vec2 pupilCenter = vec2(lookX, lookY);
+                        float pupilDist = length(centered - pupilCenter);
+                        float pupil = smoothstep(0.35, 0.2, pupilDist);
 
-                        // Eye color
-                        vec3 eyeWhite = vec3(0.95, 0.95, 0.98);
-                        vec3 pupilColor = vec3(0.1, 0.1, 0.1);
-                        vec3 eyeColor = mix(eyeWhite, pupilColor, pupil);
+                        // Iris color varies
+                        vec3 irisColor;
+                        float irisPick = hash(eyeCell * 4.4);
+                        if (irisPick < 0.3) irisColor = vec3(0.3, 0.5, 0.2); // Green
+                        else if (irisPick < 0.6) irisColor = vec3(0.4, 0.3, 0.2); // Brown
+                        else if (irisPick < 0.8) irisColor = vec3(0.3, 0.4, 0.6); // Blue
+                        else irisColor = vec3(0.5, 0.4, 0.2); // Hazel
 
-                        color = mix(color, eyeColor, eyeShape * 0.9);
+                        float irisDist = length(centered - pupilCenter);
+                        float iris = smoothstep(0.35, 0.25, irisDist) * (1.0 - pupil);
+
+                        vec3 eyeWhite = vec3(0.95, 0.95, 0.97);
+                        vec3 pupilColor = vec3(0.05, 0.05, 0.05);
+                        vec3 eyeColor = eyeWhite;
+                        eyeColor = mix(eyeColor, irisColor, iris);
+                        eyeColor = mix(eyeColor, pupilColor, pupil);
+
+                        // Highlight
+                        vec2 highlightPos = pupilCenter + vec2(-0.1, 0.1);
+                        float highlight = smoothstep(0.12, 0.05, length(centered - highlightPos));
+                        eyeColor = mix(eyeColor, vec3(1.0), highlight * 0.7);
+
+                        color = mix(color, eyeColor, eyeShape * 0.95);
                     }
                 }
             }
+
+            // === SUBTLE GLOBAL BREATHING ===
+            // Very subtle color shift across everything
+            float breathe = sin(time * 0.5) * 0.02;
+            color = color * (1.0 + breathe);
 
             return color;
         }
@@ -4201,9 +4354,9 @@ mod gl {
             return;
         }
 
-        // For ASCII mode (style 2), always render even with no touches
+        // For CRT mode (style 2) or living pixels, always render even with no touches
         // For other modes, only render when there are active effects
-        if shader_data.count == 0 && shader_data.effect_style != 2 {
+        if shader_data.count == 0 && shader_data.effect_style != 2 && shader_data.living_pixels != 1 {
             return;
         }
 
