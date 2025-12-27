@@ -7,13 +7,14 @@ Page {
 
     // Touch effect settings
     property bool touchEffectsEnabled: true
-    property int touchEffectStyle: 0     // 0=water, 1=snow, 2=ascii
+    property int touchEffectStyle: 0     // 0=water, 1=snow, 2=CRT, 3=terminal_ripple
     property real fisheyeSize: 0.16
     property real fisheyeStrength: 0.13
     property real rippleSize: 0.30
     property real rippleStrength: 0.07
     property real rippleDuration: 0.5
     property real asciiDensity: 8.0      // ASCII character density (4-16)
+    property bool livingPixels: false    // Stars in black, eyes in white
 
     // System event effects
     property bool volumeRippleEnabled: true      // Edge ripple on volume change
@@ -48,6 +49,7 @@ Page {
                 if (config.ripple_strength !== undefined) rippleStrength = config.ripple_strength
                 if (config.ripple_duration !== undefined) rippleDuration = config.ripple_duration
                 if (config.ascii_density !== undefined) asciiDensity = config.ascii_density
+                if (config.living_pixels !== undefined) livingPixels = config.living_pixels
                 // System effects
                 if (config.volume_ripple_enabled !== undefined) volumeRippleEnabled = config.volume_ripple_enabled
                 if (config.notification_ripple_enabled !== undefined) notificationRippleEnabled = config.notification_ripple_enabled
@@ -75,6 +77,7 @@ Page {
             ripple_strength: rippleStrength,
             ripple_duration: rippleDuration,
             ascii_density: asciiDensity,
+            living_pixels: livingPixels,
             // System effects
             volume_ripple_enabled: volumeRippleEnabled,
             notification_ripple_enabled: notificationRippleEnabled,
@@ -224,9 +227,9 @@ Page {
                 width: settingsColumn.width
                 title: "Touch Distortion"
                 subtitle: "Fisheye lens & ripple effects"
-                icon: ["💧", "❄️", "📟"][touchEffectStyle] || "💧"
+                icon: ["💧", "❄️", "📺", "📟"][touchEffectStyle] || "💧"
                 checked: touchEffectsEnabled
-                accentColor: ["#4a9eff", "#88ddff", "#00ff00"][touchEffectStyle] || "#4a9eff"
+                accentColor: ["#4a9eff", "#88ddff", "#ff6600", "#00ff00"][touchEffectStyle] || "#4a9eff"
                 onToggled: {
                     touchEffectsEnabled = !touchEffectsEnabled
                     saveConfig()
@@ -236,7 +239,7 @@ Page {
             // Effect style selector
             Rectangle {
                 width: settingsColumn.width
-                height: 100
+                height: 120
                 radius: 20
                 color: "#14141e"
                 border.color: "#1a1a2e"
@@ -253,19 +256,21 @@ Page {
                         color: "#888899"
                     }
 
-                    Row {
+                    Grid {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 16
+                        columns: 4
+                        spacing: 8
 
                         Repeater {
                             model: [
                                 { icon: "💧", label: "Water", color: "#4a9eff" },
                                 { icon: "❄️", label: "Snow", color: "#88ddff" },
-                                { icon: "📟", label: "ASCII", color: "#00ff00" }
+                                { icon: "📺", label: "CRT", color: "#ff6600" },
+                                { icon: "📟", label: "Terminal", color: "#00ff00" }
                             ]
 
                             Rectangle {
-                                width: 80
+                                width: 72
                                 height: 56
                                 radius: 14
                                 color: touchEffectStyle === index ? Qt.darker(modelData.color, 2) : "#1a1a28"
@@ -279,13 +284,13 @@ Page {
                                     Text {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: modelData.icon
-                                        font.pixelSize: 22
+                                        font.pixelSize: 20
                                     }
 
                                     Text {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: modelData.label
-                                        font.pixelSize: 11
+                                        font.pixelSize: 10
                                         color: touchEffectStyle === index ? "#ffffff" : "#666677"
                                     }
                                 }
@@ -337,81 +342,26 @@ Page {
                 onSave: saveConfig()
             }
 
-            // Test buttons for each effect
-            Rectangle {
+            // Living Pixels toggle
+            EffectToggle {
                 width: settingsColumn.width
-                height: 90
-                radius: 20
-                color: "#14141e"
-                border.color: "#1a1a2e"
                 visible: touchEffectsEnabled
-
-                Column {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 8
-
-                    Text {
-                        text: "Quick Switch"
-                        font.pixelSize: 14
-                        color: "#888899"
-                    }
-
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 16
-
-                        Repeater {
-                            model: [
-                                { icon: "💧", label: "Water", style: 0, color: "#4a9eff" },
-                                { icon: "❄️", label: "Snow", style: 1, color: "#88ddff" },
-                                { icon: "📟", label: "ASCII", style: 2, color: "#00ff00" }
-                            ]
-
-                            Rectangle {
-                                width: 80
-                                height: 48
-                                radius: 12
-                                color: testArea.pressed ? Qt.darker(modelData.color, 1.5) : "#1a1a28"
-                                border.color: touchEffectStyle === modelData.style ? modelData.color : "#2a2a3e"
-                                border.width: touchEffectStyle === modelData.style ? 2 : 1
-
-                                Row {
-                                    anchors.centerIn: parent
-                                    spacing: 6
-
-                                    Text {
-                                        text: modelData.icon
-                                        font.pixelSize: 18
-                                    }
-
-                                    Text {
-                                        text: modelData.label
-                                        font.pixelSize: 12
-                                        color: touchEffectStyle === modelData.style ? "#ffffff" : "#888899"
-                                        anchors.verticalCenter: parent.verticalCenter
-                                    }
-                                }
-
-                                MouseArea {
-                                    id: testArea
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        touchEffectStyle = modelData.style
-                                        saveConfig()
-                                    }
-                                }
-                            }
-                        }
-                    }
+                title: "Living Pixels"
+                subtitle: "Stars in black areas, eyes in white areas"
+                icon: "👁️"
+                checked: livingPixels
+                accentColor: "#ffaa00"
+                onToggled: {
+                    livingPixels = !livingPixels
+                    saveConfig()
                 }
             }
 
-            // ASCII density slider (only shown when ASCII mode is selected)
+            // ASCII density slider (only shown when Terminal Ripple mode is selected)
             EffectSliderCard {
                 width: settingsColumn.width
-                visible: touchEffectsEnabled && touchEffectStyle === 2
-                title: "ASCII Settings"
+                visible: touchEffectsEnabled && touchEffectStyle === 3
+                title: "Terminal Settings"
                 icon: "📟"
 
                 sliders: [

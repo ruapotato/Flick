@@ -16,16 +16,18 @@ pub const MAX_TOUCH_EFFECTS: usize = 10;
 #[repr(i32)]
 pub enum EffectStyle {
     #[default]
-    Water = 0,   // Blue water ripple
-    Snow = 1,    // White/blue snow/frost effect
-    Ascii = 2,   // ASCII art mode (libaa style)
+    Water = 0,        // Blue water ripple
+    Snow = 1,         // White/blue snow/frost effect
+    CRT = 2,          // CRT scanlines and effects
+    TerminalRipple = 3, // ASCII effect on touched areas with ripple
 }
 
 impl From<i32> for EffectStyle {
     fn from(v: i32) -> Self {
         match v {
             1 => EffectStyle::Snow,
-            2 => EffectStyle::Ascii,
+            2 => EffectStyle::CRT,
+            3 => EffectStyle::TerminalRipple,
             _ => EffectStyle::Water,
         }
     }
@@ -34,13 +36,14 @@ impl From<i32> for EffectStyle {
 /// Configurable effect parameters
 #[derive(Clone, Debug)]
 pub struct EffectConfig {
-    pub effect_style: EffectStyle, // Visual style (water/snow/ascii)
+    pub effect_style: EffectStyle, // Visual style (water/snow/crt/terminal)
     pub fisheye_size: f32,      // Radius as fraction of screen (0.05 - 0.30)
     pub fisheye_strength: f32,  // Distortion strength (0.0 - 0.50)
     pub ripple_size: f32,       // Max radius as fraction of screen (0.10 - 0.50)
     pub ripple_strength: f32,   // Distortion strength (0.0 - 0.50)
     pub ripple_duration: f32,   // Duration in seconds (0.2 - 1.0)
     pub ascii_density: f32,     // ASCII character density (4.0 - 16.0, lower = larger chars)
+    pub living_pixels: bool,    // Enable living pixels (stars in black, eyes in white)
 }
 
 impl Default for EffectConfig {
@@ -53,6 +56,7 @@ impl Default for EffectConfig {
             ripple_strength: 0.07,   // 7% distortion (subtle)
             ripple_duration: 0.5,    // 0.5 seconds
             ascii_density: 8.0,      // Medium density
+            living_pixels: false,    // Disabled by default
         }
     }
 }
@@ -116,6 +120,9 @@ impl EffectConfig {
                         .and_then(|v| v.as_f64())
                         .map(|v| v as f32)
                         .unwrap_or(8.0),
+                    living_pixels: json.get("living_pixels")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
                 };
             }
         }
@@ -303,10 +310,12 @@ impl TouchEffectManager {
 
     /// Get shader uniform data
     /// Returns arrays suitable for passing to GL uniforms
-    pub fn get_shader_data(&self, screen_width: f64, screen_height: f64) -> TouchEffectShaderData {
+    pub fn get_shader_data(&self, screen_width: f64, screen_height: f64, time: f32) -> TouchEffectShaderData {
         let mut data = TouchEffectShaderData::default();
         data.effect_style = self.config.effect_style as i32;
         data.ascii_density = self.config.ascii_density;
+        data.living_pixels = if self.config.living_pixels { 1 } else { 0 };
+        data.time = time;
 
         for (i, effect) in self.effects.iter().take(MAX_TOUCH_EFFECTS).enumerate() {
             let (x, y, radius, strength, type_flag) = effect.get_shader_params(screen_width, screen_height, &self.config);
@@ -332,10 +341,14 @@ pub struct TouchEffectShaderData {
     pub params: [f32; MAX_TOUCH_EFFECTS * 4],
     /// Number of active effects
     pub count: i32,
-    /// Effect style: 0=water, 1=snow, 2=ascii
+    /// Effect style: 0=water, 1=snow, 2=crt, 3=terminal_ripple
     pub effect_style: i32,
-    /// ASCII character density (for style 2)
+    /// ASCII character density (for terminal mode)
     pub ascii_density: f32,
+    /// Living pixels enabled (stars in black, eyes in white)
+    pub living_pixels: i32,
+    /// Time in seconds for animations
+    pub time: f32,
 }
 
 impl Default for TouchEffectShaderData {
@@ -346,6 +359,8 @@ impl Default for TouchEffectShaderData {
             count: 0,
             effect_style: 0,
             ascii_density: 8.0,
+            living_pixels: 0,
+            time: 0.0,
         }
     }
 }

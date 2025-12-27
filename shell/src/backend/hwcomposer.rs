@@ -2357,11 +2357,20 @@ fn render_frame(
         Some(display.egl_context),
     ).map_err(|e| anyhow::anyhow!("Failed to make context current: {:?}", e))?;
 
+    // Calculate effect time for animated effects (living pixels, CRT flicker)
+    let effect_time = unsafe {
+        if gl::EFFECT_START_TIME.is_none() {
+            gl::EFFECT_START_TIME = Some(std::time::Instant::now());
+        }
+        gl::EFFECT_START_TIME.unwrap().elapsed().as_secs_f32()
+    };
+
     // Check if distortion effects will be active (for scene FBO rendering)
     // We need to know this early to decide whether to render to FBO or default framebuffer
     let shader_data_preview = state.touch_effects.get_shader_data(
         display.width as f64,
         display.height as f64,
+        effect_time,
     );
     let distortion_active = shader_data_preview.count > 0 || shader_data_preview.effect_style == 2;
 
@@ -3102,6 +3111,11 @@ mod gl {
     static mut DISTORT_UNIFORM_ASPECT: i32 = -1;
     static mut DISTORT_UNIFORM_STYLE: i32 = -1;
     static mut DISTORT_UNIFORM_DENSITY: i32 = -1;
+    static mut DISTORT_UNIFORM_LIVING: i32 = -1;
+    static mut DISTORT_UNIFORM_TIME: i32 = -1;
+
+    // Time tracking for animated effects
+    pub static mut EFFECT_START_TIME: Option<std::time::Instant> = None;
 
     // Persistent capture texture for distortion effects (avoids create/delete each frame)
     static mut CAPTURE_TEXTURE: u32 = 0;
@@ -3161,7 +3175,8 @@ mod gl {
     "#;
 
     // Distortion fragment shader - STABLE version
-    // Style: 0=water, 1=snow (ice crystals), 2=ascii (bb/aalib style)
+    // Style: 0=water, 1=snow (ice crystals), 2=CRT, 3=terminal_ripple
+    // Living pixels: overlay that adds twinkling stars to black, blinking eyes to white
     const DISTORT_FRAGMENT_SRC: &str = r#"
         precision highp float;
         varying vec2 v_texcoord;
@@ -3172,6 +3187,8 @@ mod gl {
         uniform float u_aspect;
         uniform int u_style;
         uniform float u_density;
+        uniform int u_living;
+        uniform float u_time;
 
         float hash(vec2 p) {
             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -3181,201 +3198,239 @@ mod gl {
             return fract(sin(dot(p, vec2(269.5, 183.3))) * 43758.5453);
         }
 
-        // ASCII character bitmaps - 5x7 font patterns
-        // aalib-inspired character ramp from dark to light:
-        // ' ', '.', '`', ',', ':', ';', 'i', 'l', '!', 'c', 'r', 's', 'x', 'v', 'z', 'X', 'Z', 'Y', 'U', 'J', 'C', 'L', 'Q', 'O', '0', 'm', 'w', 'q', 'p', 'd', 'b', 'k', 'h', 'a', 'o', '*', '#', 'M', 'W', '&', '8', '%', 'B', '@', '$'
-        // We use 16 levels for shader efficiency
+        float hash3(vec2 p, float t) {
+            return fract(sin(dot(p, vec2(127.1, 311.7)) + t * 0.1) * 43758.5453);
+        }
+
+        // ASCII character bitmaps - 5x7 font patterns (16 levels)
         float getCharPixel(int charIdx, vec2 pos) {
             int px = int(pos.x * 5.0);
             int py = int(pos.y * 7.0);
             if (px < 0 || px > 4 || py < 0 || py > 6) return 0.0;
             int row = 6 - py;
 
-            // 0: space (empty)
-            if (charIdx == 0) return 0.0;
-
-            // 1: . (dot)
-            if (charIdx == 1) {
-                if (row == 0 && px == 2) return 1.0;
-                return 0.0;
-            }
-
-            // 2: , (comma)
-            if (charIdx == 2) {
-                if (row == 0 && px == 2) return 1.0;
-                if (row == 1 && px == 2) return 1.0;
-                return 0.0;
-            }
-
-            // 3: : (colon)
-            if (charIdx == 3) {
-                if ((row == 1 || row == 4) && px == 2) return 1.0;
-                return 0.0;
-            }
-
-            // 4: ; (semicolon)
-            if (charIdx == 4) {
-                if (row == 0 && px == 2) return 1.0;
-                if ((row == 1 || row == 4) && px == 2) return 1.0;
-                return 0.0;
-            }
-
-            // 5: i (lowercase i)
-            if (charIdx == 5) {
+            if (charIdx == 0) return 0.0; // space
+            if (charIdx == 1) { if (row == 0 && px == 2) return 1.0; return 0.0; } // .
+            if (charIdx == 2) { if ((row == 0 || row == 1) && px == 2) return 1.0; return 0.0; } // ,
+            if (charIdx == 3) { if ((row == 1 || row == 4) && px == 2) return 1.0; return 0.0; } // :
+            if (charIdx == 4) { if ((row == 0 || row == 1 || row == 4) && px == 2) return 1.0; return 0.0; } // ;
+            if (charIdx == 5) { // i
                 if (row == 5 && px == 2) return 1.0;
                 if (row >= 0 && row <= 3 && px == 2) return 1.0;
                 if (row == 0 && (px == 1 || px == 3)) return 1.0;
                 return 0.0;
             }
-
-            // 6: l (lowercase L)
-            if (charIdx == 6) {
+            if (charIdx == 6) { // l
                 if (px == 2 && row >= 0 && row <= 5) return 1.0;
                 if (row == 0 && px == 3) return 1.0;
                 return 0.0;
             }
-
-            // 7: c (lowercase c)
-            if (charIdx == 7) {
-                if (row == 0 && px >= 1 && px <= 3) return 1.0;
-                if (row == 3 && px >= 1 && px <= 3) return 1.0;
+            if (charIdx == 7) { // c
+                if ((row == 0 || row == 3) && px >= 1 && px <= 3) return 1.0;
                 if (px == 0 && row >= 1 && row <= 2) return 1.0;
                 return 0.0;
             }
-
-            // 8: r (lowercase r)
-            if (charIdx == 8) {
+            if (charIdx == 8) { // r
                 if (px == 1 && row >= 0 && row <= 3) return 1.0;
                 if (row == 3 && px >= 2 && px <= 3) return 1.0;
-                if (row == 2 && px == 4) return 1.0;
                 return 0.0;
             }
-
-            // 9: x (lowercase x)
-            if (charIdx == 9) {
+            if (charIdx == 9) { // x
                 if ((px == 0 || px == 4) && (row == 0 || row == 3)) return 1.0;
                 if ((px == 1 || px == 3) && (row == 1 || row == 2)) return 1.0;
-                if (px == 2 && row == 1) return 1.0;
                 return 0.0;
             }
-
-            // 10: o (lowercase o)
-            if (charIdx == 10) {
+            if (charIdx == 10) { // o
                 if ((row == 0 || row == 3) && px >= 1 && px <= 3) return 1.0;
                 if ((px == 0 || px == 4) && row >= 1 && row <= 2) return 1.0;
                 return 0.0;
             }
-
-            // 11: a (lowercase a)
-            if (charIdx == 11) {
+            if (charIdx == 11) { // a
                 if (row == 0 && px >= 1 && px <= 4) return 1.0;
                 if (row == 2 && px >= 1 && px <= 4) return 1.0;
                 if (row == 3 && px >= 1 && px <= 3) return 1.0;
-                if (px == 0 && row == 1) return 1.0;
                 if (px == 4 && row >= 0 && row <= 2) return 1.0;
                 return 0.0;
             }
-
-            // 12: # (hash)
-            if (charIdx == 12) {
+            if (charIdx == 12) { // #
                 if ((px == 1 || px == 3) && row >= 1 && row <= 5) return 1.0;
                 if ((row == 2 || row == 4) && px >= 0 && px <= 4) return 1.0;
                 return 0.0;
             }
-
-            // 13: W
-            if (charIdx == 13) {
+            if (charIdx == 13) { // W
                 if ((px == 0 || px == 4) && row >= 0 && row <= 5) return 1.0;
                 if (px == 2 && row >= 0 && row <= 3) return 1.0;
-                if ((px == 1 || px == 3) && row == 0) return 1.0;
                 return 0.0;
             }
-
-            // 14: M
-            if (charIdx == 14) {
+            if (charIdx == 14) { // M
                 if ((px == 0 || px == 4) && row >= 0 && row <= 5) return 1.0;
                 if ((px == 1 || px == 3) && row == 4) return 1.0;
                 if (px == 2 && row == 3) return 1.0;
                 return 0.0;
             }
+            // 15: @ - densest
+            if ((row == 1 || row == 5) && px >= 1 && px <= 3) return 1.0;
+            if ((px == 0 || px == 4) && row >= 2 && row <= 4) return 1.0;
+            if (row == 3 && px >= 2 && px <= 3) return 1.0;
+            if (row == 4 && px >= 1 && px <= 3) return 1.0;
+            return 0.0;
+        }
 
-            // 15: @ (at) - densest
-            if (charIdx >= 15) {
-                if ((row == 1 || row == 5) && px >= 1 && px <= 3) return 1.0;
-                if ((px == 0 || px == 4) && row >= 2 && row <= 4) return 1.0;
-                if (row == 3 && px >= 2 && px <= 3) return 1.0;
-                if (row == 4 && px >= 1 && px <= 3) return 1.0;
-                if (px == 1 && row == 2) return 1.0;
-                return 0.0;
+        // Apply ASCII effect to a color at given UV with given influence
+        vec3 applyASCII(vec2 uv, float influence, float density) {
+            float charsAcross = density * 15.0;
+            float charWidth = 1.0 / charsAcross;
+            float charHeight = charWidth * u_aspect * 1.4;
+
+            vec2 cellIdx = floor(uv / vec2(charWidth, charHeight));
+            vec2 cellUV = fract(uv / vec2(charWidth, charHeight));
+            vec2 cellBase = cellIdx * vec2(charWidth, charHeight);
+
+            // Sample center of cell
+            vec4 sampleColor = texture2D(u_texture, clamp(cellBase + vec2(0.5, 0.5) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0)));
+            float lum = dot(sampleColor.rgb, vec3(0.299, 0.587, 0.114));
+
+            int charIdx = int(lum * 15.99);
+            float pixel = getCharPixel(charIdx, cellUV);
+
+            vec3 charColor = sampleColor.rgb * (0.9 + lum * 0.3);
+            vec3 bgColor = sampleColor.rgb * 0.15;
+            vec3 asciiColor = mix(bgColor, charColor, pixel);
+
+            // Add green phosphor tint for terminal feel
+            asciiColor = mix(asciiColor, asciiColor * vec3(0.7, 1.0, 0.8), 0.3);
+
+            return mix(sampleColor.rgb, asciiColor, influence);
+        }
+
+        // Living pixels: twinkling stars in pure black, blinking eyes in pure white
+        vec3 applyLivingPixels(vec3 color, vec2 uv, float time) {
+            float lum = dot(color, vec3(0.299, 0.587, 0.114));
+
+            // Pure black detection (stars)
+            if (lum < 0.02) {
+                // Create star grid
+                vec2 starGrid = uv * 200.0;
+                vec2 starCell = floor(starGrid);
+                vec2 starUV = fract(starGrid);
+
+                float starRand = hash(starCell);
+                if (starRand > 0.92) { // ~8% chance of star
+                    // Twinkle with different phases per star
+                    float phase = hash2(starCell) * 6.28;
+                    float speed = 1.0 + hash(starCell * 1.5) * 2.0;
+                    float twinkle = sin(time * speed + phase) * 0.5 + 0.5;
+                    twinkle = pow(twinkle, 3.0); // Sharper twinkle
+
+                    // Star shape - bright center
+                    float dist = length(starUV - 0.5);
+                    float star = smoothstep(0.3, 0.0, dist);
+
+                    // Cross pattern for sparkle
+                    float cross = max(
+                        smoothstep(0.15, 0.0, abs(starUV.x - 0.5)),
+                        smoothstep(0.15, 0.0, abs(starUV.y - 0.5))
+                    ) * smoothstep(0.4, 0.1, dist);
+
+                    float brightness = (star + cross * 0.5) * twinkle;
+                    vec3 starColor = mix(vec3(0.8, 0.85, 1.0), vec3(1.0, 0.95, 0.8), starRand);
+                    color = color + starColor * brightness * 0.8;
+                }
             }
 
-            return 0.0;
+            // Pure white detection (eyes)
+            if (lum > 0.95) {
+                vec2 eyeGrid = uv * 80.0;
+                vec2 eyeCell = floor(eyeGrid);
+                vec2 eyeUV = fract(eyeGrid);
+
+                float eyeRand = hash(eyeCell + 100.0);
+                if (eyeRand > 0.96) { // ~4% chance of eye
+                    // Blinking animation - closed most of the time, quick open
+                    float blinkPhase = hash2(eyeCell) * 10.0;
+                    float blinkCycle = mod(time * 0.3 + blinkPhase, 5.0); // 5 second cycle
+                    float eyeOpen = 0.0;
+                    if (blinkCycle < 0.3) {
+                        // Quick blink open and close
+                        eyeOpen = sin(blinkCycle / 0.3 * 3.14159);
+                    }
+
+                    if (eyeOpen > 0.1) {
+                        // Draw eye shape - oval with pupil
+                        vec2 centered = (eyeUV - 0.5) * 2.0;
+                        centered.y *= 1.5; // Oval shape
+
+                        float eyeDist = length(centered);
+                        float eyeShape = smoothstep(0.8, 0.6, eyeDist) * eyeOpen;
+
+                        // Pupil
+                        float pupilDist = length(centered);
+                        float pupil = smoothstep(0.3, 0.2, pupilDist);
+
+                        // Eye color
+                        vec3 eyeWhite = vec3(0.95, 0.95, 0.98);
+                        vec3 pupilColor = vec3(0.1, 0.1, 0.1);
+                        vec3 eyeColor = mix(eyeWhite, pupilColor, pupil);
+
+                        color = mix(color, eyeColor, eyeShape * 0.9);
+                    }
+                }
+            }
+
+            return color;
         }
 
         void main() {
             vec2 uv = v_texcoord;
 
-            // === ASCII MODE (style 2) - Full screen terminal look ===
+            // === CRT MODE (style 2) - Scanlines, RGB separation, vignette ===
             if (u_style == 2) {
-                // u_density controls character size (higher = more chars = smaller)
-                // density 4 = ~80 chars, density 8 = ~160 chars, density 16 = ~320 chars
-                // Higher density = more readable text, less visible individual chars
-                float charsAcross = u_density * 20.0; // Many chars: 8 -> 160 chars across
-                float charWidth = 1.0 / charsAcross;
-                float charHeight = charWidth * u_aspect * 1.5; // Slightly taller than wide
+                // RGB separation (chromatic aberration)
+                float sep = 0.002;
+                float r = texture2D(u_texture, uv + vec2(sep, 0.0)).r;
+                float g = texture2D(u_texture, uv).g;
+                float b = texture2D(u_texture, uv - vec2(sep, 0.0)).b;
+                vec3 color = vec3(r, g, b);
 
-                // Find which character cell this pixel is in
-                vec2 cellIdx = floor(uv / vec2(charWidth, charHeight));
-                vec2 cellUV = fract(uv / vec2(charWidth, charHeight));
+                // Scanlines
+                float scanline = sin(uv.y * 800.0) * 0.5 + 0.5;
+                scanline = pow(scanline, 0.8);
+                color *= 0.8 + scanline * 0.2;
 
-                // Sample multiple points in the cell to detect edges and patterns
-                vec2 cellBase = cellIdx * vec2(charWidth, charHeight);
+                // Vertical RGB stripes (like CRT phosphors)
+                float stripe = mod(gl_FragCoord.x, 3.0);
+                if (stripe < 1.0) color *= vec3(1.1, 0.9, 0.9);
+                else if (stripe < 2.0) color *= vec3(0.9, 1.1, 0.9);
+                else color *= vec3(0.9, 0.9, 1.1);
 
-                // Sample 3x3 grid within cell
-                float s00 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.15, 0.15) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
-                float s10 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.50, 0.15) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
-                float s20 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.85, 0.15) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
-                float s01 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.15, 0.50) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
-                float s11 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.50, 0.50) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
-                float s21 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.85, 0.50) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
-                float s02 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.15, 0.85) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
-                float s12 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.50, 0.85) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
-                float s22 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.85, 0.85) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
+                // Vignette
+                vec2 vigUV = uv * 2.0 - 1.0;
+                float vig = 1.0 - dot(vigUV, vigUV) * 0.3;
+                color *= vig;
 
-                // Calculate overall luminance (max of samples to catch thin lines)
-                float maxLum = max(max(max(s00, s10), max(s20, s01)), max(max(s11, s21), max(s02, max(s12, s22))));
-                float avgLum = (s00 + s10 + s20 + s01 + s11 + s21 + s02 + s12 + s22) / 9.0;
-                float lum = mix(avgLum, maxLum, 0.5); // Blend avg and max
+                // Slight curve distortion at edges
+                vec2 curved = uv - 0.5;
+                curved *= 1.0 + dot(curved, curved) * 0.02;
+                curved += 0.5;
 
-                // Get color from center
-                vec4 sampleColor = texture2D(u_texture, clamp(cellBase + vec2(0.5, 0.5) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0)));
+                // Screen flicker
+                float flicker = 0.98 + sin(u_time * 8.0) * 0.02;
+                color *= flicker;
 
-                // Map luminance to character index (0-15, 16 levels)
-                int charIdx = int(lum * 15.99);
+                // Apply living pixels if enabled
+                if (u_living == 1) {
+                    color = applyLivingPixels(color, uv, u_time);
+                }
 
-                // Get the pixel value from character bitmap
-                float pixel = getCharPixel(charIdx, cellUV);
-
-                // Use true colors from the original image
-                vec3 charColor = sampleColor.rgb;
-                // Boost brightness slightly for visibility
-                charColor = charColor * (0.85 + lum * 0.4);
-                charColor = clamp(charColor, 0.0, 1.0);
-
-                // Dark background based on source color
-                vec3 bgColor = sampleColor.rgb * 0.1;
-
-                // Simple blend - character pixels are bright, background is dark
-                vec3 finalColor = mix(bgColor, charColor, pixel);
-
-                gl_FragColor = vec4(finalColor, 1.0);
+                gl_FragColor = vec4(color, 1.0);
                 return;
             }
 
-            // === WATER/SNOW DISTORTION EFFECTS ===
+            // === CALCULATE DISTORTION AND INFLUENCE ===
             vec2 totalOffset = vec2(0.0);
             float totalInf = 0.0;
-            float iceAmount = 0.0; // For snow: tracks ice crystal coverage
+            float iceAmount = 0.0;
+            float asciiInf = 0.0; // For terminal ripple mode
 
             for (int i = 0; i < 10; i++) {
                 if (i >= u_count) break;
@@ -3402,9 +3457,14 @@ mod gl {
                     totalOffset += offset;
                     totalInf += (1.0 - nd) * strength;
 
-                    // For snow: accumulate ice in fisheye area
+                    // For snow: accumulate ice
                     if (u_style == 1) {
                         iceAmount += (1.0 - nd * nd) * strength * 3.0;
+                    }
+
+                    // For terminal ripple: ASCII in touched area
+                    if (u_style == 3) {
+                        asciiInf = max(asciiInf, (1.0 - nd) * 1.5);
                     }
                 }
                 // RIPPLE (effectType >= 1.0) - finger released
@@ -3415,11 +3475,28 @@ mod gl {
                     float fade = 1.0 - progress;
 
                     if (u_style == 1) {
-                        // SNOW: Ice melting effect - crystals fade from center out
+                        // SNOW: Ice melting
                         float meltRadius = radius * (1.0 - fade * 0.7);
                         if (dist < meltRadius) {
                             float meltND = dist / meltRadius;
                             iceAmount += (1.0 - meltND) * fade * fade * strength * 2.0;
+                        }
+                    } else if (u_style == 3) {
+                        // TERMINAL RIPPLE: ASCII follows the ripple ring
+                        float ringPos = radius * progress;
+                        float ringWidth = 0.08 * (1.0 + progress * 0.5); // Wider ring
+                        float ringDist = abs(dist - ringPos);
+                        if (ringDist < ringWidth) {
+                            float wave = 1.0 - ringDist / ringWidth;
+                            wave = wave * wave * (3.0 - 2.0 * wave);
+                            // ASCII influence follows the ring
+                            asciiInf = max(asciiInf, wave * fade * 1.2);
+                            // Also apply distortion
+                            float phase = (dist < ringPos) ? 1.0 : -1.0;
+                            vec2 offset = dir * wave * strength * phase * 0.08 * fade;
+                            offset.x /= u_aspect;
+                            totalOffset += offset;
+                            totalInf += wave * fade * strength;
                         }
                     } else {
                         // WATER: Expanding ripple ring
@@ -3442,45 +3519,47 @@ mod gl {
             vec2 sampleUV = clamp(uv - totalOffset, vec2(0.0), vec2(1.0));
             vec4 color = texture2D(u_texture, sampleUV);
 
-            // Apply style-specific effects
-            if (u_style == 0 && totalInf > 0.01) {
-                // WATER: Blue tint
+            // === TERMINAL RIPPLE (style 3) ===
+            if (u_style == 3 && asciiInf > 0.01) {
+                asciiInf = clamp(asciiInf, 0.0, 1.0);
+                color.rgb = applyASCII(sampleUV, asciiInf, u_density);
+            }
+            // === WATER (style 0) ===
+            else if (u_style == 0 && totalInf > 0.01) {
                 float inf = clamp(totalInf, 0.0, 1.0);
                 color.rgb = mix(color.rgb, color.rgb * vec3(0.8, 0.9, 1.2), inf * 0.5);
             }
+            // === SNOW (style 1) ===
             else if (u_style == 1 && iceAmount > 0.01) {
-                // SNOW: Ice crystals
                 float ice = clamp(iceAmount, 0.0, 1.0);
 
-                // Generate crystal patterns based on position
                 vec2 crystalUV = sampleUV * 150.0;
                 float crystal1 = hash(floor(crystalUV));
                 float crystal2 = hash2(floor(crystalUV * 0.5));
 
-                // Hexagonal crystal pattern
                 vec2 hexUV = fract(crystalUV);
                 float hex = abs(hexUV.x - 0.5) + abs(hexUV.y - 0.5);
                 float crystalShape = smoothstep(0.6, 0.3, hex);
 
-                // Branching pattern
                 float branch = max(
                     smoothstep(0.1, 0.0, abs(hexUV.x - 0.5)),
                     smoothstep(0.1, 0.0, abs(hexUV.y - 0.5))
                 );
 
-                // Combine for frost pattern
                 float frost = (crystalShape * 0.5 + branch * 0.5) * crystal1;
                 frost = pow(frost, 0.5) * ice;
 
-                // Ice colors - blue-white crystalline
                 vec3 iceColor = mix(vec3(0.7, 0.85, 1.0), vec3(1.0, 1.0, 1.0), crystal2);
-
-                // Sparkle effect
                 float sparkle = pow(hash(sampleUV * 300.0 + ice), 12.0) * ice;
 
                 color.rgb = mix(color.rgb, iceColor, frost * 0.8);
                 color.rgb += sparkle * 0.6;
                 color.rgb = min(color.rgb, vec3(1.0));
+            }
+
+            // Apply living pixels overlay (works with all styles)
+            if (u_living == 1) {
+                color.rgb = applyLivingPixels(color.rgb, uv, u_time);
             }
 
             gl_FragColor = color;
@@ -3604,6 +3683,8 @@ mod gl {
             let aspect_uni = CString::new("u_aspect").unwrap();
             let style_uni = CString::new("u_style").unwrap();
             let density_uni = CString::new("u_density").unwrap();
+            let living_uni = CString::new("u_living").unwrap();
+            let time_uni = CString::new("u_time").unwrap();
 
             if let Some(f) = FN_GET_ATTRIB_LOCATION {
                 DISTORT_ATTR_POSITION = f(program, pos_name.as_ptr());
@@ -3617,11 +3698,14 @@ mod gl {
                 DISTORT_UNIFORM_ASPECT = f(program, aspect_uni.as_ptr());
                 DISTORT_UNIFORM_STYLE = f(program, style_uni.as_ptr());
                 DISTORT_UNIFORM_DENSITY = f(program, density_uni.as_ptr());
+                DISTORT_UNIFORM_LIVING = f(program, living_uni.as_ptr());
+                DISTORT_UNIFORM_TIME = f(program, time_uni.as_ptr());
             }
 
-            tracing::info!("Distortion shader created: program={}, positions={}, params={}, count={}, aspect={}, style={}, density={}",
+            tracing::info!("Distortion shader created: program={}, positions={}, params={}, count={}, aspect={}, style={}, density={}, living={}, time={}",
                 DISTORT_PROGRAM, DISTORT_UNIFORM_POSITIONS, DISTORT_UNIFORM_PARAMS,
-                DISTORT_UNIFORM_COUNT, DISTORT_UNIFORM_ASPECT, DISTORT_UNIFORM_STYLE, DISTORT_UNIFORM_DENSITY);
+                DISTORT_UNIFORM_COUNT, DISTORT_UNIFORM_ASPECT, DISTORT_UNIFORM_STYLE, DISTORT_UNIFORM_DENSITY,
+                DISTORT_UNIFORM_LIVING, DISTORT_UNIFORM_TIME);
         }
 
         INITIALIZED = true;
@@ -4192,18 +4276,20 @@ mod gl {
         if let Some(f) = FN_UNIFORM1I {
             f(DISTORT_UNIFORM_COUNT, shader_data.count);
             f(DISTORT_UNIFORM_STYLE, shader_data.effect_style);
+            f(DISTORT_UNIFORM_LIVING, shader_data.living_pixels);
             // Debug: log style every 60 frames
             static mut DEBUG_COUNTER: u32 = 0;
             DEBUG_COUNTER += 1;
             if DEBUG_COUNTER % 60 == 0 {
-                tracing::info!("Touch effect style uniform: {} (location: {})",
-                    shader_data.effect_style, DISTORT_UNIFORM_STYLE);
+                tracing::info!("Touch effect uniforms: style={}, living={}, time={:.2}",
+                    shader_data.effect_style, shader_data.living_pixels, shader_data.time);
             }
         }
         if let Some(f) = FN_UNIFORM1F {
             let aspect = screen_width as f32 / screen_height as f32;
             f(DISTORT_UNIFORM_ASPECT, aspect);
             f(DISTORT_UNIFORM_DENSITY, shader_data.ascii_density);
+            f(DISTORT_UNIFORM_TIME, shader_data.time);
         }
 
         // Fullscreen quad vertices
