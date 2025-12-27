@@ -990,10 +990,24 @@ fn handle_input_event(
                 // Forward to Slint UI based on current view
                 match shell_view {
                     crate::shell::ShellView::Home => {
+                        // Check for long press to enter wiggle mode
+                        if !state.shell.wiggle_mode && !state.shell.is_scrolling {
+                            if let Some(_category) = state.shell.check_long_press() {
+                                info!("Long press detected - entering wiggle mode");
+                                state.shell.enter_wiggle_mode();
+                            }
+                        }
+
                         // Update drag position in wiggle mode
                         if state.shell.wiggle_mode && state.shell.dragging_index.is_some() {
                             state.shell.update_drag(touch_pos);
                         }
+
+                        // Track scrolling in normal mode
+                        if !state.shell.wiggle_mode {
+                            state.shell.update_home_scroll(touch_pos.y);
+                        }
+
                         // Forward to Slint for scroll/drag feedback
                         if let Some(ref slint_ui) = state.shell.slint_ui {
                             slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
@@ -2005,6 +2019,18 @@ pub fn run() -> Result<()> {
             .map_err(|e| anyhow::anyhow!("Event loop error: {:?}", e))?;
 
         debug!("Loop {}: after calloop dispatch", loop_count);
+
+        // Check for long press to enter wiggle mode (runs every frame)
+        if state.shell.view == crate::shell::ShellView::Home
+            && !state.shell.wiggle_mode
+            && !state.shell.is_scrolling
+            && state.shell.long_press_start.is_some()
+        {
+            if let Some(_category) = state.shell.check_long_press() {
+                info!("Long press detected - entering wiggle mode");
+                state.shell.enter_wiggle_mode();
+            }
+        }
 
         // Skip rendering if session not active
         if !*session_active.borrow() {
