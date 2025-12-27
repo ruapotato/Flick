@@ -3464,101 +3464,289 @@ mod gl {
                 }
             }
 
-            // === SOOT SPRITES - Little black fuzzy creatures that walk along bright edges ===
-            // Like the soot sprites from Spirited Away / My Neighbor Totoro
-            if (doEyes) {  // Reusing the eyes toggle for sprites
-                // Check if we're near an edge of a bright area
-                float edgeThresh = 0.65;
-                bool isBright = lum > edgeThresh;
+            // === SOOT SPRITES - Fuzzy black creatures walking along bright/dark edges ===
+            if (doEyes) {
+                // Detect edges - where bright meets dark
+                float edgeThresh = 0.55;
+                float step = 0.012;
+                float lumL = dot(texture2D(u_texture, uv + vec2(-step, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
+                float lumR = dot(texture2D(u_texture, uv + vec2(step, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
+                float lumU = dot(texture2D(u_texture, uv + vec2(0.0, step)).rgb, vec3(0.299, 0.587, 0.114));
+                float lumD = dot(texture2D(u_texture, uv + vec2(0.0, -step)).rgb, vec3(0.299, 0.587, 0.114));
 
-                if (isBright) {
-                    // Sample nearby to find edges
-                    float step = 0.015;
-                    float lumL = dot(texture2D(u_texture, uv + vec2(-step, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
-                    float lumR = dot(texture2D(u_texture, uv + vec2(step, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
-                    float lumU = dot(texture2D(u_texture, uv + vec2(0.0, step)).rgb, vec3(0.299, 0.587, 0.114));
-                    float lumD = dot(texture2D(u_texture, uv + vec2(0.0, -step)).rgb, vec3(0.299, 0.587, 0.114));
+                // Edge detection - gradient magnitude
+                float gradX = lumR - lumL;
+                float gradY = lumU - lumD;
+                float edgeStrength = length(vec2(gradX, gradY));
 
-                    // Distance to edge (0 = at edge, 1 = far from edge)
-                    float edgeDist = 1.0;
-                    if (lumL < edgeThresh) edgeDist = min(edgeDist, 0.0);
-                    if (lumR < edgeThresh) edgeDist = min(edgeDist, 0.0);
-                    if (lumU < edgeThresh) edgeDist = min(edgeDist, 0.0);
-                    if (lumD < edgeThresh) edgeDist = min(edgeDist, 0.0);
+                // We want sprites near edges (high gradient) in bright areas
+                bool nearEdge = edgeStrength > 0.15 && lum > 0.5;
 
-                    // We're near an edge - spawn soot sprites here
-                    // Use a grid to place multiple sprites
-                    float spriteGridSize = 25.0;
+                if (nearEdge) {
+                    // Edge direction (tangent to edge, for walking along it)
+                    vec2 edgeNormal = normalize(vec2(gradX, gradY));
+                    vec2 edgeTangent = vec2(-edgeNormal.y, edgeNormal.x);
+
+                    // Sprite grid - larger cells = bigger sprites
+                    float spriteGridSize = 12.0;
                     vec2 spriteGrid = uv * spriteGridSize;
                     vec2 spriteCell = floor(spriteGrid);
                     vec2 spriteUV = fract(spriteGrid);
 
-                    // Each cell has a chance to have a sprite
                     float spriteRand = hash(spriteCell + 500.0);
 
-                    if (spriteRand > 0.7) {
-                        // Sprite properties based on cell
-                        float spriteSpeed = 0.3 + hash(spriteCell * 1.1) * 0.4;
+                    if (spriteRand > 0.55) {
+                        // Sprite properties
+                        float spriteSpeed = 0.15 + hash(spriteCell * 1.1) * 0.25;
                         float spritePhase = hash(spriteCell * 2.2) * 6.28;
-                        float spriteDir = hash(spriteCell * 3.3) > 0.5 ? 1.0 : -1.0;
 
-                        // Sprite walks back and forth
+                        // Walk along edge tangent direction
                         float walkCycle = mod(time * spriteSpeed + spritePhase, 2.0);
-                        float walkPos = walkCycle < 1.0 ? walkCycle : 2.0 - walkCycle;
-                        walkPos = walkPos * 0.6 + 0.2; // Stay within 0.2-0.8 of cell
+                        float walkOffset = (walkCycle < 1.0 ? walkCycle : 2.0 - walkCycle) - 0.5;
 
-                        // Sprite center position
-                        vec2 spritePos = vec2(walkPos, 0.5);
+                        // Sprite position - centered with walk offset along edge
+                        vec2 spritePos = vec2(0.5, 0.5) + edgeTangent * walkOffset * 0.4;
                         vec2 toSprite = spriteUV - spritePos;
 
-                        // Sprite body (fuzzy black ball)
-                        float bodyRadius = 0.12;
+                        // BIGGER sprite body
+                        float bodyRadius = 0.22;
                         float bodyDist = length(toSprite);
 
-                        if (bodyDist < bodyRadius * 2.0) {
-                            // Fuzzy edge
-                            float fuzz = hash(spriteUV * 100.0 + spriteCell) * 0.03;
-                            float bodyMask = smoothstep(bodyRadius + fuzz, bodyRadius * 0.5, bodyDist);
+                        if (bodyDist < bodyRadius * 2.5) {
+                            // Fuzzy edge with spiky hair effect
+                            float angle = atan(toSprite.y, toSprite.x);
+                            float spikes = sin(angle * 8.0 + hash(spriteCell) * 6.28) * 0.04;
+                            float fuzz = hash(spriteUV * 50.0 + spriteCell) * 0.05;
+                            float bodyMask = smoothstep(bodyRadius + spikes + fuzz, bodyRadius * 0.3, bodyDist);
 
-                            // Little legs - 4 of them, animated
-                            float legPhase = time * 8.0 * spriteSpeed;
-                            float numLegs = 4.0;
-                            for (float i = 0.0; i < numLegs; i += 1.0) {
-                                float legAngle = (i / numLegs) * 3.14159 + 3.14159 * 0.5; // Bottom half
-                                // Legs move up and down as sprite walks
-                                float legMove = sin(legPhase + i * 1.5) * 0.03;
-                                vec2 legDir = vec2(cos(legAngle), sin(legAngle) + legMove);
-                                vec2 legStart = spritePos + legDir * bodyRadius * 0.7;
-                                vec2 legEnd = spritePos + legDir * bodyRadius * 1.4;
+                            // 6 LEGS - evenly distributed around bottom half
+                            float legPhase = time * 6.0 * spriteSpeed;
+                            for (float i = 0.0; i < 6.0; i += 1.0) {
+                                // Spread legs from -120 to +120 degrees (bottom arc)
+                                float legAngle = -2.1 + (i / 5.0) * 4.2; // -120 to +120 degrees
+                                legAngle += 3.14159 * 0.5; // Rotate so 0 is down
 
-                                // Line from start to end
-                                vec2 legVec = legEnd - legStart;
-                                float legLen = length(legVec);
-                                vec2 legNorm = legVec / legLen;
-                                vec2 toPoint = spriteUV - legStart;
-                                float along = dot(toPoint, legNorm);
-                                float perp = abs(dot(toPoint, vec2(-legNorm.y, legNorm.x)));
+                                // Alternating leg movement for walking
+                                float legMove = sin(legPhase + i * 3.14159) * 0.15;
+                                float legLift = max(0.0, sin(legPhase + i * 3.14159)) * 0.08;
 
-                                if (along > 0.0 && along < legLen && perp < 0.015) {
-                                    bodyMask = max(bodyMask, 0.8);
+                                vec2 legDir = vec2(cos(legAngle), sin(legAngle));
+                                vec2 legStart = spritePos + legDir * bodyRadius * 0.6;
+                                vec2 legMid = spritePos + legDir * bodyRadius * 1.1 + vec2(legMove * 0.3, -legLift);
+                                vec2 legEnd = spritePos + legDir * bodyRadius * 1.5 + vec2(legMove, -0.02);
+
+                                // Draw leg segments
+                                for (float seg = 0.0; seg < 2.0; seg += 1.0) {
+                                    vec2 segStart = seg < 0.5 ? legStart : legMid;
+                                    vec2 segEnd = seg < 0.5 ? legMid : legEnd;
+                                    vec2 segVec = segEnd - segStart;
+                                    float segLen = length(segVec);
+                                    if (segLen > 0.001) {
+                                        vec2 segNorm = segVec / segLen;
+                                        vec2 toPoint = spriteUV - segStart;
+                                        float along = dot(toPoint, segNorm);
+                                        float perp = abs(dot(toPoint, vec2(-segNorm.y, segNorm.x)));
+                                        if (along > -0.01 && along < segLen + 0.01 && perp < 0.025) {
+                                            bodyMask = max(bodyMask, 0.85);
+                                        }
+                                    }
                                 }
                             }
 
-                            // Two tiny white eyes
-                            vec2 eyeOffset1 = vec2(-0.03, 0.02);
-                            vec2 eyeOffset2 = vec2(0.03, 0.02);
-                            float eye1 = smoothstep(0.02, 0.01, length(toSprite - eyeOffset1));
-                            float eye2 = smoothstep(0.02, 0.01, length(toSprite - eyeOffset2));
-                            float eyes = max(eye1, eye2);
+                            // BLINKING eyes
+                            float blinkCycle = mod(time * 0.3 + hash(spriteCell * 5.5) * 10.0, 4.0);
+                            float eyeOpen = 1.0;
+                            if (blinkCycle > 3.7) {
+                                float blinkPhase = (blinkCycle - 3.7) / 0.3;
+                                if (blinkPhase < 0.5) eyeOpen = 1.0 - blinkPhase * 2.0;
+                                else eyeOpen = (blinkPhase - 0.5) * 2.0;
+                            }
+
+                            // Two white eyes - bigger
+                            float eyeSpacing = 0.07;
+                            float eyeSize = 0.045 * eyeOpen;
+                            vec2 eyeOffset1 = vec2(-eyeSpacing, 0.04);
+                            vec2 eyeOffset2 = vec2(eyeSpacing, 0.04);
+                            float eye1 = smoothstep(eyeSize + 0.01, eyeSize - 0.01, length(toSprite - eyeOffset1));
+                            float eye2 = smoothstep(eyeSize + 0.01, eyeSize - 0.01, length(toSprite - eyeOffset2));
+
+                            // Tiny pupils that look around
+                            float lookX = sin(time * 0.5 + spritePhase) * 0.015;
+                            float lookY = cos(time * 0.4 + spritePhase) * 0.01;
+                            vec2 pupilOffset = vec2(lookX, lookY);
+                            float pupil1 = smoothstep(0.02, 0.01, length(toSprite - eyeOffset1 - pupilOffset));
+                            float pupil2 = smoothstep(0.02, 0.01, length(toSprite - eyeOffset2 - pupilOffset));
 
                             // Apply sprite
                             if (bodyMask > 0.01) {
-                                vec3 spriteColor = vec3(0.02, 0.02, 0.03); // Very dark
-                                color = mix(color, spriteColor, bodyMask * 0.95);
-                                // White eyes on top
-                                color = mix(color, vec3(1.0), eyes * 0.9);
+                                vec3 spriteColor = vec3(0.02, 0.02, 0.03);
+                                color = mix(color, spriteColor, bodyMask * 0.97);
+                                // White eyes
+                                if (eyeOpen > 0.1) {
+                                    color = mix(color, vec3(1.0), eye1 * 0.95);
+                                    color = mix(color, vec3(1.0), eye2 * 0.95);
+                                    // Black pupils
+                                    color = mix(color, vec3(0.0), pupil1 * 0.9);
+                                    color = mix(color, vec3(0.0), pupil2 * 0.9);
+                                }
                             }
                         }
+                    }
+                }
+            }
+
+            // === RAIN EFFECT - Falling raindrops with splash ===
+            // Adds atmosphere, especially nice before lock screen
+            {
+                float rainIntensity = 0.6; // Could be made configurable
+
+                // Multiple rain layers for depth
+                for (float layer = 0.0; layer < 3.0; layer += 1.0) {
+                    float layerSpeed = 1.5 + layer * 0.5;
+                    float layerScale = 30.0 + layer * 20.0;
+                    float layerAlpha = 0.15 - layer * 0.03;
+
+                    vec2 rainUV = uv * vec2(layerScale, layerScale * 0.3);
+                    rainUV.y += time * layerSpeed;
+
+                    vec2 rainCell = floor(rainUV);
+                    vec2 rainFract = fract(rainUV);
+
+                    float rainRand = hash(rainCell);
+                    if (rainRand > 1.0 - rainIntensity * 0.3) {
+                        // Raindrop position with slight horizontal drift
+                        float drift = sin(rainCell.y * 0.1 + time * 0.5) * 0.1;
+                        vec2 dropPos = vec2(0.5 + drift, fract(rainRand * 7.7 + time * layerSpeed * 0.2));
+
+                        // Elongated drop shape
+                        vec2 toDrop = rainFract - dropPos;
+                        toDrop.y *= 0.15; // Stretch vertically
+                        float dropDist = length(toDrop);
+
+                        if (dropDist < 0.08) {
+                            float dropAlpha = smoothstep(0.08, 0.02, dropDist) * layerAlpha;
+                            // Blue-white rain color
+                            vec3 rainColor = vec3(0.7, 0.8, 0.95);
+                            color = mix(color, rainColor, dropAlpha);
+                        }
+                    }
+                }
+
+                // Splash effects at bottom
+                float splashY = 0.05;
+                if (uv.y < splashY) {
+                    vec2 splashUV = uv * vec2(40.0, 1.0);
+                    float splashCell = floor(splashUV.x);
+                    float splashRand = hash(vec2(splashCell, floor(time * 3.0)));
+
+                    if (splashRand > 0.7) {
+                        float splashPhase = fract(time * 3.0 + splashRand);
+                        float splashX = fract(splashUV.x) - 0.5;
+                        float splashRadius = splashPhase * 0.4;
+                        float splashRing = abs(length(vec2(splashX, (uv.y - splashY * 0.5) * 10.0)) - splashRadius);
+
+                        if (splashRing < 0.05) {
+                            float ringAlpha = (1.0 - splashPhase) * 0.3 * smoothstep(0.05, 0.01, splashRing);
+                            color = mix(color, vec3(0.8, 0.85, 0.95), ringAlpha);
+                        }
+                    }
+                }
+            }
+
+            // === STARRY NIGHT OVERLAY - Subtle stars across dark areas ===
+            {
+                // Only show stars in darker areas
+                float starVisibility = smoothstep(0.4, 0.1, lum);
+                if (starVisibility > 0.0) {
+                    // Dense star field
+                    vec2 starGrid = uv * 200.0;
+                    vec2 starCell = floor(starGrid);
+                    float starRand = hash(starCell + 1000.0);
+
+                    if (starRand > 0.97) {
+                        vec2 starUV = fract(starGrid);
+                        float starDist = length(starUV - 0.5);
+                        float twinkle = sin(time * (2.0 + starRand * 3.0) + starRand * 6.28);
+                        twinkle = twinkle * 0.4 + 0.6;
+
+                        if (starDist < 0.15) {
+                            float starAlpha = smoothstep(0.15, 0.0, starDist) * twinkle * starVisibility * 0.7;
+                            vec3 starColor = mix(vec3(1.0, 0.95, 0.8), vec3(0.8, 0.9, 1.0), starRand);
+                            color = mix(color, starColor, starAlpha);
+                        }
+                    }
+                }
+            }
+
+            // === SCREEN EDGE GLOW - Subtle colored glow at edges ===
+            {
+                float edgeGlow = 0.0;
+                vec3 glowColor = vec3(0.0);
+
+                // Distance from each edge
+                float leftDist = uv.x;
+                float rightDist = 1.0 - uv.x;
+                float topDist = 1.0 - uv.y;
+                float bottomDist = uv.y;
+
+                float glowWidth = 0.08;
+                float glowStrength = 0.15;
+
+                // Animated glow colors
+                float glowPhase = time * 0.2;
+
+                // Left edge - blue/purple
+                if (leftDist < glowWidth) {
+                    float g = smoothstep(glowWidth, 0.0, leftDist) * glowStrength;
+                    g *= 0.5 + 0.5 * sin(uv.y * 10.0 + glowPhase);
+                    edgeGlow += g;
+                    glowColor += vec3(0.3, 0.4, 1.0) * g;
+                }
+                // Right edge - pink/red
+                if (rightDist < glowWidth) {
+                    float g = smoothstep(glowWidth, 0.0, rightDist) * glowStrength;
+                    g *= 0.5 + 0.5 * sin(uv.y * 10.0 - glowPhase);
+                    edgeGlow += g;
+                    glowColor += vec3(1.0, 0.3, 0.5) * g;
+                }
+                // Top edge - cyan
+                if (topDist < glowWidth * 0.5) {
+                    float g = smoothstep(glowWidth * 0.5, 0.0, topDist) * glowStrength * 0.5;
+                    edgeGlow += g;
+                    glowColor += vec3(0.3, 0.8, 1.0) * g;
+                }
+                // Bottom edge - warm
+                if (bottomDist < glowWidth * 0.5) {
+                    float g = smoothstep(glowWidth * 0.5, 0.0, bottomDist) * glowStrength * 0.5;
+                    edgeGlow += g;
+                    glowColor += vec3(1.0, 0.6, 0.3) * g;
+                }
+
+                if (edgeGlow > 0.0) {
+                    color = mix(color, glowColor / max(edgeGlow, 0.001), edgeGlow * 0.5);
+                }
+            }
+
+            // === FLOATING PARTICLES - Gentle dust/pollen drifting ===
+            {
+                vec2 particleUV = uv * 50.0;
+                particleUV.x += sin(uv.y * 3.0 + time * 0.3) * 2.0;
+                particleUV.y += time * 0.5;
+
+                vec2 particleCell = floor(particleUV);
+                float particleRand = hash(particleCell + 2000.0);
+
+                if (particleRand > 0.92) {
+                    vec2 pFract = fract(particleUV);
+                    float pDrift = sin(time * 0.5 + particleRand * 6.28) * 0.2;
+                    vec2 pPos = vec2(0.5 + pDrift, 0.5);
+                    float pDist = length(pFract - pPos);
+
+                    if (pDist < 0.08) {
+                        float pAlpha = smoothstep(0.08, 0.02, pDist) * 0.3;
+                        // Golden dust particles
+                        vec3 pColor = mix(vec3(1.0, 0.95, 0.7), vec3(1.0, 0.8, 0.5), particleRand);
+                        color = mix(color, pColor, pAlpha);
                     }
                 }
             }
