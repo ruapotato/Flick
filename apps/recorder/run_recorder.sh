@@ -28,11 +28,15 @@ export QT_OPENGL=software
 rm -f "$CMD_FILE" "$STATUS_FILE"
 echo "idle" > "$STATUS_FILE"
 
+# PID files for tracking processes
+REC_PID_FILE="/tmp/flick_recorder_rec_pid"
+PLAY_PID_FILE="/tmp/flick_recorder_play_pid"
+
+# Clean up old PID files
+rm -f "$REC_PID_FILE" "$PLAY_PID_FILE"
+
 # Background command processor
 (
-    recording_pid=""
-    playback_pid=""
-
     while true; do
         if [ -f "$CMD_FILE" ]; then
             cmd=$(cat "$CMD_FILE")
@@ -45,29 +49,32 @@ echo "idle" > "$STATUS_FILE"
                     log "Starting recording to: $file"
 
                     # Kill any existing recording
-                    [ -n "$recording_pid" ] && kill $recording_pid 2>/dev/null
+                    if [ -f "$REC_PID_FILE" ]; then
+                        kill $(cat "$REC_PID_FILE") 2>/dev/null
+                        rm -f "$REC_PID_FILE"
+                    fi
 
                     # Start recording
                     echo "recording" > "$STATUS_FILE"
                     if command -v pw-record &> /dev/null; then
                         pw-record --format=s16 --rate=44100 --channels=1 "$file" &
-                        recording_pid=$!
+                        echo $! > "$REC_PID_FILE"
                     elif command -v parecord &> /dev/null; then
                         parecord --format=s16le --rate=44100 --channels=1 "$file" &
-                        recording_pid=$!
+                        echo $! > "$REC_PID_FILE"
                     else
                         arecord -f S16_LE -r 44100 -c 1 "$file" &
-                        recording_pid=$!
+                        echo $! > "$REC_PID_FILE"
                     fi
-                    log "Recording PID: $recording_pid"
+                    log "Recording PID: $(cat $REC_PID_FILE)"
                     ;;
 
                 STOP)
                     log "Stopping recording"
-                    if [ -n "$recording_pid" ]; then
-                        kill -INT $recording_pid 2>/dev/null
-                        wait $recording_pid 2>/dev/null
-                        recording_pid=""
+                    if [ -f "$REC_PID_FILE" ]; then
+                        kill -INT $(cat "$REC_PID_FILE") 2>/dev/null
+                        wait $(cat "$REC_PID_FILE") 2>/dev/null
+                        rm -f "$REC_PID_FILE"
                         log "Recording stopped"
                     fi
                     echo "idle" > "$STATUS_FILE"
@@ -78,7 +85,13 @@ echo "idle" > "$STATUS_FILE"
                     log "Playing: $file"
 
                     # Kill any existing playback
-                    [ -n "$playback_pid" ] && kill $playback_pid 2>/dev/null
+                    if [ -f "$PLAY_PID_FILE" ]; then
+                        old_pid=$(cat "$PLAY_PID_FILE")
+                        kill $old_pid 2>/dev/null
+                        # Also kill child processes (the actual player)
+                        pkill -P $old_pid 2>/dev/null
+                        rm -f "$PLAY_PID_FILE"
+                    fi
 
                     echo "playing" > "$STATUS_FILE"
                     (
@@ -90,15 +103,26 @@ echo "idle" > "$STATUS_FILE"
                             aplay "$file"
                         fi
                         echo "idle" > "$STATUS_FILE"
+                        rm -f "$PLAY_PID_FILE"
                     ) &
-                    playback_pid=$!
-                    log "Playback PID: $playback_pid"
+                    echo $! > "$PLAY_PID_FILE"
+                    log "Playback PID: $(cat $PLAY_PID_FILE)"
                     ;;
 
                 STOPPLAY)
                     log "Stopping playback"
-                    [ -n "$playback_pid" ] && kill $playback_pid 2>/dev/null
-                    playback_pid=""
+                    if [ -f "$PLAY_PID_FILE" ]; then
+                        pid=$(cat "$PLAY_PID_FILE")
+                        log "Killing playback PID: $pid"
+                        # Kill the subshell and its children
+                        pkill -P $pid 2>/dev/null
+                        kill $pid 2>/dev/null
+                        rm -f "$PLAY_PID_FILE"
+                    fi
+                    # Also try to kill any stray audio players
+                    pkill -f "pw-play.*Recordings" 2>/dev/null
+                    pkill -f "paplay.*Recordings" 2>/dev/null
+                    pkill -f "aplay.*Recordings" 2>/dev/null
                     echo "idle" > "$STATUS_FILE"
                     ;;
 
@@ -122,5 +146,8 @@ qmlscene "$SCRIPT_DIR/main.qml" 2>&1 | tee -a "$LOG_FILE"
 # Cleanup
 log "Cleaning up..."
 kill $CMD_PID 2>/dev/null
-rm -f "$CMD_FILE" "$STATUS_FILE"
+# Kill any remaining audio processes
+[ -f "$REC_PID_FILE" ] && kill $(cat "$REC_PID_FILE") 2>/dev/null
+[ -f "$PLAY_PID_FILE" ] && kill $(cat "$PLAY_PID_FILE") 2>/dev/null
+rm -f "$CMD_FILE" "$STATUS_FILE" "$REC_PID_FILE" "$PLAY_PID_FILE"
 log "=== Flick Recorder stopped ==="
