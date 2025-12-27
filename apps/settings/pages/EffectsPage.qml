@@ -237,24 +237,23 @@ Page {
 
                     Grid {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        columns: 4
-                        spacing: 8
+                        columns: 3
+                        spacing: 12
 
                         Repeater {
                             model: [
-                                { icon: "💧", label: "Water", color: "#4a9eff" },
-                                { icon: "❄️", label: "Snow", color: "#88ddff" },
-                                { icon: "📺", label: "CRT", color: "#ff6600" },
-                                { icon: "📟", label: "Terminal", color: "#00ff00" }
+                                { icon: "💧", label: "Water", color: "#4a9eff", style: 0 },
+                                { icon: "📺", label: "CRT", color: "#ff6600", style: 2 },
+                                { icon: "📟", label: "Terminal", color: "#00ff00", style: 3 }
                             ]
 
                             Rectangle {
-                                width: 72
+                                width: 90
                                 height: 56
                                 radius: 14
-                                color: touchEffectStyle === index ? Qt.darker(modelData.color, 2) : "#1a1a28"
-                                border.color: touchEffectStyle === index ? modelData.color : "#2a2a3e"
-                                border.width: touchEffectStyle === index ? 2 : 1
+                                color: touchEffectStyle === modelData.style ? Qt.darker(modelData.color, 2) : "#1a1a28"
+                                border.color: touchEffectStyle === modelData.style ? modelData.color : "#2a2a3e"
+                                border.width: touchEffectStyle === modelData.style ? 2 : 1
 
                                 Column {
                                     anchors.centerIn: parent
@@ -270,14 +269,14 @@ Page {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: modelData.label
                                         font.pixelSize: 10
-                                        color: touchEffectStyle === index ? "#ffffff" : "#666677"
+                                        color: touchEffectStyle === modelData.style ? "#ffffff" : "#666677"
                                     }
                                 }
 
                                 MouseArea {
                                     anchors.fill: parent
                                     onClicked: {
-                                        touchEffectStyle = index
+                                        touchEffectStyle = modelData.style
                                         saveConfig()
                                     }
                                 }

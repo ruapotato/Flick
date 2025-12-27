@@ -1126,6 +1126,34 @@ impl Flick {
             })
     }
 
+    /// Set living pixels enabled/disabled and save to config
+    pub fn set_living_pixels_enabled(&mut self, enabled: bool) {
+        let config_path = Self::compositor_settings_path();
+
+        // Read existing config
+        let mut config = if let Ok(contents) = std::fs::read_to_string(&config_path) {
+            serde_json::from_str::<serde_json::Value>(&contents)
+                .unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+
+        // Update living_pixels field
+        if let Some(obj) = config.as_object_mut() {
+            obj.insert("living_pixels".to_string(), serde_json::Value::Bool(enabled));
+        }
+
+        // Write back
+        if let Some(parent) = config_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(contents) = serde_json::to_string_pretty(&config) {
+            let _ = std::fs::write(&config_path, contents);
+        }
+
+        tracing::info!("Living pixels {}", if enabled { "enabled" } else { "disabled" });
+    }
+
     /// Reload settings from config file if enough time has passed
     /// This allows the Settings app to change settings without restart
     pub fn reload_settings_if_needed(&mut self) {

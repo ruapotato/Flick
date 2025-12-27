@@ -46,10 +46,12 @@ pub fn default_toggles() -> Vec<QuickToggle> {
     vec![
         QuickToggle::new("wifi", "WiFi", "W", true),
         QuickToggle::new("bluetooth", "BT", "B", false),
-        QuickToggle::new("dnd", "DND", "D", false),
         QuickToggle::new("flashlight", "Light", "L", false),
+        QuickToggle::new("effects", "FX", "E", false),
+        QuickToggle::new("dnd", "DND", "D", false),
         QuickToggle::new("rotation", "Rotate", "R", true),
         QuickToggle::new("airplane", "Flight", "A", false),
+        QuickToggle::new("hotspot", "Hotspot", "H", false),
     ]
 }
 
@@ -310,9 +312,10 @@ impl QuickSettingsPanel {
         let content_y = status_bar_height - scroll;
 
         // ============ QUICK TOGGLES ============
-        let toggle_size = 72.0;  // Fixed small size
-        let toggle_spacing = 16.0;
+        let toggle_size = 56.0;  // Smaller buttons
+        let toggle_spacing = 12.0;
         let toggles_per_row = 4;
+        let row_height = toggle_size + 22.0;  // Button + label
         let grid_width = toggles_per_row as f64 * toggle_size + (toggles_per_row - 1) as f64 * toggle_spacing;
         let grid_start_x = (screen_w - grid_width) / 2.0;
 
@@ -327,13 +330,13 @@ impl QuickSettingsPanel {
         );
         rects.extend(header_rects);
 
-        let toggles_grid_y = toggles_start_y + 32.0;
+        let toggles_grid_y = toggles_start_y + 28.0;
 
         for (i, toggle) in self.toggles.iter().enumerate() {
             let col = i % toggles_per_row;
             let row = i / toggles_per_row;
             let x = grid_start_x + col as f64 * (toggle_size + toggle_spacing);
-            let y = toggles_grid_y + row as f64 * (toggle_size + 28.0);
+            let y = toggles_grid_y + row as f64 * row_height;
 
             // Skip if off-screen
             if y + toggle_size < 0.0 || y > screen_h {
@@ -348,8 +351,8 @@ impl QuickSettingsPanel {
             let icon_rects = text::render_text_centered(
                 toggle.icon,
                 x + toggle_size / 2.0,
-                y + toggle_size / 2.0 - 12.0,
-                4.0,
+                y + toggle_size / 2.0 - 10.0,
+                3.5,
                 toggle.icon_color(),
             );
             rects.extend(icon_rects);
@@ -358,8 +361,8 @@ impl QuickSettingsPanel {
             let name_rects = text::render_text_centered(
                 &toggle.name,
                 x + toggle_size / 2.0,
-                y + toggle_size + 4.0,
-                1.8,
+                y + toggle_size + 2.0,
+                1.6,
                 if toggle.enabled { [1.0, 1.0, 1.0, 1.0] } else { [0.6, 0.6, 0.7, 1.0] },
             );
             rects.extend(name_rects);
@@ -367,7 +370,7 @@ impl QuickSettingsPanel {
 
         // ============ BRIGHTNESS SLIDER ============
         let rows = (self.toggles.len() + toggles_per_row - 1) / toggles_per_row;
-        let brightness_y = toggles_grid_y + rows as f64 * (toggle_size + 28.0) + 24.0;
+        let brightness_y = toggles_grid_y + rows as f64 * row_height + 16.0;
 
         if brightness_y < screen_h && brightness_y + 60.0 > 0.0 {
             let bright_label = text::render_text(
@@ -581,26 +584,27 @@ impl QuickSettingsPanel {
     }
 
     /// Get toggle button layout info for hit testing
-    fn get_toggle_layout(&self) -> (f64, f64, f64, f64, usize) {
-        let toggle_size = 72.0;
-        let toggle_spacing = 16.0;
+    fn get_toggle_layout(&self) -> (f64, f64, f64, f64, f64, usize) {
+        let toggle_size = 56.0;
+        let toggle_spacing = 12.0;
+        let row_height = toggle_size + 22.0;
         let toggles_per_row = 4;
         let screen_w = self.screen_size.w as f64;
         let grid_width = toggles_per_row as f64 * toggle_size + (toggles_per_row - 1) as f64 * toggle_spacing;
         let grid_start_x = (screen_w - grid_width) / 2.0;
-        let toggles_grid_y = 56.0 + 20.0 + 32.0 - self.scroll_offset;  // status_bar + padding + header
-        (grid_start_x, toggles_grid_y, toggle_size, toggle_spacing, toggles_per_row)
+        let toggles_grid_y = 56.0 + 20.0 + 28.0 - self.scroll_offset;  // status_bar + padding + header
+        (grid_start_x, toggles_grid_y, toggle_size, toggle_spacing, row_height, toggles_per_row)
     }
 
     /// Hit test for toggle buttons
     pub fn hit_test_toggle(&self, x: f64, y: f64) -> Option<usize> {
-        let (grid_start_x, toggles_grid_y, toggle_size, toggle_spacing, toggles_per_row) = self.get_toggle_layout();
+        let (grid_start_x, toggles_grid_y, toggle_size, toggle_spacing, row_height, toggles_per_row) = self.get_toggle_layout();
 
         for (i, _) in self.toggles.iter().enumerate() {
             let col = i % toggles_per_row;
             let row = i / toggles_per_row;
             let tx = grid_start_x + col as f64 * (toggle_size + toggle_spacing);
-            let ty = toggles_grid_y + row as f64 * (toggle_size + 28.0);
+            let ty = toggles_grid_y + row as f64 * row_height;
 
             if x >= tx && x < tx + toggle_size && y >= ty && y < ty + toggle_size {
                 return Some(i);
@@ -613,11 +617,12 @@ impl QuickSettingsPanel {
     pub fn hit_test_brightness(&self, x: f64, y: f64) -> Option<f32> {
         let padding = 20.0;
         let screen_w = self.screen_size.w as f64;
-        let toggle_size = 72.0;
+        let toggle_size = 56.0;
+        let row_height = toggle_size + 22.0;
         let toggles_per_row = 4;
         let rows = (self.toggles.len() + toggles_per_row - 1) / toggles_per_row;
-        let toggles_grid_y = 56.0 + 20.0 + 32.0 - self.scroll_offset;
-        let brightness_y = toggles_grid_y + rows as f64 * (toggle_size + 28.0) + 24.0;
+        let toggles_grid_y = 56.0 + 20.0 + 28.0 - self.scroll_offset;
+        let brightness_y = toggles_grid_y + rows as f64 * row_height + 16.0;
         let slider_y = brightness_y + 32.0;
         let slider_height = 40.0;
         let slider_width = screen_w - padding * 2.0;
@@ -633,11 +638,12 @@ impl QuickSettingsPanel {
     pub fn hit_test_volume(&self, x: f64, y: f64) -> Option<u8> {
         let padding = 20.0;
         let screen_w = self.screen_size.w as f64;
-        let toggle_size = 72.0;
+        let toggle_size = 56.0;
+        let row_height = toggle_size + 22.0;
         let toggles_per_row = 4;
         let rows = (self.toggles.len() + toggles_per_row - 1) / toggles_per_row;
-        let toggles_grid_y = 56.0 + 20.0 + 32.0 - self.scroll_offset;
-        let brightness_y = toggles_grid_y + rows as f64 * (toggle_size + 28.0) + 24.0;
+        let toggles_grid_y = 56.0 + 20.0 + 28.0 - self.scroll_offset;
+        let brightness_y = toggles_grid_y + rows as f64 * row_height + 16.0;
         let volume_y = brightness_y + 90.0;
         let slider_y = volume_y + 32.0;
         let slider_height = 40.0;
@@ -676,7 +682,8 @@ impl QuickSettingsPanel {
 
     /// Get content height for scrolling
     pub fn content_height(&self) -> f64 {
-        let toggle_size = 72.0;
+        let toggle_size = 56.0;
+        let row_height = toggle_size + 22.0;
         let toggles_per_row = 4;
         let rows = (self.toggles.len() + toggles_per_row - 1) / toggles_per_row;
 
@@ -692,9 +699,9 @@ impl QuickSettingsPanel {
         // Calculate total content height
         56.0  // status bar
             + 20.0  // padding
-            + 32.0  // header
-            + rows as f64 * (toggle_size + 28.0)  // toggles
-            + 24.0 + 32.0 + 40.0  // brightness section
+            + 28.0  // header
+            + rows as f64 * row_height  // toggles
+            + 16.0 + 32.0 + 40.0  // brightness section
             + 90.0  // volume section
             + 32.0  // notifications header
             + notifications.max(1) as f64 * (card_height + card_spacing)

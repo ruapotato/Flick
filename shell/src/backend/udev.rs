@@ -3798,9 +3798,12 @@ fn handle_input_event(
                                     info!("Rotation lock: {}", if state.system.rotation_lock.locked { "ON" } else { "OFF" });
                                 }
                                 QuickSettingsAction::TouchEffectsToggle => {
+                                    // Toggle both touch effects AND living pixels
                                     let enabled = !state.touch_effects_enabled;
                                     state.set_touch_effects_enabled(enabled);
-                                    info!("Touch effects: {}", if enabled { "ON" } else { "OFF" });
+                                    // Also toggle living pixels in the config
+                                    state.set_living_pixels_enabled(enabled);
+                                    info!("All effects (FX): {}", if enabled { "ON" } else { "OFF" });
                                 }
                                 QuickSettingsAction::Lock => {
                                     info!("Lock button pressed - locking screen");
