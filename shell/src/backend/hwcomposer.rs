@@ -2357,10 +2357,28 @@ fn render_frame(
         Some(display.egl_context),
     ).map_err(|e| anyhow::anyhow!("Failed to make context current: {:?}", e))?;
 
-    // Set viewport to full screen
-    unsafe {
-        if let Some(f) = gl::FN_VIEWPORT {
-            f(0, 0, display.width as i32, display.height as i32);
+    // Check if distortion effects will be active (for scene FBO rendering)
+    // We need to know this early to decide whether to render to FBO or default framebuffer
+    let shader_data_preview = state.touch_effects.get_shader_data(
+        display.width as f64,
+        display.height as f64,
+    );
+    let distortion_active = shader_data_preview.count > 0 || shader_data_preview.effect_style == 2;
+
+    // If distortion is active, render to scene FBO instead of default framebuffer
+    // This avoids the tiled GPU issue of reading from the framebuffer we're writing to
+    let using_scene_fbo = if distortion_active {
+        unsafe { gl::begin_scene_render(display.width as u32, display.height as u32) }
+    } else {
+        false
+    };
+
+    // Set viewport to full screen (already set by begin_scene_render if using FBO)
+    if !using_scene_fbo {
+        unsafe {
+            if let Some(f) = gl::FN_VIEWPORT {
+                f(0, 0, display.width as i32, display.height as i32);
+            }
         }
     }
 
@@ -2925,22 +2943,25 @@ fn render_frame(
         }
     }
 
+    // End scene FBO rendering if active, switch back to default framebuffer
+    if using_scene_fbo {
+        unsafe { gl::end_scene_render(); }
+    }
+
     // Render touch distortion effects (fisheye while touching, ripple on release)
     // Also render continuously for ASCII mode (style 2)
-    let shader_data = state.touch_effects.get_shader_data(
-        display.width as f64,
-        display.height as f64,
-    );
-    let is_ascii_mode = shader_data.effect_style == 2;
-    if shader_data.count > 0 || is_ascii_mode {
+    // Use the shader_data we already computed at the start
+    if distortion_active {
         if log_frame {
-            info!("DISTORTION frame {}: {} effects, style {}", frame_num, shader_data.count, shader_data.effect_style);
+            info!("DISTORTION frame {}: {} effects, style {}, scene_fbo={}",
+                frame_num, shader_data_preview.count, shader_data_preview.effect_style, using_scene_fbo);
         }
         unsafe {
             gl::render_distortion(
                 display.width as u32,
                 display.height as u32,
-                &shader_data,
+                &shader_data_preview,
+                using_scene_fbo, // Pass whether we're using scene texture
             );
         }
     }
@@ -3075,6 +3096,37 @@ mod gl {
     static mut CAPTURE_TEXTURE: u32 = 0;
     static mut CAPTURE_TEX_WIDTH: u32 = 0;
     static mut CAPTURE_TEX_HEIGHT: u32 = 0;
+
+    // FBO for reliable framebuffer capture (avoids tile-based GPU issues)
+    static mut CAPTURE_FBO: u32 = 0;
+    static mut FBO_TEXTURE: u32 = 0;
+    static mut FBO_WIDTH: u32 = 0;
+    static mut FBO_HEIGHT: u32 = 0;
+
+    // Scene FBO - render everything here first, then use for distortion
+    // This avoids the tiled GPU issue of reading from the framebuffer we're writing to
+    static mut SCENE_FBO: u32 = 0;
+    static mut SCENE_TEXTURE: u32 = 0;
+    static mut SCENE_WIDTH: u32 = 0;
+    static mut SCENE_HEIGHT: u32 = 0;
+    static mut SCENE_RENDERING_ACTIVE: bool = false;
+
+    // FBO function pointers
+    static mut FN_GEN_FRAMEBUFFERS: Option<unsafe extern "C" fn(i32, *mut u32)> = None;
+    static mut FN_BIND_FRAMEBUFFER: Option<unsafe extern "C" fn(u32, u32)> = None;
+    static mut FN_FRAMEBUFFER_TEXTURE_2D: Option<unsafe extern "C" fn(u32, u32, u32, u32, i32)> = None;
+    static mut FN_CHECK_FRAMEBUFFER_STATUS: Option<unsafe extern "C" fn(u32) -> u32> = None;
+    static mut FN_DELETE_FRAMEBUFFERS: Option<unsafe extern "C" fn(i32, *const u32)> = None;
+    static mut FN_BLIT_FRAMEBUFFER: Option<unsafe extern "C" fn(i32, i32, i32, i32, i32, i32, i32, i32, u32, u32)> = None;
+
+    // FBO constants
+    const GL_FRAMEBUFFER: u32 = 0x8D40;
+    const GL_READ_FRAMEBUFFER: u32 = 0x8CA8;
+    const GL_DRAW_FRAMEBUFFER: u32 = 0x8CA9;
+    const GL_COLOR_ATTACHMENT0: u32 = 0x8CE0;
+    const GL_FRAMEBUFFER_COMPLETE: u32 = 0x8CD5;
+    const GL_COLOR_BUFFER_BIT_BLIT: u32 = 0x00004000;
+    const GL_NEAREST: u32 = 0x2600;
 
     // Vertex shader - simple pass-through
     const VERTEX_SHADER_SRC: &str = r#"
@@ -3472,6 +3524,19 @@ mod gl {
         FN_UNIFORM1F = load_fn(lib, b"glUniform1f\0");
         FN_UNIFORM2FV = load_fn(lib, b"glUniform2fv\0");
         FN_UNIFORM4FV = load_fn(lib, b"glUniform4fv\0");
+
+        // Load FBO functions for reliable framebuffer capture
+        FN_GEN_FRAMEBUFFERS = load_fn(lib, b"glGenFramebuffers\0");
+        FN_BIND_FRAMEBUFFER = load_fn(lib, b"glBindFramebuffer\0");
+        FN_FRAMEBUFFER_TEXTURE_2D = load_fn(lib, b"glFramebufferTexture2D\0");
+        FN_CHECK_FRAMEBUFFER_STATUS = load_fn(lib, b"glCheckFramebufferStatus\0");
+        FN_DELETE_FRAMEBUFFERS = load_fn(lib, b"glDeleteFramebuffers\0");
+        FN_BLIT_FRAMEBUFFER = load_fn(lib, b"glBlitFramebuffer\0");
+
+        tracing::info!("FBO support: gen={}, bind={}, attach={}, check={}, blit={}",
+            FN_GEN_FRAMEBUFFERS.is_some(), FN_BIND_FRAMEBUFFER.is_some(),
+            FN_FRAMEBUFFER_TEXTURE_2D.is_some(), FN_CHECK_FRAMEBUFFER_STATUS.is_some(),
+            FN_BLIT_FRAMEBUFFER.is_some());
 
         // Create shader program
         if let Some(program) = create_shader_program() {
@@ -4008,10 +4073,12 @@ mod gl {
 
     /// Apply distortion effects to the current framebuffer
     /// This captures the screen, applies fisheye/ripple distortion, and renders the result
+    /// If use_scene_texture is true, uses the pre-rendered scene texture (no framebuffer copy needed)
     pub unsafe fn render_distortion(
         screen_width: u32,
         screen_height: u32,
         shader_data: &crate::touch_effects::TouchEffectShaderData,
+        use_scene_texture: bool,
     ) {
         if DISTORT_PROGRAM == 0 || DISTORT_ATTR_POSITION < 0 {
             return;
@@ -4026,37 +4093,48 @@ mod gl {
         // Clear any pending errors
         while GetError() != 0 {}
 
-        // Use persistent capture texture (create only once or when size changes)
-        let need_new_texture = CAPTURE_TEXTURE == 0
-            || CAPTURE_TEX_WIDTH != screen_width
-            || CAPTURE_TEX_HEIGHT != screen_height;
+        let w = screen_width as i32;
+        let h = screen_height as i32;
 
-        if need_new_texture {
-            // Delete old texture if exists
-            if CAPTURE_TEXTURE != 0 {
-                if let Some(f) = FN_DELETE_TEXTURES { f(1, &CAPTURE_TEXTURE); }
-            }
-            // Create new texture
-            if let Some(f) = FN_GEN_TEXTURES { f(1, &mut CAPTURE_TEXTURE); }
-            CAPTURE_TEX_WIDTH = screen_width;
-            CAPTURE_TEX_HEIGHT = screen_height;
-
-            // Set texture parameters once
-            if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, CAPTURE_TEXTURE); }
-            if let Some(f) = FN_TEX_PARAMETERI {
-                f(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
-                f(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
-                f(TEXTURE_2D, 0x2802, 0x812F); // CLAMP_TO_EDGE
-                f(TEXTURE_2D, 0x2803, 0x812F); // CLAMP_TO_EDGE
-            }
+        // Determine which texture to use as the scene source
+        let source_texture = if use_scene_texture && SCENE_TEXTURE != 0 {
+            // Best path: Use the scene FBO texture directly
+            // The entire scene was rendered to this texture, so no copy is needed
+            // This completely avoids the tiled GPU issue
+            SCENE_TEXTURE
         } else {
-            if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, CAPTURE_TEXTURE); }
-        }
+            // Fallback: Copy from the framebuffer (may flicker on tiled GPUs)
+            let need_new_texture = CAPTURE_TEXTURE == 0
+                || CAPTURE_TEX_WIDTH != screen_width
+                || CAPTURE_TEX_HEIGHT != screen_height;
 
-        // Copy framebuffer to texture (no glFinish - let GPU pipeline naturally)
-        if let Some(f) = FN_COPY_TEX_IMAGE_2D {
-            f(TEXTURE_2D, 0, RGBA, 0, 0, screen_width as i32, screen_height as i32, 0);
-        }
+            if need_new_texture {
+                if CAPTURE_TEXTURE != 0 {
+                    if let Some(f) = FN_DELETE_TEXTURES { f(1, &CAPTURE_TEXTURE); }
+                }
+                if let Some(f) = FN_GEN_TEXTURES { f(1, &mut CAPTURE_TEXTURE); }
+                CAPTURE_TEX_WIDTH = screen_width;
+                CAPTURE_TEX_HEIGHT = screen_height;
+
+                if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, CAPTURE_TEXTURE); }
+                if let Some(f) = FN_TEX_PARAMETERI {
+                    f(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
+                    f(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
+                    f(TEXTURE_2D, 0x2802, 0x812F);
+                    f(TEXTURE_2D, 0x2803, 0x812F);
+                }
+            } else {
+                if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, CAPTURE_TEXTURE); }
+            }
+
+            if let Some(f) = FN_COPY_TEX_IMAGE_2D {
+                f(TEXTURE_2D, 0, RGBA, 0, 0, w, h, 0);
+            }
+            CAPTURE_TEXTURE
+        };
+
+        // Select which texture to use
+        let use_texture = source_texture;
 
         // Set viewport
         if let Some(f) = FN_VIEWPORT {
@@ -4068,7 +4146,7 @@ mod gl {
 
         // Bind the capture texture
         if let Some(f) = FN_ACTIVE_TEXTURE { f(0x84C0); } // GL_TEXTURE0
-        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, CAPTURE_TEXTURE); }
+        if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, use_texture); }
         if let Some(f) = FN_UNIFORM1I { f(DISTORT_UNIFORM_TEXTURE, 0); }
 
         // Set uniforms
@@ -4131,6 +4209,104 @@ mod gl {
 
         // Switch back to normal shader
         if let Some(f) = FN_USE_PROGRAM { f(SHADER_PROGRAM); }
+    }
+
+    /// Check if FBO rendering is supported
+    pub unsafe fn has_fbo_support() -> bool {
+        FN_GEN_FRAMEBUFFERS.is_some() && FN_BIND_FRAMEBUFFER.is_some()
+            && FN_FRAMEBUFFER_TEXTURE_2D.is_some() && FN_CHECK_FRAMEBUFFER_STATUS.is_some()
+    }
+
+    /// Begin rendering to the scene FBO (call before rendering all windows)
+    /// Returns true if scene FBO is active, false if rendering directly to default framebuffer
+    pub unsafe fn begin_scene_render(width: u32, height: u32) -> bool {
+        if !has_fbo_support() {
+            return false;
+        }
+
+        // Check if we need to create or resize the scene FBO
+        let need_new_fbo = SCENE_FBO == 0
+            || SCENE_WIDTH != width
+            || SCENE_HEIGHT != height;
+
+        if need_new_fbo {
+            // Clean up old resources
+            if SCENE_FBO != 0 {
+                if let Some(f) = FN_DELETE_FRAMEBUFFERS { f(1, &SCENE_FBO); }
+            }
+            if SCENE_TEXTURE != 0 {
+                if let Some(f) = FN_DELETE_TEXTURES { f(1, &SCENE_TEXTURE); }
+            }
+
+            // Create texture for scene FBO
+            if let Some(f) = FN_GEN_TEXTURES { f(1, &mut SCENE_TEXTURE); }
+            if let Some(f) = FN_BIND_TEXTURE { f(TEXTURE_2D, SCENE_TEXTURE); }
+
+            // Allocate texture storage
+            if let Some(f) = FN_TEX_IMAGE_2D {
+                f(TEXTURE_2D, 0, RGBA as i32, width as i32, height as i32, 0, RGBA, UNSIGNED_BYTE, std::ptr::null());
+            }
+            if let Some(f) = FN_TEX_PARAMETERI {
+                f(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
+                f(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
+                f(TEXTURE_2D, 0x2802, 0x812F); // CLAMP_TO_EDGE
+                f(TEXTURE_2D, 0x2803, 0x812F); // CLAMP_TO_EDGE
+            }
+
+            // Create FBO and attach texture
+            if let Some(f) = FN_GEN_FRAMEBUFFERS { f(1, &mut SCENE_FBO); }
+            if let Some(f) = FN_BIND_FRAMEBUFFER { f(GL_FRAMEBUFFER, SCENE_FBO); }
+            if let Some(f) = FN_FRAMEBUFFER_TEXTURE_2D {
+                f(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, TEXTURE_2D, SCENE_TEXTURE, 0);
+            }
+
+            // Check FBO status
+            if let Some(f) = FN_CHECK_FRAMEBUFFER_STATUS {
+                let status = f(GL_FRAMEBUFFER);
+                if status != GL_FRAMEBUFFER_COMPLETE {
+                    tracing::error!("Scene FBO incomplete: {:#x}", status);
+                    // Fall back to direct rendering
+                    if let Some(bind) = FN_BIND_FRAMEBUFFER { bind(GL_FRAMEBUFFER, 0); }
+                    return false;
+                }
+            }
+
+            SCENE_WIDTH = width;
+            SCENE_HEIGHT = height;
+            tracing::info!("Created scene FBO {}x{} for distortion", width, height);
+        } else {
+            // Bind existing scene FBO
+            if let Some(f) = FN_BIND_FRAMEBUFFER { f(GL_FRAMEBUFFER, SCENE_FBO); }
+        }
+
+        // Set viewport
+        if let Some(f) = FN_VIEWPORT {
+            f(0, 0, width as i32, height as i32);
+        }
+
+        SCENE_RENDERING_ACTIVE = true;
+        true
+    }
+
+    /// End scene rendering and switch back to default framebuffer
+    pub unsafe fn end_scene_render() {
+        if !SCENE_RENDERING_ACTIVE {
+            return;
+        }
+
+        // Unbind scene FBO, switch to default framebuffer
+        if let Some(f) = FN_BIND_FRAMEBUFFER { f(GL_FRAMEBUFFER, 0); }
+        SCENE_RENDERING_ACTIVE = false;
+    }
+
+    /// Check if scene texture is available for distortion
+    pub unsafe fn has_scene_texture() -> bool {
+        SCENE_TEXTURE != 0 && !SCENE_RENDERING_ACTIVE
+    }
+
+    /// Get the scene texture ID for use in distortion shader
+    pub unsafe fn get_scene_texture() -> u32 {
+        SCENE_TEXTURE
     }
 }
 
