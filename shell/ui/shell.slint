@@ -764,7 +764,7 @@ component QuickToggle inherits Rectangle {
     property <color> grad-end: enabled ? tile-color : tile-color.darker(40%);
 
     horizontal-stretch: 1;
-    height: self.width;  // Square tiles
+    height: 140px;  // Fixed height to prevent overflow
     border-radius: 20px;
     background: grad-end;
     clip: true;
@@ -1315,7 +1315,7 @@ component QuickSettingsPanel inherits Rectangle {
 
         // Toggle grid - 4x2 with proper spacing
         Rectangle {
-            height: 340px;
+            height: 324px;  // 140px * 2 rows + 12px spacing + 32px padding
             background: transparent;
 
             VerticalLayout {

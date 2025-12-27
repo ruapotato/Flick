@@ -1,5 +1,26 @@
 # Flick Compositor - Development Notes
 
+## BUILD INSTRUCTIONS (CLAUDE: READ THIS FIRST)
+
+You are in charge of building on the phone and moving code via SSH. The shell cannot be built locally due to missing hardware libraries (libhybris, hwcomposer).
+
+**Standard workflow:**
+```bash
+# 1. Commit and push changes
+git add -A && git commit -m "message" && git push
+
+# 2. Pull and build on phone via SSH
+ssh droidian@10.15.19.82 "cd ~/Flick && git pull && ./build_phone.sh"
+```
+
+**Phone details:**
+- SSH: `ssh droidian@10.15.19.82`
+- Project path: `~/Flick`
+- Build script: `./build_phone.sh`
+- Build time: ~8 minutes
+
+---
+
 ## CURRENT TASK: drm-hwcomposer-shim (Universal Compositor Abstraction)
 
 **CRITICAL CONTEXT FOR CLAUDE (READ THIS FIRST!):**

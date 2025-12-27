@@ -23,41 +23,6 @@ Item {
         }
     }
 
-    // Subtle animated particles/stars effect
-    Repeater {
-        model: 20
-        Rectangle {
-            property real baseX: Math.random() * lockScreen.width
-            property real baseY: Math.random() * lockScreen.height * 0.7
-            property real animOffset: Math.random() * 2 * Math.PI
-
-            x: baseX + Math.sin(starAnim.elapsed * 0.001 + animOffset) * 3
-            y: baseY + Math.cos(starAnim.elapsed * 0.0008 + animOffset) * 2
-            width: 2 + Math.random() * 2
-            height: width
-            radius: width / 2
-            color: "#ffffff"
-            opacity: 0.1 + Math.random() * 0.15
-
-            NumberAnimation on opacity {
-                from: 0.05
-                to: 0.25
-                duration: 2000 + Math.random() * 3000
-                loops: Animation.Infinite
-                easing.type: Easing.InOutSine
-            }
-        }
-    }
-
-    Timer {
-        id: starAnim
-        property real elapsed: 0
-        interval: 50
-        running: true
-        repeat: true
-        onTriggered: elapsed += interval
-    }
-
     // Main clock display
     Item {
         id: clockContainer
