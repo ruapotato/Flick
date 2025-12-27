@@ -3328,13 +3328,27 @@ mod gl {
                 vec2 cellIdx = floor(uv / vec2(charWidth, charHeight));
                 vec2 cellUV = fract(uv / vec2(charWidth, charHeight));
 
-                // Sample the image at cell center
-                vec2 samplePos = (cellIdx + 0.5) * vec2(charWidth, charHeight);
-                samplePos = clamp(samplePos, vec2(0.0), vec2(1.0));
-                vec4 sampleColor = texture2D(u_texture, samplePos);
+                // Sample multiple points in the cell to detect edges and patterns
+                vec2 cellBase = cellIdx * vec2(charWidth, charHeight);
 
-                // Convert to luminance
-                float lum = dot(sampleColor.rgb, vec3(0.299, 0.587, 0.114));
+                // Sample 3x3 grid within cell
+                float s00 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.15, 0.15) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
+                float s10 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.50, 0.15) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
+                float s20 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.85, 0.15) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
+                float s01 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.15, 0.50) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
+                float s11 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.50, 0.50) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
+                float s21 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.85, 0.50) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
+                float s02 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.15, 0.85) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
+                float s12 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.50, 0.85) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
+                float s22 = dot(texture2D(u_texture, clamp(cellBase + vec2(0.85, 0.85) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0))).rgb, vec3(0.299, 0.587, 0.114));
+
+                // Calculate overall luminance (max of samples to catch thin lines)
+                float maxLum = max(max(max(s00, s10), max(s20, s01)), max(max(s11, s21), max(s02, max(s12, s22))));
+                float avgLum = (s00 + s10 + s20 + s01 + s11 + s21 + s02 + s12 + s22) / 9.0;
+                float lum = mix(avgLum, maxLum, 0.5); // Blend avg and max
+
+                // Get color from center
+                vec4 sampleColor = texture2D(u_texture, clamp(cellBase + vec2(0.5, 0.5) * vec2(charWidth, charHeight), vec2(0.0), vec2(1.0)));
 
                 // Map luminance to character index (0-15, 16 levels)
                 int charIdx = int(lum * 15.99);
