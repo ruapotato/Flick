@@ -3318,23 +3318,28 @@ mod gl {
             // === ASCII MODE (style 2) - Full screen terminal look ===
             if (u_style == 2) {
                 // u_density controls character size (higher = more chars = smaller)
-                // For bb-style look, we want ~80 columns
-                // density of 80 = 80 chars across screen width
-                float charsAcross = u_density * 10.0; // Scale up: 8 -> 80 chars
+                // density 4 = ~40 chars, density 8 = ~80 chars, density 16 = ~160 chars
+                float charsAcross = u_density * 5.0; // Bigger chars: 8 -> 40 chars across
                 float charWidth = 1.0 / charsAcross;
-                float charHeight = charWidth * u_aspect * 1.4; // Chars are taller than wide
+                float charHeight = charWidth * u_aspect * 1.8; // Taller chars for readability
 
                 // Find which character cell this pixel is in
                 vec2 cellIdx = floor(uv / vec2(charWidth, charHeight));
                 vec2 cellUV = fract(uv / vec2(charWidth, charHeight));
 
-                // Sample the image at cell center
+                // Sample the image at cell center with slight blur for stability
                 vec2 samplePos = (cellIdx + 0.5) * vec2(charWidth, charHeight);
                 samplePos = clamp(samplePos, vec2(0.0), vec2(1.0));
                 vec4 sampleColor = texture2D(u_texture, samplePos);
 
-                // Convert to luminance
+                // Sample neighbors for slight blur (reduces flicker)
+                vec4 sampleL = texture2D(u_texture, clamp(samplePos - vec2(charWidth * 0.5, 0.0), vec2(0.0), vec2(1.0)));
+                vec4 sampleR = texture2D(u_texture, clamp(samplePos + vec2(charWidth * 0.5, 0.0), vec2(0.0), vec2(1.0)));
+                sampleColor = mix(sampleColor, (sampleL + sampleR) * 0.5, 0.2);
+
+                // Convert to luminance with boosted contrast
                 float lum = dot(sampleColor.rgb, vec3(0.299, 0.587, 0.114));
+                lum = clamp((lum - 0.1) * 1.3, 0.0, 1.0); // Boost contrast
 
                 // Map luminance to character index (0-15, 16 levels)
                 int charIdx = int(lum * 15.99);
@@ -3342,11 +3347,35 @@ mod gl {
                 // Get the pixel value from character bitmap
                 float pixel = getCharPixel(charIdx, cellUV);
 
-                // Green phosphor terminal look with original color tint
-                vec3 charColor = mix(vec3(0.2, 1.0, 0.3), sampleColor.rgb, 0.3);
-                vec3 bgColor = vec3(0.0, 0.02, 0.0);
+                // Add padding around characters (don't draw at cell edges)
+                float padX = smoothstep(0.0, 0.1, cellUV.x) * smoothstep(1.0, 0.9, cellUV.x);
+                float padY = smoothstep(0.0, 0.08, cellUV.y) * smoothstep(1.0, 0.92, cellUV.y);
+                pixel *= padX * padY;
 
-                gl_FragColor = vec4(mix(bgColor, charColor, pixel), 1.0);
+                // Use true colors from the original image
+                vec3 charColor = sampleColor.rgb;
+                // Boost saturation and brightness for visibility
+                charColor = mix(vec3(lum), charColor, 1.3); // Boost saturation
+                charColor = charColor * (0.9 + lum * 0.5); // Brighter for bright areas
+                charColor = clamp(charColor, 0.0, 1.0);
+
+                // Glow effect - bright chars bleed slightly
+                float glow = pixel * lum * 0.3;
+
+                // Scanlines - subtle horizontal lines for CRT feel
+                float scanline = 0.94 + 0.06 * sin(uv.y * 3.14159 * 2.0 / charHeight);
+
+                // CRT vignette - slightly darker at edges
+                vec2 vignetteUV = uv * 2.0 - 1.0;
+                float vignette = 1.0 - dot(vignetteUV, vignetteUV) * 0.1;
+
+                // Dark background
+                vec3 bgColor = sampleColor.rgb * 0.08;
+
+                vec3 finalColor = mix(bgColor, charColor, pixel + glow);
+                finalColor *= scanline * vignette;
+
+                gl_FragColor = vec4(finalColor, 1.0);
                 return;
             }
 
