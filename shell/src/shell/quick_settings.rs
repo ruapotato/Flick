@@ -49,7 +49,7 @@ pub fn default_toggles() -> Vec<QuickToggle> {
         QuickToggle::new("flashlight", "Light", "L", false),
         QuickToggle::new("effects", "FX", "E", false),
         QuickToggle::new("dnd", "DND", "D", false),
-        QuickToggle::new("rotation", "Rotate", "R", true),
+        QuickToggle::new("rotation", "Orient", "▯", false),  // ▯ = portrait, ▭ = landscape
         QuickToggle::new("airplane", "Flight", "A", false),
         QuickToggle::new("hotspot", "Hotspot", "H", false),
     ]
@@ -212,7 +212,14 @@ impl QuickSettingsPanel {
                 "wifi" => toggle.enabled = system.wifi_enabled,
                 "bluetooth" => toggle.enabled = system.bluetooth_enabled,
                 "dnd" => toggle.enabled = system.dnd.enabled,
-                "rotation" => toggle.enabled = system.rotation_lock.locked,
+                "rotation" => {
+                    // Show enabled (landscape) when not portrait
+                    use crate::system::Orientation;
+                    let is_landscape = system.rotation_lock.get_orientation() != Orientation::Portrait;
+                    toggle.enabled = is_landscape;
+                    // Update icon: ▯ = portrait (tall), ▭ = landscape (wide)
+                    toggle.icon = if is_landscape { "▭" } else { "▯" };
+                }
                 "airplane" => toggle.enabled = !system.wifi_enabled && !system.bluetooth_enabled,
                 _ => {}
             }

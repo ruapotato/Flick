@@ -1380,6 +1380,32 @@ fn handle_input_event(
                                                 Orientation::Landscape270 => 2,
                                             };
                                             unsafe { gl::set_rotation(gl_rotation); }
+
+                                            // Resize app windows to rotated dimensions
+                                            // Physical is 1080x2400, landscape is 2400x1080
+                                            let (app_w, app_h) = match new_orientation {
+                                                Orientation::Portrait => (
+                                                    state.physical_display_size.w,
+                                                    state.physical_display_size.h,
+                                                ),
+                                                Orientation::Landscape90 | Orientation::Landscape270 => (
+                                                    state.physical_display_size.h,  // Swap for landscape
+                                                    state.physical_display_size.w,
+                                                ),
+                                            };
+                                            info!("Resizing app windows to {}x{}", app_w, app_h);
+
+                                            // Resize all Wayland windows
+                                            for window in state.space.elements() {
+                                                if let Some(toplevel) = window.toplevel() {
+                                                    let new_size: smithay::utils::Size<i32, smithay::utils::Logical> =
+                                                        (app_w, app_h).into();
+                                                    toplevel.with_pending_state(|s| {
+                                                        s.size = Some(new_size);
+                                                    });
+                                                    toplevel.send_configure();
+                                                }
+                                            }
                                         }
                                         QuickSettingsAction::TouchEffectsToggle => {
                                             // Toggle both touch effects AND living pixels
