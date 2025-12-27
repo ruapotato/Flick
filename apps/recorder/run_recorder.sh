@@ -6,9 +6,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="/home/droidian/.local/state/flick"
 RECORDINGS_DIR="/home/droidian/Recordings"
 LOG_FILE="${STATE_DIR}/recorder.log"
+FIFO_FILE="/tmp/flick_recorder_fifo"
 
 mkdir -p "$STATE_DIR"
 mkdir -p "$RECORDINGS_DIR"
+
+# Create FIFO for command passing
+rm -f "$FIFO_FILE"
+mkfifo "$FIFO_FILE"
 
 echo "=== Flick Recorder started at $(date) ===" >> "$LOG_FILE"
 
@@ -26,9 +31,9 @@ export QT_OPENGL=software
     current_recording_pid=""
     current_playback_pid=""
 
-    # Monitor QML console output for commands
+    # Monitor QML console output for commands from FIFO
     while IFS= read -r line; do
-        echo "$line" >> "$LOG_FILE"
+        echo "CMD: $line" >> "$LOG_FILE"
 
         # Check for recording start command
         if [[ "$line" =~ START_RECORDING:(.+) ]]; then
@@ -38,6 +43,7 @@ export QT_OPENGL=software
             # Stop any existing recording
             if [ -n "$current_recording_pid" ]; then
                 kill $current_recording_pid 2>/dev/null
+                wait $current_recording_pid 2>/dev/null
             fi
 
             # Start recording with parecord (PulseAudio) or pw-record (PipeWire)
@@ -62,6 +68,7 @@ export QT_OPENGL=software
                 kill -SIGINT $current_recording_pid 2>/dev/null
                 wait $current_recording_pid 2>/dev/null
                 current_recording_pid=""
+                echo "Recording stopped, file saved" >> "$LOG_FILE"
             fi
         fi
 
@@ -73,6 +80,7 @@ export QT_OPENGL=software
             # Stop any existing playback
             if [ -n "$current_playback_pid" ]; then
                 kill $current_playback_pid 2>/dev/null
+                wait $current_playback_pid 2>/dev/null
             fi
 
             # Clear status
@@ -98,6 +106,7 @@ export QT_OPENGL=software
             echo "Stopping playback" >> "$LOG_FILE"
             if [ -n "$current_playback_pid" ]; then
                 kill $current_playback_pid 2>/dev/null
+                wait $current_playback_pid 2>/dev/null
                 current_playback_pid=""
                 echo "stopped" > /tmp/flick_recorder_playback_status
             fi
@@ -109,7 +118,7 @@ export QT_OPENGL=software
             echo "Deleting: $delete_file" >> "$LOG_FILE"
             rm -f "$delete_file"
         fi
-    done
+    done < "$FIFO_FILE"
 ) &
 MONITOR_PID=$!
 
@@ -123,6 +132,7 @@ MONITOR_PID=$!
             # List recordings (newest first)
             if [ -d "$scan_dir" ]; then
                 ls -1t "$scan_dir"/*.wav "$scan_dir"/*.opus 2>/dev/null | xargs -n1 basename 2>/dev/null > /tmp/flick_recorder_files
+                echo "Found files: $(cat /tmp/flick_recorder_files | wc -l)" >> "$LOG_FILE"
             else
                 echo "" > /tmp/flick_recorder_files
             fi
@@ -134,18 +144,22 @@ MONITOR_PID=$!
 ) &
 SCANNER_PID=$!
 
-# Run the recorder QML interface and pipe output to monitor
+# Run the recorder QML interface and pipe output to FIFO and log
 qmlscene "$SCRIPT_DIR/main.qml" 2>&1 | while IFS= read -r line; do
     echo "$line"
     echo "$line" >> "$LOG_FILE"
-done &
-QML_PID=$!
-
-# Wait for QML to exit
-wait $QML_PID
+    # Send commands to the monitor process via FIFO
+    if [[ "$line" =~ ^qml:.*(START_RECORDING|STOP_RECORDING|PLAY_RECORDING|STOP_PLAYBACK|DELETE_RECORDING) ]]; then
+        # Extract just the command part after "qml: "
+        cmd="${line#qml: }"
+        echo "$cmd" > "$FIFO_FILE"
+    fi
+done
 
 # Cleanup
+echo "=== Cleaning up ===" >> "$LOG_FILE"
 kill $MONITOR_PID 2>/dev/null
 kill $SCANNER_PID 2>/dev/null
+rm -f "$FIFO_FILE"
 
 echo "=== Flick Recorder stopped at $(date) ===" >> "$LOG_FILE"

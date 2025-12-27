@@ -79,7 +79,9 @@ Window {
         id: loadRecordingsTimer
         interval: 500
         repeat: true
+        property int attempts: 0
         onTriggered: {
+            attempts++
             var xhr = new XMLHttpRequest()
             xhr.open("GET", "file:///tmp/flick_recorder_files", false)
             try {
@@ -100,15 +102,22 @@ Window {
                                 })
                             }
                         }
-                        // Mark as processed
+                        // Mark as processed and stop polling
                         var clearXhr = new XMLHttpRequest()
                         clearXhr.open("PUT", "file:///tmp/flick_recorder_files", false)
                         try {
                             clearXhr.send("scanned")
                         } catch (e) {}
+                        loadRecordingsTimer.stop()
+                        attempts = 0
                     }
                 }
             } catch (e) {}
+            // Stop after 20 attempts (10 seconds)
+            if (attempts > 20) {
+                loadRecordingsTimer.stop()
+                attempts = 0
+            }
         }
     }
 
@@ -134,10 +143,14 @@ Window {
         // Signal to shell to stop recording
         console.log("STOP_RECORDING")
 
-        // Reload recordings list
+        // Reload recordings list after a delay to let the file be written
         setTimeout(function() {
             loadRecordings()
-        }, 500)
+        }, 1000)
+        // And again after a bit more time
+        setTimeout(function() {
+            loadRecordings()
+        }, 2000)
     }
 
     function setTimeout(callback, delay) {
