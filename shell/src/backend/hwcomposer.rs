@@ -3646,129 +3646,124 @@ mod gl {
                 float inf = clamp(totalInf, 0.0, 1.0);
                 color.rgb = mix(color.rgb, color.rgb * vec3(0.8, 0.9, 1.2), inf * 0.5);
             }
-            // === SNOW (style 1) - Growing ice crystal dendrites ===
+            // === SNOW (style 1) - Unique snowflake grown by dragging finger ===
             else if (u_style == 1) {
                 for (int i = 0; i < 10; i++) {
                     if (i >= u_count) break;
 
                     vec2 center = vec2(u_positions[i].x, 1.0 - u_positions[i].y);
                     float radius = u_params[i].x;
-                    float strength = u_params[i].y;
-                    float effectType = u_params[i].z;
+                    float growth = u_params[i].y;  // Driven by drag distance from touch point
 
                     vec2 delta = sampleUV - center;
                     delta.x *= u_aspect;
                     float dist = length(delta);
 
-                    float maxRadius = radius * 2.5;
+                    float maxRadius = radius * 3.5;
 
-                    if (dist < maxRadius) {
-                        // Growth amount - increases while finger is down
-                        float growth = effectType < 0.5 ? strength * 5.0 : max(0.0, 1.0 - (effectType - 1.0)) * strength * 5.0;
-                        growth = clamp(growth, 0.0, 1.0);
+                    if (dist < maxRadius && growth > 0.005) {
+                        float crystal = 0.0;
+                        float PI = 3.14159;
 
-                        if (growth > 0.01) {
-                            float crystal = 0.0;
-                            float PI = 3.14159;
+                        // === UNIQUE RANDOMIZATION per crystal ===
+                        float seed1 = hash(center * 127.1);
+                        float seed2 = hash(center * 269.5 + 0.5);
+                        float seed3 = hash(center * 419.3 + 1.0);
 
-                            // Function inline: distance from point to line segment
-                            // For each branch, check distance to line
+                        // Random rotation for whole crystal
+                        float rotOffset = seed1 * PI / 3.0;
 
-                            // 6-fold symmetry: main branches at 0, 60, 120, 180, 240, 300 degrees
-                            for (float b = 0.0; b < 6.0; b += 1.0) {
-                                float branchAngle = b * PI / 3.0;
-                                vec2 branchDir = vec2(cos(branchAngle), sin(branchAngle));
+                        // 6-fold symmetry with unique variations
+                        for (float b = 0.0; b < 6.0; b += 1.0) {
+                            float branchAngle = b * PI / 3.0 + rotOffset;
+                            vec2 branchDir = vec2(cos(branchAngle), sin(branchAngle));
 
-                                // Main branch length grows with time
-                                float mainLen = growth * maxRadius;
+                            // Unique length per branch arm
+                            float bSeed = hash(center * 50.0 + b * 13.7);
+                            float lenMult = 0.6 + bSeed * 0.8;
+                            float mainLen = growth * maxRadius * lenMult;
 
-                                // Distance to main branch line segment
-                                float proj = dot(delta, branchDir);
-                                if (proj > 0.0 && proj < mainLen) {
-                                    vec2 closest = branchDir * proj;
-                                    float perpDist = length(delta - closest);
-                                    // Thicker at base, thinner at tip
-                                    float width = 0.008 * maxRadius * (1.0 - proj / mainLen * 0.7);
-                                    float line = smoothstep(width, width * 0.3, perpDist);
-                                    crystal = max(crystal, line);
-                                }
+                            // Main branch
+                            float proj = dot(delta, branchDir);
+                            if (proj > 0.0 && proj < mainLen) {
+                                vec2 closest = branchDir * proj;
+                                float perpDist = length(delta - closest);
+                                float widthBase = 0.006 + bSeed * 0.004;
+                                float width = widthBase * maxRadius * (1.0 - proj / mainLen * 0.6);
+                                float line = smoothstep(width, width * 0.2, perpDist);
+                                crystal = max(crystal, line);
+                            }
 
-                                // Side branches (dendrites) - grow from main branch at 60 degree angles
-                                if (growth > 0.15) {
-                                    // Dendrites spawn at intervals along main branch
-                                    for (float d = 0.15; d < growth * 0.9; d += 0.12) {
-                                        // Left and right dendrites
-                                        for (float side = -1.0; side <= 1.0; side += 2.0) {
-                                            float dendAngle = branchAngle + side * PI / 3.0;  // 60 deg off
-                                            vec2 dendDir = vec2(cos(dendAngle), sin(dendAngle));
+                            // Side dendrites - unique spacing/angles per crystal
+                            if (growth > 0.05) {
+                                float spacing = 0.06 + hash(center * 33.0 + b * 7.0) * 0.06;
+                                float startOff = hash(center * 22.0 + b * 11.0) * spacing * 0.5;
 
-                                            // Dendrite origin on main branch
-                                            vec2 dendOrigin = branchDir * d * maxRadius;
-                                            // Dendrite length - shorter near tip
-                                            float dendLen = (growth - d) * maxRadius * 0.5;
-                                            if (dendLen < 0.01) continue;
+                                for (float d = 0.08 + startOff; d < growth * 0.88; d += spacing) {
+                                    for (float side = -1.0; side <= 1.0; side += 2.0) {
+                                        float dSeed = hash(center * 77.0 + b * 19.0 + d * 31.0 + side * 3.0);
 
-                                            // Check distance to this dendrite
-                                            vec2 toDend = delta - dendOrigin;
-                                            float dendProj = dot(toDend, dendDir);
-                                            if (dendProj > 0.0 && dendProj < dendLen) {
-                                                vec2 closest = dendOrigin + dendDir * dendProj;
-                                                float perpDist = length(delta - closest);
-                                                float width = 0.005 * maxRadius * (1.0 - dendProj / dendLen);
-                                                float line = smoothstep(width, width * 0.2, perpDist);
-                                                crystal = max(crystal, line * 0.95);
-                                            }
+                                        // Skip some dendrites randomly for variety
+                                        if (dSeed < 0.15) continue;
 
-                                            // Tertiary branches from dendrites
-                                            if (growth > 0.4 && dendLen > 0.02 * maxRadius) {
-                                                for (float t = 0.3; t < 0.8; t += 0.25) {
-                                                    float tertLen = dendLen * (0.8 - t) * 0.4;
-                                                    vec2 tertOrigin = dendOrigin + dendDir * dendLen * t;
-                                                    // Tertiary at same 60-deg angle (toward main branch tip)
-                                                    float tertAngle = branchAngle;
-                                                    vec2 tertDir = vec2(cos(tertAngle), sin(tertAngle));
+                                        // Unique angle variation
+                                        float angleVar = (dSeed - 0.5) * 0.5;
+                                        float dendAngle = branchAngle + side * (PI / 3.0 + angleVar);
+                                        vec2 dendDir = vec2(cos(dendAngle), sin(dendAngle));
 
-                                                    vec2 toTert = delta - tertOrigin;
-                                                    float tertProj = dot(toTert, tertDir);
-                                                    if (tertProj > 0.0 && tertProj < tertLen) {
-                                                        vec2 closest = tertOrigin + tertDir * tertProj;
-                                                        float perpDist = length(delta - closest);
-                                                        float width = 0.003 * maxRadius;
-                                                        float line = smoothstep(width, width * 0.1, perpDist);
-                                                        crystal = max(crystal, line * 0.85);
-                                                    }
+                                        vec2 dendOrigin = branchDir * d * maxRadius;
+                                        float dendLenMult = 0.25 + dSeed * 0.45;
+                                        float dendLen = (growth - d) * maxRadius * dendLenMult;
+                                        if (dendLen < 0.004 * maxRadius) continue;
+
+                                        vec2 toDend = delta - dendOrigin;
+                                        float dendProj = dot(toDend, dendDir);
+                                        if (dendProj > 0.0 && dendProj < dendLen) {
+                                            vec2 closest = dendOrigin + dendDir * dendProj;
+                                            float perpDist = length(delta - closest);
+                                            float width = 0.004 * maxRadius * (1.0 - dendProj / dendLen * 0.7);
+                                            float line = smoothstep(width, width * 0.15, perpDist);
+                                            crystal = max(crystal, line * 0.92);
+                                        }
+
+                                        // Tertiary - random presence
+                                        if (growth > 0.25 && dSeed > 0.4) {
+                                            float tSeed = hash(center * 99.0 + d * 41.0 + side * 5.0);
+                                            float tPos = 0.25 + tSeed * 0.35;
+                                            float tLen = dendLen * (0.5 - tPos * 0.5) * (0.4 + tSeed * 0.4);
+
+                                            if (tLen > 0.002 * maxRadius) {
+                                                vec2 tOrigin = dendOrigin + dendDir * dendLen * tPos;
+                                                vec2 tDir = branchDir;
+
+                                                vec2 toT = delta - tOrigin;
+                                                float tProj = dot(toT, tDir);
+                                                if (tProj > 0.0 && tProj < tLen) {
+                                                    vec2 closest = tOrigin + tDir * tProj;
+                                                    float perpDist = length(delta - closest);
+                                                    float width = 0.002 * maxRadius;
+                                                    float line = smoothstep(width, width * 0.1, perpDist);
+                                                    crystal = max(crystal, line * 0.8);
                                                 }
                                             }
                                         }
                                     }
                                 }
                             }
+                        }
 
-                            // Central hexagon seed
-                            float coreSize = 0.015 * maxRadius;
-                            float coreDist = dist;
-                            if (coreDist < coreSize) {
-                                crystal = max(crystal, 1.0);
-                            }
+                        // Central seed - varies per crystal
+                        float coreSize = 0.01 * maxRadius * (0.7 + seed2 * 0.6);
+                        if (dist < coreSize) {
+                            crystal = max(crystal, 1.0);
+                        }
 
-                            // Apply crystal
-                            if (crystal > 0.01) {
-                                // Ice color with slight blue tint
-                                vec3 iceColor = vec3(0.85, 0.92, 1.0);
-                                // Sparkle effect
-                                float sparkle = pow(hash(sampleUV * 500.0 + u_time * 0.3), 20.0);
-                                iceColor += sparkle * 0.4;
-
-                                color.rgb = mix(color.rgb, iceColor, crystal * 0.9);
-                            }
-
-                            // Subtle frost halo at growth edge
-                            float growthEdge = growth * maxRadius;
-                            if (dist > growthEdge * 0.8 && dist < growthEdge * 1.1) {
-                                float frost = 1.0 - abs(dist - growthEdge) / (growthEdge * 0.3);
-                                frost = frost * frost * 0.15;
-                                color.rgb = mix(color.rgb, vec3(0.9, 0.95, 1.0), frost);
-                            }
+                        // Apply with unique color tint
+                        if (crystal > 0.01) {
+                            vec3 iceColor = vec3(0.80 + seed3 * 0.1, 0.88 + seed2 * 0.08, 0.98 + seed1 * 0.02);
+                            float sparkle = pow(hash(sampleUV * 700.0 + u_time * 0.15), 30.0);
+                            iceColor += sparkle * 0.25;
+                            color.rgb = mix(color.rgb, iceColor, crystal * 0.94);
                         }
                     }
                 }

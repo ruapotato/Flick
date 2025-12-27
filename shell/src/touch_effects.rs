@@ -237,7 +237,7 @@ impl TouchEffect {
     /// Returns (x, y, radius, strength, type_flag)
     /// x, y: normalized 0-1 screen coordinates
     /// radius: effect radius in normalized units
-    /// strength: effect intensity 0-1
+    /// strength: effect intensity 0-1 (for snow: encodes drag distance for growth)
     /// type_flag: 0 = fisheye, 1+ = ripple (encodes progress)
     pub fn get_shader_params(&self, screen_width: f64, screen_height: f64, config: &EffectConfig) -> (f32, f32, f32, f32, f32) {
         // For snow effect, use initial position so crystal stays in place
@@ -251,6 +251,17 @@ impl TouchEffect {
 
         match self.effect_type {
             EffectType::Fisheye => {
+                // For snow effect: growth based on drag distance from initial point
+                if config.effect_style == EffectStyle::Snow {
+                    let dx = (self.x - self.initial_x) / screen_width;
+                    let dy = (self.y - self.initial_y) / screen_height;
+                    let drag_dist = (dx * dx + dy * dy).sqrt();
+                    // Slow growth: distance * 2.0 means dragging half screen = full growth
+                    let growth = (drag_dist * 2.0).min(1.0) as f32;
+                    let radius = config.fisheye_size;
+                    return (nx, ny, radius, growth, 0.0);
+                }
+
                 // Fisheye: constant radius, strength based on age (quick ramp up)
                 let age = self.age();
                 let ramp = (age * 8.0).min(1.0); // Ramp up over 0.125s
