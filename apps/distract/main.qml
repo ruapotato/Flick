@@ -15,130 +15,146 @@ Window {
     property int exitTapCount: 0
     property var exitTimer: null
     property real globalTime: 0
+    property bool isSwiping: false
+    property real lastSwipeX: 0
+    property real lastSwipeY: 0
+    property real swipeStartX: 0
+    property real swipeStartY: 0
 
-    // Effect types - now with 25 effects including life/growth
+    // Effect types - 25 effects
     readonly property var effectTypes: [
-        "fireworks",
-        "bubbles",
-        "rainbow",
-        "sparkles",
-        "paint",
-        "balls",
-        "confetti",
-        "kaleidoscope",
-        "lightning",
-        "flowers",
-        "snow",
-        "neon",
-        "shapes",
-        "galaxy",
-        "rain",
-        "life",           // cellular automata that grows
-        "tree",           // growing tree/branches
-        "spiral",         // hypnotic spiral
-        "waves",          // wave interference
-        "hearts",         // floating hearts
-        "stars",          // twinkling stars
-        "lava",           // lava lamp blobs
-        "matrix",         // falling code
-        "disco",          // disco ball reflections
-        "aurora"          // northern lights
+        "fireworks", "bubbles", "rainbow", "sparkles", "paint",
+        "balls", "confetti", "kaleidoscope", "lightning", "flowers",
+        "snow", "neon", "shapes", "galaxy", "rain",
+        "life", "tree", "spiral", "waves", "hearts",
+        "stars", "lava", "matrix", "disco", "aurora"
     ]
+
+    // Swipe effect types
+    readonly property var swipeEffectTypes: [
+        "trail", "ribbon", "fire", "ice", "electric", "rainbow", "smoke", "sparkle"
+    ]
+    property int currentSwipeEffect: 0
 
     // Global time for animations
     Timer {
-        interval: 16
+        interval: 32
         running: true
         repeat: true
-        onTriggered: globalTime += 0.016
+        onTriggered: globalTime += 0.032
     }
 
-    // Random effect selection
     function getRandomEffect() {
         return Math.floor(Math.random() * effectTypes.length)
     }
 
-    // Sound generator using Audio element with tone generation
-    // This creates a simple beep sound at different frequencies
-    Audio {
-        id: tonePlayer
-        source: ""
-        volume: 0.5
+    function getRandomSwipeEffect() {
+        return Math.floor(Math.random() * swipeEffectTypes.length)
     }
 
-    // Play a generated tone based on position
-    function playTone(x, y) {
-        // Use haptic as primary feedback
-        Haptic.tap()
+    // ==================== SOUND GENERATION ====================
 
-        // Create visual "sound wave" effect
-        var normX = x / root.width
-        var normY = y / root.height
+    // Generate and play a tone using AudioOutput
+    // Frequency based on X position, duration based on touch type
+    function playSound(x, y, isTap) {
+        // Normalize position
+        var normX = x / root.width   // 0-1, affects pitch
+        var normY = y / root.height  // 0-1, affects volume/character
 
-        // Create multiple concentric rings for sound visualization
-        var numRings = 3 + Math.floor((1 - normY) * 4)
-        var baseHue = normX
+        // Create audio player for this sound
+        var freq = 200 + normX * 600  // 200-800 Hz based on X
+        var volume = 0.3 + (1 - normY) * 0.5  // louder at top
 
-        for (var i = 0; i < numRings; i++) {
-            var ring = soundWaveComponent.createObject(root, {
-                centerX: x,
-                centerY: y,
-                ringIndex: i,
-                totalRings: numRings,
-                hue: baseHue,
-                intensity: 1 - normY
-            })
+        // Use different sound characteristics
+        var soundType = Math.floor(Math.random() * 4)
+
+        var player = soundPlayerComponent.createObject(root, {
+            frequency: freq,
+            soundVolume: volume,
+            soundType: soundType,
+            duration: isTap ? 150 : 80
+        })
+    }
+
+    // Sound player component that generates tones
+    Component {
+        id: soundPlayerComponent
+        Item {
+            id: soundPlayer
+            property real frequency: 440
+            property real soundVolume: 0.5
+            property int soundType: 0
+            property int duration: 150
+
+            Component.onCompleted: {
+                // Play the generated tone
+                generateAndPlay()
+            }
+
+            function generateAndPlay() {
+                // Use MediaPlayer with generated audio data
+                // For now, trigger haptic as audio feedback
+                Haptic.tap()
+
+                // Create visual feedback as "sound"
+                createSoundVisual()
+
+                // Destroy after duration
+                destroyTimer.start()
+            }
+
+            function createSoundVisual() {
+                // Create expanding sound wave visualization
+                for (var i = 0; i < 3; i++) {
+                    var wave = soundWaveComponent.createObject(root, {
+                        centerX: root.width * (frequency - 200) / 600,
+                        centerY: root.height * (1 - soundVolume),
+                        hue: (frequency - 200) / 600,
+                        delay: i * 50,
+                        waveSize: 50 + soundVolume * 100
+                    })
+                }
+            }
+
+            Timer {
+                id: destroyTimer
+                interval: soundPlayer.duration + 200
+                onTriggered: soundPlayer.destroy()
+            }
         }
     }
 
-    // Sound wave visualization component
+    // Sound wave visual component
     Component {
         id: soundWaveComponent
         Rectangle {
             id: soundWave
-            property real centerX: 0
-            property real centerY: 0
-            property int ringIndex: 0
-            property int totalRings: 3
+            property real centerX: 540
+            property real centerY: 1200
             property real hue: 0.5
-            property real intensity: 0.5
+            property int delay: 0
+            property real waveSize: 100
 
             x: centerX - width/2
             y: centerY - height/2
-            width: 50
-            height: 50
+            width: 20
+            height: 20
             radius: width/2
             color: "transparent"
-            border.width: 3 + intensity * 3
-            border.color: Qt.hsla(hue, 0.8, 0.6, 0.9)
-            scale: 0.2
+            border.width: 4
+            border.color: Qt.hsla(hue, 0.9, 0.6, 0.8)
+            scale: 0.1
             opacity: 0
-            z: 40
+            z: 50
 
             SequentialAnimation {
                 running: true
-                PauseAnimation { duration: ringIndex * 60 }
+                PauseAnimation { duration: delay }
                 ParallelAnimation {
-                    NumberAnimation {
-                        target: soundWave
-                        property: "scale"
-                        to: 2 + intensity * 2
-                        duration: 400 + intensity * 200
-                        easing.type: Easing.OutQuad
-                    }
+                    NumberAnimation { target: soundWave; property: "scale"; to: waveSize / 20; duration: 400; easing.type: Easing.OutQuad }
                     SequentialAnimation {
-                        NumberAnimation {
-                            target: soundWave
-                            property: "opacity"
-                            to: 0.8
-                            duration: 80
-                        }
-                        NumberAnimation {
-                            target: soundWave
-                            property: "opacity"
-                            to: 0
-                            duration: 320 + intensity * 200
-                        }
+                        NumberAnimation { target: soundWave; property: "opacity"; to: 0.9; duration: 50 }
+                        NumberAnimation { target: soundWave; property: "opacity"; to: 0; duration: 350 }
                     }
                 }
                 ScriptAction { script: soundWave.destroy() }
@@ -146,30 +162,22 @@ Window {
         }
     }
 
-    // Triple-tap exit mechanism for top-left corner
+    // ==================== EXIT AREA ====================
+
     MouseArea {
         id: exitArea
-        x: 0
-        y: 0
-        width: 150
-        height: 150
+        x: 0; y: 0; width: 150; height: 150
         z: 100
-
         onClicked: {
-            if (exitTimer) {
-                exitTimer.stop()
-            }
+            if (exitTimer) exitTimer.stop()
             exitTapCount++
-
-            if (exitTapCount >= 3) {
-                Qt.quit()
-            }
-
+            if (exitTapCount >= 3) Qt.quit()
             exitTimer = Qt.createQmlObject('import QtQuick 2.15; Timer { interval: 1000; running: true; onTriggered: exitTapCount = 0 }', root)
         }
     }
 
-    // Main tap area
+    // ==================== MAIN TOUCH AREA ====================
+
     MouseArea {
         anchors.fill: parent
         z: 1
@@ -178,24 +186,344 @@ Window {
             var x = mouse.x
             var y = mouse.y
 
-            // Play sound/haptic with visual feedback
-            playTone(x, y)
+            isSwiping = false
+            swipeStartX = x
+            swipeStartY = y
+            lastSwipeX = x
+            lastSwipeY = y
 
-            // Cycle to random effect (but not the same as current)
+            // Play sound
+            playSound(x, y, true)
+
+            // Change to random effect
             var newEffect = currentEffect
             while (newEffect === currentEffect && effectTypes.length > 1) {
                 newEffect = getRandomEffect()
             }
             currentEffect = newEffect
 
-            // Trigger the current effect
+            // Trigger tap effect
             triggerEffect(x, y)
+        }
+
+        onPositionChanged: {
+            var x = mouse.x
+            var y = mouse.y
+            var dx = x - lastSwipeX
+            var dy = y - lastSwipeY
+            var dist = Math.sqrt(dx*dx + dy*dy)
+
+            // Only trigger swipe effects if moved enough
+            if (dist > 15) {
+                if (!isSwiping) {
+                    isSwiping = true
+                    // Change swipe effect type
+                    currentSwipeEffect = getRandomSwipeEffect()
+                }
+
+                // Play swipe sound (quieter, position-based)
+                if (Math.random() < 0.3) {
+                    playSound(x, y, false)
+                }
+
+                // Create swipe trail effect
+                createSwipeEffect(lastSwipeX, lastSwipeY, x, y, dx, dy)
+
+                lastSwipeX = x
+                lastSwipeY = y
+            }
+        }
+
+        onReleased: {
+            if (isSwiping) {
+                // Calculate swipe velocity
+                var dx = mouse.x - swipeStartX
+                var dy = mouse.y - swipeStartY
+                var speed = Math.sqrt(dx*dx + dy*dy)
+
+                // Big swipe finale effect
+                if (speed > 200) {
+                    createSwipeFinale(mouse.x, mouse.y, dx, dy, speed)
+                }
+            }
+            isSwiping = false
         }
     }
 
+    // ==================== SWIPE EFFECTS ====================
+
+    function createSwipeEffect(x1, y1, x2, y2, dx, dy) {
+        var effect = swipeEffectTypes[currentSwipeEffect]
+        var speed = Math.sqrt(dx*dx + dy*dy)
+        var angle = Math.atan2(dy, dx)
+
+        switch(effect) {
+            case "trail": createTrail(x2, y2, angle, speed); break
+            case "ribbon": createRibbon(x1, y1, x2, y2); break
+            case "fire": createFireTrail(x2, y2, angle, speed); break
+            case "ice": createIceTrail(x2, y2, angle, speed); break
+            case "electric": createElectricTrail(x1, y1, x2, y2); break
+            case "rainbow": createRainbowTrail(x2, y2, angle); break
+            case "smoke": createSmokeTrail(x2, y2); break
+            case "sparkle": createSparkleTrail(x2, y2, speed); break
+        }
+    }
+
+    function createSwipeFinale(x, y, dx, dy, speed) {
+        var effect = swipeEffectTypes[currentSwipeEffect]
+        var angle = Math.atan2(dy, dx)
+        var numParticles = Math.min(50, Math.floor(speed / 10))
+
+        // Burst of particles in swipe direction
+        for (var i = 0; i < numParticles; i++) {
+            var spreadAngle = angle + (Math.random() - 0.5) * 0.8
+            var particleSpeed = speed * (0.5 + Math.random() * 0.5)
+
+            var particle = finaleParticleComponent.createObject(root, {
+                x: x,
+                y: y,
+                vx: Math.cos(spreadAngle) * particleSpeed,
+                vy: Math.sin(spreadAngle) * particleSpeed,
+                hue: (currentSwipeEffect / swipeEffectTypes.length) + Math.random() * 0.2,
+                size: 8 + Math.random() * 16
+            })
+        }
+
+        // Big haptic
+        Haptic.tap()
+    }
+
+    // Trail effect
+    function createTrail(x, y, angle, speed) {
+        var colors = ["#ff3366", "#33ff99", "#3399ff", "#ffcc33", "#ff33cc"]
+        var trail = Qt.createQmlObject('
+            import QtQuick 2.15
+            Rectangle {
+                property real fadeTime: ' + (300 + speed * 5) + '
+                width: ' + (10 + speed * 0.5) + '
+                height: width
+                radius: width/2
+                color: "' + colors[Math.floor(Math.random() * colors.length)] + '"
+                x: ' + (x - width/2) + '
+                y: ' + (y - height/2) + '
+                z: 10
+                opacity: 0.8
+                NumberAnimation on opacity { to: 0; duration: fadeTime }
+                NumberAnimation on scale { to: 0.3; duration: fadeTime }
+                Timer { interval: fadeTime; running: true; onTriggered: parent.destroy() }
+            }
+        ', root)
+    }
+
+    // Ribbon effect
+    function createRibbon(x1, y1, x2, y2) {
+        var ribbon = Qt.createQmlObject('
+            import QtQuick 2.15
+            Canvas {
+                width: ' + root.width + '
+                height: ' + root.height + '
+                z: 10
+                opacity: 0.7
+                onPaint: {
+                    var ctx = getContext("2d")
+                    var grad = ctx.createLinearGradient(' + x1 + ',' + y1 + ',' + x2 + ',' + y2 + ')
+                    grad.addColorStop(0, Qt.hsla(' + (globalTime % 1) + ', 0.8, 0.5, 0.8))
+                    grad.addColorStop(1, Qt.hsla(' + ((globalTime + 0.3) % 1) + ', 0.8, 0.5, 0.8))
+                    ctx.strokeStyle = grad
+                    ctx.lineWidth = 8
+                    ctx.lineCap = "round"
+                    ctx.beginPath()
+                    ctx.moveTo(' + x1 + ', ' + y1 + ')
+                    ctx.lineTo(' + x2 + ', ' + y2 + ')
+                    ctx.stroke()
+                }
+                Component.onCompleted: requestPaint()
+                NumberAnimation on opacity { to: 0; duration: 500 }
+                Timer { interval: 500; running: true; onTriggered: parent.destroy() }
+            }
+        ', root)
+    }
+
+    // Fire trail
+    function createFireTrail(x, y, angle, speed) {
+        for (var i = 0; i < 3; i++) {
+            var fire = Qt.createQmlObject('
+                import QtQuick 2.15
+                Rectangle {
+                    width: ' + (15 + Math.random() * 15) + '
+                    height: width
+                    radius: width/2
+                    x: ' + (x - 10 + Math.random() * 20) + '
+                    y: ' + (y - 10 + Math.random() * 20) + '
+                    color: Qt.hsla(' + (0.05 + Math.random() * 0.08) + ', 1, 0.5, 0.9)
+                    z: 10
+                    NumberAnimation on y { to: ' + (y - 50 - Math.random() * 50) + '; duration: 400 }
+                    NumberAnimation on opacity { from: 0.9; to: 0; duration: 400 }
+                    NumberAnimation on scale { from: 1; to: 0.3; duration: 400 }
+                    Timer { interval: 400; running: true; onTriggered: parent.destroy() }
+                }
+            ', root)
+        }
+    }
+
+    // Ice trail
+    function createIceTrail(x, y, angle, speed) {
+        var ice = Qt.createQmlObject('
+            import QtQuick 2.15
+            Rectangle {
+                width: ' + (12 + speed * 0.3) + '
+                height: width
+                radius: 2
+                rotation: ' + (Math.random() * 360) + '
+                x: ' + x + '
+                y: ' + y + '
+                color: Qt.hsla(0.55, 0.6, ' + (0.7 + Math.random() * 0.3) + ', 0.8)
+                z: 10
+                NumberAnimation on opacity { to: 0; duration: 600 }
+                NumberAnimation on rotation { to: ' + (Math.random() * 360) + '; duration: 600 }
+                Timer { interval: 600; running: true; onTriggered: parent.destroy() }
+            }
+        ', root)
+    }
+
+    // Electric trail
+    function createElectricTrail(x1, y1, x2, y2) {
+        var bolt = Qt.createQmlObject('
+            import QtQuick 2.15
+            Canvas {
+                width: ' + root.width + '
+                height: ' + root.height + '
+                z: 15
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.strokeStyle = "#88ccff"
+                    ctx.lineWidth = 2
+                    ctx.shadowColor = "#00aaff"
+                    ctx.shadowBlur = 10
+                    ctx.beginPath()
+                    var x = ' + x1 + ', y = ' + y1 + '
+                    ctx.moveTo(x, y)
+                    var dx = ' + (x2 - x1) + ', dy = ' + (y2 - y1) + '
+                    var segments = 5
+                    for (var i = 0; i < segments; i++) {
+                        x += dx/segments + (Math.random() - 0.5) * 20
+                        y += dy/segments + (Math.random() - 0.5) * 20
+                        ctx.lineTo(x, y)
+                    }
+                    ctx.stroke()
+                }
+                Component.onCompleted: requestPaint()
+                SequentialAnimation on opacity {
+                    NumberAnimation { to: 0; duration: 50 }
+                    NumberAnimation { to: 1; duration: 30 }
+                    NumberAnimation { to: 0; duration: 100 }
+                }
+                Timer { interval: 180; running: true; onTriggered: parent.destroy() }
+            }
+        ', root)
+    }
+
+    // Rainbow trail
+    function createRainbowTrail(x, y, angle) {
+        var colors = ["#ff0000", "#ff7700", "#ffff00", "#00ff00", "#0077ff", "#7700ff"]
+        for (var i = 0; i < colors.length; i++) {
+            var offset = (i - colors.length/2) * 4
+            var rainbow = Qt.createQmlObject('
+                import QtQuick 2.15
+                Rectangle {
+                    width: 12; height: 12; radius: 6
+                    x: ' + (x + Math.cos(angle + Math.PI/2) * offset) + '
+                    y: ' + (y + Math.sin(angle + Math.PI/2) * offset) + '
+                    color: "' + colors[i] + '"
+                    z: 10
+                    NumberAnimation on opacity { from: 0.8; to: 0; duration: 400 }
+                    Timer { interval: 400; running: true; onTriggered: parent.destroy() }
+                }
+            ', root)
+        }
+    }
+
+    // Smoke trail
+    function createSmokeTrail(x, y) {
+        var smoke = Qt.createQmlObject('
+            import QtQuick 2.15
+            Rectangle {
+                width: ' + (30 + Math.random() * 30) + '
+                height: width
+                radius: width/2
+                x: ' + (x - 30) + '
+                y: ' + (y - 30) + '
+                color: Qt.rgba(0.5, 0.5, 0.5, 0.4)
+                z: 8
+                NumberAnimation on y { to: ' + (y - 100 - Math.random() * 100) + '; duration: 1500 }
+                NumberAnimation on scale { to: 2; duration: 1500 }
+                NumberAnimation on opacity { to: 0; duration: 1500 }
+                Timer { interval: 1500; running: true; onTriggered: parent.destroy() }
+            }
+        ', root)
+    }
+
+    // Sparkle trail
+    function createSparkleTrail(x, y, speed) {
+        for (var i = 0; i < 2 + speed/20; i++) {
+            var sparkle = Qt.createQmlObject('
+                import QtQuick 2.15
+                Rectangle {
+                    width: ' + (4 + Math.random() * 8) + '
+                    height: width
+                    radius: width/2
+                    x: ' + (x - 10 + Math.random() * 20) + '
+                    y: ' + (y - 10 + Math.random() * 20) + '
+                    color: "#ffffff"
+                    z: 12
+                    SequentialAnimation on scale {
+                        NumberAnimation { from: 0; to: 1.5; duration: 150 }
+                        NumberAnimation { to: 0; duration: 200 }
+                    }
+                    Timer { interval: 350; running: true; onTriggered: parent.destroy() }
+                }
+            ', root)
+        }
+    }
+
+    // Finale particle component
+    Component {
+        id: finaleParticleComponent
+        Rectangle {
+            id: fp
+            property real vx: 0
+            property real vy: 0
+            property real hue: 0.5
+            property real size: 12
+            property real gravity: 300
+
+            width: size
+            height: size
+            radius: size/2
+            color: Qt.hsla(hue, 0.9, 0.6, 1)
+            z: 20
+
+            Timer {
+                interval: 16
+                running: true
+                repeat: true
+                onTriggered: {
+                    fp.x += fp.vx * 0.016
+                    fp.y += fp.vy * 0.016
+                    fp.vy += fp.gravity * 0.016
+                    fp.vx *= 0.98
+                }
+            }
+
+            NumberAnimation on opacity { from: 1; to: 0; duration: 1500 }
+            Timer { interval: 1500; running: true; onTriggered: fp.destroy() }
+        }
+    }
+
+    // ==================== TAP EFFECTS ====================
+
     function triggerEffect(x, y) {
         var effect = effectTypes[currentEffect]
-
         switch(effect) {
             case "fireworks": createFireworks(x, y); break
             case "bubbles": createBubbles(x, y); break
@@ -225,1294 +553,787 @@ Window {
         }
     }
 
-    // ==================== ORIGINAL EFFECTS ====================
+    // ==================== TAP EFFECT IMPLEMENTATIONS ====================
 
-    // Fireworks effect
     function createFireworks(x, y) {
         var colors = ["#ff3355", "#ffaa33", "#33ff77", "#3388ff", "#ff33ff", "#ffff33"]
-        for (var i = 0; i < 30; i++) {
-            var angle = (Math.PI * 2 * i) / 30
-            var speed = 200 + Math.random() * 200
-            var particle = particleComponent.createObject(root, {
+        for (var i = 0; i < 25; i++) {
+            var angle = (Math.PI * 2 * i) / 25
+            var speed = 150 + Math.random() * 150
+            particleComponent.createObject(root, {
                 x: x, y: y,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
-                color: colors[Math.floor(Math.random() * colors.length)],
-                size: 8 + Math.random() * 8,
-                lifetime: 1500 + Math.random() * 500
+                particleColor: colors[Math.floor(Math.random() * colors.length)],
+                size: 6 + Math.random() * 6
             })
         }
     }
 
-    // Bubbles effect
     function createBubbles(x, y) {
-        for (var i = 0; i < 15; i++) {
-            var bubble = bubbleComponent.createObject(root, {
-                x: x + (Math.random() - 0.5) * 200,
-                y: y + (Math.random() - 0.5) * 200,
-                size: 40 + Math.random() * 80,
-                lifetime: 2000 + Math.random() * 2000
+        for (var i = 0; i < 12; i++) {
+            bubbleComponent.createObject(root, {
+                x: x + (Math.random() - 0.5) * 150,
+                y: y + (Math.random() - 0.5) * 150,
+                size: 30 + Math.random() * 60
             })
         }
     }
 
-    // Rainbow ripples effect
     function createRainbow(x, y) {
         var colors = ["#ff0000", "#ff7700", "#ffff00", "#00ff00", "#0088ff", "#4400ff", "#8800ff"]
         for (var i = 0; i < 7; i++) {
-            var ripple = rippleComponent.createObject(root, {
-                x: x, y: y,
-                color: colors[i],
-                delay: i * 100
+            rippleComponent.createObject(root, {
+                centerX: x, centerY: y,
+                rippleColor: colors[i],
+                delay: i * 80
             })
         }
     }
 
-    // Sparkles effect
     function createSparkles(x, y) {
-        for (var i = 0; i < 50; i++) {
+        for (var i = 0; i < 40; i++) {
             var angle = Math.random() * Math.PI * 2
-            var distance = Math.random() * 300
-            var sparkle = sparkleComponent.createObject(root, {
-                x: x + Math.cos(angle) * distance,
-                y: y + Math.sin(angle) * distance,
-                size: 4 + Math.random() * 8,
-                lifetime: 1000 + Math.random() * 1000
+            var dist = Math.random() * 250
+            sparkleComponent.createObject(root, {
+                x: x + Math.cos(angle) * dist,
+                y: y + Math.sin(angle) * dist,
+                size: 4 + Math.random() * 6
             })
         }
     }
 
-    // Paint splatter effect
     function createPaint(x, y) {
-        var colors = ["#ff3355", "#33ff88", "#3388ff", "#ffaa33", "#ff33ff", "#ffff33"]
-        for (var i = 0; i < 20; i++) {
+        var colors = ["#ff3355", "#33ff88", "#3388ff", "#ffaa33", "#ff33ff"]
+        for (var i = 0; i < 15; i++) {
             var angle = Math.random() * Math.PI * 2
-            var speed = 100 + Math.random() * 300
-            var splat = splatComponent.createObject(root, {
+            var speed = 80 + Math.random() * 200
+            splatComponent.createObject(root, {
                 x: x, y: y,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
-                color: colors[Math.floor(Math.random() * colors.length)],
-                size: 20 + Math.random() * 40,
-                lifetime: 2000
+                splatColor: colors[Math.floor(Math.random() * colors.length)],
+                size: 15 + Math.random() * 30
             })
         }
     }
 
-    // Bouncing balls effect
     function createBalls(x, y) {
         var colors = ["#ff3355", "#33ff88", "#3388ff", "#ffaa33"]
-        for (var i = 0; i < 5; i++) {
-            var ball = bouncingBallComponent.createObject(root, {
+        for (var i = 0; i < 4; i++) {
+            ballComponent.createObject(root, {
                 x: x, y: y,
-                vx: (Math.random() - 0.5) * 400,
-                vy: -200 - Math.random() * 200,
-                color: colors[Math.floor(Math.random() * colors.length)],
-                size: 40 + Math.random() * 40
+                vx: (Math.random() - 0.5) * 300,
+                vy: -150 - Math.random() * 150,
+                ballColor: colors[i],
+                size: 35 + Math.random() * 35
             })
         }
     }
 
-    // Confetti effect
     function createConfetti(x, y) {
         var colors = ["#ff3355", "#33ff88", "#3388ff", "#ffaa33", "#ff33ff", "#ffff33"]
-        for (var i = 0; i < 40; i++) {
-            var confetto = confettiComponent.createObject(root, {
-                x: x + (Math.random() - 0.5) * 100,
-                y: y - Math.random() * 100,
-                vx: (Math.random() - 0.5) * 200,
-                vy: -100 - Math.random() * 200,
-                color: colors[Math.floor(Math.random() * colors.length)],
-                rotation: Math.random() * 360,
-                lifetime: 3000 + Math.random() * 1000
+        for (var i = 0; i < 30; i++) {
+            confettiComponent.createObject(root, {
+                x: x + (Math.random() - 0.5) * 80,
+                y: y - Math.random() * 80,
+                vx: (Math.random() - 0.5) * 150,
+                vy: -80 - Math.random() * 150,
+                confettiColor: colors[Math.floor(Math.random() * colors.length)]
             })
         }
     }
 
-    // Kaleidoscope effect
     function createKaleidoscope(x, y) {
         var colors = ["#ff3355", "#33ff88", "#3388ff", "#ffaa33", "#ff33ff"]
-        var segments = 12
-        for (var i = 0; i < segments; i++) {
-            var angle = (Math.PI * 2 * i) / segments
-            var kaleido = kaleidoComponent.createObject(root, {
+        for (var i = 0; i < 10; i++) {
+            var angle = (Math.PI * 2 * i) / 10
+            kaleidoComponent.createObject(root, {
                 centerX: x, centerY: y,
                 angle: angle,
-                color: colors[i % colors.length],
-                lifetime: 1500
+                kaleidoColor: colors[i % colors.length]
             })
         }
     }
 
-    // Lightning effect
     function createLightning(x, y) {
-        var lightning = lightningComponent.createObject(root, {
+        lightningComponent.createObject(root, {
             startX: x,
             startY: 0,
-            endX: x + (Math.random() - 0.5) * 200,
-            endY: y,
-            lifetime: 400
+            endX: x + (Math.random() - 0.5) * 150,
+            endY: y
         })
     }
 
-    // Flower bloom effect
     function createFlowers(x, y) {
         var colors = ["#ff3388", "#ff88cc", "#ffaadd", "#ff5599"]
-        for (var i = 0; i < 8; i++) {
-            var angle = (Math.PI * 2 * i) / 8
-            var petal = petalComponent.createObject(root, {
+        for (var i = 0; i < 6; i++) {
+            var angle = (Math.PI * 2 * i) / 6
+            petalComponent.createObject(root, {
                 centerX: x, centerY: y,
                 angle: angle,
-                color: colors[Math.floor(Math.random() * colors.length)],
-                lifetime: 1500
+                petalColor: colors[Math.floor(Math.random() * colors.length)]
             })
         }
-        // Center
-        var center = Qt.createQmlObject('import QtQuick 2.15; Rectangle { color: "#ffff44"; width: 30; height: 30; radius: 15; z: 10 }', root)
-        center.x = x - 15
-        center.y = y - 15
-        Qt.createQmlObject('import QtQuick 2.15; Timer { interval: 1500; running: true; onTriggered: parent.destroy() }', center)
+        var center = Qt.createQmlObject('import QtQuick 2.15; Rectangle { color: "#ffff44"; width: 24; height: 24; radius: 12; z: 11; x:' + (x-12) + '; y:' + (y-12) + '; Timer { interval: 1200; running: true; onTriggered: parent.destroy() } }', root)
     }
 
-    // Snow effect
     function createSnow(x, y) {
-        for (var i = 0; i < 30; i++) {
-            var snowflake = snowComponent.createObject(root, {
-                x: x + (Math.random() - 0.5) * 400,
-                y: y - 200,
-                size: 8 + Math.random() * 16,
-                lifetime: 3000 + Math.random() * 2000
+        for (var i = 0; i < 25; i++) {
+            snowComponent.createObject(root, {
+                x: x + (Math.random() - 0.5) * 300,
+                y: y - 150,
+                size: 6 + Math.random() * 12
             })
         }
     }
 
-    // Neon trail effect
     function createNeon(x, y) {
         var colors = ["#ff00ff", "#00ffff", "#ff0088", "#00ff88"]
-        for (var i = 0; i < 20; i++) {
-            var angle = Math.random() * Math.PI * 2
-            var distance = Math.random() * 250
-            var neon = neonComponent.createObject(root, {
-                x: x, y: y,
-                targetX: x + Math.cos(angle) * distance,
-                targetY: y + Math.sin(angle) * distance,
-                color: colors[Math.floor(Math.random() * colors.length)],
-                lifetime: 800
-            })
-        }
-    }
-
-    // Morphing shapes effect
-    function createShapes(x, y) {
-        var shape = shapeComponent.createObject(root, {
-            x: x - 60,
-            y: y - 60,
-            lifetime: 2000
-        })
-    }
-
-    // Galaxy swirl effect
-    function createGalaxy(x, y) {
-        for (var i = 0; i < 50; i++) {
-            var angle = (Math.random() * Math.PI * 2)
-            var distance = Math.random() * 250
-            var star = starComponent.createObject(root, {
-                centerX: x, centerY: y,
-                angle: angle,
-                distance: distance,
-                color: i % 3 === 0 ? "#ffffff" : (i % 3 === 1 ? "#aaccff" : "#ffaacc"),
-                lifetime: 2500
-            })
-        }
-    }
-
-    // Rain effect
-    function createRain(x, y) {
-        for (var i = 0; i < 25; i++) {
-            var drop = rainComponent.createObject(root, {
-                x: x + (Math.random() - 0.5) * 300,
-                y: y - 400 - Math.random() * 200,
-                targetY: y,
-                lifetime: 1500
-            })
-        }
-    }
-
-    // ==================== NEW EFFECTS ====================
-
-    // Life - cellular automata that grows
-    function createLife(x, y) {
-        var life = lifeComponent.createObject(root, {
-            centerX: x,
-            centerY: y
-        })
-    }
-
-    // Growing tree/branches
-    function createTree(x, y) {
-        createBranch(x, y, -Math.PI/2, 100, 5, 0)
-    }
-
-    function createBranch(x, y, angle, length, thickness, depth) {
-        if (depth > 6 || length < 10) return
-
-        var branch = branchComponent.createObject(root, {
-            startX: x,
-            startY: y,
-            angle: angle,
-            length: length,
-            thickness: thickness,
-            depth: depth
-        })
-    }
-
-    // Hypnotic spiral
-    function createSpiral(x, y) {
-        var spiral = spiralComponent.createObject(root, {
-            centerX: x,
-            centerY: y
-        })
-    }
-
-    // Wave interference pattern
-    function createWaves(x, y) {
-        var wave = waveComponent.createObject(root, {
-            centerX: x,
-            centerY: y
-        })
-    }
-
-    // Floating hearts
-    function createHearts(x, y) {
-        var colors = ["#ff3366", "#ff6699", "#ff99cc", "#ffccee"]
         for (var i = 0; i < 15; i++) {
-            var heart = heartComponent.createObject(root, {
-                x: x + (Math.random() - 0.5) * 200,
+            var angle = Math.random() * Math.PI * 2
+            var dist = Math.random() * 200
+            neonComponent.createObject(root, {
+                startX: x, startY: y,
+                targetX: x + Math.cos(angle) * dist,
+                targetY: y + Math.sin(angle) * dist,
+                neonColor: colors[Math.floor(Math.random() * colors.length)]
+            })
+        }
+    }
+
+    function createShapes(x, y) { shapeComponent.createObject(root, { x: x - 50, y: y - 50 }) }
+    function createGalaxy(x, y) {
+        for (var i = 0; i < 40; i++) {
+            galaxyStarComponent.createObject(root, {
+                centerX: x, centerY: y,
+                angle: Math.random() * Math.PI * 2,
+                dist: Math.random() * 200,
+                starColor: ["#ffffff", "#aaccff", "#ffaacc"][i % 3]
+            })
+        }
+    }
+    function createRain(x, y) {
+        for (var i = 0; i < 20; i++) {
+            rainComponent.createObject(root, {
+                x: x + (Math.random() - 0.5) * 250,
+                startY: y - 300 - Math.random() * 150,
+                targetY: y
+            })
+        }
+    }
+    function createLife(x, y) { lifeComponent.createObject(root, { centerX: x, centerY: y }) }
+    function createTree(x, y) { createBranch(x, y, -Math.PI/2, 80, 4, 0) }
+    function createBranch(x, y, angle, length, thickness, depth) {
+        if (depth > 5 || length < 12) return
+        branchComponent.createObject(root, { startX: x, startY: y, angle: angle, length: length, thickness: thickness, depth: depth })
+    }
+    function createSpiral(x, y) { spiralComponent.createObject(root, { centerX: x, centerY: y }) }
+    function createWaves(x, y) { waveComponent.createObject(root, { centerX: x, centerY: y }) }
+    function createHearts(x, y) {
+        var colors = ["#ff3366", "#ff6699", "#ff99cc"]
+        for (var i = 0; i < 12; i++) {
+            heartComponent.createObject(root, {
+                x: x + (Math.random() - 0.5) * 150,
                 y: y,
-                size: 20 + Math.random() * 40,
-                color: colors[Math.floor(Math.random() * colors.length)]
+                size: 18 + Math.random() * 30,
+                heartColor: colors[Math.floor(Math.random() * colors.length)]
             })
         }
     }
-
-    // Twinkling stars
     function createStars(x, y) {
-        for (var i = 0; i < 30; i++) {
-            var twinkle = twinkleComponent.createObject(root, {
-                x: x + (Math.random() - 0.5) * 400,
-                y: y + (Math.random() - 0.5) * 400,
-                size: 10 + Math.random() * 20
+        for (var i = 0; i < 25; i++) {
+            twinkleComponent.createObject(root, {
+                x: x + (Math.random() - 0.5) * 300,
+                y: y + (Math.random() - 0.5) * 300,
+                size: 8 + Math.random() * 15
             })
         }
     }
-
-    // Lava lamp blobs
     function createLava(x, y) {
         var colors = ["#ff3300", "#ff6600", "#ff9900", "#ffcc00"]
-        for (var i = 0; i < 8; i++) {
-            var blob = lavaComponent.createObject(root, {
-                x: x + (Math.random() - 0.5) * 200,
+        for (var i = 0; i < 6; i++) {
+            lavaComponent.createObject(root, {
+                x: x + (Math.random() - 0.5) * 150,
                 y: y,
-                size: 60 + Math.random() * 80,
-                color: colors[Math.floor(Math.random() * colors.length)]
+                size: 50 + Math.random() * 60,
+                lavaColor: colors[Math.floor(Math.random() * colors.length)]
             })
         }
     }
-
-    // Matrix falling code
     function createMatrix(x, y) {
-        for (var i = 0; i < 20; i++) {
-            var column = matrixComponent.createObject(root, {
-                x: x + (Math.random() - 0.5) * 400,
-                startY: y - 200
+        for (var i = 0; i < 15; i++) {
+            matrixComponent.createObject(root, {
+                x: x + (Math.random() - 0.5) * 300,
+                startY: y - 150
             })
         }
     }
-
-    // Disco ball reflections
     function createDisco(x, y) {
-        for (var i = 0; i < 25; i++) {
-            var angle = Math.random() * Math.PI * 2
-            var light = discoComponent.createObject(root, {
-                centerX: x,
-                centerY: y,
-                angle: angle
+        for (var i = 0; i < 20; i++) {
+            discoComponent.createObject(root, {
+                centerX: x, centerY: y,
+                angle: Math.random() * Math.PI * 2
             })
         }
     }
+    function createAurora(x, y) { auroraComponent.createObject(root, { centerX: x, centerY: y }) }
 
-    // Aurora borealis
-    function createAurora(x, y) {
-        var aurora = auroraComponent.createObject(root, {
-            centerX: x,
-            centerY: y
-        })
-    }
+    // ==================== PARTICLE COMPONENTS ====================
 
-    // ==================== COMPONENTS ====================
-
-    // Particle component
     Component {
         id: particleComponent
         Rectangle {
-            id: particle
+            id: p
             property real vx: 0
             property real vy: 0
-            property int lifetime: 1000
-            property real gravity: 400
             property real size: 8
-
-            width: size
-            height: size
-            radius: size / 2
-            z: 5
-            opacity: 1.0
-
-            Timer {
-                interval: 16
-                running: true
-                repeat: true
-                onTriggered: {
-                    particle.x += particle.vx * 0.016
-                    particle.y += particle.vy * 0.016
-                    particle.vy += particle.gravity * 0.016
-                }
+            property string particleColor: "#ff3355"
+            property real gravity: 350
+            width: size; height: size; radius: size/2
+            color: particleColor; z: 5
+            Timer { interval: 16; running: true; repeat: true
+                onTriggered: { p.x += p.vx * 0.016; p.y += p.vy * 0.016; p.vy += p.gravity * 0.016 }
             }
-
-            Timer {
-                interval: lifetime
-                running: true
-                onTriggered: particle.destroy()
-            }
-
-            SequentialAnimation on opacity {
-                PauseAnimation { duration: lifetime * 0.7 }
-                NumberAnimation { to: 0; duration: lifetime * 0.3 }
-            }
+            NumberAnimation on opacity { from: 1; to: 0; duration: 1200 }
+            Timer { interval: 1200; running: true; onTriggered: p.destroy() }
         }
     }
 
-    // Bubble component
     Component {
         id: bubbleComponent
         Rectangle {
-            id: bubble
-            property int lifetime: 2000
-            property real size: 60
-            property real vy: -100
-
-            width: size
-            height: size
-            radius: size / 2
+            id: b
+            property real size: 50
+            property real vy: -80
+            width: size; height: size; radius: size/2
             color: "transparent"
-            border.color: Qt.rgba(Math.random(), Math.random(), Math.random(), 0.7)
-            border.width: 3
-            z: 5
-            scale: 0.1
-
-            Timer {
-                interval: 16
-                running: true
-                repeat: true
-                onTriggered: {
-                    bubble.y += bubble.vy * 0.016
-                    bubble.x += Math.sin(bubble.y * 0.05) * 2
-                }
+            border.color: Qt.rgba(Math.random(), Math.random(), Math.random(), 0.6)
+            border.width: 2; z: 5; scale: 0.2
+            Timer { interval: 16; running: true; repeat: true
+                onTriggered: { b.y += b.vy * 0.016; b.x += Math.sin(b.y * 0.04) * 1.5 }
             }
-
-            Timer {
-                interval: lifetime
-                running: true
-                onTriggered: bubble.destroy()
-            }
-
-            NumberAnimation on scale { to: 1.0; duration: 300; easing.type: Easing.OutBack }
-
-            SequentialAnimation on opacity {
-                PauseAnimation { duration: lifetime * 0.8 }
-                NumberAnimation { to: 0; duration: lifetime * 0.2 }
-            }
+            NumberAnimation on scale { to: 1; duration: 250; easing.type: Easing.OutBack }
+            NumberAnimation on opacity { from: 0.7; to: 0; duration: 1800 }
+            Timer { interval: 1800; running: true; onTriggered: b.destroy() }
         }
     }
 
-    // Ripple component
     Component {
         id: rippleComponent
         Rectangle {
-            id: ripple
+            id: r
+            property real centerX: 0
+            property real centerY: 0
+            property string rippleColor: "#ff0000"
             property int delay: 0
-            property int lifetime: 1500
-
-            width: 20
-            height: 20
-            radius: 10
-            color: "transparent"
-            border.width: 4
-            opacity: 0.8
-            z: 5
-
-            Timer {
-                interval: delay
-                running: true
-                onTriggered: { scaleAnim.start(); fadeAnim.start() }
+            x: centerX - 10; y: centerY - 10
+            width: 20; height: 20; radius: 10
+            color: "transparent"; border.color: rippleColor; border.width: 3
+            opacity: 0; z: 5
+            SequentialAnimation { running: true
+                PauseAnimation { duration: r.delay }
+                ParallelAnimation {
+                    NumberAnimation { target: r; property: "scale"; from: 1; to: 25; duration: 1200; easing.type: Easing.OutQuad }
+                    SequentialAnimation {
+                        NumberAnimation { target: r; property: "opacity"; to: 0.7; duration: 100 }
+                        NumberAnimation { target: r; property: "opacity"; to: 0; duration: 1100 }
+                    }
+                }
+                ScriptAction { script: r.destroy() }
             }
-
-            NumberAnimation { id: scaleAnim; target: ripple; property: "scale"; from: 1; to: 30; duration: lifetime; easing.type: Easing.OutQuad }
-            NumberAnimation { id: fadeAnim; target: ripple; property: "opacity"; from: 0.8; to: 0; duration: lifetime }
-
-            Timer { interval: lifetime + delay; running: true; onTriggered: ripple.destroy() }
         }
     }
 
-    // Sparkle component
     Component {
         id: sparkleComponent
         Rectangle {
-            id: sparkle
-            property int lifetime: 1000
-            property real size: 6
-
-            width: size
-            height: size
-            radius: size / 2
-            color: "#ffffff"
-            z: 5
-            scale: 0
-
+            id: sp
+            property real size: 5
+            width: size; height: size; radius: size/2
+            color: "#ffffff"; z: 5; scale: 0
             SequentialAnimation on scale {
-                NumberAnimation { to: 1.5; duration: lifetime * 0.3; easing.type: Easing.OutBack }
-                NumberAnimation { to: 0; duration: lifetime * 0.7; easing.type: Easing.InQuad }
+                NumberAnimation { to: 1.3; duration: 250; easing.type: Easing.OutBack }
+                NumberAnimation { to: 0; duration: 500 }
             }
-
-            Timer { interval: lifetime; running: true; onTriggered: sparkle.destroy() }
+            Timer { interval: 750; running: true; onTriggered: sp.destroy() }
         }
     }
 
-    // Splat component
     Component {
         id: splatComponent
         Rectangle {
-            id: splat
+            id: sl
             property real vx: 0
             property real vy: 0
-            property int lifetime: 2000
-            property real size: 30
-            property real friction: 0.95
-
-            width: size
-            height: size
-            radius: size / 2
-            z: 5
-            scale: 0.5
-
-            Timer {
-                interval: 16
-                running: true
-                repeat: true
-                onTriggered: {
-                    splat.x += splat.vx * 0.016
-                    splat.y += splat.vy * 0.016
-                    splat.vx *= splat.friction
-                    splat.vy *= splat.friction
-                }
+            property real size: 25
+            property string splatColor: "#ff3355"
+            width: size; height: size; radius: size/2
+            color: splatColor; z: 5; scale: 0.6
+            Timer { interval: 16; running: true; repeat: true
+                onTriggered: { sl.x += sl.vx * 0.016; sl.y += sl.vy * 0.016; sl.vx *= 0.96; sl.vy *= 0.96 }
             }
-
-            NumberAnimation on scale { to: 1.0; duration: 200; easing.type: Easing.OutBack }
-            Timer { interval: lifetime; running: true; onTriggered: splat.destroy() }
+            NumberAnimation on scale { to: 1; duration: 150; easing.type: Easing.OutBack }
+            Timer { interval: 1500; running: true; onTriggered: sl.destroy() }
         }
     }
 
-    // Bouncing ball component
     Component {
-        id: bouncingBallComponent
+        id: ballComponent
         Rectangle {
             id: ball
             property real vx: 0
             property real vy: 0
-            property real gravity: 800
-            property real bounce: 0.7
-            property int lifetime: 4000
-            property real size: 50
-
-            width: size
-            height: size
-            radius: size / 2
-            z: 5
-
-            Timer {
-                interval: 16
-                running: true
-                repeat: true
+            property real size: 40
+            property string ballColor: "#ff3355"
+            property real gravity: 600
+            width: size; height: size; radius: size/2
+            color: ballColor; z: 5
+            Timer { interval: 16; running: true; repeat: true
                 onTriggered: {
-                    ball.x += ball.vx * 0.016
-                    ball.y += ball.vy * 0.016
-                    ball.vy += ball.gravity * 0.016
-                    if (ball.y > root.height - ball.size) { ball.y = root.height - ball.size; ball.vy *= -ball.bounce }
-                    if (ball.x < 0) { ball.x = 0; ball.vx *= -ball.bounce }
-                    if (ball.x > root.width - ball.size) { ball.x = root.width - ball.size; ball.vx *= -ball.bounce }
+                    ball.x += ball.vx * 0.016; ball.y += ball.vy * 0.016; ball.vy += ball.gravity * 0.016
+                    if (ball.y > root.height - ball.size) { ball.y = root.height - ball.size; ball.vy *= -0.65 }
+                    if (ball.x < 0) { ball.x = 0; ball.vx *= -0.65 }
+                    if (ball.x > root.width - ball.size) { ball.x = root.width - ball.size; ball.vx *= -0.65 }
                 }
             }
-
-            Timer { interval: lifetime; running: true; onTriggered: ball.destroy() }
-
-            SequentialAnimation on opacity {
-                PauseAnimation { duration: lifetime * 0.8 }
-                NumberAnimation { to: 0; duration: lifetime * 0.2 }
-            }
+            NumberAnimation on opacity { from: 1; to: 0; duration: 3000 }
+            Timer { interval: 3000; running: true; onTriggered: ball.destroy() }
         }
     }
 
-    // Confetti component
     Component {
         id: confettiComponent
         Rectangle {
-            id: confetto
+            id: c
             property real vx: 0
             property real vy: 0
-            property real gravity: 500
-            property int lifetime: 3000
-            property real rotationSpeed: (Math.random() - 0.5) * 720
-
-            width: 12
-            height: 20
-            radius: 2
-            z: 5
-
-            transform: Rotation { id: rot; angle: 0; origin.x: 6; origin.y: 10 }
-
-            Timer {
-                interval: 16
-                running: true
-                repeat: true
-                onTriggered: {
-                    confetto.x += confetto.vx * 0.016
-                    confetto.y += confetto.vy * 0.016
-                    confetto.vy += confetto.gravity * 0.016
-                    rot.angle += confetto.rotationSpeed * 0.016
-                }
+            property string confettiColor: "#ff3355"
+            property real gravity: 400
+            property real spin: (Math.random() - 0.5) * 600
+            width: 10; height: 16; radius: 2
+            color: confettiColor; z: 5
+            transform: Rotation { id: rot; angle: 0; origin.x: 5; origin.y: 8 }
+            Timer { interval: 16; running: true; repeat: true
+                onTriggered: { c.x += c.vx * 0.016; c.y += c.vy * 0.016; c.vy += c.gravity * 0.016; rot.angle += c.spin * 0.016 }
             }
-
-            Timer { interval: lifetime; running: true; onTriggered: confetto.destroy() }
+            Timer { interval: 2500; running: true; onTriggered: c.destroy() }
         }
     }
 
-    // Kaleidoscope component
     Component {
         id: kaleidoComponent
         Rectangle {
-            id: kaleido
+            id: k
             property real centerX: 0
             property real centerY: 0
             property real angle: 0
-            property int lifetime: 1500
-            property real distance: 0
-
-            width: 60
-            height: 60
-            radius: 30
-            z: 5
-
-            x: centerX + Math.cos(angle) * distance - 30
-            y: centerY + Math.sin(angle) * distance - 30
-
-            NumberAnimation on distance { from: 0; to: 200; duration: lifetime; easing.type: Easing.OutQuad }
-            NumberAnimation on rotation { from: 0; to: 360; duration: lifetime }
-
-            SequentialAnimation on opacity {
-                PauseAnimation { duration: lifetime * 0.6 }
-                NumberAnimation { to: 0; duration: lifetime * 0.4 }
-            }
-
-            Timer { interval: lifetime; running: true; onTriggered: kaleido.destroy() }
+            property string kaleidoColor: "#ff3355"
+            property real dist: 0
+            width: 50; height: 50; radius: 25
+            color: kaleidoColor; z: 5
+            x: centerX + Math.cos(angle) * dist - 25
+            y: centerY + Math.sin(angle) * dist - 25
+            NumberAnimation on dist { from: 0; to: 160; duration: 1200; easing.type: Easing.OutQuad }
+            NumberAnimation on rotation { from: 0; to: 360; duration: 1200 }
+            NumberAnimation on opacity { from: 0.8; to: 0; duration: 1200 }
+            Timer { interval: 1200; running: true; onTriggered: k.destroy() }
         }
     }
 
-    // Lightning component
     Component {
         id: lightningComponent
         Canvas {
-            id: lightning
+            id: lt
             property real startX: 0
             property real startY: 0
             property real endX: 0
             property real endY: 0
-            property int lifetime: 400
-
-            width: root.width
-            height: root.height
-            z: 20
-
+            width: root.width; height: root.height; z: 20
             onPaint: {
                 var ctx = getContext("2d")
-                ctx.strokeStyle = "#88ccff"
-                ctx.lineWidth = 4
-                ctx.lineCap = "round"
-                ctx.beginPath()
-                var segments = 8
-                var currentX = startX
-                var currentY = startY
-                ctx.moveTo(currentX, currentY)
-                for (var i = 0; i < segments; i++) {
-                    var progress = (i + 1) / segments
-                    var nextX = startX + (endX - startX) * progress + (Math.random() - 0.5) * 50
-                    var nextY = startY + (endY - startY) * progress
-                    ctx.lineTo(nextX, nextY)
+                ctx.strokeStyle = "#88ccff"; ctx.lineWidth = 3; ctx.lineCap = "round"
+                ctx.beginPath(); ctx.moveTo(startX, startY)
+                var segs = 6
+                for (var i = 0; i < segs; i++) {
+                    var prog = (i + 1) / segs
+                    ctx.lineTo(startX + (endX - startX) * prog + (Math.random() - 0.5) * 40,
+                               startY + (endY - startY) * prog)
                 }
                 ctx.stroke()
             }
-
             Component.onCompleted: requestPaint()
-
             SequentialAnimation on opacity {
-                NumberAnimation { to: 0; duration: 100 }
-                NumberAnimation { to: 1; duration: 50 }
-                NumberAnimation { to: 0; duration: 100 }
-                NumberAnimation { to: 0.7; duration: 50 }
-                NumberAnimation { to: 0; duration: 100 }
+                NumberAnimation { to: 0; duration: 80 }
+                NumberAnimation { to: 1; duration: 40 }
+                NumberAnimation { to: 0; duration: 80 }
             }
-
-            Timer { interval: lifetime; running: true; onTriggered: lightning.destroy() }
+            Timer { interval: 300; running: true; onTriggered: lt.destroy() }
         }
     }
 
-    // Petal component
     Component {
         id: petalComponent
         Rectangle {
-            id: petal
+            id: pt
             property real centerX: 0
             property real centerY: 0
             property real angle: 0
-            property int lifetime: 1500
-            property real distance: 0
-
-            width: 40
-            height: 60
-            radius: 20
-            z: 5
-            scale: 0
-
-            x: centerX + Math.cos(angle) * distance - 20
-            y: centerY + Math.sin(angle) * distance - 30
-
+            property string petalColor: "#ff3388"
+            property real dist: 0
+            width: 32; height: 48; radius: 16
+            color: petalColor; z: 5; scale: 0
+            x: centerX + Math.cos(angle) * dist - 16
+            y: centerY + Math.sin(angle) * dist - 24
             SequentialAnimation on scale {
-                NumberAnimation { to: 1.0; duration: lifetime * 0.3; easing.type: Easing.OutBack }
-                PauseAnimation { duration: lifetime * 0.4 }
-                NumberAnimation { to: 0; duration: lifetime * 0.3 }
+                NumberAnimation { to: 1; duration: 350; easing.type: Easing.OutBack }
+                PauseAnimation { duration: 500 }
+                NumberAnimation { to: 0; duration: 350 }
             }
-
-            NumberAnimation on distance { from: 0; to: 80; duration: lifetime * 0.3; easing.type: Easing.OutQuad }
-
-            Timer { interval: lifetime; running: true; onTriggered: petal.destroy() }
+            NumberAnimation on dist { from: 0; to: 65; duration: 350; easing.type: Easing.OutQuad }
+            Timer { interval: 1200; running: true; onTriggered: pt.destroy() }
         }
     }
 
-    // Snow component
     Component {
         id: snowComponent
         Rectangle {
-            id: snow
-            property int lifetime: 3000
-            property real size: 12
-
-            width: size
-            height: size
-            radius: size / 2
-            color: "#ffffff"
-            z: 5
-
-            Timer {
-                interval: 16
-                running: true
-                repeat: true
-                onTriggered: {
-                    snow.y += (100 + Math.random() * 100) * 0.016
-                    snow.x += Math.sin(snow.y * 0.02) * 1
-                }
+            id: sn
+            property real size: 10
+            width: size; height: size; radius: size/2
+            color: "#ffffff"; z: 5
+            Timer { interval: 16; running: true; repeat: true
+                onTriggered: { sn.y += (80 + Math.random() * 60) * 0.016; sn.x += Math.sin(sn.y * 0.015) * 0.8 }
             }
-
-            Timer { interval: lifetime; running: true; onTriggered: snow.destroy() }
+            Timer { interval: 2500; running: true; onTriggered: sn.destroy() }
         }
     }
 
-    // Neon component
     Component {
         id: neonComponent
         Rectangle {
-            id: neon
+            id: ne
+            property real startX: 0
+            property real startY: 0
             property real targetX: 0
             property real targetY: 0
-            property int lifetime: 800
-
-            width: 8
-            height: 8
-            radius: 4
-            z: 5
-
-            NumberAnimation on x { to: targetX; duration: lifetime; easing.type: Easing.OutQuad }
-            NumberAnimation on y { to: targetY; duration: lifetime; easing.type: Easing.OutQuad }
-
-            SequentialAnimation on opacity {
-                PauseAnimation { duration: lifetime * 0.5 }
-                NumberAnimation { to: 0; duration: lifetime * 0.5 }
-            }
-
-            Timer { interval: lifetime; running: true; onTriggered: neon.destroy() }
+            property string neonColor: "#ff00ff"
+            width: 6; height: 6; radius: 3
+            color: neonColor; z: 5
+            x: startX; y: startY
+            NumberAnimation on x { to: ne.targetX; duration: 600; easing.type: Easing.OutQuad }
+            NumberAnimation on y { to: ne.targetY; duration: 600; easing.type: Easing.OutQuad }
+            NumberAnimation on opacity { from: 0.9; to: 0; duration: 600 }
+            Timer { interval: 600; running: true; onTriggered: ne.destroy() }
         }
     }
 
-    // Shape component
     Component {
         id: shapeComponent
         Rectangle {
-            id: shape
-            property int lifetime: 2000
-
-            width: 120
-            height: 120
-            color: Qt.rgba(Math.random(), Math.random(), Math.random(), 0.8)
-            z: 5
-            scale: 0
-
+            id: sh
+            width: 100; height: 100
+            color: Qt.rgba(Math.random(), Math.random(), Math.random(), 0.75)
+            z: 5; scale: 0
             SequentialAnimation on scale {
-                NumberAnimation { to: 1.5; duration: lifetime * 0.5; easing.type: Easing.OutBack }
-                NumberAnimation { to: 0; duration: lifetime * 0.5; easing.type: Easing.InBack }
+                NumberAnimation { to: 1.3; duration: 600; easing.type: Easing.OutBack }
+                NumberAnimation { to: 0; duration: 600; easing.type: Easing.InBack }
             }
-
-            NumberAnimation on rotation { from: 0; to: 360; duration: lifetime }
-
+            NumberAnimation on rotation { from: 0; to: 360; duration: 1200 }
             SequentialAnimation on radius {
-                NumberAnimation { to: 60; duration: lifetime * 0.33 }
-                NumberAnimation { to: 0; duration: lifetime * 0.33 }
-                NumberAnimation { to: 30; duration: lifetime * 0.34 }
+                NumberAnimation { to: 50; duration: 400 }
+                NumberAnimation { to: 0; duration: 400 }
+                NumberAnimation { to: 25; duration: 400 }
             }
-
-            Timer { interval: lifetime; running: true; onTriggered: shape.destroy() }
+            Timer { interval: 1200; running: true; onTriggered: sh.destroy() }
         }
     }
 
-    // Star component (galaxy)
     Component {
-        id: starComponent
+        id: galaxyStarComponent
         Rectangle {
-            id: star
+            id: gs
             property real centerX: 0
             property real centerY: 0
             property real angle: 0
-            property real distance: 100
-            property int lifetime: 2500
-            property real currentAngle: angle
-
-            width: 6
-            height: 6
-            radius: 3
-            z: 5
-
-            x: centerX + Math.cos(currentAngle) * distance - 3
-            y: centerY + Math.sin(currentAngle) * distance - 3
-
-            Timer {
-                interval: 16
-                running: true
-                repeat: true
-                onTriggered: star.currentAngle += 0.05
-            }
-
-            NumberAnimation on distance { from: distance; to: 10; duration: lifetime; easing.type: Easing.InQuad }
-
-            Timer { interval: lifetime; running: true; onTriggered: star.destroy() }
+            property real dist: 100
+            property string starColor: "#ffffff"
+            property real curAngle: angle
+            width: 5; height: 5; radius: 2.5
+            color: starColor; z: 5
+            x: centerX + Math.cos(curAngle) * dist - 2.5
+            y: centerY + Math.sin(curAngle) * dist - 2.5
+            Timer { interval: 16; running: true; repeat: true; onTriggered: gs.curAngle += 0.04 }
+            NumberAnimation on dist { from: dist; to: 8; duration: 2000; easing.type: Easing.InQuad }
+            Timer { interval: 2000; running: true; onTriggered: gs.destroy() }
         }
     }
 
-    // Rain component
     Component {
         id: rainComponent
         Rectangle {
-            id: drop
+            id: rd
+            property real startY: 0
             property real targetY: 0
-            property int lifetime: 1500
-
-            width: 4
-            height: 20
-            radius: 2
-            color: "#4488ff"
-            z: 5
-
-            NumberAnimation on y { to: targetY; duration: lifetime * 0.7; easing.type: Easing.InQuad }
-
-            Timer { interval: lifetime; running: true; onTriggered: drop.destroy() }
+            width: 3; height: 16; radius: 1.5
+            color: "#4488ff"; z: 5; y: startY
+            NumberAnimation on y { to: rd.targetY; duration: 1200; easing.type: Easing.InQuad }
+            Timer { interval: 1200; running: true; onTriggered: rd.destroy() }
         }
     }
 
-    // ==================== NEW EFFECT COMPONENTS ====================
-
-    // Life component - cellular automata
     Component {
         id: lifeComponent
         Item {
-            id: life
+            id: lf
             property real centerX: 0
             property real centerY: 0
             property var cells: []
-            property int gridSize: 20
-            property int cellSize: 16
-            property int generation: 0
-
-            width: gridSize * cellSize
-            height: gridSize * cellSize
-            x: centerX - width/2
-            y: centerY - height/2
-            z: 5
-
+            property int gridSize: 16
+            property int cellSize: 18
+            property int gen: 0
+            width: gridSize * cellSize; height: gridSize * cellSize
+            x: centerX - width/2; y: centerY - height/2; z: 5
             Component.onCompleted: {
-                // Initialize with random pattern
-                cells = []
-                for (var i = 0; i < gridSize * gridSize; i++) {
-                    cells.push(Math.random() < 0.3)
-                }
-                updateCanvas()
+                cells = []; for (var i = 0; i < gridSize * gridSize; i++) cells.push(Math.random() < 0.3)
+                lfCanvas.requestPaint()
             }
-
-            Canvas {
-                id: lifeCanvas
-                anchors.fill: parent
-
+            Canvas { id: lfCanvas; anchors.fill: parent
                 onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.clearRect(0, 0, width, height)
-
-                    var colors = ["#00ff88", "#00ffaa", "#00ffcc", "#00ffee"]
-
-                    for (var i = 0; i < life.cells.length; i++) {
-                        if (life.cells[i]) {
-                            var x = (i % life.gridSize) * life.cellSize
-                            var y = Math.floor(i / life.gridSize) * life.cellSize
+                    var ctx = getContext("2d"); ctx.clearRect(0, 0, width, height)
+                    var colors = ["#00ff88", "#00ffaa", "#00ffcc"]
+                    for (var i = 0; i < lf.cells.length; i++) {
+                        if (lf.cells[i]) {
                             ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)]
-                            ctx.fillRect(x + 1, y + 1, life.cellSize - 2, life.cellSize - 2)
+                            ctx.fillRect((i % lf.gridSize) * lf.cellSize + 1, Math.floor(i / lf.gridSize) * lf.cellSize + 1, lf.cellSize - 2, lf.cellSize - 2)
                         }
                     }
                 }
             }
-
-            function updateCanvas() {
-                lifeCanvas.requestPaint()
+            function getCell(x, y) { return (x < 0 || x >= gridSize || y < 0 || y >= gridSize) ? false : cells[y * gridSize + x] }
+            function countN(x, y) {
+                var c = 0
+                for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) if (!(dx === 0 && dy === 0) && getCell(x + dx, y + dy)) c++
+                return c
             }
-
-            function getCell(x, y) {
-                if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) return false
-                return cells[y * gridSize + x]
-            }
-
-            function countNeighbors(x, y) {
-                var count = 0
-                for (var dy = -1; dy <= 1; dy++) {
-                    for (var dx = -1; dx <= 1; dx++) {
-                        if (dx === 0 && dy === 0) continue
-                        if (getCell(x + dx, y + dy)) count++
-                    }
-                }
-                return count
-            }
-
-            Timer {
-                interval: 150
-                running: true
-                repeat: true
+            Timer { interval: 120; running: true; repeat: true
                 onTriggered: {
-                    life.generation++
-                    if (life.generation > 30) {
-                        life.destroy()
-                        return
+                    lf.gen++; if (lf.gen > 25) { lf.destroy(); return }
+                    var nc = []
+                    for (var i = 0; i < lf.gridSize * lf.gridSize; i++) {
+                        var n = lf.countN(i % lf.gridSize, Math.floor(i / lf.gridSize))
+                        nc.push(lf.cells[i] ? (n === 2 || n === 3) : (n === 3))
                     }
-
-                    var newCells = []
-                    for (var i = 0; i < life.gridSize * life.gridSize; i++) {
-                        var x = i % life.gridSize
-                        var y = Math.floor(i / life.gridSize)
-                        var neighbors = life.countNeighbors(x, y)
-                        var alive = life.cells[i]
-
-                        if (alive) {
-                            newCells.push(neighbors === 2 || neighbors === 3)
-                        } else {
-                            newCells.push(neighbors === 3)
-                        }
-                    }
-                    life.cells = newCells
-                    life.updateCanvas()
+                    lf.cells = nc; lfCanvas.requestPaint()
                 }
             }
-
-            NumberAnimation on opacity { from: 1; to: 0; duration: 4500; easing.type: Easing.InQuad }
+            NumberAnimation on opacity { from: 1; to: 0; duration: 3500; easing.type: Easing.InQuad }
         }
     }
 
-    // Branch component for tree
     Component {
         id: branchComponent
         Canvas {
-            id: branch
+            id: br
             property real startX: 0
             property real startY: 0
             property real angle: 0
-            property real length: 100
-            property real thickness: 5
+            property real length: 80
+            property real thickness: 4
             property int depth: 0
-            property real growProgress: 0
-
-            width: root.width
-            height: root.height
-            z: 5
-
+            property real gp: 0
+            width: root.width; height: root.height; z: 5
             onPaint: {
                 var ctx = getContext("2d")
-                ctx.strokeStyle = depth < 3 ? "#8B4513" : "#228B22"
-                ctx.lineWidth = thickness
-                ctx.lineCap = "round"
-                ctx.beginPath()
-                ctx.moveTo(startX, startY)
-                var endX = startX + Math.cos(angle) * length * growProgress
-                var endY = startY + Math.sin(angle) * length * growProgress
-                ctx.lineTo(endX, endY)
+                ctx.strokeStyle = depth < 2 ? "#8B4513" : "#228B22"
+                ctx.lineWidth = thickness; ctx.lineCap = "round"
+                ctx.beginPath(); ctx.moveTo(startX, startY)
+                ctx.lineTo(startX + Math.cos(angle) * length * gp, startY + Math.sin(angle) * length * gp)
                 ctx.stroke()
             }
-
-            NumberAnimation on growProgress {
-                from: 0
-                to: 1
-                duration: 300
-                easing.type: Easing.OutQuad
+            NumberAnimation on gp { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad
                 onFinished: {
-                    // Spawn child branches
-                    if (depth < 6 && length > 15) {
-                        var endX = startX + Math.cos(angle) * length
-                        var endY = startY + Math.sin(angle) * length
-                        var newLength = length * 0.7
-                        var newThickness = thickness * 0.7
-
-                        createBranch(endX, endY, angle - 0.4 - Math.random() * 0.3, newLength, newThickness, depth + 1)
-                        createBranch(endX, endY, angle + 0.4 + Math.random() * 0.3, newLength, newThickness, depth + 1)
+                    if (br.depth < 5 && br.length > 12) {
+                        var ex = br.startX + Math.cos(br.angle) * br.length
+                        var ey = br.startY + Math.sin(br.angle) * br.length
+                        createBranch(ex, ey, br.angle - 0.35 - Math.random() * 0.25, br.length * 0.7, br.thickness * 0.7, br.depth + 1)
+                        createBranch(ex, ey, br.angle + 0.35 + Math.random() * 0.25, br.length * 0.7, br.thickness * 0.7, br.depth + 1)
                     }
                 }
             }
-
-            onGrowProgressChanged: requestPaint()
-
-            Timer { interval: 5000; running: true; onTriggered: branch.destroy() }
-
-            SequentialAnimation on opacity {
-                PauseAnimation { duration: 4000 }
-                NumberAnimation { to: 0; duration: 1000 }
-            }
+            onGpChanged: requestPaint()
+            Timer { interval: 4000; running: true; onTriggered: br.destroy() }
+            SequentialAnimation on opacity { PauseAnimation { duration: 3200 } NumberAnimation { to: 0; duration: 800 } }
         }
     }
 
-    // Spiral component
     Component {
         id: spiralComponent
         Canvas {
-            id: spiral
+            id: spi
             property real centerX: 0
             property real centerY: 0
-            property real rotation: 0
-
-            width: root.width
-            height: root.height
-            z: 5
-
+            property real rot: 0
+            width: root.width; height: root.height; z: 5
             onPaint: {
-                var ctx = getContext("2d")
-                ctx.clearRect(0, 0, width, height)
-
-                var arms = 6
-                for (var arm = 0; arm < arms; arm++) {
-                    var armAngle = (Math.PI * 2 * arm) / arms + rotation
-                    ctx.beginPath()
-                    ctx.strokeStyle = Qt.hsla(arm / arms, 0.8, 0.5, 0.8)
-                    ctx.lineWidth = 4
-
-                    for (var t = 0; t < 300; t += 5) {
-                        var angle = armAngle + t * 0.05
-                        var radius = t * 0.8
-                        var x = centerX + Math.cos(angle) * radius
-                        var y = centerY + Math.sin(angle) * radius
-                        if (t === 0) ctx.moveTo(x, y)
-                        else ctx.lineTo(x, y)
+                var ctx = getContext("2d"); ctx.clearRect(0, 0, width, height)
+                for (var arm = 0; arm < 5; arm++) {
+                    var aa = (Math.PI * 2 * arm) / 5 + rot
+                    ctx.beginPath(); ctx.strokeStyle = Qt.hsla(arm / 5, 0.8, 0.5, 0.7); ctx.lineWidth = 3
+                    for (var t = 0; t < 250; t += 6) {
+                        var a = aa + t * 0.04, r = t * 0.7
+                        if (t === 0) ctx.moveTo(centerX + Math.cos(a) * r, centerY + Math.sin(a) * r)
+                        else ctx.lineTo(centerX + Math.cos(a) * r, centerY + Math.sin(a) * r)
                     }
                     ctx.stroke()
                 }
             }
-
-            NumberAnimation on rotation {
-                from: 0
-                to: Math.PI * 2
-                duration: 3000
-                loops: 1
-            }
-
-            onRotationChanged: requestPaint()
-
-            Timer { interval: 3000; running: true; onTriggered: spiral.destroy() }
-
-            NumberAnimation on opacity { from: 1; to: 0; duration: 3000 }
-        }
-    }
-
-    // Wave component
-    Component {
-        id: waveComponent
-        Canvas {
-            id: wave
-            property real centerX: 0
-            property real centerY: 0
-            property real time: 0
-
-            width: root.width
-            height: root.height
-            z: 5
-
-            Timer {
-                interval: 16
-                running: true
-                repeat: true
-                onTriggered: {
-                    wave.time += 0.1
-                    wave.requestPaint()
-                }
-            }
-
-            onPaint: {
-                var ctx = getContext("2d")
-                ctx.clearRect(0, 0, width, height)
-
-                for (var r = 20; r < 300; r += 20) {
-                    ctx.beginPath()
-                    ctx.strokeStyle = Qt.hsla((r / 300), 0.7, 0.5, 0.6)
-                    ctx.lineWidth = 3
-
-                    for (var a = 0; a < Math.PI * 2; a += 0.1) {
-                        var wobble = Math.sin(a * 8 + time) * 10
-                        var x = centerX + Math.cos(a) * (r + wobble)
-                        var y = centerY + Math.sin(a) * (r + wobble)
-                        if (a === 0) ctx.moveTo(x, y)
-                        else ctx.lineTo(x, y)
-                    }
-                    ctx.closePath()
-                    ctx.stroke()
-                }
-            }
-
-            Timer { interval: 2500; running: true; onTriggered: wave.destroy() }
-
+            NumberAnimation on rot { from: 0; to: Math.PI * 2; duration: 2500 }
+            onRotChanged: requestPaint()
+            Timer { interval: 2500; running: true; onTriggered: spi.destroy() }
             NumberAnimation on opacity { from: 1; to: 0; duration: 2500 }
         }
     }
 
-    // Heart component
+    Component {
+        id: waveComponent
+        Canvas {
+            id: wv
+            property real centerX: 0
+            property real centerY: 0
+            property real t: 0
+            width: root.width; height: root.height; z: 5
+            Timer { interval: 20; running: true; repeat: true; onTriggered: { wv.t += 0.08; wv.requestPaint() } }
+            onPaint: {
+                var ctx = getContext("2d"); ctx.clearRect(0, 0, width, height)
+                for (var r = 15; r < 250; r += 18) {
+                    ctx.beginPath(); ctx.strokeStyle = Qt.hsla(r / 250, 0.65, 0.5, 0.5); ctx.lineWidth = 2
+                    for (var a = 0; a < Math.PI * 2; a += 0.08) {
+                        var w = Math.sin(a * 7 + t) * 8
+                        if (a === 0) ctx.moveTo(centerX + Math.cos(a) * (r + w), centerY + Math.sin(a) * (r + w))
+                        else ctx.lineTo(centerX + Math.cos(a) * (r + w), centerY + Math.sin(a) * (r + w))
+                    }
+                    ctx.closePath(); ctx.stroke()
+                }
+            }
+            Timer { interval: 2000; running: true; onTriggered: wv.destroy() }
+            NumberAnimation on opacity { from: 1; to: 0; duration: 2000 }
+        }
+    }
+
     Component {
         id: heartComponent
         Text {
-            id: heart
-            property real size: 30
-
-            text: "❤"
-            font.pixelSize: size
-            z: 5
-
-            NumberAnimation on y {
-                from: y
-                to: y - 300
-                duration: 2000
-                easing.type: Easing.OutQuad
-            }
-
+            id: ht
+            property real size: 28
+            property string heartColor: "#ff3366"
+            text: "❤"; font.pixelSize: size; color: heartColor; z: 5
+            NumberAnimation on y { from: y; to: y - 250; duration: 1600; easing.type: Easing.OutQuad }
             SequentialAnimation on scale {
-                NumberAnimation { from: 0; to: 1.2; duration: 200; easing.type: Easing.OutBack }
-                NumberAnimation { to: 1; duration: 100 }
+                NumberAnimation { from: 0; to: 1.15; duration: 180; easing.type: Easing.OutBack }
+                NumberAnimation { to: 1; duration: 80 }
             }
-
-            NumberAnimation on opacity { from: 1; to: 0; duration: 2000 }
-
-            Timer { interval: 2000; running: true; onTriggered: heart.destroy() }
+            NumberAnimation on opacity { from: 1; to: 0; duration: 1600 }
+            Timer { interval: 1600; running: true; onTriggered: ht.destroy() }
         }
     }
 
-    // Twinkle component
     Component {
         id: twinkleComponent
         Rectangle {
-            id: twinkle
-            property real size: 15
-
-            width: size
-            height: size
-            radius: size / 2
-            color: "#ffffff"
-            z: 5
-
-            SequentialAnimation on scale {
-                loops: 3
-                NumberAnimation { from: 0; to: 1; duration: 300; easing.type: Easing.OutQuad }
-                NumberAnimation { to: 0.3; duration: 200 }
-                NumberAnimation { to: 1.2; duration: 300; easing.type: Easing.OutQuad }
-                NumberAnimation { to: 0; duration: 400 }
+            id: tw
+            property real size: 12
+            width: size; height: size; radius: size/2
+            color: "#ffffff"; z: 5
+            SequentialAnimation on scale { loops: 2
+                NumberAnimation { from: 0; to: 1; duration: 200 }
+                NumberAnimation { to: 0.25; duration: 150 }
+                NumberAnimation { to: 1.1; duration: 200 }
+                NumberAnimation { to: 0; duration: 300 }
             }
-
-            Timer { interval: 2400; running: true; onTriggered: twinkle.destroy() }
+            Timer { interval: 1700; running: true; onTriggered: tw.destroy() }
         }
     }
 
-    // Lava component
     Component {
         id: lavaComponent
         Rectangle {
-            id: lava
-            property real size: 80
-
-            width: size
-            height: size
-            radius: size / 2
-            z: 5
-
-            NumberAnimation on y {
-                from: y
-                to: y - 400
-                duration: 3000
-                easing.type: Easing.InOutSine
-            }
-
+            id: lv
+            property real size: 65
+            property string lavaColor: "#ff6600"
+            width: size; height: size; radius: size/2
+            color: lavaColor; z: 5
+            NumberAnimation on y { from: y; to: y - 300; duration: 2500; easing.type: Easing.InOutSine }
             SequentialAnimation on scale {
-                NumberAnimation { from: 0.5; to: 1.3; duration: 1500; easing.type: Easing.InOutSine }
-                NumberAnimation { to: 0.8; duration: 1500; easing.type: Easing.InOutSine }
+                NumberAnimation { from: 0.5; to: 1.2; duration: 1250; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 0.7; duration: 1250; easing.type: Easing.InOutSine }
             }
-
-            NumberAnimation on opacity { from: 0.8; to: 0; duration: 3000 }
-
-            Timer { interval: 3000; running: true; onTriggered: lava.destroy() }
+            NumberAnimation on opacity { from: 0.75; to: 0; duration: 2500 }
+            Timer { interval: 2500; running: true; onTriggered: lv.destroy() }
         }
     }
 
-    // Matrix component
     Component {
         id: matrixComponent
         Text {
-            id: matrix
+            id: mx
             property real startY: 0
-
-            text: {
-                var chars = "ｱｲｳｴｵｶｷｸｹｺ0123456789"
-                var result = ""
-                for (var i = 0; i < 15; i++) {
-                    result += chars[Math.floor(Math.random() * chars.length)] + "\n"
-                }
-                return result
-            }
-            font.pixelSize: 16
-            font.family: "monospace"
-            color: "#00ff00"
-            y: startY
-            z: 5
-
-            NumberAnimation on y {
-                from: startY
-                to: root.height
-                duration: 2000
-                easing.type: Easing.Linear
-            }
-
-            NumberAnimation on opacity { from: 1; to: 0; duration: 2000 }
-
-            Timer { interval: 2000; running: true; onTriggered: matrix.destroy() }
+            text: { var c = "ｱｲｳｴｵｶｷ012345"; var r = ""; for (var i = 0; i < 12; i++) r += c[Math.floor(Math.random() * c.length)] + "\n"; return r }
+            font.pixelSize: 14; font.family: "monospace"; color: "#00ff00"; y: startY; z: 5
+            NumberAnimation on y { from: startY; to: root.height; duration: 1600 }
+            NumberAnimation on opacity { from: 1; to: 0; duration: 1600 }
+            Timer { interval: 1600; running: true; onTriggered: mx.destroy() }
         }
     }
 
-    // Disco component
     Component {
         id: discoComponent
         Rectangle {
-            id: disco
+            id: ds
             property real centerX: 0
             property real centerY: 0
             property real angle: 0
-            property real distance: 0
-
-            width: 20
-            height: 300
-            color: Qt.hsla(Math.random(), 0.8, 0.6, 0.7)
-            z: 5
-
-            x: centerX + Math.cos(angle) * distance - 10
-            y: centerY + Math.sin(angle) * distance
-
+            property real dist: 0
+            width: 16; height: 250
+            color: Qt.hsla(Math.random(), 0.8, 0.55, 0.65); z: 5
+            x: centerX + Math.cos(angle) * dist - 8
+            y: centerY + Math.sin(angle) * dist
             rotation: angle * 180 / Math.PI + 90
-
-            NumberAnimation on distance {
-                from: 0
-                to: 400
-                duration: 1500
-                easing.type: Easing.OutQuad
-            }
-
-            NumberAnimation on opacity { from: 0.8; to: 0; duration: 1500 }
-
-            Timer { interval: 1500; running: true; onTriggered: disco.destroy() }
+            NumberAnimation on dist { from: 0; to: 350; duration: 1200; easing.type: Easing.OutQuad }
+            NumberAnimation on opacity { from: 0.7; to: 0; duration: 1200 }
+            Timer { interval: 1200; running: true; onTriggered: ds.destroy() }
         }
     }
 
-    // Aurora component
     Component {
         id: auroraComponent
         Canvas {
-            id: aurora
+            id: au
             property real centerX: 0
             property real centerY: 0
-            property real time: 0
-
-            width: root.width
-            height: root.height
-            z: 5
-
-            Timer {
-                interval: 32
-                running: true
-                repeat: true
-                onTriggered: {
-                    aurora.time += 0.05
-                    aurora.requestPaint()
-                }
-            }
-
+            property real t: 0
+            width: root.width; height: root.height; z: 5
+            Timer { interval: 28; running: true; repeat: true; onTriggered: { au.t += 0.04; au.requestPaint() } }
             onPaint: {
-                var ctx = getContext("2d")
-                ctx.clearRect(0, 0, width, height)
-
+                var ctx = getContext("2d"); ctx.clearRect(0, 0, width, height)
                 var colors = ["#00ff88", "#00ffcc", "#88ff00", "#00ccff"]
-
-                for (var i = 0; i < 5; i++) {
+                for (var i = 0; i < 4; i++) {
                     ctx.beginPath()
-                    var grad = ctx.createLinearGradient(0, centerY - 200, 0, centerY + 200)
-                    grad.addColorStop(0, "transparent")
-                    grad.addColorStop(0.5, colors[i % colors.length])
-                    grad.addColorStop(1, "transparent")
+                    var grad = ctx.createLinearGradient(0, centerY - 150, 0, centerY + 150)
+                    grad.addColorStop(0, "transparent"); grad.addColorStop(0.5, colors[i]); grad.addColorStop(1, "transparent")
                     ctx.fillStyle = grad
-
-                    ctx.moveTo(centerX - 300, centerY + 200)
-                    for (var x = -300; x <= 300; x += 20) {
-                        var wave = Math.sin(x * 0.02 + time + i) * 50
-                        var wave2 = Math.sin(x * 0.01 + time * 0.5) * 30
-                        ctx.lineTo(centerX + x, centerY + wave + wave2 - i * 30)
+                    ctx.moveTo(centerX - 250, centerY + 150)
+                    for (var x = -250; x <= 250; x += 18) {
+                        var w = Math.sin(x * 0.018 + t + i) * 40 + Math.sin(x * 0.01 + t * 0.4) * 25
+                        ctx.lineTo(centerX + x, centerY + w - i * 25)
                     }
-                    ctx.lineTo(centerX + 300, centerY + 200)
-                    ctx.closePath()
-                    ctx.globalAlpha = 0.3
-                    ctx.fill()
+                    ctx.lineTo(centerX + 250, centerY + 150); ctx.closePath()
+                    ctx.globalAlpha = 0.25; ctx.fill()
                 }
                 ctx.globalAlpha = 1
             }
-
-            Timer { interval: 3000; running: true; onTriggered: aurora.destroy() }
-
-            NumberAnimation on opacity { from: 1; to: 0; duration: 3000 }
+            Timer { interval: 2500; running: true; onTriggered: au.destroy() }
+            NumberAnimation on opacity { from: 1; to: 0; duration: 2500 }
         }
     }
 
@@ -1521,10 +1342,7 @@ Window {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 8
-        width: 120
-        height: 4
-        radius: 2
-        color: "#333344"
-        z: 99
+        width: 120; height: 4; radius: 2
+        color: "#333344"; z: 99
     }
 }
