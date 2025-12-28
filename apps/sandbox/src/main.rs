@@ -400,9 +400,19 @@ fn main() -> Result<(), String> {
     let sdl = sdl2::init()?;
     let video = sdl.video()?;
 
+    // Get display dimensions for fullscreen
+    let display = video.display_bounds(0).unwrap_or(sdl2::rect::Rect::new(0, 0, SCREEN_W, SCREEN_H));
+    let screen_w = display.width();
+    let screen_h = display.height();
+
+    // Calculate cell size to fit screen
+    let cell_w = screen_w / WIDTH as u32;
+    let cell_h = screen_h / HEIGHT as u32;
+    let cell_size = cell_w.min(cell_h).max(1);
+
     let window = video
-        .window("Flick Sandbox", SCREEN_W, SCREEN_H)
-        .position_centered()
+        .window("Flick Sandbox", screen_w, screen_h)
+        .fullscreen_desktop()
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -468,16 +478,30 @@ fn main() -> Result<(), String> {
                 },
                 Event::MouseButtonDown { mouse_btn: MouseButton::Left, x, y, .. } => {
                     mouse_down = true;
-                    let gx = x / CELL_SIZE as i32;
-                    let gy = y / CELL_SIZE as i32;
+                    let gx = x / cell_size as i32;
+                    let gy = y / cell_size as i32;
                     world.draw_brush(gx, gy, selected, brush_size);
                 }
                 Event::MouseButtonUp { mouse_btn: MouseButton::Left, .. } => {
                     mouse_down = false;
                 }
                 Event::MouseMotion { x, y, .. } if mouse_down => {
-                    let gx = x / CELL_SIZE as i32;
-                    let gy = y / CELL_SIZE as i32;
+                    let gx = x / cell_size as i32;
+                    let gy = y / cell_size as i32;
+                    world.draw_brush(gx, gy, selected, brush_size);
+                }
+                Event::FingerDown { x, y, .. } => {
+                    mouse_down = true;
+                    let gx = (x * screen_w as f32) as i32 / cell_size as i32;
+                    let gy = (y * screen_h as f32) as i32 / cell_size as i32;
+                    world.draw_brush(gx, gy, selected, brush_size);
+                }
+                Event::FingerUp { .. } => {
+                    mouse_down = false;
+                }
+                Event::FingerMotion { x, y, .. } if mouse_down => {
+                    let gx = (x * screen_w as f32) as i32 / cell_size as i32;
+                    let gy = (y * screen_h as f32) as i32 / cell_size as i32;
                     world.draw_brush(gx, gy, selected, brush_size);
                 }
                 _ => {}
@@ -497,10 +521,10 @@ fn main() -> Result<(), String> {
                 if cell != Cell::Empty {
                     canvas.set_draw_color(cell.color());
                     canvas.fill_rect(Rect::new(
-                        (x as u32 * CELL_SIZE) as i32,
-                        (y as u32 * CELL_SIZE) as i32,
-                        CELL_SIZE,
-                        CELL_SIZE,
+                        (x as u32 * cell_size) as i32,
+                        (y as u32 * cell_size) as i32,
+                        cell_size,
+                        cell_size,
                     ))?;
                 }
             }
