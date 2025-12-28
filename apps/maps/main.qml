@@ -425,6 +425,18 @@ Window {
         zoomLevel: 14
         copyrightsVisible: false
 
+        Component.onCompleted: {
+            // Log available map types and set street map
+            console.log("Available map types:", supportedMapTypes.length)
+            for (var i = 0; i < supportedMapTypes.length; i++) {
+                console.log("  Map type", i + ":", supportedMapTypes[i].name, supportedMapTypes[i].style)
+            }
+            // Use the first available street map type
+            if (supportedMapTypes.length > 0) {
+                activeMapType = supportedMapTypes[0]
+            }
+        }
+
         // GPS marker
         MapQuickItem {
             id: gpsMarker
