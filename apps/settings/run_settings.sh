@@ -526,6 +526,63 @@ stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" |
                 ;;
         esac
     fi
+    # Check for wallpaper color analysis command
+    if [[ "$line" == *"ANALYZE_WALLPAPER:"* ]]; then
+        WALLPAPER_PATH=$(echo "$line" | sed 's/.*ANALYZE_WALLPAPER://')
+        echo "Analyzing wallpaper for accent color: $WALLPAPER_PATH" >> "$LOG_FILE"
+        # Run color analysis in background and write result to file
+        (
+            rm -f /tmp/flick_accent_color.txt
+            # Use Python to extract vibrant color
+            python3 -c "
+import sys
+try:
+    from PIL import Image
+    import colorsys
+
+    img = Image.open('$WALLPAPER_PATH')
+    img = img.resize((50, 50))
+    img = img.convert('RGB')
+
+    # Count colors with saturation weighting
+    color_scores = {}
+    for y in range(50):
+        for x in range(50):
+            r, g, b = img.getpixel((x, y))
+            # Convert to HSV
+            h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
+            # Only consider saturated, mid-brightness colors
+            if s > 0.25 and 0.2 < v < 0.95:
+                # Quantize to reduce color space
+                qr = (r // 32) * 32 + 16
+                qg = (g // 32) * 32 + 16
+                qb = (b // 32) * 32 + 16
+                key = (qr, qg, qb)
+                if key not in color_scores:
+                    color_scores[key] = {'count': 0, 'sat': 0}
+                color_scores[key]['count'] += 1
+                color_scores[key]['sat'] = max(color_scores[key]['sat'], s)
+
+    # Find best color
+    best_color = None
+    best_score = 0
+    for color, data in color_scores.items():
+        score = data['count'] * data['sat']
+        if score > best_score:
+            best_score = score
+            best_color = color
+
+    if best_color:
+        # Boost brightness slightly
+        r = min(255, int(best_color[0] * 1.15))
+        g = min(255, int(best_color[1] * 1.15))
+        b = min(255, int(best_color[2] * 1.15))
+        print(f'{r},{g},{b}')
+except Exception as e:
+    print(f'Error: {e}', file=sys.stderr)
+" > /tmp/flick_accent_color.txt 2>> "$LOG_FILE"
+        ) &
+    fi
     # Check for security commands (PIN/pattern setup)
     if [[ "$line" == *"SECURITY_CMD:"* ]]; then
         SECURITY_CMD=$(echo "$line" | sed 's/.*SECURITY_CMD://')

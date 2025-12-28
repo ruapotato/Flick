@@ -21,6 +21,7 @@ Page {
 
     Component.onCompleted: {
         loadConfig()
+        updateRgbFromColor()  // Sync RGB sliders with loaded accent color
         loadBrightness()
     }
 
@@ -106,94 +107,63 @@ Page {
         console.warn("ACCENT_SAVE:" + accentColor)
     }
 
-    // Analyze wallpaper to find a good accent color (SailfishOS style)
+    // RGB values for sliders
+    property int redValue: 233
+    property int greenValue: 69
+    property int blueValue: 96
+
+    // Update accent from RGB sliders
+    function updateFromRgb() {
+        accentColor = Qt.rgba(redValue/255, greenValue/255, blueValue/255, 1)
+    }
+
+    // Update RGB from accent color
+    function updateRgbFromColor() {
+        redValue = Math.round(accentColor.r * 255)
+        greenValue = Math.round(accentColor.g * 255)
+        blueValue = Math.round(accentColor.b * 255)
+    }
+
+    // Analyze wallpaper to find a good accent color using shell script
     function analyzeWallpaper() {
         if (wallpaperPath === "") return
-        colorAnalyzer.source = "file://" + wallpaperPath
+        // Use shell to analyze and write result, then poll for it
+        console.warn("ANALYZE_WALLPAPER:" + wallpaperPath)
+        colorPollTimer.start()
     }
 
-    // Hidden image for color analysis
-    Image {
-        id: colorAnalyzer
-        visible: false
-        asynchronous: true
-        sourceSize.width: 100  // Sample at low res for speed
-        sourceSize.height: 100
+    property string colorResultFile: "/tmp/flick_accent_color.txt"
 
-        onStatusChanged: {
-            if (status === Image.Ready) {
-                extractColor()
+    Timer {
+        id: colorPollTimer
+        interval: 200
+        repeat: true
+        property int attempts: 0
+        onTriggered: {
+            attempts++
+            if (attempts > 15) {  // 3 second timeout
+                stop()
+                attempts = 0
+                return
             }
-        }
-
-        function extractColor() {
-            // Use Canvas to sample pixels
-            colorCanvas.requestPaint()
-        }
-    }
-
-    Canvas {
-        id: colorCanvas
-        visible: false
-        width: 100
-        height: 100
-
-        onPaint: {
-            var ctx = getContext("2d")
-            ctx.drawImage(colorAnalyzer, 0, 0, 100, 100)
-
-            // Sample pixels and find vibrant colors
-            var imageData = ctx.getImageData(0, 0, 100, 100)
-            var pixels = imageData.data
-            var colorCounts = {}
-            var vibrantColors = []
-
-            // Sample every 4th pixel for speed
-            for (var i = 0; i < pixels.length; i += 16) {
-                var r = pixels[i]
-                var g = pixels[i + 1]
-                var b = pixels[i + 2]
-
-                // Calculate saturation and value
-                var max = Math.max(r, g, b)
-                var min = Math.min(r, g, b)
-                var saturation = max === 0 ? 0 : (max - min) / max
-                var value = max / 255
-
-                // Only consider vibrant colors (good saturation and not too dark/light)
-                if (saturation > 0.3 && value > 0.3 && value < 0.9) {
-                    // Quantize to reduce color space
-                    var qr = Math.floor(r / 32) * 32
-                    var qg = Math.floor(g / 32) * 32
-                    var qb = Math.floor(b / 32) * 32
-                    var key = qr + "," + qg + "," + qb
-
-                    if (!colorCounts[key]) {
-                        colorCounts[key] = { count: 0, r: qr + 16, g: qg + 16, b: qb + 16 }
+            var xhr = new XMLHttpRequest()
+            xhr.open("GET", "file://" + colorResultFile, false)
+            try {
+                xhr.send()
+                if (xhr.status === 200 && xhr.responseText.trim().length > 0) {
+                    var parts = xhr.responseText.trim().split(",")
+                    if (parts.length === 3) {
+                        redValue = parseInt(parts[0]) || 233
+                        greenValue = parseInt(parts[1]) || 69
+                        blueValue = parseInt(parts[2]) || 96
+                        updateFromRgb()
+                        saveAccentColor()
                     }
-                    colorCounts[key].count++
+                    stop()
+                    attempts = 0
                 }
-            }
-
-            // Find the most common vibrant color
-            var bestColor = null
-            var bestCount = 0
-            for (var key in colorCounts) {
-                if (colorCounts[key].count > bestCount) {
-                    bestCount = colorCounts[key].count
-                    bestColor = colorCounts[key]
-                }
-            }
-
-            if (bestColor) {
-                // Boost saturation slightly for better accent
-                var hex = "#" +
-                    ("0" + Math.min(255, Math.floor(bestColor.r * 1.1)).toString(16)).slice(-2) +
-                    ("0" + Math.min(255, Math.floor(bestColor.g * 1.1)).toString(16)).slice(-2) +
-                    ("0" + Math.min(255, Math.floor(bestColor.b * 1.1)).toString(16)).slice(-2)
-                accentColor = hex.toUpperCase()
-                hexInput.text = accentColor.slice(1)
-                saveAccentColor()
+            } catch (e) {
+                // File doesn't exist yet
             }
         }
     }
@@ -849,7 +819,7 @@ Page {
             // Accent color selection
             Rectangle {
                 width: settingsColumn.width
-                height: 340
+                height: 420
                 radius: 24
                 color: "#14141e"
                 border.color: "#1a1a2e"
@@ -865,12 +835,12 @@ Page {
                         spacing: 16
 
                         Rectangle {
-                            width: 48
-                            height: 48
-                            radius: 24
+                            width: 64
+                            height: 64
+                            radius: 32
                             color: accentColor
                             border.color: "#ffffff"
-                            border.width: 2
+                            border.width: 3
                         }
 
                         Column {
@@ -879,12 +849,12 @@ Page {
 
                             Text {
                                 text: "Accent Color"
-                                font.pixelSize: 18
+                                font.pixelSize: 20
                                 color: "#ffffff"
                             }
 
                             Text {
-                                text: accentColor.toString().toUpperCase()
+                                text: "R:" + redValue + " G:" + greenValue + " B:" + blueValue
                                 font.pixelSize: 14
                                 font.family: "monospace"
                                 color: "#888899"
@@ -895,117 +865,224 @@ Page {
                     // Preset colors grid
                     Grid {
                         columns: 8
-                        spacing: 10
+                        spacing: 8
                         anchors.horizontalCenter: parent.horizontalCenter
 
                         Repeater {
                             model: accentColors.length
 
                             Rectangle {
-                                width: 44
-                                height: 44
-                                radius: 22
+                                width: 40
+                                height: 40
+                                radius: 20
                                 color: accentColors[index]
-                                border.color: accentColor === accentColors[index] ? "#ffffff" : "transparent"
-                                border.width: 2
+                                border.color: "#ffffff"
+                                border.width: accentColor.toString().toUpperCase() === accentColors[index].toUpperCase() ? 2 : 0
 
                                 MouseArea {
                                     anchors.fill: parent
                                     onClicked: {
                                         accentColor = accentColors[index]
-                                        hexInput.text = accentColor.toString().toUpperCase().slice(1)
+                                        updateRgbFromColor()
                                         saveAccentColor()
                                     }
-                                }
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: accentColor === accentColors[index] ? "✓" : ""
-                                    font.pixelSize: 20
-                                    font.weight: Font.Bold
-                                    color: "#ffffff"
                                 }
                             }
                         }
                     }
 
-                    // Custom color input
-                    Row {
-                        spacing: 12
-                        anchors.horizontalCenter: parent.horizontalCenter
+                    // RGB Sliders
+                    Column {
+                        width: parent.width
+                        spacing: 8
 
-                        Text {
-                            text: "#"
-                            font.pixelSize: 24
-                            font.family: "monospace"
-                            color: "#888899"
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-
-                        Rectangle {
-                            width: 180
-                            height: 48
-                            radius: 12
-                            color: "#1a1a28"
-                            border.color: hexInput.activeFocus ? accentColor : "#333344"
-                            border.width: 1
-
-                            TextInput {
-                                id: hexInput
-                                anchors.fill: parent
-                                anchors.margins: 12
-                                font.pixelSize: 20
-                                font.family: "monospace"
-                                font.capitalization: Font.AllUppercase
-                                color: "#ffffff"
-                                maximumLength: 6
-                                text: accentColor.toString().toUpperCase().slice(1)
-                                inputMethodHints: Qt.ImhNoPredictiveText
-
-                                onTextChanged: {
-                                    if (text.length === 6 && /^[0-9A-Fa-f]{6}$/.test(text)) {
-                                        accentColor = "#" + text
-                                    }
-                                }
-
-                                onEditingFinished: {
-                                    if (text.length === 6 && /^[0-9A-Fa-f]{6}$/.test(text)) {
-                                        accentColor = "#" + text
-                                        saveAccentColor()
-                                    }
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            width: 48
-                            height: 48
-                            radius: 12
-                            color: applyMouse.pressed ? Qt.darker(accentColor, 1.2) : accentColor
+                        // Red slider
+                        Row {
+                            spacing: 12
+                            width: parent.width
 
                             Text {
-                                anchors.centerIn: parent
-                                text: "✓"
-                                font.pixelSize: 24
-                                color: "#ffffff"
+                                text: "R"
+                                font.pixelSize: 18
+                                font.weight: Font.Bold
+                                color: "#ff4444"
+                                width: 24
                             }
 
-                            MouseArea {
-                                id: applyMouse
-                                anchors.fill: parent
-                                onClicked: {
-                                    if (hexInput.text.length === 6) {
-                                        accentColor = "#" + hexInput.text
-                                        saveAccentColor()
+                            Item {
+                                width: parent.width - 80
+                                height: 36
+
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: parent.width
+                                    height: 8
+                                    radius: 4
+                                    gradient: Gradient {
+                                        orientation: Gradient.Horizontal
+                                        GradientStop { position: 0.0; color: Qt.rgba(0, greenValue/255, blueValue/255, 1) }
+                                        GradientStop { position: 1.0; color: Qt.rgba(1, greenValue/255, blueValue/255, 1) }
                                     }
                                 }
+
+                                Rectangle {
+                                    x: (parent.width - 28) * (redValue / 255)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 28
+                                    height: 28
+                                    radius: 14
+                                    color: "#ffffff"
+                                    border.color: "#ff4444"
+                                    border.width: 2
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onPressed: updateRed(mouse)
+                                    onPositionChanged: if (pressed) updateRed(mouse)
+                                    onReleased: saveAccentColor()
+                                    function updateRed(mouse) {
+                                        redValue = Math.max(0, Math.min(255, Math.round(mouse.x / parent.width * 255)))
+                                        updateFromRgb()
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: redValue
+                                font.pixelSize: 14
+                                color: "#888899"
+                                width: 32
+                                horizontalAlignment: Text.AlignRight
+                            }
+                        }
+
+                        // Green slider
+                        Row {
+                            spacing: 12
+                            width: parent.width
+
+                            Text {
+                                text: "G"
+                                font.pixelSize: 18
+                                font.weight: Font.Bold
+                                color: "#44ff44"
+                                width: 24
+                            }
+
+                            Item {
+                                width: parent.width - 80
+                                height: 36
+
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: parent.width
+                                    height: 8
+                                    radius: 4
+                                    gradient: Gradient {
+                                        orientation: Gradient.Horizontal
+                                        GradientStop { position: 0.0; color: Qt.rgba(redValue/255, 0, blueValue/255, 1) }
+                                        GradientStop { position: 1.0; color: Qt.rgba(redValue/255, 1, blueValue/255, 1) }
+                                    }
+                                }
+
+                                Rectangle {
+                                    x: (parent.width - 28) * (greenValue / 255)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 28
+                                    height: 28
+                                    radius: 14
+                                    color: "#ffffff"
+                                    border.color: "#44ff44"
+                                    border.width: 2
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onPressed: updateGreen(mouse)
+                                    onPositionChanged: if (pressed) updateGreen(mouse)
+                                    onReleased: saveAccentColor()
+                                    function updateGreen(mouse) {
+                                        greenValue = Math.max(0, Math.min(255, Math.round(mouse.x / parent.width * 255)))
+                                        updateFromRgb()
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: greenValue
+                                font.pixelSize: 14
+                                color: "#888899"
+                                width: 32
+                                horizontalAlignment: Text.AlignRight
+                            }
+                        }
+
+                        // Blue slider
+                        Row {
+                            spacing: 12
+                            width: parent.width
+
+                            Text {
+                                text: "B"
+                                font.pixelSize: 18
+                                font.weight: Font.Bold
+                                color: "#4444ff"
+                                width: 24
+                            }
+
+                            Item {
+                                width: parent.width - 80
+                                height: 36
+
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: parent.width
+                                    height: 8
+                                    radius: 4
+                                    gradient: Gradient {
+                                        orientation: Gradient.Horizontal
+                                        GradientStop { position: 0.0; color: Qt.rgba(redValue/255, greenValue/255, 0, 1) }
+                                        GradientStop { position: 1.0; color: Qt.rgba(redValue/255, greenValue/255, 1, 1) }
+                                    }
+                                }
+
+                                Rectangle {
+                                    x: (parent.width - 28) * (blueValue / 255)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 28
+                                    height: 28
+                                    radius: 14
+                                    color: "#ffffff"
+                                    border.color: "#4444ff"
+                                    border.width: 2
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onPressed: updateBlue(mouse)
+                                    onPositionChanged: if (pressed) updateBlue(mouse)
+                                    onReleased: saveAccentColor()
+                                    function updateBlue(mouse) {
+                                        blueValue = Math.max(0, Math.min(255, Math.round(mouse.x / parent.width * 255)))
+                                        updateFromRgb()
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: blueValue
+                                font.pixelSize: 14
+                                color: "#888899"
+                                width: 32
+                                horizontalAlignment: Text.AlignRight
                             }
                         }
                     }
 
                     // Auto from wallpaper button
                     Rectangle {
-                        width: parent.width - 32
+                        width: parent.width - 16
                         height: 52
                         radius: 14
                         color: autoColorMouse.pressed ? "#2a2a3e" : "#1a1a28"
