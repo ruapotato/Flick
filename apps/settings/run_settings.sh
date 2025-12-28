@@ -112,18 +112,6 @@ update_bt_available() {
     fi
 }
 
-# Initialize WiFi data
-echo "Initializing WiFi data..." >> "$LOG_FILE"
-update_wifi_status
-update_wifi_connected
-update_wifi_networks &
-
-# Initialize Bluetooth data
-echo "Initializing Bluetooth data..." >> "$LOG_FILE"
-update_bt_status
-update_bt_paired
-update_bt_available
-
 # Function to update brightness data
 update_brightness() {
     if [ -x "$DISPLAY_HELPER" ]; then
@@ -150,10 +138,6 @@ update_brightness() {
     fi
 }
 
-# Initialize brightness data
-echo "Initializing brightness data..." >> "$LOG_FILE"
-update_brightness
-
 # Function to update sound data
 update_sound() {
     if [ -x "$SOUND_HELPER" ]; then
@@ -162,10 +146,6 @@ update_sound() {
         echo '{"volume": 70, "muted": false, "mic_volume": 70, "mic_muted": false}' > "$SOUND_FILE"
     fi
 }
-
-# Initialize sound data
-echo "Initializing sound data..." >> "$LOG_FILE"
-update_sound
 
 # Function to update battery data
 update_battery() {
@@ -219,14 +199,40 @@ init_notifications() {
     fi
 }
 
-# Initialize system data
-echo "Initializing system data..." >> "$LOG_FILE"
-update_battery
-update_storage
-update_memory
-update_system
-update_datetime
-init_notifications
+# Create default data files immediately (so QML has something to read)
+echo '{"enabled": true}' > "$WIFI_STATUS_FILE"
+echo '{"connected": false}' > "$WIFI_CONNECTED_FILE"
+echo '[]' > "$WIFI_NETWORKS_FILE"
+echo '{"enabled": false}' > "$BT_STATUS_FILE"
+echo '[]' > "$BT_PAIRED_FILE"
+echo '[]' > "$BT_AVAILABLE_FILE"
+echo '{"brightness": 75, "auto_supported": false, "auto_enabled": false}' > "$BRIGHTNESS_FILE"
+echo '{"volume": 70, "muted": false, "mic_volume": 70, "mic_muted": false}' > "$SOUND_FILE"
+echo '{"level": 100, "status": "Unknown", "charging": false, "health": "Good"}' > "$BATTERY_FILE"
+echo '{"total_gb": 64, "used_gb": 32, "free_gb": 32, "percent_used": 50}' > "$STORAGE_FILE"
+echo '{"total_gb": 4, "used_gb": 2, "percent_used": 50}' > "$MEMORY_FILE"
+echo '{"hostname": "flick", "kernel": "unknown", "arch": "unknown", "uptime": "0m"}' > "$SYSTEM_FILE"
+echo '{"date": "", "time": "", "timezone": "UTC", "use_24h": true}' > "$DATETIME_FILE"
+echo '{"dnd": false, "previews": true, "sound": true, "vibration": true}' > "$NOTIFICATIONS_FILE"
+
+# Run all data updates in background (QML will see updates when they complete)
+echo "Starting background data initialization..." >> "$LOG_FILE"
+(
+    update_wifi_status
+    update_wifi_connected
+    update_wifi_networks
+    update_bt_status
+    update_bt_paired
+    update_bt_available
+    update_brightness
+    update_sound
+    update_battery
+    update_storage
+    update_memory
+    update_system
+    update_datetime
+    init_notifications
+) &
 
 echo "Starting QML settings, QML_FILE=$QML_FILE" >> "$LOG_FILE"
 
