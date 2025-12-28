@@ -468,19 +468,36 @@ impl Shell {
     /// Load wallpaper path from display config file
     pub fn load_wallpaper_path() -> Option<std::path::PathBuf> {
         let config_path = Self::get_display_config_path();
-        if let Ok(content) = std::fs::read_to_string(&config_path) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(path_str) = json.get("wallpaper").and_then(|v| v.as_str()) {
-                    if !path_str.is_empty() {
-                        let path = std::path::PathBuf::from(path_str);
-                        if path.exists() {
-                            tracing::info!("Loaded wallpaper path: {:?}", path);
-                            return Some(path);
+        tracing::info!("WALLPAPER: Looking for config at {:?}", config_path);
+        match std::fs::read_to_string(&config_path) {
+            Ok(content) => {
+                tracing::info!("WALLPAPER: Config content: {}", content);
+                match serde_json::from_str::<serde_json::Value>(&content) {
+                    Ok(json) => {
+                        if let Some(path_str) = json.get("wallpaper").and_then(|v| v.as_str()) {
+                            tracing::info!("WALLPAPER: Found wallpaper key: '{}'", path_str);
+                            if !path_str.is_empty() {
+                                let path = std::path::PathBuf::from(path_str);
+                                if path.exists() {
+                                    tracing::info!("WALLPAPER: File exists at {:?}", path);
+                                    return Some(path);
+                                } else {
+                                    tracing::warn!("WALLPAPER: File not found: {:?}", path);
+                                }
+                            } else {
+                                tracing::info!("WALLPAPER: Empty path string");
+                            }
                         } else {
-                            tracing::warn!("Wallpaper file not found: {:?}", path);
+                            tracing::info!("WALLPAPER: No wallpaper key in config");
                         }
                     }
+                    Err(e) => {
+                        tracing::warn!("WALLPAPER: Failed to parse JSON: {}", e);
+                    }
                 }
+            }
+            Err(e) => {
+                tracing::warn!("WALLPAPER: Failed to read config: {}", e);
             }
         }
         None
@@ -488,21 +505,33 @@ impl Shell {
 
     /// Load wallpaper image as slint::Image
     pub fn load_wallpaper_image() -> Option<slint::Image> {
-        let path = Self::load_wallpaper_path()?;
+        tracing::info!("WALLPAPER: load_wallpaper_image() called");
+        let path = match Self::load_wallpaper_path() {
+            Some(p) => {
+                tracing::info!("WALLPAPER: Got path: {:?}", p);
+                p
+            }
+            None => {
+                tracing::info!("WALLPAPER: No path returned from load_wallpaper_path");
+                return None;
+            }
+        };
+        tracing::info!("WALLPAPER: Opening image at {:?}", path);
         match image::open(&path) {
             Ok(img) => {
                 let rgba = img.to_rgba8();
                 let (width, height) = rgba.dimensions();
+                tracing::info!("WALLPAPER: Image loaded, dimensions {}x{}", width, height);
                 let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
                     rgba.as_raw(),
                     width,
                     height,
                 );
-                tracing::info!("Loaded wallpaper: {}x{}", width, height);
+                tracing::info!("WALLPAPER: Created pixel buffer, returning Image");
                 Some(slint::Image::from_rgba8(pixel_buffer))
             }
             Err(e) => {
-                tracing::error!("Failed to load wallpaper {:?}: {}", path, e);
+                tracing::error!("WALLPAPER: Failed to load image {:?}: {}", path, e);
                 None
             }
         }

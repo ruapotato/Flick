@@ -470,11 +470,13 @@ impl SlintShell {
 
     /// Set wallpaper image
     pub fn set_wallpaper(&self, image: slint::Image) {
+        info!("WALLPAPER: set_wallpaper called, image size: {:?}", image.size());
         self.shell.set_wallpaper(image);
     }
 
     /// Set whether wallpaper is enabled
     pub fn set_has_wallpaper(&self, has: bool) {
+        info!("WALLPAPER: set_has_wallpaper({})", has);
         self.shell.set_has_wallpaper(has);
     }
 
