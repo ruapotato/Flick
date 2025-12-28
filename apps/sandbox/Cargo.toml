@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sdl2 = { version = "0.36", features = ["bundled"] }
+sdl2 = "0.36"
 rand = "0.8"
 
 [profile.release]
