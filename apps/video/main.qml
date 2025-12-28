@@ -47,9 +47,10 @@ Window {
     ]
 
     ListModel { id: videoModel }
-    property var pendingScans: 0
     property var scannedFolders: []
-    property var videoExtensions: ["mp4", "mkv", "avi", "webm", "mov", "m4v", "3gp", "MP4", "MKV", "AVI", "WEBM", "MOV", "M4V", "3GP"]
+    property var scanQueue: []
+    property var videoExtensions: ["mp4", "mkv", "avi", "webm", "mov", "m4v", "3gp"]
+    property var currentScanner: null
 
     Component.onCompleted: {
         loadConfig()
@@ -59,30 +60,46 @@ Window {
     function startScan() {
         videoModel.clear()
         scannedFolders = []
-        pendingScans = 0
-        for (var i = 0; i < videoFolders.length; i++) {
-            scanFolderRecursive(videoFolders[i])
-        }
+        scanQueue = videoFolders.slice()  // Copy the array
+        scanNext()
     }
 
-    function scanFolderRecursive(folderPath) {
-        // Avoid rescanning
-        if (scannedFolders.indexOf(folderPath) >= 0) return
-        scannedFolders.push(folderPath)
-        pendingScans++
+    function scanNext() {
+        if (scanQueue.length === 0) {
+            if (currentScanner) {
+                currentScanner.destroy()
+                currentScanner = null
+            }
+            return
+        }
 
-        // Create a folder model to scan this directory
-        var scanner = folderScannerComponent.createObject(root, {
+        var folderPath = scanQueue.shift()
+
+        // Skip already scanned
+        if (scannedFolders.indexOf(folderPath) >= 0) {
+            scanNext()
+            return
+        }
+        scannedFolders.push(folderPath)
+
+        // Clean up previous scanner
+        if (currentScanner) {
+            currentScanner.destroy()
+            currentScanner = null
+        }
+
+        // Create new scanner
+        currentScanner = folderScannerComponent.createObject(root, {
             scanPath: folderPath
         })
     }
 
     function isVideoFile(fileName) {
         var ext = fileName.split(".").pop().toLowerCase()
-        return videoExtensions.indexOf(ext) >= 0 || videoExtensions.indexOf(ext.toUpperCase()) >= 0
+        return videoExtensions.indexOf(ext) >= 0
     }
 
-    // Component to scan a folder
+    // Component to scan a folder (one at a time)
     Component {
         id: folderScannerComponent
         Item {
@@ -113,8 +130,8 @@ Window {
                     var filePath = scanPath + "/" + fileName
 
                     if (isDir) {
-                        // Recursively scan subdirectory
-                        scanFolderRecursive(filePath)
+                        // Queue subdirectory for later scanning
+                        scanQueue.push(filePath)
                     } else if (isVideoFile(fileName)) {
                         // Add video to model
                         videoModel.append({
@@ -126,15 +143,14 @@ Window {
                     }
                 }
 
-                pendingScans--
-                // Clean up after a delay
-                destroyTimer.start()
+                // Process next folder after a small delay
+                nextTimer.start()
             }
 
             Timer {
-                id: destroyTimer
-                interval: 100
-                onTriggered: scanner.destroy()
+                id: nextTimer
+                interval: 50
+                onTriggered: scanNext()
             }
         }
     }
