@@ -106,6 +106,98 @@ Page {
         console.warn("ACCENT_SAVE:" + accentColor)
     }
 
+    // Analyze wallpaper to find a good accent color (SailfishOS style)
+    function analyzeWallpaper() {
+        if (wallpaperPath === "") return
+        colorAnalyzer.source = "file://" + wallpaperPath
+    }
+
+    // Hidden image for color analysis
+    Image {
+        id: colorAnalyzer
+        visible: false
+        asynchronous: true
+        sourceSize.width: 100  // Sample at low res for speed
+        sourceSize.height: 100
+
+        onStatusChanged: {
+            if (status === Image.Ready) {
+                extractColor()
+            }
+        }
+
+        function extractColor() {
+            // Use Canvas to sample pixels
+            colorCanvas.requestPaint()
+        }
+    }
+
+    Canvas {
+        id: colorCanvas
+        visible: false
+        width: 100
+        height: 100
+
+        onPaint: {
+            var ctx = getContext("2d")
+            ctx.drawImage(colorAnalyzer, 0, 0, 100, 100)
+
+            // Sample pixels and find vibrant colors
+            var imageData = ctx.getImageData(0, 0, 100, 100)
+            var pixels = imageData.data
+            var colorCounts = {}
+            var vibrantColors = []
+
+            // Sample every 4th pixel for speed
+            for (var i = 0; i < pixels.length; i += 16) {
+                var r = pixels[i]
+                var g = pixels[i + 1]
+                var b = pixels[i + 2]
+
+                // Calculate saturation and value
+                var max = Math.max(r, g, b)
+                var min = Math.min(r, g, b)
+                var saturation = max === 0 ? 0 : (max - min) / max
+                var value = max / 255
+
+                // Only consider vibrant colors (good saturation and not too dark/light)
+                if (saturation > 0.3 && value > 0.3 && value < 0.9) {
+                    // Quantize to reduce color space
+                    var qr = Math.floor(r / 32) * 32
+                    var qg = Math.floor(g / 32) * 32
+                    var qb = Math.floor(b / 32) * 32
+                    var key = qr + "," + qg + "," + qb
+
+                    if (!colorCounts[key]) {
+                        colorCounts[key] = { count: 0, r: qr + 16, g: qg + 16, b: qb + 16 }
+                    }
+                    colorCounts[key].count++
+                }
+            }
+
+            // Find the most common vibrant color
+            var bestColor = null
+            var bestCount = 0
+            for (var key in colorCounts) {
+                if (colorCounts[key].count > bestCount) {
+                    bestCount = colorCounts[key].count
+                    bestColor = colorCounts[key]
+                }
+            }
+
+            if (bestColor) {
+                // Boost saturation slightly for better accent
+                var hex = "#" +
+                    ("0" + Math.min(255, Math.floor(bestColor.r * 1.1)).toString(16)).slice(-2) +
+                    ("0" + Math.min(255, Math.floor(bestColor.g * 1.1)).toString(16)).slice(-2) +
+                    ("0" + Math.min(255, Math.floor(bestColor.b * 1.1)).toString(16)).slice(-2)
+                accentColor = hex.toUpperCase()
+                hexInput.text = accentColor.slice(1)
+                saveAccentColor()
+            }
+        }
+    }
+
     function openImagePicker() {
         // Clear any previous result file
         console.warn("PICKER_CLEAR:" + pickerResultFile)
@@ -757,7 +849,7 @@ Page {
             // Accent color selection
             Rectangle {
                 width: settingsColumn.width
-                height: 140
+                height: 340
                 radius: 24
                 color: "#14141e"
                 border.color: "#1a1a2e"
@@ -766,50 +858,180 @@ Page {
                 Column {
                     anchors.fill: parent
                     anchors.margins: 16
-                    spacing: 16
+                    spacing: 12
 
-                    Text {
-                        text: "Button Color"
-                        font.pixelSize: 18
-                        color: "#ffffff"
+                    // Header with current color preview
+                    Row {
+                        spacing: 16
+
+                        Rectangle {
+                            width: 48
+                            height: 48
+                            radius: 24
+                            color: accentColor
+                            border.color: "#ffffff"
+                            border.width: 2
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 4
+
+                            Text {
+                                text: "Accent Color"
+                                font.pixelSize: 18
+                                color: "#ffffff"
+                            }
+
+                            Text {
+                                text: accentColor.toString().toUpperCase()
+                                font.pixelSize: 14
+                                font.family: "monospace"
+                                color: "#888899"
+                            }
+                        }
                     }
 
-                    // Color grid
+                    // Preset colors grid
                     Grid {
-                        columns: 4
-                        spacing: 16
+                        columns: 8
+                        spacing: 10
                         anchors.horizontalCenter: parent.horizontalCenter
 
                         Repeater {
                             model: accentColors.length
 
                             Rectangle {
-                                width: 56
-                                height: 56
-                                radius: 28
+                                width: 44
+                                height: 44
+                                radius: 22
                                 color: accentColors[index]
                                 border.color: accentColor === accentColors[index] ? "#ffffff" : "transparent"
-                                border.width: 3
-
-                                Behavior on border.color { ColorAnimation { duration: 150 } }
+                                border.width: 2
 
                                 MouseArea {
                                     anchors.fill: parent
                                     onClicked: {
                                         accentColor = accentColors[index]
+                                        hexInput.text = accentColor.toString().toUpperCase().slice(1)
                                         saveAccentColor()
                                     }
                                 }
 
-                                // Checkmark for selected
                                 Text {
                                     anchors.centerIn: parent
                                     text: accentColor === accentColors[index] ? "✓" : ""
-                                    font.pixelSize: 24
+                                    font.pixelSize: 20
                                     font.weight: Font.Bold
                                     color: "#ffffff"
                                 }
                             }
+                        }
+                    }
+
+                    // Custom color input
+                    Row {
+                        spacing: 12
+                        anchors.horizontalCenter: parent.horizontalCenter
+
+                        Text {
+                            text: "#"
+                            font.pixelSize: 24
+                            font.family: "monospace"
+                            color: "#888899"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Rectangle {
+                            width: 180
+                            height: 48
+                            radius: 12
+                            color: "#1a1a28"
+                            border.color: hexInput.activeFocus ? accentColor : "#333344"
+                            border.width: 1
+
+                            TextInput {
+                                id: hexInput
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                font.pixelSize: 20
+                                font.family: "monospace"
+                                font.capitalization: Font.AllUppercase
+                                color: "#ffffff"
+                                maximumLength: 6
+                                text: accentColor.toString().toUpperCase().slice(1)
+                                inputMethodHints: Qt.ImhNoPredictiveText
+
+                                onTextChanged: {
+                                    if (text.length === 6 && /^[0-9A-Fa-f]{6}$/.test(text)) {
+                                        accentColor = "#" + text
+                                    }
+                                }
+
+                                onEditingFinished: {
+                                    if (text.length === 6 && /^[0-9A-Fa-f]{6}$/.test(text)) {
+                                        accentColor = "#" + text
+                                        saveAccentColor()
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            width: 48
+                            height: 48
+                            radius: 12
+                            color: applyMouse.pressed ? Qt.darker(accentColor, 1.2) : accentColor
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✓"
+                                font.pixelSize: 24
+                                color: "#ffffff"
+                            }
+
+                            MouseArea {
+                                id: applyMouse
+                                anchors.fill: parent
+                                onClicked: {
+                                    if (hexInput.text.length === 6) {
+                                        accentColor = "#" + hexInput.text
+                                        saveAccentColor()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Auto from wallpaper button
+                    Rectangle {
+                        width: parent.width - 32
+                        height: 52
+                        radius: 14
+                        color: autoColorMouse.pressed ? "#2a2a3e" : "#1a1a28"
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: wallpaperPath !== ""
+
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 12
+
+                            Text {
+                                text: "✨"
+                                font.pixelSize: 20
+                            }
+
+                            Text {
+                                text: "Auto from Wallpaper"
+                                font.pixelSize: 16
+                                color: "#ffffff"
+                            }
+                        }
+
+                        MouseArea {
+                            id: autoColorMouse
+                            anchors.fill: parent
+                            onClicked: analyzeWallpaper()
                         }
                     }
                 }

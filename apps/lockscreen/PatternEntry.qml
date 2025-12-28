@@ -8,6 +8,7 @@ Item {
     property var selectedNodes: []
     property bool isDrawing: false
     property string errorMessage: ""
+    property color accentColor: "#4a9eff"  // Can be set from parent
 
     // Grid sizing - larger dots, bigger spacing
     property real cellSize: 150
@@ -33,8 +34,8 @@ Item {
             width: dotSize
             height: dotSize
             radius: dotSize / 2
-            color: selected ? "#4a9eff" : "#444455"
-            border.color: selected ? "#6ab0ff" : "#555566"
+            color: selected ? accentColor : "#444455"
+            border.color: selected ? Qt.lighter(accentColor, 1.2) : "#555566"
             border.width: 4
 
             Behavior on color { ColorAnimation { duration: 150 } }
@@ -55,7 +56,7 @@ Item {
 
             if (selectedNodes.length < 2 && !isDrawing) return;
 
-            ctx.strokeStyle = "#4a9eff";
+            ctx.strokeStyle = accentColor.toString();
             ctx.lineWidth = 8;
             ctx.lineCap = "round";
             ctx.lineJoin = "round";

@@ -11,8 +11,29 @@ Item {
     property bool showingUnlock: false
     property real swipeProgress: 0  // 0-1 for swipe animation
     property bool hasWallpaper: false
+    property color accentColor: "#e94560"  // Default accent color
 
     signal unlocked()
+
+    // Load accent color from config
+    Component.onCompleted: loadAccentColor()
+
+    function loadAccentColor() {
+        var xhr = new XMLHttpRequest()
+        var configPath = stateDir !== "" ? stateDir : "/home/droidian/.local/state/flick"
+        xhr.open("GET", "file://" + configPath + "/display_config.json", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var config = JSON.parse(xhr.responseText)
+                if (config.accent_color && config.accent_color !== "") {
+                    accentColor = config.accent_color
+                }
+            }
+        } catch (e) {
+            console.log("Could not load accent color config")
+        }
+    }
 
     // Beautiful gradient background (hidden when wallpaper is set)
     Rectangle {
@@ -464,6 +485,7 @@ Item {
             visible: lockMethod === "pattern"
             anchors.centerIn: parent
             anchors.verticalCenterOffset: showingUnlock ? -40 : 200
+            accentColor: lockScreen.accentColor
 
             Behavior on anchors.verticalCenterOffset {
                 NumberAnimation { duration: 400; easing.type: Easing.OutBack }
