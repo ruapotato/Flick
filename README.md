@@ -10,16 +10,16 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 
 | Device Type | Status | Notes |
 |-------------|--------|-------|
-| **Droidian** (Android phones) | ✅ Primary Target | Full HWComposer support, daily driver ready |
-| **Native Linux** (PinePhone, Librem 5) | ⚠️ Early Prototype | Standard DRM/KMS, not actively developed |
-| **PostmarketOS** (mainline kernel) | ⚠️ Early Prototype | Uses freedreno/panfrost DRM drivers |
-| **Mobian** | ⚠️ Early Prototype | Standard Linux graphics stack |
+| **Droidian** (Android phones) | ⚠️ Early Prototype | Primary target, HWComposer working, actively developed |
+| **Native Linux** (PinePhone, Librem 5) | 🚧 Experimental | Standard DRM/KMS, not actively developed |
+| **PostmarketOS** (mainline kernel) | 🚧 Experimental | Uses freedreno/panfrost DRM drivers |
+| **Mobian** | 🚧 Experimental | Standard Linux graphics stack |
 
 ### Droidian / HWComposer Support
 
 Droidian and similar Android-based Linux distributions require **HWComposer** integration to access the GPU.
 
-**Current status (Dec 2024):** HWComposer backend is fully functional as a daily driver shell!
+**Current status (Dec 2025):** Early prototype. HWComposer backend works, core shell functional, but missing telephony/SMS integration.
 
 ✅ **Working:**
 - Display output via hwcomposer (tested on Pixel 3a)
