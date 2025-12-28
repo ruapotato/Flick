@@ -14,6 +14,8 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 1.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property var booksList: []
     property string currentView: "library" // "library", "reader"
     property var currentBook: null
@@ -276,7 +278,7 @@ Window {
                 width: 300
                 height: 200
                 radius: 150
-                color: "#e94560"
+                color: accentColor
                 opacity: 0.08
 
                 NumberAnimation on opacity {
@@ -319,8 +321,8 @@ Window {
                 gradient: Gradient {
                     orientation: Gradient.Horizontal
                     GradientStop { position: 0.0; color: "transparent" }
-                    GradientStop { position: 0.2; color: "#e94560" }
-                    GradientStop { position: 0.8; color: "#e94560" }
+                    GradientStop { position: 0.2; color: accentColor }
+                    GradientStop { position: 0.8; color: accentColor }
                     GradientStop { position: 1.0; color: "transparent" }
                 }
                 opacity: 0.3
@@ -346,7 +348,7 @@ Window {
                 height: 120
                 radius: 16
                 color: "#151520"
-                border.color: bookMouse.pressed ? "#e94560" : "#333344"
+                border.color: bookMouse.pressed ? accentColor : "#333344"
                 border.width: 2
 
                 Behavior on border.color { ColorAnimation { duration: 150 } }
@@ -361,7 +363,7 @@ Window {
                         width: 88
                         height: 88
                         radius: 12
-                        color: "#e94560"
+                        color: accentColor
                         opacity: 0.3
 
                         Text {
@@ -402,7 +404,7 @@ Window {
                                 width: 4
                                 height: 4
                                 radius: 2
-                                color: "#e94560"
+                                color: accentColor
                                 anchors.verticalCenter: parent.verticalCenter
                             }
 
@@ -414,7 +416,7 @@ Window {
                                     return ""
                                 }
                                 font.pixelSize: 14 * textScale
-                                color: "#e94560"
+                                color: accentColor
                             }
                         }
                     }
@@ -470,7 +472,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: libraryBackMouse.pressed ? "#c23a50" : "#e94560"
+            color: libraryBackMouse.pressed ? accentPressed : accentColor
 
             Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -759,7 +761,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: readerBackMouse.pressed ? "#c23a50" : "#e94560"
+            color: readerBackMouse.pressed ? accentPressed : accentColor
             z: 10
 
             Behavior on color { ColorAnimation { duration: 150 } }

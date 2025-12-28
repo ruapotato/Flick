@@ -14,6 +14,8 @@ Window {
 
     // Settings from Flick config
     property real textScale: 2.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
 
     // Music player state
     property int currentTrackIndex: -1
@@ -507,7 +509,7 @@ Window {
             width: 300
             height: 200
             radius: 150
-            color: "#e94560"
+            color: accentColor
             opacity: isPlaying ? 0.12 : 0.08
 
             Behavior on opacity { NumberAnimation { duration: 500 } }
@@ -554,8 +556,8 @@ Window {
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.2; color: "#e94560" }
-                GradientStop { position: 0.8; color: "#e94560" }
+                GradientStop { position: 0.2; color: accentColor }
+                GradientStop { position: 0.8; color: accentColor }
                 GradientStop { position: 1.0; color: "transparent" }
             }
             opacity: 0.3
@@ -630,7 +632,7 @@ Window {
             height: 220
             radius: 16
             color: "#1a1a2e"
-            border.color: "#e94560"
+            border.color: accentColor
             border.width: 2
 
             // Music note icon
@@ -638,7 +640,7 @@ Window {
                 anchors.centerIn: parent
                 text: "♪"
                 font.pixelSize: 100
-                color: "#e94560"
+                color: accentColor
                 opacity: 0.3
             }
 
@@ -741,7 +743,7 @@ Window {
                         anchors.bottom: parent.bottom
                         width: parent.width * value
                         radius: 3
-                        color: "#e94560"
+                        color: accentColor
 
                         property real value: 0
                     }
@@ -791,7 +793,7 @@ Window {
                     width: 80
                     height: 80
                     radius: 40
-                    color: playMouse.pressed ? "#c23a50" : "#e94560"
+                    color: playMouse.pressed ? accentPressed : accentColor
 
                     Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -856,7 +858,7 @@ Window {
             height: 80
             radius: 12
             color: trackMouse.pressed ? "#1a1a2e" : (currentTrackIndex === index ? "#2a2a3e" : "#15151f")
-            border.color: currentTrackIndex === index ? "#e94560" : "#222233"
+            border.color: currentTrackIndex === index ? accentColor : "#222233"
             border.width: currentTrackIndex === index ? 2 : 1
 
             Behavior on color { ColorAnimation { duration: 150 } }
@@ -878,7 +880,7 @@ Window {
                         anchors.centerIn: parent
                         text: "♪"
                         font.pixelSize: 28
-                        color: "#e94560"
+                        color: accentColor
                         opacity: 0.3
                     }
                 }
@@ -944,7 +946,7 @@ Window {
         width: 72
         height: 72
         radius: 36
-        color: backButtonMouse.pressed ? "#c23a50" : "#e94560"
+        color: backButtonMouse.pressed ? accentPressed : accentColor
         z: 2
 
         Behavior on color { ColorAnimation { duration: 150 } }

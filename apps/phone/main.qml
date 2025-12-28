@@ -12,6 +12,8 @@ Window {
 
     // Don't use shell textScale - phone dialpad has fixed dimensions
     property real textScale: 1.0  // Fixed, don't load from config
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property string phoneNumber: ""
     property bool inCall: false
     property string callState: "idle"  // idle, dialing, incoming, active
@@ -203,7 +205,7 @@ Window {
                     width: 200 * textScale
                     height: 60 * textScale
                     radius: 30 * textScale
-                    color: currentTab === index ? "#e94560" : "#1a1a2e"
+                    color: currentTab === index ? accentColor : "#1a1a2e"
                     border.color: "#2a2a4e"
                     border.width: 2
 
@@ -271,7 +273,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: "X"
-                        color: "#e94560"
+                        color: accentColor
                         font.pixelSize: 24 * textScale
                         font.weight: Font.Bold
                     }
@@ -542,7 +544,7 @@ Window {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: formatDuration(callDuration)
-                color: "#e94560"
+                color: accentColor
                 font.pixelSize: 36 * textScale
                 font.weight: Font.Medium
                 visible: callState === "active"
@@ -647,7 +649,7 @@ Window {
         width: 72 * textScale
         height: 72 * textScale
         radius: 36 * textScale
-        color: backBtnArea.pressed ? "#d93550" : "#e94560"
+        color: backBtnArea.pressed ? "#d93550" : accentColor
         visible: !inCall
         z: 100
 

@@ -12,6 +12,8 @@ Window {
     color: "#0a0a0f"
 
     property int currentEffect: 0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property int exitTapCount: 0
     property var exitTimer: null
     property real globalTime: 0

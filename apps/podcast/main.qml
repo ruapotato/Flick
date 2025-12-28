@@ -13,6 +13,8 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 2.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property string configFile: "/home/droidian/.local/state/flick/podcasts.json"
     property string currentView: "library"  // library, episodes, player, add
     property int selectedPodcast: -1
@@ -242,7 +244,7 @@ Window {
                     width: 56
                     height: 56
                     radius: 28
-                    color: addMouse.pressed ? "#c23a50" : "#e94560"
+                    color: addMouse.pressed ? accentPressed : accentColor
 
                     Text {
                         anchors.centerIn: parent
@@ -269,8 +271,8 @@ Window {
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
                         GradientStop { position: 0.0; color: "transparent" }
-                        GradientStop { position: 0.2; color: "#e94560" }
-                        GradientStop { position: 0.8; color: "#e94560" }
+                        GradientStop { position: 0.2; color: accentColor }
+                        GradientStop { position: 0.8; color: accentColor }
                         GradientStop { position: 1.0; color: "transparent" }
                     }
                     opacity: 0.3
@@ -340,7 +342,7 @@ Window {
                             width: 48
                             height: 48
                             radius: 24
-                            color: delPodMouse.pressed ? "#c23a50" : "#3a3a4e"
+                            color: delPodMouse.pressed ? accentPressed : "#3a3a4e"
                             anchors.verticalCenter: parent.verticalCenter
 
                             Text {
@@ -468,7 +470,7 @@ Window {
                             width: 56
                             height: 56
                             radius: 28
-                            color: "#e94560"
+                            color: accentColor
                             anchors.verticalCenter: parent.verticalCenter
 
                             Text {
@@ -602,7 +604,7 @@ Window {
                         width: mediaPlayer.duration > 0 ? parent.width * (mediaPlayer.position / mediaPlayer.duration) : 0
                         height: parent.height
                         radius: 4
-                        color: "#e94560"
+                        color: accentColor
                     }
 
                     MouseArea {
@@ -666,7 +668,7 @@ Window {
                     width: 88
                     height: 88
                     radius: 44
-                    color: playBtnMouse.pressed ? "#c23a50" : "#e94560"
+                    color: playBtnMouse.pressed ? accentPressed : accentColor
 
                     Text {
                         anchors.centerIn: parent
@@ -821,7 +823,7 @@ Window {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? accentPressed : accentColor
         visible: currentView === "library"
         z: 10
 

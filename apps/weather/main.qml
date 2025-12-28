@@ -12,6 +12,8 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 2.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property string configFile: "/home/droidian/.local/state/flick/weather_config.json"
 
     // Weather data
@@ -467,7 +469,7 @@ Window {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? accentPressed : accentColor
         z: 10
 
         Text {

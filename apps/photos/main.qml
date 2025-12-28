@@ -14,6 +14,8 @@ Window {
 
     // Photos uses fixed scaling
     property real textScale: 1.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property int baseFontSize: 8
 
     function loadConfig() {
@@ -259,7 +261,7 @@ Window {
                                 BusyIndicator {
                                     anchors.centerIn: parent
                                     running: thumbnail.status === Image.Loading
-                                    palette.dark: "#e94560"
+                                    palette.dark: accentColor
                                 }
                             }
                         }
@@ -281,7 +283,7 @@ Window {
                     policy: ScrollBar.AsNeeded
 
                     contentItem: Rectangle {
-                        color: "#e94560"
+                        color: accentColor
                         radius: width / 2
                         opacity: 0.8
                     }
@@ -337,7 +339,7 @@ Window {
                 width: 72
                 height: 72
                 radius: 36
-                color: closeBtnMouse.pressed ? "#c23a50" : "#e94560"
+                color: closeBtnMouse.pressed ? accentPressed : accentColor
                 z: 100
 
                 Text {
@@ -466,7 +468,7 @@ Window {
                                     BusyIndicator {
                                         anchors.centerIn: parent
                                         running: photoImage.status === Image.Loading
-                                        palette.dark: "#e94560"
+                                        palette.dark: accentColor
                                     }
                                 }
                             }
@@ -532,7 +534,7 @@ Window {
                 width: 72
                 height: 72
                 radius: 36
-                color: backBtnMouse.pressed ? "#c23a50" : "#e94560"
+                color: backBtnMouse.pressed ? accentPressed : accentColor
                 z: 100
 
                 Text {

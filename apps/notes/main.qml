@@ -18,6 +18,8 @@ Window {
     property string currentNoteFile: ""
     property string currentNoteContent: ""
     property string searchQuery: ""
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
 
     Component.onCompleted: {
         console.log("NOTES_INIT:" + notesDir)
@@ -164,7 +166,7 @@ Window {
                     height: 56
                     radius: 28
                     color: "#15151f"
-                    border.color: searchInput.activeFocus ? "#e94560" : "#333344"
+                    border.color: searchInput.activeFocus ? accentColor : "#333344"
                     border.width: 1
 
                     Row {
@@ -314,7 +316,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: addMouse.pressed ? "#c23a50" : "#e94560"
+            color: addMouse.pressed ? accentPressed : accentColor
             z: 10
 
             Text {
@@ -340,7 +342,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: listBackMouse.pressed ? "#c23a50" : "#e94560"
+            color: listBackMouse.pressed ? accentPressed : accentColor
             z: 10
 
             Text {
@@ -498,7 +500,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: editorBackMouse.pressed ? "#c23a50" : "#e94560"
+            color: editorBackMouse.pressed ? accentPressed : accentColor
             z: 10
 
             Text {
@@ -603,7 +605,7 @@ Window {
                         width: 120
                         height: 48
                         radius: 24
-                        color: deleteMouse.pressed ? "#c23a50" : "#e94560"
+                        color: deleteMouse.pressed ? accentPressed : accentColor
 
                         Text {
                             anchors.centerIn: parent

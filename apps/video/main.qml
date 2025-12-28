@@ -14,6 +14,8 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 2.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property bool isPlaying: false
     property bool showControls: true
     property string currentVideo: ""
@@ -263,7 +265,7 @@ Window {
                 width: 56
                 height: 56
                 radius: 28
-                color: closeMouse.pressed ? "#e94560" : "#333344"
+                color: closeMouse.pressed ? accentColor : "#333344"
 
                 Text {
                     anchors.centerIn: parent
@@ -286,7 +288,7 @@ Window {
             width: 100
             height: 100
             radius: 50
-            color: centerPlayMouse.pressed ? "#c23a50" : "#e94560"
+            color: centerPlayMouse.pressed ? accentPressed : accentColor
 
             Text {
                 anchors.centerIn: parent
@@ -326,7 +328,7 @@ Window {
                         width: mediaPlayer.duration > 0 ? parent.width * (mediaPlayer.position / mediaPlayer.duration) : 0
                         height: parent.height
                         radius: 4
-                        color: "#e94560"
+                        color: accentColor
                     }
 
                     MouseArea {
@@ -392,7 +394,7 @@ Window {
                         width: 72
                         height: 72
                         radius: 36
-                        color: playMouse.pressed ? "#c23a50" : "#e94560"
+                        color: playMouse.pressed ? accentPressed : accentColor
 
                         Text {
                             anchors.centerIn: parent
@@ -481,8 +483,8 @@ Window {
                 gradient: Gradient {
                     orientation: Gradient.Horizontal
                     GradientStop { position: 0.0; color: "transparent" }
-                    GradientStop { position: 0.2; color: "#e94560" }
-                    GradientStop { position: 0.8; color: "#e94560" }
+                    GradientStop { position: 0.2; color: accentColor }
+                    GradientStop { position: 0.8; color: accentColor }
                     GradientStop { position: 1.0; color: "transparent" }
                 }
                 opacity: 0.3
@@ -604,7 +606,7 @@ Window {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? accentPressed : accentColor
         visible: currentVideo === ""
         z: 10
 

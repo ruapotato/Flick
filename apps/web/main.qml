@@ -14,6 +14,8 @@ Window {
 
     // Display config
     property real textScale: 1.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
 
     // Browser state
     property string currentView: "browser" // "browser", "tabs", "bookmarks", "history", "downloads", "menu", "settings"
@@ -579,7 +581,7 @@ Window {
                             width: 28
                             height: 28
                             radius: 14
-                            color: closeTabMouse.pressed ? "#e94560" : "transparent"
+                            color: closeTabMouse.pressed ? accentColor : "transparent"
 
                             Text {
                                 anchors.centerIn: parent
@@ -617,7 +619,7 @@ Window {
                 Text {
                     anchors.centerIn: parent
                     text: "+"
-                    color: "#e94560"
+                    color: accentColor
                     font.pixelSize: 24
                     font.weight: Font.Bold
                 }
@@ -642,7 +644,7 @@ Window {
                 return parent.width * ((tab ? tab.progress : 0) / 100)
             }
             height: 3
-            color: privateMode ? "#6b5b95" : "#e94560"
+            color: privateMode ? "#6b5b95" : accentColor
             visible: {
                 var tab = getCurrentTab()
                 return tab && tab.loading
@@ -804,7 +806,7 @@ Window {
                     Layout.preferredHeight: 56
                     radius: 8
                     color: tabsMouse.pressed ? "#3a3a4e" : "#2a2a3e"
-                    border.color: privateMode ? "#6b5b95" : "#e94560"
+                    border.color: privateMode ? "#6b5b95" : accentColor
                     border.width: 2
 
                     Text {
@@ -841,7 +843,7 @@ Window {
                             return isBookmarked(tab ? tab.url : "") ? "★" : "☆"
                         }
                         font.pixelSize: 28
-                        color: privateMode ? "#6b5b95" : "#e94560"
+                        color: privateMode ? "#6b5b95" : accentColor
                     }
 
                     MouseArea {
@@ -996,7 +998,7 @@ Window {
                             width: 32
                             height: 32
                             radius: 16
-                            color: "#e94560"
+                            color: accentColor
 
                             Text {
                                 anchors.centerIn: parent
@@ -1026,7 +1028,7 @@ Window {
                 height: 56
                 anchors.horizontalCenter: parent.horizontalCenter
                 radius: 28
-                color: "#e94560"
+                color: accentColor
 
                 Text {
                     anchors.centerIn: parent
@@ -1056,7 +1058,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: "#e94560"
+            color: accentColor
 
             Text {
                 anchors.centerIn: parent
@@ -1229,7 +1231,7 @@ Window {
                 width: parent.width
                 height: 64
                 radius: 12
-                color: closeMouse.pressed ? "#c23a50" : "#e94560"
+                color: closeMouse.pressed ? accentPressed : accentColor
 
                 Text {
                     anchors.centerIn: parent
@@ -1332,7 +1334,7 @@ Window {
                         height: 64
                         radius: 12
                         color: searchEngine === modelData.id ? "#2a2a3e" : "#1a1a2e"
-                        border.color: searchEngine === modelData.id ? "#e94560" : "transparent"
+                        border.color: searchEngine === modelData.id ? accentColor : "transparent"
                         border.width: 2
 
                         RowLayout {
@@ -1354,7 +1356,7 @@ Window {
 
                             Text {
                                 text: searchEngine === modelData.id ? "✓" : ""
-                                color: "#e94560"
+                                color: accentColor
                                 font.pixelSize: 24
                             }
                         }
@@ -1417,7 +1419,7 @@ Window {
                 Text {
                     anchors.centerIn: parent
                     text: "Reset to Google"
-                    color: "#e94560"
+                    color: accentColor
                     font.pixelSize: 16 * textScale
                 }
 
@@ -1442,7 +1444,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: "#e94560"
+            color: accentColor
 
             Text {
                 anchors.centerIn: parent
@@ -1532,7 +1534,7 @@ Window {
                             width: 44
                             height: 44
                             radius: 22
-                            color: deleteBookmarkMouse.pressed ? "#e94560" : "transparent"
+                            color: deleteBookmarkMouse.pressed ? accentColor : "transparent"
 
                             Text {
                                 anchors.centerIn: parent
@@ -1583,7 +1585,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: "#e94560"
+            color: accentColor
 
             Text {
                 anchors.centerIn: parent
@@ -1636,7 +1638,7 @@ Window {
                         width: 100
                         height: 44
                         radius: 22
-                        color: clearHistoryMouse.pressed ? "#c23a50" : "#e94560"
+                        color: clearHistoryMouse.pressed ? accentPressed : accentColor
                         visible: historyList.length > 0
 
                         Text {
@@ -1725,7 +1727,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: "#e94560"
+            color: accentColor
 
             Text {
                 anchors.centerIn: parent
@@ -1812,7 +1814,7 @@ Window {
                                     width: parent.width * (modelData.progress / 100)
                                     height: parent.height
                                     radius: 2
-                                    color: modelData.status === "completed" ? "#4caf50" : "#e94560"
+                                    color: modelData.status === "completed" ? "#4caf50" : accentColor
                                 }
                             }
 
@@ -1844,7 +1846,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: "#e94560"
+            color: accentColor
 
             Text {
                 anchors.centerIn: parent

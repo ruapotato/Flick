@@ -13,6 +13,8 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 2.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property bool isRecording: false
     property string recordingTime: "00:00"
     property int recordingSeconds: 0
@@ -181,7 +183,7 @@ Window {
             width: 300
             height: 200
             radius: 150
-            color: "#e94560"
+            color: accentColor
             opacity: isRecording ? 0.15 : 0.08
 
             Behavior on opacity { NumberAnimation { duration: 500 } }
@@ -227,8 +229,8 @@ Window {
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.2; color: "#e94560" }
-                GradientStop { position: 0.8; color: "#e94560" }
+                GradientStop { position: 0.2; color: accentColor }
+                GradientStop { position: 0.8; color: accentColor }
                 GradientStop { position: 1.0; color: "transparent" }
             }
             opacity: 0.3
@@ -286,7 +288,7 @@ Window {
                 height: 120
                 radius: 16
                 color: "#1a1a2e"
-                border.color: isRecording ? "#e94560" : "#333344"
+                border.color: isRecording ? accentColor : "#333344"
                 border.width: 2
 
                 Behavior on border.color { ColorAnimation { duration: 300 } }
@@ -301,7 +303,7 @@ Window {
                             width: 8
                             height: isRecording ? (20 + Math.random() * audioLevel) : 20
                             radius: 4
-                            color: "#e94560"
+                            color: accentColor
                             opacity: isRecording ? 0.3 + Math.random() * 0.4 : 0.2
 
                             Behavior on height {
@@ -327,7 +329,7 @@ Window {
                 font.pixelSize: 64
                 font.weight: Font.Bold
                 font.family: "monospace"
-                color: isRecording ? "#e94560" : "#666677"
+                color: isRecording ? accentColor : "#666677"
 
                 Behavior on color { ColorAnimation { duration: 300 } }
             }
@@ -349,7 +351,7 @@ Window {
                 width: 100
                 height: 100
                 radius: 50
-                color: recordMouse.pressed ? "#c23a50" : "#e94560"
+                color: recordMouse.pressed ? accentPressed : accentColor
                 border.color: "#ffffff"
                 border.width: 4
 
@@ -429,7 +431,7 @@ Window {
             height: 80
             radius: 12
             color: itemMouse.pressed ? "#1a1a2e" : "#15151f"
-            border.color: (isPlaying && playingFile === (recordingsDir + "/" + fileName)) ? "#e94560" : "#222233"
+            border.color: (isPlaying && playingFile === (recordingsDir + "/" + fileName)) ? accentColor : "#222233"
             border.width: (isPlaying && playingFile === (recordingsDir + "/" + fileName)) ? 2 : 1
 
             Behavior on color { ColorAnimation { duration: 150 } }
@@ -451,7 +453,7 @@ Window {
                         anchors.centerIn: parent
                         text: (isPlaying && playingFile === (recordingsDir + "/" + fileName)) ? "⏸" : "▶"
                         font.pixelSize: 24
-                        color: "#e94560"
+                        color: accentColor
                     }
                 }
 
@@ -484,7 +486,7 @@ Window {
                     width: 48
                     height: 48
                     radius: 24
-                    color: deleteMouse.pressed ? "#c23a50" : "#3a3a4e"
+                    color: deleteMouse.pressed ? accentPressed : "#3a3a4e"
                     anchors.verticalCenter: parent.verticalCenter
 
                     Text {
@@ -602,7 +604,7 @@ Window {
                         width: 120
                         height: 48
                         radius: 24
-                        color: confirmDeleteMouse.pressed ? "#c23a50" : "#e94560"
+                        color: confirmDeleteMouse.pressed ? accentPressed : accentColor
 
                         Text {
                             anchors.centerIn: parent
@@ -635,7 +637,7 @@ Window {
         width: 72
         height: 72
         radius: 36
-        color: backButtonMouse.pressed ? "#c23a50" : "#e94560"
+        color: backButtonMouse.pressed ? accentPressed : accentColor
         z: 2
 
         Behavior on color { ColorAnimation { duration: 150 } }

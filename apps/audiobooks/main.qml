@@ -15,6 +15,8 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 1.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property var booksList: []
     property var progressData: ({})
     property string currentView: "library" // "library", "chapters", "player", "settings"
@@ -608,7 +610,7 @@ Window {
                 width: 300
                 height: 200
                 radius: 150
-                color: "#e94560"
+                color: accentColor
                 opacity: 0.08
 
                 NumberAnimation on opacity {
@@ -676,8 +678,8 @@ Window {
                 gradient: Gradient {
                     orientation: Gradient.Horizontal
                     GradientStop { position: 0.0; color: "transparent" }
-                    GradientStop { position: 0.2; color: "#e94560" }
-                    GradientStop { position: 0.8; color: "#e94560" }
+                    GradientStop { position: 0.2; color: accentColor }
+                    GradientStop { position: 0.8; color: accentColor }
                     GradientStop { position: 1.0; color: "transparent" }
                 }
                 opacity: 0.3
@@ -694,7 +696,7 @@ Window {
             height: lastPlayedBookPath && booksListModel.count > 0 ? 80 : 0
             visible: lastPlayedBookPath && booksListModel.count > 0
             radius: 16
-            color: resumeMouse.pressed ? "#c23a50" : "#e94560"
+            color: resumeMouse.pressed ? accentPressed : accentColor
 
             Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -763,7 +765,7 @@ Window {
                 height: 120
                 radius: 16
                 color: "#151520"
-                border.color: bookMouse.pressed ? "#e94560" : "#333344"
+                border.color: bookMouse.pressed ? accentColor : "#333344"
                 border.width: 2
 
                 Behavior on border.color { ColorAnimation { duration: 150 } }
@@ -778,7 +780,7 @@ Window {
                         width: 88
                         height: 88
                         radius: 12
-                        color: "#e94560"
+                        color: accentColor
                         opacity: 0.3
 
                         Text {
@@ -817,14 +819,14 @@ Window {
                                 width: 4
                                 height: 4
                                 radius: 2
-                                color: "#e94560"
+                                color: accentColor
                                 anchors.verticalCenter: parent.verticalCenter
                             }
 
                             Text {
                                 text: "In progress"
                                 font.pixelSize: 14 * textScale
-                                color: "#e94560"
+                                color: accentColor
                             }
                         }
                     }
@@ -884,7 +886,7 @@ Window {
                 width: 280
                 height: 56
                 radius: 28
-                color: createFolderMouse.pressed ? "#c23a50" : "#e94560"
+                color: createFolderMouse.pressed ? accentPressed : accentColor
 
                 Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -925,7 +927,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: libraryBackMouse.pressed ? "#c23a50" : "#e94560"
+            color: libraryBackMouse.pressed ? accentPressed : accentColor
 
             Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -1024,7 +1026,7 @@ Window {
                 height: 80
                 radius: 12
                 color: "#151520"
-                border.color: chapterMouse.pressed ? "#e94560" : (index === currentChapterIndex && progressData[currentBook.path] ? "#e94560" : "#333344")
+                border.color: chapterMouse.pressed ? accentColor : (index === currentChapterIndex && progressData[currentBook.path] ? accentColor : "#333344")
                 border.width: 1
 
                 Behavior on border.color { ColorAnimation { duration: 150 } }
@@ -1039,7 +1041,7 @@ Window {
                         width: 48
                         height: 48
                         radius: 24
-                        color: index === currentChapterIndex && progressData[currentBook.path] ? "#e94560" : "#333344"
+                        color: index === currentChapterIndex && progressData[currentBook.path] ? accentColor : "#333344"
                         anchors.verticalCenter: parent.verticalCenter
 
                         Behavior on color { ColorAnimation { duration: 150 } }
@@ -1069,7 +1071,7 @@ Window {
                         Text {
                             text: index === currentChapterIndex && progressData[currentBook.path] ? "Currently playing" : "Tap to play"
                             font.pixelSize: 14 * textScale
-                            color: index === currentChapterIndex && progressData[currentBook.path] ? "#e94560" : "#888899"
+                            color: index === currentChapterIndex && progressData[currentBook.path] ? accentColor : "#888899"
                         }
                     }
                 }
@@ -1092,7 +1094,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: chaptersBackMouse.pressed ? "#c23a50" : "#e94560"
+            color: chaptersBackMouse.pressed ? accentPressed : accentColor
 
             Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -1140,7 +1142,7 @@ Window {
                 width: 320
                 height: 320
                 radius: 24
-                color: "#e94560"
+                color: accentColor
                 opacity: 0.3
 
                 Text {
@@ -1201,7 +1203,7 @@ Window {
                             width: progressSlider.visualPosition * parent.width
                             height: parent.height
                             radius: 2
-                            color: "#e94560"
+                            color: accentColor
                         }
                     }
 
@@ -1211,7 +1213,7 @@ Window {
                         width: 20
                         height: 20
                         radius: 10
-                        color: "#e94560"
+                        color: accentColor
                     }
                 }
 
@@ -1276,7 +1278,7 @@ Window {
                     width: 96
                     height: 96
                     radius: 48
-                    color: playPauseMouse.pressed ? "#c23a50" : "#e94560"
+                    color: playPauseMouse.pressed ? accentPressed : accentColor
 
                     Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -1445,7 +1447,7 @@ Window {
                         width: 64
                         height: 40
                         radius: 8
-                        color: audioPlayer.playbackRate === modelData ? "#e94560" : "#252530"
+                        color: audioPlayer.playbackRate === modelData ? accentColor : "#252530"
                         border.color: "#333344"
                         border.width: 1
 
@@ -1477,7 +1479,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: playerBackMouse.pressed ? "#c23a50" : "#e94560"
+            color: playerBackMouse.pressed ? accentPressed : accentColor
 
             Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -1618,7 +1620,7 @@ Window {
                             anchors.centerIn: parent
                             text: "✕"
                             font.pixelSize: 18
-                            color: "#e94560"
+                            color: accentColor
                         }
 
                         MouseArea {
@@ -1657,7 +1659,7 @@ Window {
                     height: 50
                     radius: 12
                     color: "#0a0a0f"
-                    border.color: newPathInput.activeFocus ? "#e94560" : "#333344"
+                    border.color: newPathInput.activeFocus ? accentColor : "#333344"
                     border.width: newPathInput.activeFocus ? 2 : 1
 
                     TextInput {
@@ -1741,7 +1743,7 @@ Window {
                     width: 200
                     height: 48
                     radius: 24
-                    color: addPathMouse.pressed ? "#c23a50" : "#e94560"
+                    color: addPathMouse.pressed ? accentPressed : accentColor
 
                     Text {
                         anchors.centerIn: parent
@@ -1775,7 +1777,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: settingsBackMouse.pressed ? "#c23a50" : "#e94560"
+            color: settingsBackMouse.pressed ? accentPressed : accentColor
             z: 10
 
             Behavior on color { ColorAnimation { duration: 150 } }

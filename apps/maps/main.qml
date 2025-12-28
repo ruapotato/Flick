@@ -14,6 +14,8 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 2.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property var currentRoute: null
     property bool followGps: true
     property bool searchVisible: false
@@ -497,7 +499,7 @@ Window {
                     width: 24
                     height: 24
                     radius: 12
-                    color: "#e94560"
+                    color: accentColor
                     border.color: "#ffffff"
                     border.width: 2
 
@@ -557,7 +559,7 @@ Window {
         height: 56
         radius: 28
         color: "#1a1a2e"
-        border.color: searchInput.focus ? "#e94560" : "#333344"
+        border.color: searchInput.focus ? accentColor : "#333344"
         border.width: 2
         z: 100
 
@@ -644,7 +646,7 @@ Window {
                 width: 40
                 height: 40
                 radius: 20
-                color: searchBtnMouse.pressed ? "#c23a50" : "#e94560"
+                color: searchBtnMouse.pressed ? accentPressed : accentColor
                 anchors.verticalCenter: parent.verticalCenter
 
                 Text {
@@ -701,7 +703,7 @@ Window {
                         width: 32
                         height: 32
                         radius: 16
-                        color: "#e94560"
+                        color: accentColor
                         anchors.verticalCenter: parent.verticalCenter
 
                         Text {
@@ -846,7 +848,7 @@ Window {
                     width: 140
                     height: 48
                     radius: 24
-                    color: favMouse.pressed ? "#c23a50" : "#e94560"
+                    color: favMouse.pressed ? accentPressed : accentColor
 
                     Row {
                         anchors.centerIn: parent
@@ -932,7 +934,7 @@ Window {
                 width: 32
                 height: 32
                 radius: 16
-                color: clearRouteMouse.pressed ? "#c23a50" : "#e94560"
+                color: clearRouteMouse.pressed ? accentPressed : accentColor
                 anchors.verticalCenter: parent.verticalCenter
 
                 Text {

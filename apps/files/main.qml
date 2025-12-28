@@ -14,7 +14,7 @@ Window {
     // Use shell text scale
     property real textScale: 1.0
     property string currentPath: "/home/droidian"
-    property color accentColor: "#e94560"
+    property color accentColor: accentColor
 
     // Picker mode properties (set via environment variables)
     property bool pickerMode: false
@@ -391,7 +391,7 @@ Window {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : accentColor
+        color: backMouse.pressed ? accentPressed : accentColor
         z: 10
 
         Behavior on color { ColorAnimation { duration: 150 } }
@@ -601,7 +601,7 @@ Window {
                         }
                         Text {
                             text: "Delete"
-                            color: "#e94560"
+                            color: accentColor
                             font.pixelSize: 18
                         }
                     }
@@ -704,7 +704,7 @@ Window {
                         width: 120
                         height: 48
                         radius: 24
-                        color: confirmMouse.pressed ? "#c23a50" : accentColor
+                        color: confirmMouse.pressed ? accentPressed : accentColor
 
                         Text {
                             anchors.centerIn: parent

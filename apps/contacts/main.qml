@@ -12,6 +12,8 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 2.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property string contactsFile: "/home/droidian/.local/state/flick/contacts.json"
     property string currentView: "list"  // list, detail, edit, add
     property int selectedContactIndex: -1
@@ -119,7 +121,7 @@ Window {
     }
 
     function getColor(name) {
-        var colors = ["#e94560", "#4a9eff", "#50c878", "#ff8c42", "#9b59b6", "#1abc9c"]
+        var colors = [accentColor, "#4a9eff", "#50c878", "#ff8c42", "#9b59b6", "#1abc9c"]
         var hash = 0
         for (var i = 0; i < name.length; i++) {
             hash = name.charCodeAt(i) + ((hash << 5) - hash)
@@ -197,7 +199,7 @@ Window {
                 width: 56
                 height: 56
                 radius: 28
-                color: addMouse.pressed ? "#c23a50" : "#e94560"
+                color: addMouse.pressed ? accentPressed : accentColor
 
                 Text {
                     anchors.centerIn: parent
@@ -227,8 +229,8 @@ Window {
                 gradient: Gradient {
                     orientation: Gradient.Horizontal
                     GradientStop { position: 0.0; color: "transparent" }
-                    GradientStop { position: 0.2; color: "#e94560" }
-                    GradientStop { position: 0.8; color: "#e94560" }
+                    GradientStop { position: 0.2; color: accentColor }
+                    GradientStop { position: 0.8; color: accentColor }
                     GradientStop { position: 1.0; color: "transparent" }
                 }
                 opacity: 0.3
@@ -620,7 +622,7 @@ Window {
                 width: 200
                 height: 56
                 radius: 28
-                color: deleteMouse.pressed ? "#c23a50" : "#3a3a4e"
+                color: deleteMouse.pressed ? accentPressed : "#3a3a4e"
 
                 Text {
                     anchors.centerIn: parent
@@ -809,7 +811,7 @@ Window {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? accentPressed : accentColor
         visible: currentView === "list"
         z: 10
 

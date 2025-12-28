@@ -13,6 +13,8 @@ Window {
 
     // Display config
     property real textScale: 1.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
 
     // State
     property string currentView: "loading" // loading, setup, inbox, email, compose, folders, settings
@@ -646,7 +648,7 @@ Window {
                             }
                             Text {
                                 text: "App Password Required"
-                                color: "#e94560"
+                                color: accentColor
                                 font.pixelSize: 14 * textScale
                             }
                         }
@@ -699,7 +701,7 @@ Window {
                         height: 64
                         radius: 32
                         color: setupView.providers[setupView.selectedProvider] ?
-                               setupView.providers[setupView.selectedProvider].color : "#e94560"
+                               setupView.providers[setupView.selectedProvider].color : accentColor
 
                         Row {
                             anchors.centerIn: parent
@@ -897,12 +899,12 @@ Window {
                             spacing: 8
                             Text {
                                 text: "Server Settings"
-                                color: "#e94560"
+                                color: accentColor
                                 font.pixelSize: 14 * textScale
                             }
                             Text {
                                 text: setupView.showAdvanced ? "▲" : "▼"
-                                color: "#e94560"
+                                color: accentColor
                                 font.pixelSize: 12
                             }
                         }
@@ -1021,7 +1023,7 @@ Window {
                     Text {
                         width: parent.width
                         text: errorMessage
-                        color: "#e94560"
+                        color: accentColor
                         font.pixelSize: 14 * textScale
                         wrapMode: Text.Wrap
                         visible: errorMessage.length > 0
@@ -1032,7 +1034,7 @@ Window {
                         width: parent.width
                         height: 64
                         radius: 32
-                        color: loading ? "#555555" : "#e94560"
+                        color: loading ? "#555555" : accentColor
 
                         Text {
                             anchors.centerIn: parent
@@ -1157,7 +1159,7 @@ Window {
                         width: 48
                         height: 48
                         radius: 24
-                        color: "#e94560"
+                        color: accentColor
 
                         Text {
                             anchors.centerIn: parent
@@ -1186,12 +1188,12 @@ Window {
             Rectangle {
                 width: parent.width
                 height: 4
-                color: loading ? "#e94560" : "transparent"
+                color: loading ? accentColor : "transparent"
 
                 Rectangle {
                     width: loading ? parent.width * 0.3 : 0
                     height: parent.height
-                    color: "#e94560"
+                    color: accentColor
                     x: loadingAnim.running ? (parent.width - width) * loadingAnim.progress : 0
 
                     NumberAnimation on x {
@@ -1238,7 +1240,7 @@ Window {
                                 width: 12
                                 height: 12
                                 radius: 6
-                                color: modelData.read ? "transparent" : "#e94560"
+                                color: modelData.read ? "transparent" : accentColor
                             }
 
                             Column {
@@ -1300,7 +1302,7 @@ Window {
                         anchors.right: parent.right
                         width: -emailDelegate.swipeX
                         height: parent.height
-                        color: "#e94560"
+                        color: accentColor
                         visible: emailDelegate.swipeX < 0
 
                         Text {
@@ -1409,7 +1411,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "↩"
-                            color: "#e94560"
+                            color: accentColor
                             font.pixelSize: 24
                         }
 
@@ -1433,7 +1435,7 @@ Window {
                         width: 48
                         height: 48
                         radius: 24
-                        color: deleteBtnMouse.pressed ? "#e94560" : "transparent"
+                        color: deleteBtnMouse.pressed ? accentColor : "transparent"
 
                         Text {
                             anchors.centerIn: parent
@@ -1495,7 +1497,7 @@ Window {
                                 width: 40
                                 height: 40
                                 radius: 20
-                                color: "#e94560"
+                                color: accentColor
 
                                 Text {
                                     anchors.centerIn: parent
@@ -1692,7 +1694,7 @@ Window {
                         width: 80
                         height: 44
                         radius: 22
-                        color: loading ? "#555555" : "#e94560"
+                        color: loading ? "#555555" : accentColor
 
                         Text {
                             anchors.centerIn: parent
@@ -1934,7 +1936,7 @@ Window {
                         width: 150
                         height: 56
                         radius: 28
-                        color: modelData.id === currentAccountId ? "#e94560" : "#2a2a3e"
+                        color: modelData.id === currentAccountId ? accentColor : "#2a2a3e"
 
                         Text {
                             anchors.centerIn: parent
@@ -1985,7 +1987,7 @@ Window {
                         Text {
                             Layout.fillWidth: true
                             text: getFolderDisplayName(modelData.name)
-                            color: modelData.name === currentFolder ? "#e94560" : "#ffffff"
+                            color: modelData.name === currentFolder ? accentColor : "#ffffff"
                             font.pixelSize: 16 * textScale
                         }
                     }
@@ -2012,7 +2014,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: "#e94560"
+            color: accentColor
 
             Text {
                 anchors.centerIn: parent
@@ -2094,7 +2096,7 @@ Window {
                                     width: 44
                                     height: 44
                                     radius: 22
-                                    color: "#e94560"
+                                    color: accentColor
 
                                     Text {
                                         anchors.centerIn: parent
@@ -2125,7 +2127,7 @@ Window {
                                     width: 44
                                     height: 44
                                     radius: 22
-                                    color: removeAccMouse.pressed ? "#e94560" : "transparent"
+                                    color: removeAccMouse.pressed ? accentColor : "transparent"
 
                                     Text {
                                         anchors.centerIn: parent
@@ -2160,13 +2162,13 @@ Window {
 
                             Text {
                                 text: "+"
-                                color: "#e94560"
+                                color: accentColor
                                 font.pixelSize: 24
                             }
 
                             Text {
                                 text: "Add Account"
-                                color: "#e94560"
+                                color: accentColor
                                 font.pixelSize: 16 * textScale
                             }
                         }
@@ -2229,7 +2231,7 @@ Window {
             width: 72
             height: 72
             radius: 36
-            color: "#e94560"
+            color: accentColor
 
             Text {
                 anchors.centerIn: parent

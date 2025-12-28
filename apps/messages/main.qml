@@ -11,6 +11,8 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 2.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property string currentView: "list"  // "list" or "conversation"
     property string currentConversation: ""  // Phone number of current conversation
     property string currentContactName: ""
@@ -203,7 +205,7 @@ Window {
             Text {
                 anchors.centerIn: parent
                 text: "Messages"
-                color: "#e94560"
+                color: accentColor
                 font.pixelSize: 32 * textScale
                 font.weight: Font.Bold
             }
@@ -247,7 +249,7 @@ Window {
                         height: 80 * textScale
                         radius: 40 * textScale
                         anchors.verticalCenter: parent.verticalCenter
-                        color: "#e94560"
+                        color: accentColor
 
                         Text {
                             anchors.centerIn: parent
@@ -306,7 +308,7 @@ Window {
                                 width: 50 * textScale
                                 height: 50 * textScale
                                 radius: 25 * textScale
-                                color: "#e94560"
+                                color: accentColor
                                 visible: model.unread_count > 0
 
                                 Text {
@@ -393,7 +395,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: "<"
-                        color: "#e94560"
+                        color: accentColor
                         font.pixelSize: 28 * textScale
                         font.weight: Font.Bold
                     }
@@ -460,7 +462,7 @@ Window {
                     width: Math.min(messageText.contentWidth + 40 * textScale, parent.width * 0.75)
                     height: messageColumn.height + 30 * textScale
                     radius: 20 * textScale
-                    color: model.direction === "outgoing" ? "#e94560" : "#1a1a2e"
+                    color: model.direction === "outgoing" ? accentColor : "#1a1a2e"
 
                     Column {
                         id: messageColumn
@@ -581,7 +583,7 @@ Window {
                     height: 70 * textScale
                     radius: 35 * textScale
                     anchors.verticalCenter: parent.verticalCenter
-                    color: messageInput.length > 0 ? (sendArea.pressed ? "#d93550" : "#e94560") : "#3a3a4e"
+                    color: messageInput.length > 0 ? (sendArea.pressed ? "#d93550" : accentColor) : "#3a3a4e"
 
                     Text {
                         anchors.centerIn: parent
@@ -611,7 +613,7 @@ Window {
         width: 72 * textScale
         height: 72 * textScale
         radius: 36 * textScale
-        color: backBtnArea.pressed ? "#d93550" : "#e94560"
+        color: backBtnArea.pressed ? "#d93550" : accentColor
         visible: currentView === "list"
         z: 100
 

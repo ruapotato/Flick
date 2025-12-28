@@ -12,6 +12,8 @@ Window {
     color: "#0a0a0f"
 
     property var currentDate: new Date()
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property int currentMonth: currentDate.getMonth()
     property int currentYear: currentDate.getFullYear()
     property int selectedDay: -1
@@ -172,7 +174,7 @@ Window {
                     width: 100
                     height: 36
                     radius: 18
-                    color: viewMode === "month" ? "#e94560" : "#2a2a3e"
+                    color: viewMode === "month" ? accentColor : "#2a2a3e"
 
                     Text {
                         anchors.centerIn: parent
@@ -194,7 +196,7 @@ Window {
                     width: 100
                     height: 36
                     radius: 18
-                    color: viewMode === "week" ? "#e94560" : "#2a2a3e"
+                    color: viewMode === "week" ? accentColor : "#2a2a3e"
 
                     Text {
                         anchors.centerIn: parent
@@ -282,12 +284,12 @@ Window {
                             radius: 12
                             color: {
                                 if (!isValid) return "transparent"
-                                if (isToday(dayNum)) return "#e94560"
+                                if (isToday(dayNum)) return accentColor
                                 if (hasEvt) return "#2a2a3e"
                                 return "transparent"
                             }
                             opacity: isValid ? (isToday(dayNum) ? 0.8 : 1.0) : 0
-                            border.color: hasEvt ? "#e94560" : "transparent"
+                            border.color: hasEvt ? accentColor : "transparent"
                             border.width: hasEvt ? 2 : 0
 
                             Column {
@@ -308,7 +310,7 @@ Window {
                                     width: 8
                                     height: 8
                                     radius: 4
-                                    color: "#e94560"
+                                    color: accentColor
                                     visible: hasEvt && !isToday(dayNum)
                                 }
                             }
@@ -401,7 +403,7 @@ Window {
                         border.color: {
                             var day = currentWeekStart + index
                             if (day > 0 && day <= getDaysInMonth(currentMonth, currentYear) && hasEvents(day)) {
-                                return "#e94560"
+                                return accentColor
                             }
                             return "transparent"
                         }
@@ -433,7 +435,7 @@ Window {
                                     text: dayNum > 0 ? dayNum : ""
                                     font.pixelSize: 28
                                     font.weight: Font.Bold
-                                    color: dayNum > 0 && isToday(dayNum) ? "#e94560" : "#ffffff"
+                                    color: dayNum > 0 && isToday(dayNum) ? accentColor : "#ffffff"
                                 }
                             }
 
@@ -459,7 +461,7 @@ Window {
                                     visible: dayNum > 0 && getEventCount(dayNum) > 2
                                     text: "+" + (getEventCount(dayNum) - 2) + " more"
                                     font.pixelSize: 12
-                                    color: "#e94560"
+                                    color: accentColor
                                 }
                             }
                         }
@@ -563,7 +565,7 @@ Window {
                         height: 80
                         radius: 16
                         color: "#1a1a2e"
-                        border.color: "#e94560"
+                        border.color: accentColor
                         border.width: 1
 
                         Row {
@@ -588,7 +590,7 @@ Window {
                                 Text {
                                     text: model.time || "All day"
                                     font.pixelSize: 14
-                                    color: "#e94560"
+                                    color: accentColor
                                 }
                             }
 
@@ -596,7 +598,7 @@ Window {
                                 width: 44
                                 height: 44
                                 radius: 22
-                                color: delMouse.pressed ? "#e94560" : "#2a2a3e"
+                                color: delMouse.pressed ? accentColor : "#2a2a3e"
                                 anchors.verticalCenter: parent.verticalCenter
 
                                 Text {
@@ -633,7 +635,7 @@ Window {
                     width: parent.width
                     height: 56
                     radius: 16
-                    color: addMouse.pressed ? "#c23a50" : "#e94560"
+                    color: addMouse.pressed ? accentPressed : accentColor
 
                     Text {
                         anchors.centerIn: parent
@@ -738,7 +740,7 @@ Window {
             height: 520
             radius: 24
             color: "#1a1a2e"
-            border.color: "#e94560"
+            border.color: accentColor
             border.width: 2
 
             Column {
@@ -769,7 +771,7 @@ Window {
                         height: 50
                         radius: 12
                         color: "#0a0a0f"
-                        border.color: titleInput.activeFocus ? "#e94560" : "#333344"
+                        border.color: titleInput.activeFocus ? accentColor : "#333344"
 
                         TextInput {
                             id: titleInput
@@ -801,7 +803,7 @@ Window {
                             width: 100
                             height: 32
                             radius: 16
-                            color: eventPopup.selectedHour === -1 ? "#e94560" : "#2a2a3e"
+                            color: eventPopup.selectedHour === -1 ? accentColor : "#2a2a3e"
 
                             Text {
                                 anchors.centerIn: parent
@@ -846,7 +848,7 @@ Window {
                                     radius: 8
                                     color: {
                                         if (eventPopup.selectedHour === index || eventPopup.selectedHour === index + 12)
-                                            return "#e94560"
+                                            return accentColor
                                         return "#2a2a3e"
                                     }
 
@@ -884,7 +886,7 @@ Window {
                                 width: 60
                                 height: 36
                                 radius: 8
-                                color: eventPopup.selectedHour >= 0 && eventPopup.selectedHour < 12 ? "#e94560" : "#2a2a3e"
+                                color: eventPopup.selectedHour >= 0 && eventPopup.selectedHour < 12 ? accentColor : "#2a2a3e"
 
                                 Text {
                                     anchors.centerIn: parent
@@ -907,7 +909,7 @@ Window {
                                 width: 60
                                 height: 36
                                 radius: 8
-                                color: eventPopup.selectedHour >= 12 ? "#e94560" : "#2a2a3e"
+                                color: eventPopup.selectedHour >= 12 ? accentColor : "#2a2a3e"
 
                                 Text {
                                     anchors.centerIn: parent
@@ -945,7 +947,7 @@ Window {
                                     width: 50
                                     height: 36
                                     radius: 8
-                                    color: eventPopup.selectedMinute === modelData ? "#e94560" : "#2a2a3e"
+                                    color: eventPopup.selectedMinute === modelData ? accentColor : "#2a2a3e"
 
                                     Text {
                                         anchors.centerIn: parent
@@ -999,7 +1001,7 @@ Window {
                         width: (parent.width - 12) / 2
                         height: 50
                         radius: 12
-                        color: "#e94560"
+                        color: accentColor
 
                         Text {
                             anchors.centerIn: parent
@@ -1034,7 +1036,7 @@ Window {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? accentPressed : accentColor
         z: 50
 
         Text {

@@ -12,6 +12,8 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 2.0
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
     property string currentTab: "clock"  // clock, alarm, timer, stopwatch
     property string alarmsFile: "/home/droidian/.local/state/flick/alarms.json"
 
@@ -159,7 +161,7 @@ Window {
                         text: modelData.label
                         font.pixelSize: 16 * textScale
                         font.weight: currentTab === modelData.id ? Font.Medium : Font.Normal
-                        color: currentTab === modelData.id ? "#e94560" : "#888899"
+                        color: currentTab === modelData.id ? accentColor : "#888899"
                     }
 
                     Rectangle {
@@ -168,7 +170,7 @@ Window {
                         width: parent.width - 40
                         height: 3
                         radius: 1.5
-                        color: "#e94560"
+                        color: accentColor
                         visible: currentTab === modelData.id
                     }
 
@@ -241,7 +243,7 @@ Window {
                     width: 56
                     height: 56
                     radius: 28
-                    color: addAlarmMouse.pressed ? "#c23a50" : "#e94560"
+                    color: addAlarmMouse.pressed ? accentPressed : accentColor
 
                     Text {
                         anchors.centerIn: parent
@@ -314,7 +316,7 @@ Window {
                             width: 60
                             height: 32
                             radius: 16
-                            color: model.enabled ? "#e94560" : "#333344"
+                            color: model.enabled ? accentColor : "#333344"
                             anchors.verticalCenter: parent.verticalCenter
 
                             Rectangle {
@@ -348,7 +350,7 @@ Window {
                             width: 48
                             height: 48
                             radius: 24
-                            color: delAlarmMouse.pressed ? "#c23a50" : "#3a3a4e"
+                            color: delAlarmMouse.pressed ? accentPressed : "#3a3a4e"
                             anchors.verticalCenter: parent.verticalCenter
 
                             Text {
@@ -400,7 +402,7 @@ Window {
                 font.pixelSize: 80 * textScale
                 font.weight: Font.ExtraLight
                 font.family: "monospace"
-                color: timerSeconds <= 10 && timerRunning ? "#e94560" : "#ffffff"
+                color: timerSeconds <= 10 && timerRunning ? accentColor : "#ffffff"
             }
 
             // Time adjustment (when not running)
@@ -473,7 +475,7 @@ Window {
                     width: 100
                     height: 100
                     radius: 50
-                    color: startTimerMouse.pressed ? "#c23a50" : "#e94560"
+                    color: startTimerMouse.pressed ? accentPressed : accentColor
 
                     Text {
                         anchors.centerIn: parent
@@ -553,7 +555,7 @@ Window {
                     width: 100
                     height: 100
                     radius: 50
-                    color: startSwMouse.pressed ? (stopwatchRunning ? "#c23a50" : "#1a7a3a") : (stopwatchRunning ? "#e94560" : "#228B22")
+                    color: startSwMouse.pressed ? (stopwatchRunning ? accentPressed : "#1a7a3a") : (stopwatchRunning ? accentColor : "#228B22")
 
                     Text {
                         anchors.centerIn: parent
@@ -584,7 +586,7 @@ Window {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? accentPressed : accentColor
         z: 10
 
         Text {
