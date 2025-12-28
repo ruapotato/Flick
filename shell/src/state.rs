@@ -1579,6 +1579,17 @@ impl XdgShellHandler for Flick {
         if let Some(window) = window {
             self.space.unmap_elem(&window);
         }
+
+        // Clear active window if it was this one
+        if self.active_window.as_ref().and_then(|w| w.toplevel()).map(|t| t == &surface).unwrap_or(false) {
+            self.active_window = None;
+        }
+
+        // If no more windows, return to Home view
+        if self.space.elements().count() == 0 {
+            tracing::info!("No more windows - returning to Home view");
+            self.shell.set_view(crate::shell::ShellView::Home);
+        }
     }
 }
 
