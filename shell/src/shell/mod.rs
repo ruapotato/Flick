@@ -619,6 +619,8 @@ impl Shell {
             return;
         }
 
+        tracing::info!("set_view: {:?} -> {:?}", self.view, new_view);
+
         // Hide keyboard when leaving App view
         if self.view == ShellView::App && new_view != ShellView::App {
             if let Some(ref slint_ui) = self.slint_ui {
@@ -629,6 +631,7 @@ impl Shell {
             }
             // Reload wallpaper when returning from app (settings might have changed it)
             if new_view == ShellView::Home {
+                tracing::info!("Reloading wallpaper on return to Home");
                 self.reload_wallpaper();
             }
         }
