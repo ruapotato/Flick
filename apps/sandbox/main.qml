@@ -16,14 +16,14 @@ Window {
     property int gridHeight: 270  // 2160 / 8 = 270 cells high (leaving room for UI)
     property int cellSize: 8
 
-    // Particle types
-    readonly property int EMPTY: 0
-    readonly property int SAND: 1
-    readonly property int WATER: 2
-    readonly property int STONE: 3
-    readonly property int FIRE: 4
+    // Particle types (lowercase for QML compatibility)
+    readonly property int typeEmpty: 0
+    readonly property int typeSand: 1
+    readonly property int typeWater: 2
+    readonly property int typeStone: 3
+    readonly property int typeFire: 4
 
-    property int selectedType: SAND
+    property int selectedType: typeSand
     property bool isDrawing: false
     property int lastDrawX: -1
     property int lastDrawY: -1
@@ -53,13 +53,13 @@ Window {
         grid = []
         nextGrid = []
         for (var i = 0; i < gridWidth * gridHeight; i++) {
-            grid.push(EMPTY)
-            nextGrid.push(EMPTY)
+            grid.push(typeEmpty)
+            nextGrid.push(typeEmpty)
         }
     }
 
     function getCell(x, y) {
-        if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return STONE
+        if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return typeStone
         return grid[y * gridWidth + x]
     }
 
@@ -75,8 +75,8 @@ Window {
 
     function clearGrid() {
         for (var i = 0; i < grid.length; i++) {
-            grid[i] = EMPTY
-            nextGrid[i] = EMPTY
+            grid[i] = typeEmpty
+            nextGrid[i] = typeEmpty
         }
         canvas.requestPaint()
     }
@@ -120,44 +120,44 @@ Window {
 
             for (var x = xStart; x !== xEnd; x += xStep) {
                 var current = getCell(x, y)
-                if (current === EMPTY || current === STONE) continue
+                if (current === typeEmpty || current === typeStone) continue
 
-                if (current === SAND) {
+                if (current === typeSand) {
                     // Sand falls down, slides diagonally
                     var below = getCell(x, y + 1)
-                    if (below === EMPTY) {
-                        setNextCell(x, y + 1, SAND)
-                        setNextCell(x, y, EMPTY)
-                    } else if (below === WATER) {
+                    if (below === typeEmpty) {
+                        setNextCell(x, y + 1, typeSand)
+                        setNextCell(x, y, typeEmpty)
+                    } else if (below === typeWater) {
                         // Sand sinks in water
-                        setNextCell(x, y + 1, SAND)
-                        setNextCell(x, y, WATER)
+                        setNextCell(x, y + 1, typeSand)
+                        setNextCell(x, y, typeWater)
                     } else {
                         // Try diagonal fall
                         var left = getCell(x - 1, y + 1)
                         var right = getCell(x + 1, y + 1)
-                        if (left === EMPTY && right === EMPTY) {
+                        if (left === typeEmpty && right === typeEmpty) {
                             var dir = Math.random() < 0.5 ? -1 : 1
-                            setNextCell(x + dir, y + 1, SAND)
-                            setNextCell(x, y, EMPTY)
-                        } else if (left === EMPTY) {
-                            setNextCell(x - 1, y + 1, SAND)
-                            setNextCell(x, y, EMPTY)
-                        } else if (right === EMPTY) {
-                            setNextCell(x + 1, y + 1, SAND)
-                            setNextCell(x, y, EMPTY)
+                            setNextCell(x + dir, y + 1, typeSand)
+                            setNextCell(x, y, typeEmpty)
+                        } else if (left === typeEmpty) {
+                            setNextCell(x - 1, y + 1, typeSand)
+                            setNextCell(x, y, typeEmpty)
+                        } else if (right === typeEmpty) {
+                            setNextCell(x + 1, y + 1, typeSand)
+                            setNextCell(x, y, typeEmpty)
                         }
                     }
-                } else if (current === WATER) {
+                } else if (current === typeWater) {
                     // Water flows down and spreads
                     var below = getCell(x, y + 1)
-                    if (below === EMPTY) {
-                        setNextCell(x, y + 1, WATER)
-                        setNextCell(x, y, EMPTY)
-                    } else if (below === FIRE) {
+                    if (below === typeEmpty) {
+                        setNextCell(x, y + 1, typeWater)
+                        setNextCell(x, y, typeEmpty)
+                    } else if (below === typeFire) {
                         // Water extinguishes fire
-                        setNextCell(x, y + 1, EMPTY)
-                        setNextCell(x, y, EMPTY)
+                        setNextCell(x, y + 1, typeEmpty)
+                        setNextCell(x, y, typeEmpty)
                     } else {
                         // Try to spread horizontally
                         var left = getCell(x - 1, y)
@@ -166,49 +166,49 @@ Window {
                         var rightBelow = getCell(x + 1, y + 1)
 
                         // Prefer flowing down diagonally
-                        if (leftBelow === EMPTY && rightBelow === EMPTY) {
+                        if (leftBelow === typeEmpty && rightBelow === typeEmpty) {
                             var dir = Math.random() < 0.5 ? -1 : 1
-                            setNextCell(x + dir, y + 1, WATER)
-                            setNextCell(x, y, EMPTY)
-                        } else if (leftBelow === EMPTY) {
-                            setNextCell(x - 1, y + 1, WATER)
-                            setNextCell(x, y, EMPTY)
-                        } else if (rightBelow === EMPTY) {
-                            setNextCell(x + 1, y + 1, WATER)
-                            setNextCell(x, y, EMPTY)
-                        } else if (left === EMPTY && right === EMPTY) {
+                            setNextCell(x + dir, y + 1, typeWater)
+                            setNextCell(x, y, typeEmpty)
+                        } else if (leftBelow === typeEmpty) {
+                            setNextCell(x - 1, y + 1, typeWater)
+                            setNextCell(x, y, typeEmpty)
+                        } else if (rightBelow === typeEmpty) {
+                            setNextCell(x + 1, y + 1, typeWater)
+                            setNextCell(x, y, typeEmpty)
+                        } else if (left === typeEmpty && right === typeEmpty) {
                             var dir = Math.random() < 0.5 ? -1 : 1
-                            setNextCell(x + dir, y, WATER)
-                            setNextCell(x, y, EMPTY)
-                        } else if (left === EMPTY) {
-                            setNextCell(x - 1, y, WATER)
-                            setNextCell(x, y, EMPTY)
-                        } else if (right === EMPTY) {
-                            setNextCell(x + 1, y, WATER)
-                            setNextCell(x, y, EMPTY)
+                            setNextCell(x + dir, y, typeWater)
+                            setNextCell(x, y, typeEmpty)
+                        } else if (left === typeEmpty) {
+                            setNextCell(x - 1, y, typeWater)
+                            setNextCell(x, y, typeEmpty)
+                        } else if (right === typeEmpty) {
+                            setNextCell(x + 1, y, typeWater)
+                            setNextCell(x, y, typeEmpty)
                         }
                     }
-                } else if (current === FIRE) {
+                } else if (current === typeFire) {
                     // Fire rises and spreads
                     var lifetime = Math.random()
                     if (lifetime < 0.05) {
                         // Fire dies out randomly
-                        setNextCell(x, y, EMPTY)
+                        setNextCell(x, y, typeEmpty)
                     } else {
                         var above = getCell(x, y - 1)
-                        if (above === EMPTY && Math.random() < 0.7) {
-                            setNextCell(x, y - 1, FIRE)
+                        if (above === typeEmpty && Math.random() < 0.7) {
+                            setNextCell(x, y - 1, typeFire)
                             if (Math.random() < 0.3) {
-                                setNextCell(x, y, EMPTY)
+                                setNextCell(x, y, typeEmpty)
                             }
                         } else {
                             // Spread horizontally
                             var spreadDir = Math.random() < 0.5 ? -1 : 1
                             var target = getCell(x + spreadDir, y)
-                            if (target === EMPTY && Math.random() < 0.2) {
-                                setNextCell(x + spreadDir, y, FIRE)
-                            } else if (target === SAND && Math.random() < 0.1) {
-                                setNextCell(x + spreadDir, y, FIRE)
+                            if (target === typeEmpty && Math.random() < 0.2) {
+                                setNextCell(x + spreadDir, y, typeFire)
+                            } else if (target === typeSand && Math.random() < 0.1) {
+                                setNextCell(x + spreadDir, y, typeFire)
                             }
                         }
                     }
@@ -226,10 +226,10 @@ Window {
 
     function getParticleColor(type) {
         switch (type) {
-            case SAND: return "#d4a574"
-            case WATER: return "#4a90e2"
-            case STONE: return "#666666"
-            case FIRE: return Math.random() < 0.5 ? "#ff6b35" : "#f7931e"
+            case typeSand: return "#d4a574"
+            case typeWater: return "#4a90e2"
+            case typeStone: return "#666666"
+            case typeFire: return Math.random() < 0.5 ? "#ff6b35" : "#f7931e"
             default: return "#0a0a0f"
         }
     }
@@ -251,7 +251,7 @@ Window {
             for (var y = 0; y < gridHeight; y++) {
                 for (var x = 0; x < gridWidth; x++) {
                     var cell = getCell(x, y)
-                    if (cell !== EMPTY) {
+                    if (cell !== typeEmpty) {
                         ctx.fillStyle = getParticleColor(cell)
                         ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize)
                     }
@@ -320,8 +320,8 @@ Window {
                     width: 120
                     height: 80
                     radius: 12
-                    color: selectedType === SAND ? "#e94560" : "#222233"
-                    border.color: selectedType === SAND ? "#ffffff" : "transparent"
+                    color: selectedType === typeSand ? "#e94560" : "#222233"
+                    border.color: selectedType === typeSand ? "#ffffff" : "transparent"
                     border.width: 2
 
                     Column {
@@ -347,7 +347,7 @@ Window {
                     MouseArea {
                         anchors.fill: parent
                         onClicked: {
-                            selectedType = SAND
+                            selectedType = typeSand
                             Haptic.tap()
                         }
                     }
@@ -357,8 +357,8 @@ Window {
                     width: 120
                     height: 80
                     radius: 12
-                    color: selectedType === WATER ? "#e94560" : "#222233"
-                    border.color: selectedType === WATER ? "#ffffff" : "transparent"
+                    color: selectedType === typeWater ? "#e94560" : "#222233"
+                    border.color: selectedType === typeWater ? "#ffffff" : "transparent"
                     border.width: 2
 
                     Column {
@@ -384,7 +384,7 @@ Window {
                     MouseArea {
                         anchors.fill: parent
                         onClicked: {
-                            selectedType = WATER
+                            selectedType = typeWater
                             Haptic.tap()
                         }
                     }
@@ -394,8 +394,8 @@ Window {
                     width: 120
                     height: 80
                     radius: 12
-                    color: selectedType === STONE ? "#e94560" : "#222233"
-                    border.color: selectedType === STONE ? "#ffffff" : "transparent"
+                    color: selectedType === typeStone ? "#e94560" : "#222233"
+                    border.color: selectedType === typeStone ? "#ffffff" : "transparent"
                     border.width: 2
 
                     Column {
@@ -421,7 +421,7 @@ Window {
                     MouseArea {
                         anchors.fill: parent
                         onClicked: {
-                            selectedType = STONE
+                            selectedType = typeStone
                             Haptic.tap()
                         }
                     }
@@ -431,8 +431,8 @@ Window {
                     width: 120
                     height: 80
                     radius: 12
-                    color: selectedType === FIRE ? "#e94560" : "#222233"
-                    border.color: selectedType === FIRE ? "#ffffff" : "transparent"
+                    color: selectedType === typeFire ? "#e94560" : "#222233"
+                    border.color: selectedType === typeFire ? "#ffffff" : "transparent"
                     border.width: 2
 
                     Column {
@@ -443,10 +443,7 @@ Window {
                             width: 40
                             height: 40
                             radius: 20
-                            gradient: Gradient {
-                                GradientStop { position: 0.0; color: "#ff6b35" }
-                                GradientStop { position: 1.0; color: "#f7931e" }
-                            }
+                            color: "#ff6b35"
                             anchors.horizontalCenter: parent.horizontalCenter
                         }
 
@@ -461,7 +458,7 @@ Window {
                     MouseArea {
                         anchors.fill: parent
                         onClicked: {
-                            selectedType = FIRE
+                            selectedType = typeFire
                             Haptic.tap()
                         }
                     }
