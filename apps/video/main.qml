@@ -19,8 +19,6 @@ Window {
     property string currentVideo: ""
     property string currentVideoName: ""
 
-    Component.onCompleted: loadConfig()
-
     function loadConfig() {
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json", false)
