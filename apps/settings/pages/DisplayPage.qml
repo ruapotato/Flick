@@ -1,7 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-import QtQuick.Dialogs 1.3
+import Qt.labs.platform 1.1
 
 Page {
     id: displayPage
@@ -97,11 +97,11 @@ Page {
     FileDialog {
         id: wallpaperDialog
         title: "Select Wallpaper"
-        folder: shortcuts.pictures
+        folder: StandardPaths.writableLocation(StandardPaths.PicturesLocation)
         nameFilters: ["Image files (*.png *.jpg *.jpeg *.webp *.bmp)"]
         onAccepted: {
             // Convert file URL to path
-            var path = fileUrl.toString()
+            var path = file.toString()
             if (path.startsWith("file://")) {
                 path = path.substring(7)
             }
