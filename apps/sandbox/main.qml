@@ -12,9 +12,9 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 2.0
-    property int gridWidth: 180   // More resolution
-    property int gridHeight: 320
-    property int cellSize: 6
+    property int gridWidth: 90    // Balanced for performance
+    property int gridHeight: 160
+    property int cellSize: 12
 
     // Particle types
     readonly property int tEmpty: 0
