@@ -1152,7 +1152,7 @@ component HomeScreen inherits Rectangle {
     property <length> grid-top: status-bar-height + grid-padding;
     property <length> grid-height: root.height - status-bar-height - home-indicator-height - grid-padding * 2;
     property <length> grid-width: root.width - grid-padding * 2;
-    property <int> num-rows: categories.length > 12 ? 4 : (categories.length > 8 ? 3 : (categories.length > 4 ? 2 : 1));
+    property <int> num-rows: categories.length > 20 ? 6 : (categories.length > 16 ? 5 : (categories.length > 12 ? 4 : (categories.length > 8 ? 3 : (categories.length > 4 ? 2 : 1))));
     property <length> tile-width: (grid-width - grid-spacing * 3) / 4;
     property <length> tile-height: (grid-height - grid-spacing * (num-rows - 1)) / num-rows;
 
@@ -1400,9 +1400,125 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(15); }
     }
 
+    // Row 4
+    if categories.length > 16: AppTile {
+        x: grid-padding;
+        y: grid-top + (tile-height + grid-spacing) * 4;
+        width: tile-width;
+        height: tile-height;
+        name: categories[16].name;
+        icon: categories[16].icon;
+        tile-color: categories[16].color;
+        wiggling: root.wiggle-mode;
+        wiggle-time: root.wiggle-time;
+        wiggle-phase: 16;
+        is-dragging: root.dragging-index == 16;
+        clicked => { app-tapped(16); }
+    }
+    if categories.length > 17: AppTile {
+        x: grid-padding + tile-width + grid-spacing;
+        y: grid-top + (tile-height + grid-spacing) * 4;
+        width: tile-width;
+        height: tile-height;
+        name: categories[17].name;
+        icon: categories[17].icon;
+        tile-color: categories[17].color;
+        wiggling: root.wiggle-mode;
+        wiggle-time: root.wiggle-time;
+        wiggle-phase: 17;
+        is-dragging: root.dragging-index == 17;
+        clicked => { app-tapped(17); }
+    }
+    if categories.length > 18: AppTile {
+        x: grid-padding + (tile-width + grid-spacing) * 2;
+        y: grid-top + (tile-height + grid-spacing) * 4;
+        width: tile-width;
+        height: tile-height;
+        name: categories[18].name;
+        icon: categories[18].icon;
+        tile-color: categories[18].color;
+        wiggling: root.wiggle-mode;
+        wiggle-time: root.wiggle-time;
+        wiggle-phase: 18;
+        is-dragging: root.dragging-index == 18;
+        clicked => { app-tapped(18); }
+    }
+    if categories.length > 19: AppTile {
+        x: grid-padding + (tile-width + grid-spacing) * 3;
+        y: grid-top + (tile-height + grid-spacing) * 4;
+        width: tile-width;
+        height: tile-height;
+        name: categories[19].name;
+        icon: categories[19].icon;
+        tile-color: categories[19].color;
+        wiggling: root.wiggle-mode;
+        wiggle-time: root.wiggle-time;
+        wiggle-phase: 19;
+        is-dragging: root.dragging-index == 19;
+        clicked => { app-tapped(19); }
+    }
+
+    // Row 5
+    if categories.length > 20: AppTile {
+        x: grid-padding;
+        y: grid-top + (tile-height + grid-spacing) * 5;
+        width: tile-width;
+        height: tile-height;
+        name: categories[20].name;
+        icon: categories[20].icon;
+        tile-color: categories[20].color;
+        wiggling: root.wiggle-mode;
+        wiggle-time: root.wiggle-time;
+        wiggle-phase: 20;
+        is-dragging: root.dragging-index == 20;
+        clicked => { app-tapped(20); }
+    }
+    if categories.length > 21: AppTile {
+        x: grid-padding + tile-width + grid-spacing;
+        y: grid-top + (tile-height + grid-spacing) * 5;
+        width: tile-width;
+        height: tile-height;
+        name: categories[21].name;
+        icon: categories[21].icon;
+        tile-color: categories[21].color;
+        wiggling: root.wiggle-mode;
+        wiggle-time: root.wiggle-time;
+        wiggle-phase: 21;
+        is-dragging: root.dragging-index == 21;
+        clicked => { app-tapped(21); }
+    }
+    if categories.length > 22: AppTile {
+        x: grid-padding + (tile-width + grid-spacing) * 2;
+        y: grid-top + (tile-height + grid-spacing) * 5;
+        width: tile-width;
+        height: tile-height;
+        name: categories[22].name;
+        icon: categories[22].icon;
+        tile-color: categories[22].color;
+        wiggling: root.wiggle-mode;
+        wiggle-time: root.wiggle-time;
+        wiggle-phase: 22;
+        is-dragging: root.dragging-index == 22;
+        clicked => { app-tapped(22); }
+    }
+    if categories.length > 23: AppTile {
+        x: grid-padding + (tile-width + grid-spacing) * 3;
+        y: grid-top + (tile-height + grid-spacing) * 5;
+        width: tile-width;
+        height: tile-height;
+        name: categories[23].name;
+        icon: categories[23].icon;
+        tile-color: categories[23].color;
+        wiggling: root.wiggle-mode;
+        wiggle-time: root.wiggle-time;
+        wiggle-phase: 23;
+        is-dragging: root.dragging-index == 23;
+        clicked => { app-tapped(23); }
+    }
+
     // New category tile - appears in wiggle mode at the next available position
-    // Only show when less than 16 categories (max grid size) and in wiggle mode
-    if wiggle-mode && categories.length < 16: NewCategoryTile {
+    // Only show when less than 24 categories (max grid size) and in wiggle mode
+    if wiggle-mode && categories.length < 24: NewCategoryTile {
         // Position at index = categories.length (next available slot)
         // Column = index % 4, Row = index / 4
         x: grid-padding + (tile-width + grid-spacing) * mod(categories.length, 4);
