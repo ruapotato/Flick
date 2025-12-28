@@ -437,8 +437,12 @@ Page {
                 // Drag-enabled MouseArea covering the entire grid
                 MouseArea {
                     anchors.fill: parent
+                    property real prevX: 0
+                    property real prevY: 0
 
                     onPressed: {
+                        prevX = mouse.x
+                        prevY = mouse.y
                         var hitIdx = patternGridContainer.hitTest(mouse.x, mouse.y)
                         if (hitIdx >= 0) {
                             patternSetupDialog.addToPattern(hitIdx)
@@ -446,9 +450,27 @@ Page {
                     }
 
                     onPositionChanged: {
-                        var hitIdx = patternGridContainer.hitTest(mouse.x, mouse.y)
-                        if (hitIdx >= 0) {
-                            patternSetupDialog.addToPattern(hitIdx)
+                        // Check line from prev to current for fast swipe support
+                        checkLineForHits(prevX, prevY, mouse.x, mouse.y)
+                        prevX = mouse.x
+                        prevY = mouse.y
+                    }
+
+                    // Sample along line segment to catch fast swipes
+                    function checkLineForHits(x1, y1, x2, y2) {
+                        var dx = x2 - x1
+                        var dy = y2 - y1
+                        var dist = Math.sqrt(dx * dx + dy * dy)
+                        var steps = Math.max(1, Math.ceil(dist / 15))
+
+                        for (var s = 0; s <= steps; s++) {
+                            var t = s / steps
+                            var x = x1 + dx * t
+                            var y = y1 + dy * t
+                            var hitIdx = patternGridContainer.hitTest(x, y)
+                            if (hitIdx >= 0) {
+                                patternSetupDialog.addToPattern(hitIdx)
+                            }
                         }
                     }
                 }

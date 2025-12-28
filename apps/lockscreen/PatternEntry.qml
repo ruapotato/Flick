@@ -2,12 +2,17 @@ import QtQuick 2.15
 
 Item {
     id: patternEntry
-    width: 300
-    height: 300
+    width: 450
+    height: 450
 
     property var selectedNodes: []
     property bool isDrawing: false
     property string errorMessage: ""
+
+    // Grid sizing - larger dots, bigger spacing
+    property real cellSize: 150
+    property real dotSize: 70
+    property real hitRadius: 60  // Generous hit detection
 
     signal patternComplete(var pattern)
     signal cancelled()
@@ -23,19 +28,19 @@ Item {
             property int col: index % 3
             property bool selected: selectedNodes.indexOf(nodeIndex) !== -1
 
-            x: col * 100 + 25
-            y: row * 100 + 25
-            width: 50
-            height: 50
-            radius: 25
+            x: col * cellSize + (cellSize - dotSize) / 2
+            y: row * cellSize + (cellSize - dotSize) / 2
+            width: dotSize
+            height: dotSize
+            radius: dotSize / 2
             color: selected ? "#4a9eff" : "#444455"
             border.color: selected ? "#6ab0ff" : "#555566"
-            border.width: 3
+            border.width: 4
 
             Behavior on color { ColorAnimation { duration: 150 } }
             Behavior on scale { NumberAnimation { duration: 150 } }
 
-            scale: selected ? 1.2 : 1.0
+            scale: selected ? 1.15 : 1.0
         }
     }
 
@@ -48,10 +53,10 @@ Item {
             var ctx = getContext("2d");
             ctx.clearRect(0, 0, width, height);
 
-            if (selectedNodes.length < 2) return;
+            if (selectedNodes.length < 2 && !isDrawing) return;
 
             ctx.strokeStyle = "#4a9eff";
-            ctx.lineWidth = 6;
+            ctx.lineWidth = 8;
             ctx.lineCap = "round";
             ctx.lineJoin = "round";
             ctx.beginPath();
@@ -60,8 +65,8 @@ Item {
                 var node = selectedNodes[i];
                 var row = Math.floor(node / 3);
                 var col = node % 3;
-                var x = col * 100 + 50;
-                var y = row * 100 + 50;
+                var x = col * cellSize + cellSize / 2;
+                var y = row * cellSize + cellSize / 2;
 
                 if (i === 0) {
                     ctx.moveTo(x, y);
@@ -85,6 +90,8 @@ Item {
 
         property real lastX: 0
         property real lastY: 0
+        property real prevX: 0
+        property real prevY: 0
 
         onPressed: {
             isDrawing = true;
@@ -92,14 +99,19 @@ Item {
             errorMessage = "";
             lastX = mouse.x;
             lastY = mouse.y;
+            prevX = mouse.x;
+            prevY = mouse.y;
             checkNodeHit(mouse.x, mouse.y);
         }
 
         onPositionChanged: {
             if (!isDrawing) return;
+            prevX = lastX;
+            prevY = lastY;
             lastX = mouse.x;
             lastY = mouse.y;
-            checkNodeHit(mouse.x, mouse.y);
+            // Check line from prev to current position for intersections
+            checkLineForNodes(prevX, prevY, lastX, lastY);
             lineCanvas.requestPaint();
         }
 
@@ -117,20 +129,36 @@ Item {
             }
         }
 
+        // Check if a point is near a node
         function checkNodeHit(x, y) {
             for (var i = 0; i < 9; i++) {
                 var row = Math.floor(i / 3);
                 var col = i % 3;
-                var centerX = col * 100 + 50;
-                var centerY = row * 100 + 50;
+                var centerX = col * cellSize + cellSize / 2;
+                var centerY = row * cellSize + cellSize / 2;
                 var dist = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
 
-                if (dist < 50 && selectedNodes.indexOf(i) === -1) {
+                if (dist < hitRadius && selectedNodes.indexOf(i) === -1) {
                     selectedNodes.push(i);
                     selectedNodes = selectedNodes.slice(); // Trigger binding update
                     lineCanvas.requestPaint();
-                    break;
                 }
+            }
+        }
+
+        // Check a line segment for node intersections (fixes fast swipe skipping)
+        function checkLineForNodes(x1, y1, x2, y2) {
+            // Sample points along the line to catch fast swipes
+            var dx = x2 - x1;
+            var dy = y2 - y1;
+            var dist = Math.sqrt(dx * dx + dy * dy);
+            var steps = Math.max(1, Math.ceil(dist / 20)); // Check every 20 pixels
+
+            for (var s = 0; s <= steps; s++) {
+                var t = s / steps;
+                var x = x1 + dx * t;
+                var y = y1 + dy * t;
+                checkNodeHit(x, y);
             }
         }
     }
