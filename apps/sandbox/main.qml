@@ -69,7 +69,7 @@ Window {
         }
         gridModel.clear()
         for (var i = 0; i < size; i++) {
-            gridModel.append({ cellType: tEmpty, cellLife: 0 })
+            gridModel.append({ cellColor: "transparent" })
         }
     }
 
@@ -286,7 +286,7 @@ Window {
 
     function syncModel() {
         for (var i = 0; i < grid.length; i++) {
-            gridModel.setProperty(i, "cellType", grid[i])
+            gridModel.setProperty(i, "cellColor", getColor(grid[i]))
         }
     }
 
@@ -326,7 +326,7 @@ Window {
             Rectangle {
                 width: cellSize
                 height: cellSize
-                color: getColor(model.cellType)
+                color: model.cellColor
             }
         }
 
