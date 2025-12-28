@@ -12,9 +12,9 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 2.0
-    property int gridWidth: 90    // Balanced for performance
-    property int gridHeight: 160
-    property int cellSize: 12
+    property int gridWidth: 54    // Optimized for mobile
+    property int gridHeight: 96
+    property int cellSize: 20
 
     // Particle types
     readonly property int tEmpty: 0
@@ -46,6 +46,7 @@ Window {
     property var life: []
     property var updated: []  // Track if cell was updated this frame
     property int frameCount: 0
+    property bool needsRepaint: false
 
     Component.onCompleted: {
         loadConfig()
@@ -96,6 +97,7 @@ Window {
     function setCell(x, y, type, vx, vy, l) {
         if (!inBounds(x, y)) return
         var i = idx(x, y)
+        if (grid[i] !== type) needsRepaint = true
         grid[i] = type
         velX[i] = vx || 0
         velY[i] = vy || 0
@@ -107,6 +109,9 @@ Window {
         if (!inBounds(x1, y1) || !inBounds(x2, y2)) return
         var i1 = idx(x1, y1)
         var i2 = idx(x2, y2)
+        if (grid[i1] === grid[i2]) return  // No point swapping same types
+
+        needsRepaint = true
 
         var tempType = grid[i1]
         var tempVx = velX[i1]
@@ -199,6 +204,7 @@ Window {
 
     function updateParticles() {
         frameCount++
+        needsRepaint = false
 
         // Reset updated flags
         for (var i = 0; i < updated.length; i++) {
@@ -254,7 +260,7 @@ Window {
             }
         }
 
-        canvas.requestPaint()
+        if (needsRepaint) canvas.requestPaint()
     }
 
     function updatePowder(x, y, type, vx, vy) {
@@ -1081,7 +1087,7 @@ Window {
     }
 
     Timer {
-        interval: 33  // ~30 FPS for physics
+        interval: 50  // 20 FPS for physics (balanced)
         running: true
         repeat: true
         onTriggered: updateParticles()
