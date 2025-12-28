@@ -32,12 +32,12 @@ export QT_MESSAGE_PATTERN=""
 # Allow QML to read local files (for config loading)
 export QML_XHR_ALLOW_FILE_READ=1
 # Force software rendering completely
-export QT_QUICK_BACKEND=software
+# export QT_QUICK_BACKEND=software  # Using hardware accel
 export QT_OPENGL=software
 export QMLSCENE_DEVICE=softwarecontext
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
-export LIBGL_ALWAYS_SOFTWARE=1
+# Hardware acceleration enabled
 # Try wayland-egl integration
 export QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=wayland-egl
 # Apply text scale factor (default 2.0x if no config)

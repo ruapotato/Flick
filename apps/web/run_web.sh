@@ -19,8 +19,8 @@ export QTWEBENGINE_DISABLE_SANDBOX=1
 export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu --disable-software-rasterizer --disable-gpu-compositing --enable-features=OverlayScrollbar --force-dark-mode"
 
 # Force software rendering for hwcomposer compatibility
-export LIBGL_ALWAYS_SOFTWARE=1
-export QT_QUICK_BACKEND=software
+# Hardware acceleration enabled
+# export QT_QUICK_BACKEND=software  # Using hardware accel
 export QT_OPENGL=software
 
 # Allow XHR file reads for config loading

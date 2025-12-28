@@ -16,8 +16,8 @@ export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 
 # Force software rendering for hwcomposer compatibility
-export LIBGL_ALWAYS_SOFTWARE=1
-export QT_QUICK_BACKEND=software
+# Hardware acceleration enabled
+# export QT_QUICK_BACKEND=software  # Using hardware accel
 export QT_OPENGL=software
 
 # Kill any existing phone helper daemon

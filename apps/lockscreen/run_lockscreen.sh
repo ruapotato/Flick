@@ -25,12 +25,12 @@ export FLICK_STATE_DIR="$STATE_DIR"
 export QML_XHR_ALLOW_FILE_READ=1
 export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false;qt.accessibility.*=false"
 export QT_MESSAGE_PATTERN=""
-export QT_QUICK_BACKEND=software
+# export QT_QUICK_BACKEND=software  # Using hardware accel
 export QT_OPENGL=software
 export QMLSCENE_DEVICE=softwarecontext
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
-export LIBGL_ALWAYS_SOFTWARE=1
+# Hardware acceleration enabled
 export QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=wayland-egl
 
 # Verification result file

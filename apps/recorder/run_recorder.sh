@@ -20,8 +20,8 @@ log "=== Flick Recorder started ==="
 # Set Wayland environment
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
-export LIBGL_ALWAYS_SOFTWARE=1
-export QT_QUICK_BACKEND=software
+# Hardware acceleration enabled
+# export QT_QUICK_BACKEND=software  # Using hardware accel
 export QT_OPENGL=software
 
 # Clean up any stale files
