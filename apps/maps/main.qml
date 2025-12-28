@@ -412,8 +412,8 @@ Window {
     Plugin {
         id: osmPlugin
         name: "osm"
-        PluginParameter { name: "osm.mapping.custom.host"; value: "https://tile.openstreetmap.org/" }
-        PluginParameter { name: "osm.useragent"; value: "FlickMaps/1.0" }
+        PluginParameter { name: "osm.mapping.highdpi_tiles"; value: "true" }
+        PluginParameter { name: "osm.useragent"; value: "FlickMaps/1.0 (Linux; Droidian)" }
     }
 
     // Main map
@@ -424,14 +424,6 @@ Window {
         center: QtPositioning.coordinate(37.7749, -122.4194) // Default SF
         zoomLevel: 14
         copyrightsVisible: false
-
-        // Dark style tint overlay
-        Rectangle {
-            anchors.fill: parent
-            color: "#000000"
-            opacity: 0.15
-            z: -1
-        }
 
         // GPS marker
         MapQuickItem {
