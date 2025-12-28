@@ -1526,7 +1526,7 @@ impl Shell {
         let columns = 4usize;
 
         // Calculate number of rows based on category count (same as Slint)
-        let num_rows = if num_categories > 12 { 4 } else if num_categories > 8 { 3 } else if num_categories > 4 { 2 } else { 1 };
+        let num_rows = if num_categories > 20 { 6 } else if num_categories > 16 { 5 } else if num_categories > 12 { 4 } else if num_categories > 8 { 3 } else if num_categories > 4 { 2 } else { 1 };
 
         // Grid dimensions (matching Slint calculations)
         let grid_top = status_bar_height + grid_padding;
@@ -1586,7 +1586,7 @@ impl Shell {
         let columns = 4usize;
 
         // Calculate number of rows based on category count (same as Slint)
-        let num_rows = if num_categories > 12 { 4 } else if num_categories > 8 { 3 } else if num_categories > 4 { 2 } else { 1 };
+        let num_rows = if num_categories > 20 { 6 } else if num_categories > 16 { 5 } else if num_categories > 12 { 4 } else if num_categories > 8 { 3 } else if num_categories > 4 { 2 } else { 1 };
 
         // Grid dimensions (matching Slint calculations)
         let grid_top = status_bar_height + grid_padding;
