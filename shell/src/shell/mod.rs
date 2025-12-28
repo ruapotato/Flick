@@ -548,6 +548,8 @@ impl Shell {
                 slint_ui.set_has_wallpaper(false);
                 tracing::info!("Wallpaper cleared");
             }
+            // Force redraw to show the new wallpaper
+            slint_ui.request_redraw();
         }
     }
 
