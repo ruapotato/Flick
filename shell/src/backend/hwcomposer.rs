@@ -4936,36 +4936,114 @@ mod gl {
         SCENE_TEXTURE
     }
 
+    // Static resources for preview capture
+    static mut PREVIEW_FBO: u32 = 0;
+    static mut PREVIEW_TEXTURE: u32 = 0;
+    static mut PREVIEW_TEX_WIDTH: u32 = 0;
+    static mut PREVIEW_TEX_HEIGHT: u32 = 0;
+
     /// Read pixels from an EGL texture for preview capture
+    /// This works by rendering the texture to an intermediate FBO, then reading from that
     /// Returns RGBA pixels if successful, None if readback not supported
     pub unsafe fn read_texture_pixels(texture_id: u32, width: u32, height: u32) -> Option<Vec<u8>> {
-        // Need FBO and ReadPixels support
+        // Need FBO, texture, and shader support
         let gen_fbo = FN_GEN_FRAMEBUFFERS?;
         let bind_fbo = FN_BIND_FRAMEBUFFER?;
         let attach_tex = FN_FRAMEBUFFER_TEXTURE_2D?;
         let check_status = FN_CHECK_FRAMEBUFFER_STATUS?;
         let read_pixels = FN_READ_PIXELS?;
+        let gen_textures = FN_GEN_TEXTURES?;
+        let bind_texture = FN_BIND_TEXTURE?;
+        let tex_image = FN_TEX_IMAGE_2D?;
+        let tex_param = FN_TEX_PARAMETERI?;
+        let viewport = FN_VIEWPORT?;
+        let clear = FN_CLEAR?;
+        let clear_color = FN_CLEAR_COLOR?;
 
-        // Create readback FBO if not exists
-        if READBACK_FBO == 0 {
-            gen_fbo(1, &mut READBACK_FBO);
-            if READBACK_FBO == 0 {
-                return None;
-            }
-        }
-
-        // Bind FBO and attach texture
-        bind_fbo(GL_FRAMEBUFFER, READBACK_FBO);
-        attach_tex(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, TEXTURE_2D, texture_id, 0);
-
-        // Check framebuffer is complete
-        let status = check_status(GL_FRAMEBUFFER);
-        if status != GL_FRAMEBUFFER_COMPLETE {
-            bind_fbo(GL_FRAMEBUFFER, 0);
+        if SHADER_PROGRAM == 0 {
             return None;
         }
 
-        // Read pixels
+        // Create or resize preview FBO and texture if needed
+        if PREVIEW_FBO == 0 || PREVIEW_TEX_WIDTH != width || PREVIEW_TEX_HEIGHT != height {
+            // Delete old resources
+            if PREVIEW_FBO != 0 {
+                if let Some(del_fbo) = FN_DELETE_FRAMEBUFFERS {
+                    del_fbo(1, &PREVIEW_FBO);
+                }
+            }
+            if PREVIEW_TEXTURE != 0 {
+                if let Some(del_tex) = FN_DELETE_TEXTURES {
+                    del_tex(1, &PREVIEW_TEXTURE);
+                }
+            }
+
+            // Create new texture
+            gen_textures(1, &mut PREVIEW_TEXTURE);
+            bind_texture(TEXTURE_2D, PREVIEW_TEXTURE);
+            tex_image(TEXTURE_2D, 0, RGBA as i32, width as i32, height as i32, 0, RGBA, UNSIGNED_BYTE, std::ptr::null());
+            tex_param(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
+            tex_param(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);
+
+            // Create new FBO
+            gen_fbo(1, &mut PREVIEW_FBO);
+            bind_fbo(GL_FRAMEBUFFER, PREVIEW_FBO);
+            attach_tex(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, TEXTURE_2D, PREVIEW_TEXTURE, 0);
+
+            let status = check_status(GL_FRAMEBUFFER);
+            if status != GL_FRAMEBUFFER_COMPLETE {
+                info!("Preview FBO incomplete: status={:#x}", status);
+                bind_fbo(GL_FRAMEBUFFER, 0);
+                return None;
+            }
+
+            PREVIEW_TEX_WIDTH = width;
+            PREVIEW_TEX_HEIGHT = height;
+            info!("Created preview FBO {}x{}", width, height);
+        }
+
+        // Bind our preview FBO
+        bind_fbo(GL_FRAMEBUFFER, PREVIEW_FBO);
+        viewport(0, 0, width as i32, height as i32);
+
+        // Clear to transparent
+        clear_color(0.0, 0.0, 0.0, 0.0);
+        clear(0x00004000); // GL_COLOR_BUFFER_BIT
+
+        // Render the source texture to our FBO using the shader
+        // Set up shader
+        if let Some(use_prog) = FN_USE_PROGRAM { use_prog(SHADER_PROGRAM); }
+        if let Some(active_tex) = FN_ACTIVE_TEXTURE { active_tex(0x84C0); } // GL_TEXTURE0
+        bind_texture(TEXTURE_2D, texture_id);
+        if let Some(uniform) = FN_UNIFORM1I { uniform(UNIFORM_TEXTURE, 0); }
+
+        // Full-screen quad vertices (fills the FBO)
+        let vertices: [f32; 16] = [
+            -1.0, -1.0,    0.0, 1.0,  // bottom-left
+             1.0, -1.0,    1.0, 1.0,  // bottom-right
+            -1.0,  1.0,    0.0, 0.0,  // top-left
+             1.0,  1.0,    1.0, 0.0,  // top-right
+        ];
+
+        if let Some(f) = FN_ENABLE_VERTEX_ATTRIB_ARRAY {
+            f(ATTR_POSITION as u32);
+            f(ATTR_TEXCOORD as u32);
+        }
+
+        if let Some(f) = FN_VERTEX_ATTRIB_POINTER {
+            let stride = 4 * std::mem::size_of::<f32>() as i32;
+            f(ATTR_POSITION as u32, 2, FLOAT, FALSE, stride, vertices.as_ptr() as *const c_void);
+            f(ATTR_TEXCOORD as u32, 2, FLOAT, FALSE, stride,
+              (vertices.as_ptr() as *const f32).add(2) as *const c_void);
+        }
+
+        if let Some(f) = FN_DRAW_ARRAYS {
+            f(TRIANGLE_STRIP, 0, 4);
+        }
+
+        Finish();
+
+        // Now read the pixels from our preview FBO
         let size = (width * height * 4) as usize;
         let mut pixels = vec![0u8; size];
         read_pixels(0, 0, width as i32, height as i32, RGBA, UNSIGNED_BYTE, pixels.as_mut_ptr() as *mut c_void);
