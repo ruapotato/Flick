@@ -347,7 +347,6 @@ Window {
 
         property variant src: ShaderEffectSource {
             sourceItem: dataCanvas
-            filtering: ShaderEffectSource.Nearest
             smooth: false
             live: true
         }
