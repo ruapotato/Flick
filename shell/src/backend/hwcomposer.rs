@@ -1191,21 +1191,8 @@ fn handle_input_event(
                                                             buffer.height,
                                                         );
                                                         Some(slint::Image::from_rgba8(pixel_buffer))
-                                                    } else if let Some(ref egl_tex) = bd.egl_texture {
-                                                        // Try reading from EGL texture (hardware rendered apps)
-                                                        unsafe {
-                                                            if let Some(pixels) = gl::read_texture_pixels(egl_tex.texture_id, egl_tex.width, egl_tex.height) {
-                                                                let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
-                                                                    &pixels,
-                                                                    egl_tex.width,
-                                                                    egl_tex.height,
-                                                                );
-                                                                Some(slint::Image::from_rgba8(pixel_buffer))
-                                                            } else {
-                                                                None
-                                                            }
-                                                        }
                                                     } else {
+                                                        // EGL texture readback disabled - corrupts GL state
                                                         None
                                                     }
                                                 } else {
@@ -2749,21 +2736,8 @@ fn render_frame(
                                                             buffer.height,
                                                         );
                                                         Some(slint::Image::from_rgba8(pixel_buffer))
-                                                    } else if let Some(ref egl_tex) = bd.egl_texture {
-                                                        // Try reading from EGL texture (hardware rendered apps)
-                                                        unsafe {
-                                                            if let Some(pixels) = gl::read_texture_pixels(egl_tex.texture_id, egl_tex.width, egl_tex.height) {
-                                                                let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
-                                                                    &pixels,
-                                                                    egl_tex.width,
-                                                                    egl_tex.height,
-                                                                );
-                                                                Some(slint::Image::from_rgba8(pixel_buffer))
-                                                            } else {
-                                                                None
-                                                            }
-                                                        }
                                                     } else {
+                                                        // EGL texture readback disabled - corrupts GL state
                                                         None
                                                     }
                                                 } else {
@@ -2930,21 +2904,8 @@ fn render_frame(
                                                 buffer.height,
                                             );
                                             Some(slint::Image::from_rgba8(pixel_buffer))
-                                        } else if let Some(ref egl_tex) = bd.egl_texture {
-                                            // Try reading from EGL texture (hardware rendered apps)
-                                            unsafe {
-                                                if let Some(pixels) = gl::read_texture_pixels(egl_tex.texture_id, egl_tex.width, egl_tex.height) {
-                                                    let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
-                                                        &pixels,
-                                                        egl_tex.width,
-                                                        egl_tex.height,
-                                                    );
-                                                    Some(slint::Image::from_rgba8(pixel_buffer))
-                                                } else {
-                                                    None
-                                                }
-                                            }
                                         } else {
+                                            // EGL texture readback disabled - corrupts GL state
                                             None
                                         }
                                     } else {
