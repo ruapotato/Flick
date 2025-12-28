@@ -283,12 +283,21 @@ stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" |
         # Read existing values
         local scale="${new_scale:-2.0}"
         local timeout="${new_timeout:-30}"
-        local wallpaper="${new_wallpaper:-}"
+        local wallpaper=""
+
+        # Handle wallpaper: "CLEAR" means explicitly remove, empty means keep existing
+        if [ "$new_wallpaper" = "CLEAR" ]; then
+            wallpaper=""  # Explicitly clear
+        elif [ -n "$new_wallpaper" ]; then
+            wallpaper="$new_wallpaper"  # Set new wallpaper
+        elif [ -f "$DISPLAY_CONFIG" ]; then
+            # Keep existing wallpaper
+            wallpaper=$(cat "$DISPLAY_CONFIG" | grep -o '"wallpaper"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*: *"//' | sed 's/"$//')
+        fi
 
         if [ -f "$DISPLAY_CONFIG" ]; then
             [ -z "$new_scale" ] && scale=$(cat "$DISPLAY_CONFIG" | grep -o '"text_scale"[[:space:]]*:[[:space:]]*[0-9.]*' | grep -o '[0-9.]*$')
             [ -z "$new_timeout" ] && timeout=$(cat "$DISPLAY_CONFIG" | grep -o '"screen_timeout"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
-            [ -z "$new_wallpaper" ] && wallpaper=$(cat "$DISPLAY_CONFIG" | grep -o '"wallpaper"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*: *"//' | sed 's/"$//')
         fi
 
         # Set defaults if empty

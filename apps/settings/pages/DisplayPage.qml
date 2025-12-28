@@ -91,7 +91,9 @@ Page {
     }
 
     function saveWallpaperConfig() {
-        console.warn("WALLPAPER_SAVE:" + wallpaperPath)
+        // Use "CLEAR" as special marker to explicitly clear wallpaper
+        var pathToSave = wallpaperPath === "" ? "CLEAR" : wallpaperPath
+        console.warn("WALLPAPER_SAVE:" + pathToSave)
     }
 
     function openImagePicker() {
