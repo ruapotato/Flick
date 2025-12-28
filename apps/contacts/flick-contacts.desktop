@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Flick Contacts
+Comment=Contact manager for Flick
+Exec=sh -c "$HOME/Flick/apps/contacts/run_contacts.sh"
+Icon=contact-new
+Type=Application
+Categories=Office;ContactManagement;

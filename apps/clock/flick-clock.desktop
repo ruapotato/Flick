@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Flick Clock
+Comment=Clock, alarms, timer, and stopwatch
+Exec=sh -c "$HOME/Flick/apps/clock/run_clock.sh"
+Icon=clock
+Type=Application
+Categories=Utility;Clock;

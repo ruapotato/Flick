@@ -83,6 +83,11 @@ pub enum AppCategory {
     Calendar,
     Notes,
     Recorder,
+    Contacts,
+    Clock,
+    Weather,
+    Podcast,
+    Maps,
     Settings,
 }
 
@@ -92,15 +97,21 @@ impl AppCategory {
         vec![
             Self::Phone,
             Self::Messages,
+            Self::Contacts,
             Self::Web,
             Self::Email,
             Self::Camera,
             Self::Photos,
+            Self::Video,
             Self::Music,
             Self::Audiobooks,
-            Self::Recorder,  // Next to audio apps
+            Self::Podcast,
+            Self::Recorder,
             Self::Files,
             Self::Calendar,
+            Self::Clock,
+            Self::Weather,
+            Self::Maps,
             Self::Notes,
             Self::Calculator,
             Self::Terminal,
@@ -126,6 +137,11 @@ impl AppCategory {
             Self::Calendar => "Calendar",
             Self::Notes => "Notes",
             Self::Recorder => "Recorder",
+            Self::Contacts => "Contacts",
+            Self::Clock => "Clock",
+            Self::Weather => "Weather",
+            Self::Podcast => "Podcast",
+            Self::Maps => "Maps",
             Self::Settings => "Settings",
         }
     }
@@ -149,6 +165,11 @@ impl AppCategory {
             Self::Calendar => (vec!["Calendar"], vec!["ProjectManagement"]),
             Self::Notes => (vec!["TextEditor"], vec!["WordProcessor"]),
             Self::Recorder => (vec!["Recorder"], vec![]),  // No fallback categories - use Flick recorder
+            Self::Contacts => (vec!["ContactManagement"], vec!["Office"]),
+            Self::Clock => (vec!["Clock"], vec!["Utility"]),
+            Self::Weather => (vec!["Weather"], vec!["Network"]),
+            Self::Podcast => (vec!["Podcast"], vec!["Audio", "AudioVideo"]),
+            Self::Maps => (vec!["Maps"], vec!["Navigation", "Network"]),
             Self::Settings => (vec!["Settings", "DesktopSettings"], vec![]),
         }
     }
@@ -177,6 +198,11 @@ impl AppCategory {
             Self::Calendar => [0.2, 0.6, 0.9, 1.0],  // Light Blue
             Self::Notes => [0.9, 0.9, 0.3, 1.0],     // Yellow
             Self::Recorder => [0.9, 0.27, 0.38, 1.0], // Accent red (matches Flick theme)
+            Self::Contacts => [0.3, 0.6, 0.9, 1.0],  // Light Blue
+            Self::Clock => [0.4, 0.4, 0.5, 1.0],     // Gray
+            Self::Weather => [0.3, 0.7, 0.9, 1.0],   // Sky Blue
+            Self::Podcast => [0.7, 0.3, 0.8, 1.0],   // Purple
+            Self::Maps => [0.2, 0.7, 0.5, 1.0],      // Teal
             Self::Settings => [0.5, 0.5, 0.6, 1.0],  // Gray-Blue
         }
     }
@@ -322,12 +348,18 @@ impl Default for AppConfig {
         selections.insert(AppCategory::Photos, r#"sh -c "$HOME/Flick/apps/photos/run_photos.sh""#.to_string());
         selections.insert(AppCategory::Music, r#"sh -c "$HOME/Flick/apps/music/run_music.sh""#.to_string());
         selections.insert(AppCategory::Audiobooks, r#"sh -c "$HOME/Flick/apps/audiobooks/run_audiobooks.sh""#.to_string());
+        selections.insert(AppCategory::Video, r#"sh -c "$HOME/Flick/apps/video/run_video.sh""#.to_string());
         selections.insert(AppCategory::Files, r#"sh -c "$HOME/Flick/apps/files/run_files.sh""#.to_string());
         selections.insert(AppCategory::Calendar, r#"sh -c "$HOME/Flick/apps/calendar/run_calendar.sh""#.to_string());
         selections.insert(AppCategory::Notes, r#"sh -c "$HOME/Flick/apps/notes/run_notes.sh""#.to_string());
         selections.insert(AppCategory::Calculator, r#"sh -c "$HOME/Flick/apps/calculator/run_calculator.sh""#.to_string());
         selections.insert(AppCategory::Recorder, r#"sh -c "$HOME/Flick/apps/recorder/run_recorder.sh""#.to_string());
         selections.insert(AppCategory::Terminal, r#"sh -c "$HOME/Flick/apps/terminal/run_terminal.sh""#.to_string());
+        selections.insert(AppCategory::Contacts, r#"sh -c "$HOME/Flick/apps/contacts/run_contacts.sh""#.to_string());
+        selections.insert(AppCategory::Clock, r#"sh -c "$HOME/Flick/apps/clock/run_clock.sh""#.to_string());
+        selections.insert(AppCategory::Weather, r#"sh -c "$HOME/Flick/apps/weather/run_weather.sh""#.to_string());
+        selections.insert(AppCategory::Podcast, r#"sh -c "$HOME/Flick/apps/podcast/run_podcast.sh""#.to_string());
+        selections.insert(AppCategory::Maps, r#"sh -c "$HOME/Flick/apps/maps/run_maps.sh""#.to_string());
 
         Self {
             selections,

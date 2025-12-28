@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Flick Podcast
+Comment=Subscribe and listen to podcasts
+Exec=sh -c "$HOME/Flick/apps/podcast/run_podcast.sh"
+Icon=audio-x-generic
+Type=Application
+Categories=AudioVideo;Audio;

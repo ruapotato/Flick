@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Flick Weather
+Comment=Weather forecast
+Exec=sh -c "$HOME/Flick/apps/weather/run_weather.sh"
+Icon=weather-clear
+Type=Application
+Categories=Utility;

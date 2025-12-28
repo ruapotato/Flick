@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Flick Video
+Comment=Video player for Flick
+Exec=sh -c "$HOME/Flick/apps/video/run_video.sh"
+Icon=video-x-generic
+Type=Application
+Categories=Video;AudioVideo;Player;

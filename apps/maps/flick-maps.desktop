@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Flick Maps
+Comment=Maps and navigation
+Exec=sh -c "$HOME/Flick/apps/maps/run_maps.sh"
+Icon=maps
+Type=Application
+Categories=Utility;Maps;
