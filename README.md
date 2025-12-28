@@ -4,16 +4,16 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 
 **Why Flick?** Phosh (GNOME/GTK) and Plasma Mobile (KDE/Qt) are desktop environments squeezed onto phones. Flick is built from the ground up for mobile - gestures are the primary input, not an afterthought. Rust + Smithay + Qt/QML means it's lean, fast, and doesn't carry decades of desktop baggage.
 
-**Target devices:** PinePhone, PinePhone Pro, Librem 5, FuriPhone FLXS1/FLXS1s, and any Linux phone running postmarketOS, Mobian, or Droidian.
+**Target devices:** Android phones running Droidian (Pixel 3a, OnePlus, etc.). Early prototype support for native Linux phones (PinePhone, Librem 5) via DRM/KMS.
 
 ## Device Compatibility
 
 | Device Type | Status | Notes |
 |-------------|--------|-------|
-| **Native Linux** (PinePhone, Librem 5) | ✅ Works | Standard DRM/KMS, full support |
-| **PostmarketOS** (mainline kernel) | ✅ Works | Uses freedreno/panfrost DRM drivers |
-| **Mobian** | ✅ Works | Standard Linux graphics stack |
-| **Droidian** (Android phones) | ✅ Works | Shell and native Wayland apps working - see below |
+| **Droidian** (Android phones) | ✅ Primary Target | Full HWComposer support, daily driver ready |
+| **Native Linux** (PinePhone, Librem 5) | ⚠️ Early Prototype | Standard DRM/KMS, not actively developed |
+| **PostmarketOS** (mainline kernel) | ⚠️ Early Prototype | Uses freedreno/panfrost DRM drivers |
+| **Mobian** | ⚠️ Early Prototype | Standard Linux graphics stack |
 
 ### Droidian / HWComposer Support
 
