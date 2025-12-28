@@ -1,6 +1,7 @@
 #!/bin/bash
 # Flick Files - File browser for Flick shell
 # Reads text_scale from Flick settings
+# Supports picker mode: --pick [--filter=images] [--start-dir=/path] [--result-file=/tmp/result]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Support running from any user - default to droidian
@@ -10,6 +11,31 @@ LOG_FILE="${STATE_DIR}/files.log"
 mkdir -p "$STATE_DIR"
 
 echo "=== Flick Files started at $(date) ===" >> "$LOG_FILE"
+
+# Parse arguments
+PICKER_MODE=""
+FILTER_TYPE=""
+START_DIR=""
+RESULT_FILE=""
+
+for arg in "$@"; do
+    case $arg in
+        --pick)
+            PICKER_MODE="true"
+            ;;
+        --filter=*)
+            FILTER_TYPE="${arg#*=}"
+            ;;
+        --start-dir=*)
+            START_DIR="${arg#*=}"
+            ;;
+        --result-file=*)
+            RESULT_FILE="${arg#*=}"
+            ;;
+    esac
+done
+
+echo "Picker mode: $PICKER_MODE, Filter: $FILTER_TYPE, Start: $START_DIR, Result: $RESULT_FILE" >> "$LOG_FILE"
 
 # Set Wayland environment
 export QT_QPA_PLATFORM=wayland
@@ -23,10 +49,25 @@ export QT_OPENGL=software
 # Allow QML to read local files
 export QML_XHR_ALLOW_FILE_READ=1
 
+# Pass picker options as environment variables for QML
+export FLICK_PICKER_MODE="$PICKER_MODE"
+export FLICK_PICKER_FILTER="$FILTER_TYPE"
+export FLICK_PICKER_START_DIR="$START_DIR"
+export FLICK_PICKER_RESULT_FILE="$RESULT_FILE"
+
 # Run qmlscene and capture output for file commands
 stdbuf -oL -eL qmlscene "$SCRIPT_DIR/main.qml" 2>&1 | tee -a "$LOG_FILE" | while IFS= read -r line; do
+    # Check for picker result
+    if [[ "$line" == *"PICKER_RESULT:"* ]]; then
+        PICKED_PATH="${line#*PICKER_RESULT:}"
+        echo "Picker result: $PICKED_PATH" >> "$LOG_FILE"
+        if [ -n "$RESULT_FILE" ]; then
+            echo "$PICKED_PATH" > "$RESULT_FILE"
+            echo "Wrote result to $RESULT_FILE" >> "$LOG_FILE"
+        fi
+
     # Check for file open commands
-    if [[ "$line" == *"FILE_OPEN:"* ]]; then
+    elif [[ "$line" == *"FILE_OPEN:"* ]]; then
         FILE_PATH="${line#*FILE_OPEN:}"
         echo "Opening file: $FILE_PATH" >> "$LOG_FILE"
         xdg-open "$FILE_PATH" >> "$LOG_FILE" 2>&1 &

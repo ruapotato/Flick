@@ -1,7 +1,6 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-import Qt.labs.folderlistmodel 2.15
 
 Page {
     id: displayPage
@@ -14,8 +13,8 @@ Page {
     property real textScale: 2.0  // Text scale factor (0.5 to 3.0, default 2.0)
     property string wallpaperPath: ""  // Path to wallpaper image
     property string scaleConfigPath: "/home/droidian/.local/state/flick/display_config.json"
-    property bool showImagePicker: false
-    property string pickerCurrentPath: "/home/droidian/Pictures"
+    property string pickerResultFile: "/tmp/flick_wallpaper_pick.txt"
+    property bool waitingForPicker: false
 
     Component.onCompleted: {
         loadConfig()
@@ -95,41 +94,39 @@ Page {
         console.warn("WALLPAPER_SAVE:" + wallpaperPath)
     }
 
-    function isImageFile(fileName) {
-        var lower = fileName.toLowerCase()
-        return lower.endsWith(".png") || lower.endsWith(".jpg") ||
-               lower.endsWith(".jpeg") || lower.endsWith(".webp") ||
-               lower.endsWith(".bmp") || lower.endsWith(".gif")
-    }
-
     function openImagePicker() {
-        pickerCurrentPath = "/home/droidian/Pictures"
-        showImagePicker = true
+        // Clear any previous result file
+        console.warn("PICKER_CLEAR:" + pickerResultFile)
+        waitingForPicker = true
+        // Launch file app in picker mode
+        console.warn("PICKER_LAUNCH:images:/home/droidian/Pictures:" + pickerResultFile)
+        // Start polling for result
+        pickerPollTimer.start()
     }
 
-    function selectImage(path) {
-        wallpaperPath = path
-        saveWallpaperConfig()
-        showImagePicker = false
+    function checkPickerResult() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + pickerResultFile, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 && xhr.responseText.trim().length > 0) {
+                var path = xhr.responseText.trim()
+                console.log("Picker returned: " + path)
+                wallpaperPath = path
+                saveWallpaperConfig()
+                waitingForPicker = false
+                pickerPollTimer.stop()
+            }
+        } catch (e) {
+            // File doesn't exist yet, keep polling
+        }
     }
 
-    function pickerGoUp() {
-        if (pickerCurrentPath === "/") return
-        var parts = pickerCurrentPath.split("/")
-        parts.pop()
-        var newPath = parts.join("/")
-        if (newPath === "") newPath = "/"
-        pickerCurrentPath = newPath
-    }
-
-    // Folder model for image picker
-    FolderListModel {
-        id: pickerFolderModel
-        folder: "file://" + pickerCurrentPath
-        showDirs: true
-        showDotAndDotDot: false
-        showHidden: false
-        sortField: FolderListModel.Name
+    Timer {
+        id: pickerPollTimer
+        interval: 500
+        repeat: true
+        onTriggered: checkPickerResult()
     }
 
     background: Rectangle {
@@ -776,217 +773,5 @@ Page {
         height: 4
         radius: 2
         color: "#333344"
-    }
-
-    // Image picker overlay
-    Rectangle {
-        id: imagePickerOverlay
-        anchors.fill: parent
-        color: "#0a0a0f"
-        visible: showImagePicker
-        z: 100
-
-        // Header
-        Rectangle {
-            id: pickerHeader
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: 80
-            color: "#1a1a2e"
-
-            Text {
-                anchors.left: parent.left
-                anchors.leftMargin: 20
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Select Image"
-                font.pixelSize: 24
-                font.weight: Font.Medium
-                color: "#ffffff"
-            }
-
-            // Close button
-            Rectangle {
-                anchors.right: parent.right
-                anchors.rightMargin: 16
-                anchors.verticalCenter: parent.verticalCenter
-                width: 48
-                height: 48
-                radius: 24
-                color: closeMouse.pressed ? "#333344" : "transparent"
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "✕"
-                    font.pixelSize: 24
-                    color: "#888899"
-                }
-
-                MouseArea {
-                    id: closeMouse
-                    anchors.fill: parent
-                    onClicked: showImagePicker = false
-                }
-            }
-        }
-
-        // Current path
-        Rectangle {
-            id: pathBar
-            anchors.top: pickerHeader.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: 50
-            color: "#14141e"
-
-            Row {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 12
-
-                // Up button
-                Rectangle {
-                    width: 40
-                    height: 40
-                    anchors.verticalCenter: parent.verticalCenter
-                    radius: 8
-                    color: upMouse.pressed ? "#333344" : "#1a1a2e"
-                    visible: pickerCurrentPath !== "/"
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "↑"
-                        font.pixelSize: 20
-                        color: "#ffffff"
-                    }
-
-                    MouseArea {
-                        id: upMouse
-                        anchors.fill: parent
-                        onClicked: pickerGoUp()
-                    }
-                }
-
-                Text {
-                    width: parent.width - 60
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: pickerCurrentPath
-                    font.pixelSize: 13
-                    color: "#888899"
-                    elide: Text.ElideMiddle
-                }
-            }
-        }
-
-        // Image grid
-        GridView {
-            id: imageGrid
-            anchors.top: pathBar.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.margins: 8
-            anchors.bottomMargin: 40
-            cellWidth: (width - 16) / 3
-            cellHeight: cellWidth
-            clip: true
-
-            model: pickerFolderModel
-
-            delegate: Item {
-                width: imageGrid.cellWidth
-                height: imageGrid.cellHeight
-                visible: model.fileIsDir || isImageFile(model.fileName)
-
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: 4
-                    radius: 12
-                    color: itemMouse.pressed ? "#333344" : "#1a1a2e"
-                    clip: true
-
-                    // Folder icon or image preview
-                    Image {
-                        anchors.fill: parent
-                        anchors.margins: model.fileIsDir ? 30 : 0
-                        source: model.fileIsDir ? "" : "file://" + model.filePath
-                        fillMode: Image.PreserveAspectCrop
-                        visible: !model.fileIsDir && isImageFile(model.fileName)
-                        asynchronous: true
-
-                        // Loading placeholder
-                        Rectangle {
-                            anchors.fill: parent
-                            color: "#1a1a2e"
-                            visible: parent.status === Image.Loading
-                        }
-                    }
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: model.fileIsDir ? "📁" : ""
-                        font.pixelSize: 48
-                        visible: model.fileIsDir
-                    }
-
-                    // File name label
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        height: 32
-                        color: "#cc000000"
-                        visible: !model.fileIsDir
-
-                        Text {
-                            anchors.fill: parent
-                            anchors.margins: 4
-                            text: model.fileName
-                            font.pixelSize: 10
-                            color: "#ffffff"
-                            elide: Text.ElideMiddle
-                            verticalAlignment: Text.AlignVCenter
-                            horizontalAlignment: Text.AlignHCenter
-                        }
-                    }
-
-                    // Folder name
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        anchors.bottom: parent.bottom
-                        anchors.bottomMargin: 8
-                        width: parent.width - 8
-                        text: model.fileIsDir ? model.fileName : ""
-                        font.pixelSize: 11
-                        color: "#aaaacc"
-                        elide: Text.ElideMiddle
-                        horizontalAlignment: Text.AlignHCenter
-                        visible: model.fileIsDir
-                    }
-
-                    MouseArea {
-                        id: itemMouse
-                        anchors.fill: parent
-                        onClicked: {
-                            if (model.fileIsDir) {
-                                pickerCurrentPath = model.filePath
-                            } else if (isImageFile(model.fileName)) {
-                                selectImage(model.filePath)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Empty state
-        Text {
-            anchors.centerIn: imageGrid
-            visible: pickerFolderModel.count === 0
-            text: "No images found"
-            color: "#666677"
-            font.pixelSize: 16
-        }
     }
 }

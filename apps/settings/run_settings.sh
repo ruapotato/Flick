@@ -322,6 +322,22 @@ stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" |
         echo "Detected wallpaper change: $WALLPAPER" >> "$LOG_FILE"
         save_display_config "" "" "$WALLPAPER"
     fi
+    # Check for picker clear command
+    if [[ "$line" == *"PICKER_CLEAR:"* ]]; then
+        RESULT_FILE=$(echo "$line" | sed 's/.*PICKER_CLEAR://')
+        echo "Clearing picker result file: $RESULT_FILE" >> "$LOG_FILE"
+        rm -f "$RESULT_FILE"
+    fi
+    # Check for picker launch command - format: PICKER_LAUNCH:filter:startdir:resultfile
+    if [[ "$line" == *"PICKER_LAUNCH:"* ]]; then
+        PICKER_ARGS=$(echo "$line" | sed 's/.*PICKER_LAUNCH://')
+        FILTER=$(echo "$PICKER_ARGS" | cut -d: -f1)
+        START_DIR=$(echo "$PICKER_ARGS" | cut -d: -f2)
+        RESULT_FILE=$(echo "$PICKER_ARGS" | cut -d: -f3)
+        echo "Launching file picker: filter=$FILTER, start=$START_DIR, result=$RESULT_FILE" >> "$LOG_FILE"
+        # Launch the file app in picker mode
+        "$SCRIPT_DIR/../files/run_files.sh" --pick --filter="$FILTER" --start-dir="$START_DIR" --result-file="$RESULT_FILE" &
+    fi
     # Check for WiFi commands
     if [[ "$line" == *"WIFI_CMD:"* ]]; then
         WIFI_CMD=$(echo "$line" | sed 's/.*WIFI_CMD://')

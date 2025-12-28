@@ -8,13 +8,18 @@ Window {
     visible: true
     width: 1080
     height: 2400
-    title: "Flick Files"
+    title: pickerMode ? "Select " + (pickerFilter === "images" ? "Image" : "File") : "Flick Files"
     color: "#0a0a0f"
 
     // Use shell text scale
     property real textScale: 1.0
     property string currentPath: "/home/droidian"
     property color accentColor: "#e94560"
+
+    // Picker mode properties (set via environment variables)
+    property bool pickerMode: false
+    property string pickerFilter: ""  // "images", "audio", "video", or empty for all
+    property string pickerResultFile: ""
 
     // Context menu state
     property var selectedFile: null
@@ -23,6 +28,62 @@ Window {
 
     Component.onCompleted: {
         loadConfig()
+        loadPickerConfig()
+    }
+
+    function loadPickerConfig() {
+        // Read picker settings from environment (set by shell script)
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///proc/self/environ", false)
+        try {
+            xhr.send()
+            var env = xhr.responseText
+            // Parse null-separated environment variables
+            var vars = env.split('\0')
+            for (var i = 0; i < vars.length; i++) {
+                var v = vars[i]
+                if (v.indexOf("FLICK_PICKER_MODE=") === 0) {
+                    pickerMode = (v.split("=")[1] === "true")
+                } else if (v.indexOf("FLICK_PICKER_FILTER=") === 0) {
+                    pickerFilter = v.split("=")[1]
+                } else if (v.indexOf("FLICK_PICKER_START_DIR=") === 0) {
+                    var startDir = v.substring(v.indexOf("=") + 1)
+                    if (startDir && startDir.length > 0) {
+                        currentPath = startDir
+                        folderModel.folder = "file://" + startDir
+                    }
+                } else if (v.indexOf("FLICK_PICKER_RESULT_FILE=") === 0) {
+                    pickerResultFile = v.substring(v.indexOf("=") + 1)
+                }
+            }
+            console.log("Picker mode:", pickerMode, "Filter:", pickerFilter, "Start:", currentPath)
+        } catch (e) {
+            console.log("Could not read picker config:", e)
+        }
+    }
+
+    function matchesFilter(fileName) {
+        if (!pickerMode || pickerFilter === "") return true
+        var lower = fileName.toLowerCase()
+        if (pickerFilter === "images") {
+            return lower.endsWith(".png") || lower.endsWith(".jpg") ||
+                   lower.endsWith(".jpeg") || lower.endsWith(".webp") ||
+                   lower.endsWith(".bmp") || lower.endsWith(".gif")
+        } else if (pickerFilter === "audio") {
+            return lower.endsWith(".mp3") || lower.endsWith(".wav") ||
+                   lower.endsWith(".ogg") || lower.endsWith(".flac") ||
+                   lower.endsWith(".m4a") || lower.endsWith(".aac")
+        } else if (pickerFilter === "video") {
+            return lower.endsWith(".mp4") || lower.endsWith(".mkv") ||
+                   lower.endsWith(".webm") || lower.endsWith(".avi") ||
+                   lower.endsWith(".mov")
+        }
+        return true
+    }
+
+    function pickFile(filePath) {
+        console.log("PICKER_RESULT:" + filePath)
+        Qt.quit()
     }
 
     function loadConfig() {
@@ -188,7 +249,8 @@ Window {
         model: folderModel
         delegate: Rectangle {
             width: listView.width
-            height: 70 * textScale
+            height: (model.fileIsDir || matchesFilter(model.fileName)) ? 70 * textScale : 0
+            visible: model.fileIsDir || matchesFilter(model.fileName)
             color: mouseArea.pressed ? "#1a1a2e" : "transparent"
 
             Rectangle {
@@ -205,22 +267,36 @@ Window {
                 anchors.rightMargin: 16 * textScale
                 spacing: 12 * textScale
 
-                // Icon
+                // Icon or thumbnail
                 Rectangle {
-                    width: 40 * textScale
-                    height: parent.height
-                    color: "transparent"
+                    width: 50 * textScale
+                    height: 50 * textScale
+                    anchors.verticalCenter: parent.verticalCenter
+                    radius: 8
+                    color: "#1a1a2e"
+                    clip: true
+
+                    // Image thumbnail for image files
+                    Image {
+                        anchors.fill: parent
+                        source: (!model.fileIsDir && pickerFilter === "images" && matchesFilter(model.fileName))
+                                ? "file://" + model.filePath : ""
+                        fillMode: Image.PreserveAspectCrop
+                        visible: !model.fileIsDir && pickerFilter === "images" && matchesFilter(model.fileName)
+                        asynchronous: true
+                    }
 
                     Text {
                         anchors.centerIn: parent
-                        text: model.fileIsDir ? "\u{1F4C1}" : "\u{1F4C4}"
+                        text: model.fileIsDir ? "📁" : (pickerFilter === "images" ? "" : "📄")
                         font.pixelSize: 24 * textScale
+                        visible: model.fileIsDir || pickerFilter !== "images"
                     }
                 }
 
                 // Name and details
                 Column {
-                    width: parent.width - 52 * textScale
+                    width: parent.width - 62 * textScale
                     height: parent.height
                     spacing: 4 * textScale
                     anchors.verticalCenter: parent.verticalCenter
@@ -228,7 +304,7 @@ Window {
                     Text {
                         width: parent.width
                         text: model.fileName
-                        color: "#ffffff"
+                        color: matchesFilter(model.fileName) || model.fileIsDir ? "#ffffff" : "#666677"
                         font.pixelSize: 14 * textScale
                         font.weight: Font.Medium
                         elide: Text.ElideRight
@@ -250,6 +326,23 @@ Window {
                         }
                     }
                 }
+
+                // Select indicator in picker mode
+                Rectangle {
+                    width: 36 * textScale
+                    height: 36 * textScale
+                    anchors.verticalCenter: parent.verticalCenter
+                    radius: 18 * textScale
+                    color: accentColor
+                    visible: pickerMode && !model.fileIsDir && matchesFilter(model.fileName)
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "✓"
+                        font.pixelSize: 18 * textScale
+                        color: "#ffffff"
+                    }
+                }
             }
 
             MouseArea {
@@ -260,13 +353,20 @@ Window {
                 onClicked: {
                     if (model.fileIsDir) {
                         navigateTo(model.filePath)
+                    } else if (pickerMode) {
+                        // In picker mode, select the file and return
+                        if (matchesFilter(model.fileName)) {
+                            pickFile(model.filePath)
+                        }
                     } else {
                         openFile(model.filePath)
                     }
                 }
 
                 onPressAndHold: {
-                    showContextMenu(model.filePath, model.fileName, model.fileIsDir)
+                    if (!pickerMode) {
+                        showContextMenu(model.filePath, model.fileName, model.fileIsDir)
+                    }
                 }
             }
         }
