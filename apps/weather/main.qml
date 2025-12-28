@@ -462,7 +462,7 @@ Window {
 
             Rectangle {
                 width: parent.width
-                height: 140
+                height: 80 + 60 * textScale  // Scale with text
                 radius: 16
                 color: "#15151f"
                 visible: hasLocation
@@ -471,14 +471,14 @@ Window {
                     anchors.fill: parent
                     anchors.margins: 16
                     orientation: ListView.Horizontal
-                    spacing: 24
+                    spacing: 20
                     clip: true
 
                     model: hourlyModel
 
                     delegate: Column {
-                        spacing: 8
-                        width: 60
+                        spacing: 6
+                        width: 50 * textScale
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -490,7 +490,7 @@ Window {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: model.icon
-                            font.pixelSize: 28
+                            font.pixelSize: 24
                         }
 
                         Text {
