@@ -397,13 +397,15 @@ impl World {
 }
 
 fn main() -> Result<(), String> {
+    // Set SDL hints for Wayland
+    sdl2::hint::set("SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR", "0");
+
     let sdl = sdl2::init()?;
     let video = sdl.video()?;
 
-    // Get display dimensions for fullscreen
-    let display = video.display_bounds(0).unwrap_or(sdl2::rect::Rect::new(0, 0, SCREEN_W, SCREEN_H));
-    let screen_w = display.width();
-    let screen_h = display.height();
+    // Use fixed screen size for mobile (1080x2400 typical)
+    let screen_w: u32 = 1080;
+    let screen_h: u32 = 2400;
 
     // Calculate cell size to fit screen
     let cell_w = screen_w / WIDTH as u32;
@@ -412,16 +414,22 @@ fn main() -> Result<(), String> {
 
     let window = video
         .window("Flick Sandbox", screen_w, screen_h)
-        .fullscreen_desktop()
+        .resizable()
         .build()
         .map_err(|e| e.to_string())?;
 
     let mut canvas = window
         .into_canvas()
-        .accelerated()
         .present_vsync()
         .build()
         .map_err(|e| e.to_string())?;
+
+    // Present an initial frame immediately to commit the surface
+    canvas.set_draw_color(Color::RGB(10, 10, 15));
+    canvas.clear();
+    canvas.present();
+
+    eprintln!("Sandbox window created: {}x{}, cell_size={}", screen_w, screen_h, cell_size);
 
     let mut world = World::new();
     let mut event_pump = sdl.event_pump()?;
