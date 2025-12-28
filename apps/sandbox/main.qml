@@ -12,11 +12,11 @@ Window {
     color: "#0a0a0f"
 
     property real textScale: 2.0
-    property int gridWidth: 54    // Optimized for mobile
-    property int gridHeight: 96
-    property int cellSize: 20
+    property int gridWidth: 108
+    property int gridHeight: 192
+    property int cellSize: 10
 
-    // Particle types
+    // Particle types encoded as colors for shader
     readonly property int tEmpty: 0
     readonly property int tSand: 1
     readonly property int tWater: 2
@@ -39,14 +39,11 @@ Window {
     property int lastDrawX: -1
     property int lastDrawY: -1
 
-    // Particle data: type, velocity, life
     property var grid: []
     property var velX: []
     property var velY: []
     property var life: []
-    property var updated: []  // Track if cell was updated this frame
     property int frameCount: 0
-    property bool needsRepaint: false
 
     Component.onCompleted: {
         loadConfig()
@@ -71,65 +68,36 @@ Window {
         velX = new Array(size)
         velY = new Array(size)
         life = new Array(size)
-        updated = new Array(size)
         for (var i = 0; i < size; i++) {
             grid[i] = tEmpty
             velX[i] = 0
             velY[i] = 0
             life[i] = 0
-            updated[i] = false
         }
     }
 
-    function idx(x, y) {
-        return y * gridWidth + x
-    }
-
-    function inBounds(x, y) {
-        return x >= 0 && x < gridWidth && y >= 0 && y < gridHeight
-    }
-
-    function getCell(x, y) {
-        if (!inBounds(x, y)) return tStone
-        return grid[idx(x, y)]
-    }
+    function idx(x, y) { return y * gridWidth + x }
+    function inBounds(x, y) { return x >= 0 && x < gridWidth && y >= 0 && y < gridHeight }
+    function getCell(x, y) { return inBounds(x, y) ? grid[idx(x, y)] : tStone }
 
     function setCell(x, y, type, vx, vy, l) {
         if (!inBounds(x, y)) return
         var i = idx(x, y)
-        if (grid[i] !== type) needsRepaint = true
         grid[i] = type
         velX[i] = vx || 0
         velY[i] = vy || 0
         life[i] = l || 0
-        updated[i] = true
     }
 
     function swapCells(x1, y1, x2, y2) {
         if (!inBounds(x1, y1) || !inBounds(x2, y2)) return
-        var i1 = idx(x1, y1)
-        var i2 = idx(x2, y2)
-        if (grid[i1] === grid[i2]) return  // No point swapping same types
+        var i1 = idx(x1, y1), i2 = idx(x2, y2)
+        if (grid[i1] === grid[i2]) return
 
-        needsRepaint = true
-
-        var tempType = grid[i1]
-        var tempVx = velX[i1]
-        var tempVy = velY[i1]
-        var tempLife = life[i1]
-
-        grid[i1] = grid[i2]
-        velX[i1] = velX[i2]
-        velY[i1] = velY[i2]
-        life[i1] = life[i2]
-
-        grid[i2] = tempType
-        velX[i2] = tempVx
-        velY[i2] = tempVy
-        life[i2] = tempLife
-
-        updated[i1] = true
-        updated[i2] = true
+        var t = grid[i1]; grid[i1] = grid[i2]; grid[i2] = t
+        t = velX[i1]; velX[i1] = velX[i2]; velX[i2] = t
+        t = velY[i1]; velY[i1] = velY[i2]; velY[i2] = t
+        t = life[i1]; life[i1] = life[i2]; life[i2] = t
     }
 
     function clearGrid() {
@@ -139,557 +107,172 @@ Window {
             velY[i] = 0
             life[i] = 0
         }
-        canvas.requestPaint()
     }
 
     function drawBrush(cx, cy, type) {
         for (var dy = -brushSize; dy <= brushSize; dy++) {
             for (var dx = -brushSize; dx <= brushSize; dx++) {
                 if (dx*dx + dy*dy <= brushSize*brushSize) {
-                    var x = cx + dx
-                    var y = cy + dy
-                    if (inBounds(x, y)) {
-                        // Don't overwrite unless erasing
-                        if (type === tEmpty || getCell(x, y) === tEmpty) {
-                            var vx = (Math.random() - 0.5) * 0.5
-                            var vy = 0
-                            var l = 255
-                            if (type === tFire) l = 100 + Math.random() * 50
-                            if (type === tSteam) l = 150 + Math.random() * 50
-                            setCell(x, y, type, vx, vy, l)
-                        }
+                    var x = cx + dx, y = cy + dy
+                    if (inBounds(x, y) && (type === tEmpty || getCell(x, y) === tEmpty)) {
+                        var l = 255
+                        if (type === tFire) l = 100 + Math.random() * 50
+                        if (type === tSteam || type === tSmoke) l = 100 + Math.random() * 50
+                        setCell(x, y, type, (Math.random() - 0.5) * 0.5, 0, l)
                     }
                 }
             }
         }
     }
 
-    // Density for sinking/floating
     function getDensity(type) {
-        switch(type) {
-            case tEmpty: return 0
-            case tSteam: return 1
-            case tSmoke: return 2
-            case tFire: return 3
-            case tOil: return 4
-            case tWater: return 5
-            case tAcid: return 5
-            case tSalt: return 6
-            case tSand: return 7
-            case tGunpowder: return 7
-            case tIce: return 5
-            case tWood: return 4
-            case tPlant: return 4
-            case tLava: return 8
-            case tStone: return 10
-            default: return 5
-        }
+        var densities = [0, 7, 5, 10, 3, 4, 8, 1, 4, 5, 5, 2, 4, 7, 6]
+        return densities[type] || 5
     }
 
-    function isSolid(type) {
-        return type === tStone || type === tWood || type === tIce || type === tPlant
-    }
-
-    function isLiquid(type) {
-        return type === tWater || type === tOil || type === tLava || type === tAcid
-    }
-
-    function isGas(type) {
-        return type === tSteam || type === tSmoke || type === tFire
-    }
-
-    function isPowder(type) {
-        return type === tSand || type === tSalt || type === tGunpowder
-    }
+    function isLiquid(t) { return t === tWater || t === tOil || t === tLava || t === tAcid }
+    function isGas(t) { return t === tSteam || t === tSmoke || t === tFire }
+    function isSolid(t) { return t === tStone || t === tWood || t === tIce || t === tPlant }
 
     function updateParticles() {
         frameCount++
-        needsRepaint = false
-
-        // Reset updated flags
-        for (var i = 0; i < updated.length; i++) {
-            updated[i] = false
-        }
-
-        // Process from bottom to top for falling, randomize horizontal
         var startX = Math.random() < 0.5 ? 0 : gridWidth - 1
-        var endX = startX === 0 ? gridWidth : -1
         var stepX = startX === 0 ? 1 : -1
+        var endX = startX === 0 ? gridWidth : -1
 
         for (var y = gridHeight - 1; y >= 0; y--) {
             for (var x = startX; x !== endX; x += stepX) {
                 var i = idx(x, y)
-                if (updated[i]) continue
-
                 var type = grid[i]
                 if (type === tEmpty || type === tStone) continue
 
+                var below = getCell(x, y + 1)
                 var cellLife = life[i]
-                var cellVx = velX[i]
-                var cellVy = velY[i]
 
-                // Apply gravity to velocity
-                if (!isSolid(type) && !isGas(type)) {
-                    cellVy = Math.min(cellVy + 0.5, 3)
-                }
-
-                // Process by type
                 if (type === tSand || type === tGunpowder || type === tSalt) {
-                    updatePowder(x, y, type, cellVx, cellVy)
-                } else if (type === tWater) {
-                    updateWater(x, y, cellVx, cellVy)
-                } else if (type === tOil) {
-                    updateOil(x, y, cellVx, cellVy)
-                } else if (type === tLava) {
-                    updateLava(x, y, cellVx, cellVy)
-                } else if (type === tAcid) {
-                    updateAcid(x, y, cellVx, cellVy)
-                } else if (type === tFire) {
-                    updateFire(x, y, cellLife)
-                } else if (type === tSteam) {
-                    updateSteam(x, y, cellLife)
-                } else if (type === tSmoke) {
-                    updateSmoke(x, y, cellLife)
-                } else if (type === tIce) {
-                    updateIce(x, y)
-                } else if (type === tWood) {
-                    updateWood(x, y)
-                } else if (type === tPlant) {
-                    updatePlant(x, y)
-                }
-            }
-        }
-
-        if (needsRepaint) canvas.requestPaint()
-    }
-
-    function updatePowder(x, y, type, vx, vy) {
-        var below = getCell(x, y + 1)
-
-        // Fall into empty or lighter liquids
-        if (below === tEmpty) {
-            swapCells(x, y, x, y + 1)
-            velY[idx(x, y + 1)] = vy + 0.5
-            return
-        }
-
-        // Sink through lighter materials
-        if (isLiquid(below) && getDensity(type) > getDensity(below)) {
-            swapCells(x, y, x, y + 1)
-            return
-        }
-
-        // Salt dissolves in water
-        if (type === tSalt && below === tWater && Math.random() < 0.1) {
-            setCell(x, y, tEmpty, 0, 0, 0)
-            return
-        }
-
-        // Try diagonal
-        var leftBelow = getCell(x - 1, y + 1)
-        var rightBelow = getCell(x + 1, y + 1)
-        var canLeft = leftBelow === tEmpty || (isLiquid(leftBelow) && getDensity(type) > getDensity(leftBelow))
-        var canRight = rightBelow === tEmpty || (isLiquid(rightBelow) && getDensity(type) > getDensity(rightBelow))
-
-        if (canLeft && canRight) {
-            var dir = Math.random() < 0.5 ? -1 : 1
-            swapCells(x, y, x + dir, y + 1)
-        } else if (canLeft) {
-            swapCells(x, y, x - 1, y + 1)
-        } else if (canRight) {
-            swapCells(x, y, x + 1, y + 1)
-        } else {
-            // Settle - reduce velocity
-            velX[idx(x, y)] = vx * 0.8
-            velY[idx(x, y)] = 0
-        }
-    }
-
-    function updateWater(x, y, vx, vy) {
-        var below = getCell(x, y + 1)
-        var i = idx(x, y)
-
-        // Fall
-        if (below === tEmpty) {
-            swapCells(x, y, x, y + 1)
-            velY[idx(x, y + 1)] = vy + 0.5
-            return
-        }
-
-        // Extinguish fire
-        if (below === tFire) {
-            setCell(x, y + 1, tSteam, 0, -1, 100)
-            setCell(x, y, tEmpty, 0, 0, 0)
-            return
-        }
-
-        // Cool lava
-        if (below === tLava) {
-            setCell(x, y + 1, tStone, 0, 0, 0)
-            setCell(x, y, tSteam, 0, -1, 100)
-            return
-        }
-
-        // Float on oil (water is denser)
-        if (below === tOil) {
-            swapCells(x, y, x, y + 1)
-            return
-        }
-
-        // Try diagonal down
-        var leftBelow = getCell(x - 1, y + 1)
-        var rightBelow = getCell(x + 1, y + 1)
-
-        if (leftBelow === tEmpty && rightBelow === tEmpty) {
-            swapCells(x, y, x + (Math.random() < 0.5 ? -1 : 1), y + 1)
-            return
-        } else if (leftBelow === tEmpty) {
-            swapCells(x, y, x - 1, y + 1)
-            return
-        } else if (rightBelow === tEmpty) {
-            swapCells(x, y, x + 1, y + 1)
-            return
-        }
-
-        // Flow horizontally with momentum
-        var spreadDist = 3 + Math.floor(Math.abs(vx))
-        var left = getCell(x - 1, y)
-        var right = getCell(x + 1, y)
-
-        // Follow momentum
-        if (vx < -0.5 && left === tEmpty) {
-            swapCells(x, y, x - 1, y)
-            velX[idx(x - 1, y)] = vx * 0.95
-        } else if (vx > 0.5 && right === tEmpty) {
-            swapCells(x, y, x + 1, y)
-            velX[idx(x + 1, y)] = vx * 0.95
-        } else if (left === tEmpty && right === tEmpty) {
-            var dir = Math.random() < 0.5 ? -1 : 1
-            swapCells(x, y, x + dir, y)
-            velX[idx(x + dir, y)] = dir * 0.5
-        } else if (left === tEmpty) {
-            swapCells(x, y, x - 1, y)
-            velX[idx(x - 1, y)] = -0.5
-        } else if (right === tEmpty) {
-            swapCells(x, y, x + 1, y)
-            velX[idx(x + 1, y)] = 0.5
-        }
-    }
-
-    function updateOil(x, y, vx, vy) {
-        var below = getCell(x, y + 1)
-
-        // Fall
-        if (below === tEmpty) {
-            swapCells(x, y, x, y + 1)
-            return
-        }
-
-        // Catch fire from fire/lava nearby
-        for (var dy = -1; dy <= 1; dy++) {
-            for (var dx = -1; dx <= 1; dx++) {
-                var neighbor = getCell(x + dx, y + dy)
-                if ((neighbor === tFire || neighbor === tLava) && Math.random() < 0.3) {
-                    setCell(x, y, tFire, 0, 0, 150)
-                    return
-                }
-            }
-        }
-
-        // Flow (similar to water but slower)
-        var leftBelow = getCell(x - 1, y + 1)
-        var rightBelow = getCell(x + 1, y + 1)
-
-        if (leftBelow === tEmpty && rightBelow === tEmpty) {
-            swapCells(x, y, x + (Math.random() < 0.5 ? -1 : 1), y + 1)
-        } else if (leftBelow === tEmpty) {
-            swapCells(x, y, x - 1, y + 1)
-        } else if (rightBelow === tEmpty) {
-            swapCells(x, y, x + 1, y + 1)
-        } else {
-            var left = getCell(x - 1, y)
-            var right = getCell(x + 1, y)
-            if (left === tEmpty && right === tEmpty) {
-                swapCells(x, y, x + (Math.random() < 0.5 ? -1 : 1), y)
-            } else if (left === tEmpty) {
-                swapCells(x, y, x - 1, y)
-            } else if (right === tEmpty) {
-                swapCells(x, y, x + 1, y)
-            }
-        }
-    }
-
-    function updateLava(x, y, vx, vy) {
-        var below = getCell(x, y + 1)
-
-        // Set nearby flammables on fire
-        for (var dy = -1; dy <= 1; dy++) {
-            for (var dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue
-                var nx = x + dx
-                var ny = y + dy
-                var neighbor = getCell(nx, ny)
-                if ((neighbor === tWood || neighbor === tPlant || neighbor === tOil) && Math.random() < 0.1) {
-                    setCell(nx, ny, tFire, 0, 0, 120)
-                }
-                if (neighbor === tIce) {
-                    setCell(nx, ny, tWater, 0, 0, 0)
-                }
-                if (neighbor === tWater) {
-                    setCell(nx, ny, tSteam, 0, -1, 100)
-                    if (Math.random() < 0.3) {
-                        setCell(x, y, tStone, 0, 0, 0)
-                        return
+                    if (below === tEmpty) { swapCells(x, y, x, y + 1) }
+                    else if (isLiquid(below) && getDensity(type) > getDensity(below)) { swapCells(x, y, x, y + 1) }
+                    else if (type === tSalt && below === tWater && Math.random() < 0.1) { setCell(x, y, tEmpty, 0, 0, 0) }
+                    else {
+                        var lb = getCell(x-1, y+1), rb = getCell(x+1, y+1)
+                        var cl = lb === tEmpty, cr = rb === tEmpty
+                        if (cl && cr) swapCells(x, y, x + (Math.random() < 0.5 ? -1 : 1), y + 1)
+                        else if (cl) swapCells(x, y, x - 1, y + 1)
+                        else if (cr) swapCells(x, y, x + 1, y + 1)
                     }
                 }
-                if (neighbor === tGunpowder && Math.random() < 0.5) {
-                    // Explosion!
-                    explode(nx, ny, 5)
-                }
-            }
-        }
-
-        // Fall slowly
-        if (below === tEmpty && Math.random() < 0.7) {
-            swapCells(x, y, x, y + 1)
-            return
-        }
-
-        // Flow very slowly
-        if (Math.random() < 0.3) {
-            var left = getCell(x - 1, y)
-            var right = getCell(x + 1, y)
-            if (left === tEmpty && right === tEmpty) {
-                swapCells(x, y, x + (Math.random() < 0.5 ? -1 : 1), y)
-            } else if (left === tEmpty) {
-                swapCells(x, y, x - 1, y)
-            } else if (right === tEmpty) {
-                swapCells(x, y, x + 1, y)
-            }
-        }
-    }
-
-    function updateAcid(x, y, vx, vy) {
-        var below = getCell(x, y + 1)
-
-        // Dissolve nearby materials
-        for (var dy = -1; dy <= 1; dy++) {
-            for (var dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue
-                var nx = x + dx
-                var ny = y + dy
-                var neighbor = getCell(nx, ny)
-                // Dissolve most things except stone and other acid
-                if (neighbor !== tEmpty && neighbor !== tStone && neighbor !== tAcid &&
-                    neighbor !== tLava && Math.random() < 0.05) {
-                    setCell(nx, ny, tEmpty, 0, 0, 0)
-                    if (Math.random() < 0.3) {
-                        setCell(x, y, tSmoke, 0, -0.5, 50)
-                        return
+                else if (type === tWater || type === tOil || type === tAcid) {
+                    if (below === tEmpty) { swapCells(x, y, x, y + 1) }
+                    else if (type === tWater && below === tFire) { setCell(x, y+1, tSteam, 0, -1, 80); setCell(x, y, tEmpty, 0, 0, 0) }
+                    else if (type === tWater && below === tLava) { setCell(x, y+1, tStone, 0, 0, 0); setCell(x, y, tSteam, 0, -1, 80) }
+                    else if (type === tWater && below === tOil) { swapCells(x, y, x, y + 1) }
+                    else if (type === tOil && (getCell(x-1,y) === tFire || getCell(x+1,y) === tFire || getCell(x,y-1) === tFire || below === tFire || getCell(x-1,y) === tLava || getCell(x+1,y) === tLava) && Math.random() < 0.3) { setCell(x, y, tFire, 0, 0, 120) }
+                    else if (type === tAcid) {
+                        for (var dy = -1; dy <= 1; dy++) {
+                            for (var dx = -1; dx <= 1; dx++) {
+                                var n = getCell(x+dx, y+dy)
+                                if (n !== tEmpty && n !== tStone && n !== tAcid && n !== tLava && Math.random() < 0.03) {
+                                    setCell(x+dx, y+dy, tEmpty, 0, 0, 0)
+                                    if (Math.random() < 0.2) { setCell(x, y, tSmoke, 0, -0.5, 40); break }
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        var lb = getCell(x-1, y+1), rb = getCell(x+1, y+1)
+                        if (lb === tEmpty && rb === tEmpty) swapCells(x, y, x + (Math.random() < 0.5 ? -1 : 1), y + 1)
+                        else if (lb === tEmpty) swapCells(x, y, x - 1, y + 1)
+                        else if (rb === tEmpty) swapCells(x, y, x + 1, y + 1)
+                        else {
+                            var l = getCell(x-1, y), r = getCell(x+1, y)
+                            if (l === tEmpty && r === tEmpty) swapCells(x, y, x + (Math.random() < 0.5 ? -1 : 1), y)
+                            else if (l === tEmpty) swapCells(x, y, x - 1, y)
+                            else if (r === tEmpty) swapCells(x, y, x + 1, y)
+                        }
                     }
                 }
-            }
-        }
-
-        // Fall
-        if (below === tEmpty) {
-            swapCells(x, y, x, y + 1)
-            return
-        }
-
-        // Flow like water
-        var leftBelow = getCell(x - 1, y + 1)
-        var rightBelow = getCell(x + 1, y + 1)
-
-        if (leftBelow === tEmpty && rightBelow === tEmpty) {
-            swapCells(x, y, x + (Math.random() < 0.5 ? -1 : 1), y + 1)
-        } else if (leftBelow === tEmpty) {
-            swapCells(x, y, x - 1, y + 1)
-        } else if (rightBelow === tEmpty) {
-            swapCells(x, y, x + 1, y + 1)
-        } else {
-            var left = getCell(x - 1, y)
-            var right = getCell(x + 1, y)
-            if (left === tEmpty && right === tEmpty) {
-                swapCells(x, y, x + (Math.random() < 0.5 ? -1 : 1), y)
-            } else if (left === tEmpty) {
-                swapCells(x, y, x - 1, y)
-            } else if (right === tEmpty) {
-                swapCells(x, y, x + 1, y)
-            }
-        }
-    }
-
-    function updateFire(x, y, cellLife) {
-        var i = idx(x, y)
-        cellLife--
-
-        if (cellLife <= 0) {
-            // Fire dies, maybe creates smoke
-            if (Math.random() < 0.3) {
-                setCell(x, y, tSmoke, (Math.random() - 0.5), -1, 80)
-            } else {
-                setCell(x, y, tEmpty, 0, 0, 0)
-            }
-            return
-        }
-
-        life[i] = cellLife
-
-        // Spread to flammables
-        for (var dy = -1; dy <= 1; dy++) {
-            for (var dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue
-                var nx = x + dx
-                var ny = y + dy
-                var neighbor = getCell(nx, ny)
-                if (neighbor === tWood && Math.random() < 0.02) {
-                    setCell(nx, ny, tFire, 0, 0, 200)
+                else if (type === tLava) {
+                    for (var dy = -1; dy <= 1; dy++) {
+                        for (var dx = -1; dx <= 1; dx++) {
+                            var n = getCell(x+dx, y+dy)
+                            if ((n === tWood || n === tPlant || n === tOil) && Math.random() < 0.08) setCell(x+dx, y+dy, tFire, 0, 0, 100)
+                            if (n === tIce) setCell(x+dx, y+dy, tWater, 0, 0, 0)
+                            if (n === tWater) { setCell(x+dx, y+dy, tSteam, 0, -1, 80); if (Math.random() < 0.2) { setCell(x, y, tStone, 0, 0, 0); break } }
+                            if (n === tGunpowder && Math.random() < 0.4) explode(x+dx, y+dy, 5)
+                        }
+                    }
+                    if (below === tEmpty && Math.random() < 0.6) swapCells(x, y, x, y + 1)
+                    else if (Math.random() < 0.2) {
+                        var l = getCell(x-1, y), r = getCell(x+1, y)
+                        if (l === tEmpty && r === tEmpty) swapCells(x, y, x + (Math.random() < 0.5 ? -1 : 1), y)
+                        else if (l === tEmpty) swapCells(x, y, x - 1, y)
+                        else if (r === tEmpty) swapCells(x, y, x + 1, y)
+                    }
                 }
-                if (neighbor === tPlant && Math.random() < 0.05) {
-                    setCell(nx, ny, tFire, 0, 0, 80)
+                else if (type === tFire) {
+                    life[i]--
+                    if (life[i] <= 0) { setCell(x, y, Math.random() < 0.3 ? tSmoke : tEmpty, 0, -0.5, 60) }
+                    else {
+                        for (var dy = -1; dy <= 1; dy++) {
+                            for (var dx = -1; dx <= 1; dx++) {
+                                var n = getCell(x+dx, y+dy)
+                                if (n === tWood && Math.random() < 0.015) setCell(x+dx, y+dy, tFire, 0, 0, 180)
+                                if (n === tPlant && Math.random() < 0.04) setCell(x+dx, y+dy, tFire, 0, 0, 60)
+                                if (n === tOil && Math.random() < 0.15) setCell(x+dx, y+dy, tFire, 0, 0, 120)
+                                if (n === tGunpowder && Math.random() < 0.25) explode(x+dx, y+dy, 5)
+                                if (n === tIce) setCell(x+dx, y+dy, tWater, 0, 0, 0)
+                            }
+                        }
+                        var above = getCell(x, y - 1)
+                        if (above === tEmpty && Math.random() < 0.5) swapCells(x, y, x, y - 1)
+                        else if (Math.random() < 0.3) {
+                            var dir = Math.random() < 0.5 ? -1 : 1
+                            if (getCell(x + dir, y - 1) === tEmpty) swapCells(x, y, x + dir, y - 1)
+                        }
+                    }
                 }
-                if (neighbor === tOil && Math.random() < 0.2) {
-                    setCell(nx, ny, tFire, 0, 0, 150)
+                else if (type === tSteam || type === tSmoke) {
+                    life[i]--
+                    if (life[i] <= 0) { setCell(x, y, type === tSteam && Math.random() < 0.4 ? tWater : tEmpty, 0, 0, 0) }
+                    else {
+                        var above = getCell(x, y - 1)
+                        if (above === tEmpty && Math.random() < 0.6) swapCells(x, y, x, y - 1)
+                        else {
+                            var dir = Math.random() < 0.5 ? -1 : 1
+                            if (getCell(x + dir, y) === tEmpty) swapCells(x, y, x + dir, y)
+                        }
+                    }
                 }
-                if (neighbor === tGunpowder && Math.random() < 0.3) {
-                    explode(nx, ny, 6)
+                else if (type === tIce) {
+                    for (var dy = -1; dy <= 1; dy++) {
+                        for (var dx = -1; dx <= 1; dx++) {
+                            var n = getCell(x+dx, y+dy)
+                            if (n === tWater && Math.random() < 0.008) setCell(x+dx, y+dy, tIce, 0, 0, 0)
+                            if ((n === tFire || n === tLava) && Math.random() < 0.08) { setCell(x, y, tWater, 0, 0, 0); break }
+                        }
+                    }
                 }
-                if (neighbor === tIce) {
-                    setCell(nx, ny, tWater, 0, 0, 0)
+                else if (type === tWood) {
+                    for (var dy = -1; dy <= 1; dy++) {
+                        for (var dx = -1; dx <= 1; dx++) {
+                            var n = getCell(x+dx, y+dy)
+                            if ((n === tFire || n === tLava) && Math.random() < 0.01) { setCell(x, y, tFire, 0, 0, 200); break }
+                        }
+                    }
                 }
-            }
-        }
-
-        // Rise with some randomness
-        var above = getCell(x, y - 1)
-        if (above === tEmpty && Math.random() < 0.6) {
-            swapCells(x, y, x, y - 1)
-        } else {
-            var dir = Math.random() < 0.5 ? -1 : 1
-            if (getCell(x + dir, y - 1) === tEmpty && Math.random() < 0.3) {
-                swapCells(x, y, x + dir, y - 1)
-            }
-        }
-    }
-
-    function updateSteam(x, y, cellLife) {
-        var i = idx(x, y)
-        cellLife--
-
-        if (cellLife <= 0) {
-            // Condense back to water
-            if (Math.random() < 0.5) {
-                setCell(x, y, tWater, 0, 0, 0)
-            } else {
-                setCell(x, y, tEmpty, 0, 0, 0)
-            }
-            return
-        }
-
-        life[i] = cellLife
-
-        // Rise
-        var above = getCell(x, y - 1)
-        if (above === tEmpty) {
-            swapCells(x, y, x, y - 1)
-        } else {
-            var dir = Math.random() < 0.5 ? -1 : 1
-            if (getCell(x + dir, y) === tEmpty) {
-                swapCells(x, y, x + dir, y)
-            } else if (getCell(x + dir, y - 1) === tEmpty) {
-                swapCells(x, y, x + dir, y - 1)
-            }
-        }
-    }
-
-    function updateSmoke(x, y, cellLife) {
-        var i = idx(x, y)
-        cellLife--
-
-        if (cellLife <= 0) {
-            setCell(x, y, tEmpty, 0, 0, 0)
-            return
-        }
-
-        life[i] = cellLife
-
-        // Rise with drift
-        var above = getCell(x, y - 1)
-        if (above === tEmpty && Math.random() < 0.7) {
-            swapCells(x, y, x, y - 1)
-        } else {
-            var dir = Math.random() < 0.5 ? -1 : 1
-            if (getCell(x + dir, y) === tEmpty) {
-                swapCells(x, y, x + dir, y)
-            }
-        }
-    }
-
-    function updateIce(x, y) {
-        // Freeze nearby water
-        for (var dy = -1; dy <= 1; dy++) {
-            for (var dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue
-                var neighbor = getCell(x + dx, y + dy)
-                if (neighbor === tWater && Math.random() < 0.01) {
-                    setCell(x + dx, y + dy, tIce, 0, 0, 0)
-                }
-                // Melt from fire/lava
-                if ((neighbor === tFire || neighbor === tLava) && Math.random() < 0.1) {
-                    setCell(x, y, tWater, 0, 0, 0)
-                    return
+                else if (type === tPlant) {
+                    for (var dy = -1; dy <= 1; dy++) {
+                        for (var dx = -1; dx <= 1; dx++) {
+                            var n = getCell(x+dx, y+dy)
+                            if (n === tWater && Math.random() < 0.015) setCell(x+dx, y+dy, tPlant, 0, 0, 0)
+                            if (n === tFire && Math.random() < 0.08) { setCell(x, y, tFire, 0, 0, 50); break }
+                        }
+                    }
+                    if (Math.random() < 0.0008 && getCell(x, y-1) === tEmpty) setCell(x, y-1, tPlant, 0, 0, 0)
                 }
             }
         }
-    }
-
-    function updateWood(x, y) {
-        // Just check for fire neighbors
-        for (var dy = -1; dy <= 1; dy++) {
-            for (var dx = -1; dx <= 1; dx++) {
-                var neighbor = getCell(x + dx, y + dy)
-                if (neighbor === tFire && Math.random() < 0.01) {
-                    setCell(x, y, tFire, 0, 0, 250)
-                    return
-                }
-                if (neighbor === tLava && Math.random() < 0.02) {
-                    setCell(x, y, tFire, 0, 0, 250)
-                    return
-                }
-            }
-        }
-    }
-
-    function updatePlant(x, y) {
-        // Grow when touching water
-        for (var dy = -1; dy <= 1; dy++) {
-            for (var dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue
-                var nx = x + dx
-                var ny = y + dy
-                var neighbor = getCell(nx, ny)
-
-                if (neighbor === tWater && Math.random() < 0.02) {
-                    // Consume water and grow
-                    setCell(nx, ny, tPlant, 0, 0, 0)
-                }
-
-                // Burn easily
-                if (neighbor === tFire && Math.random() < 0.1) {
-                    setCell(x, y, tFire, 0, 0, 60)
-                    return
-                }
-            }
-        }
-
-        // Random growth upward
-        if (Math.random() < 0.001) {
-            var above = getCell(x, y - 1)
-            if (above === tEmpty) {
-                setCell(x, y - 1, tPlant, 0, 0, 0)
-            }
-        }
+        dataCanvas.requestPaint()
     }
 
     function explode(cx, cy, radius) {
@@ -697,86 +280,88 @@ Window {
         for (var dy = -radius; dy <= radius; dy++) {
             for (var dx = -radius; dx <= radius; dx++) {
                 var dist = Math.sqrt(dx*dx + dy*dy)
-                if (dist <= radius) {
-                    var nx = cx + dx
-                    var ny = cy + dy
-                    if (inBounds(nx, ny)) {
-                        var type = getCell(nx, ny)
-                        if (type !== tStone) {
-                            if (dist < radius * 0.5) {
-                                setCell(nx, ny, tFire, (Math.random()-0.5)*3, (Math.random()-0.5)*3, 80)
-                            } else if (Math.random() < 0.5) {
-                                setCell(nx, ny, tSmoke, (Math.random()-0.5)*2, -2, 60)
-                            } else {
-                                setCell(nx, ny, tEmpty, 0, 0, 0)
-                            }
-                        }
-                    }
+                if (dist <= radius && inBounds(cx+dx, cy+dy) && getCell(cx+dx, cy+dy) !== tStone) {
+                    if (dist < radius * 0.5) setCell(cx+dx, cy+dy, tFire, (Math.random()-0.5)*2, (Math.random()-0.5)*2, 60)
+                    else if (Math.random() < 0.4) setCell(cx+dx, cy+dy, tSmoke, (Math.random()-0.5), -1, 40)
+                    else setCell(cx+dx, cy+dy, tEmpty, 0, 0, 0)
                 }
             }
         }
     }
 
-    function getParticleColor(type, x, y) {
-        var noise = ((x * 13 + y * 7) % 20) / 100  // Subtle variation
-        switch (type) {
-            case tSand:
-                return Qt.rgba(0.83 + noise, 0.65 + noise, 0.46, 1)
-            case tWater:
-                return Qt.rgba(0.2, 0.5 + noise, 0.9 + noise * 0.5, 0.9)
-            case tStone:
-                return Qt.rgba(0.4 + noise, 0.4 + noise, 0.42 + noise, 1)
-            case tFire:
-                var flicker = Math.random() * 0.3
-                return Qt.rgba(1, 0.3 + flicker, 0.1, 1)
-            case tOil:
-                return Qt.rgba(0.15 + noise, 0.1 + noise, 0.05, 1)
-            case tLava:
-                var glow = Math.random() * 0.2
-                return Qt.rgba(1, 0.2 + glow, 0, 1)
-            case tSteam:
-                return Qt.rgba(0.8, 0.85, 0.9, 0.5)
-            case tWood:
-                return Qt.rgba(0.4 + noise, 0.25 + noise, 0.1, 1)
-            case tIce:
-                return Qt.rgba(0.7, 0.85 + noise, 1, 0.9)
-            case tAcid:
-                return Qt.rgba(0.3, 0.9 + noise * 0.5, 0.2, 0.9)
-            case tSmoke:
-                return Qt.rgba(0.3, 0.3, 0.35, 0.6)
-            case tPlant:
-                return Qt.rgba(0.2, 0.6 + noise, 0.15, 1)
-            case tGunpowder:
-                return Qt.rgba(0.25 + noise, 0.25, 0.25, 1)
-            case tSalt:
-                return Qt.rgba(0.95, 0.95, 0.9 + noise, 1)
-            default:
-                return "#0a0a0f"
+    // Offscreen canvas for particle data (1 pixel per cell)
+    Canvas {
+        id: dataCanvas
+        width: gridWidth
+        height: gridHeight
+        visible: false
+        renderStrategy: Canvas.Immediate
+
+        onPaint: {
+            var ctx = getContext("2d")
+            var imgData = ctx.createImageData(gridWidth, gridHeight)
+            var data = imgData.data
+
+            for (var y = 0; y < gridHeight; y++) {
+                for (var x = 0; x < gridWidth; x++) {
+                    var i = (y * gridWidth + x) * 4
+                    var type = grid[y * gridWidth + x]
+                    // Encode type and life/variation in RGBA
+                    var r = 0, g = 0, b = 0, a = 255
+                    var noise = ((x * 17 + y * 31 + frameCount) % 30) / 100
+
+                    switch (type) {
+                        case tEmpty: a = 0; break
+                        case tSand: r = 212 + noise*40; g = 165 + noise*40; b = 118; break
+                        case tWater: r = 50; g = 130 + noise*30; b = 230; a = 230; break
+                        case tStone: r = 100 + noise*20; g = 100 + noise*20; b = 105 + noise*20; break
+                        case tFire: r = 255; g = 80 + Math.random()*100; b = 20; break
+                        case tOil: r = 40 + noise*10; g = 25 + noise*10; b = 15; break
+                        case tLava: r = 255; g = 50 + Math.random()*60; b = 0; break
+                        case tSteam: r = 200; g = 210; b = 220; a = 140; break
+                        case tWood: r = 100 + noise*20; g = 65 + noise*15; b = 30; break
+                        case tIce: r = 180; g = 220 + noise*20; b = 255; a = 230; break
+                        case tAcid: r = 80; g = 230 + noise*20; b = 50; a = 230; break
+                        case tSmoke: r = 80; g = 80; b = 90; a = 160; break
+                        case tPlant: r = 50; g = 160 + noise*40; b = 40; break
+                        case tGunpowder: r = 70 + noise*15; g = 70; b = 70; break
+                        case tSalt: r = 245; g = 245; b = 235 + noise*15; break
+                    }
+                    data[i] = r
+                    data[i + 1] = g
+                    data[i + 2] = b
+                    data[i + 3] = a
+                }
+            }
+            ctx.putImageData(imgData, 0, 0)
         }
     }
 
-    Canvas {
-        id: canvas
+    // Shader-rendered display
+    ShaderEffect {
+        id: display
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: toolbar.top
 
-        onPaint: {
-            var ctx = getContext("2d")
-            ctx.fillStyle = "#0a0a0f"
-            ctx.fillRect(0, 0, width, height)
-
-            for (var y = 0; y < gridHeight; y++) {
-                for (var x = 0; x < gridWidth; x++) {
-                    var cell = grid[idx(x, y)]
-                    if (cell !== tEmpty) {
-                        ctx.fillStyle = getParticleColor(cell, x, y)
-                        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize)
-                    }
-                }
-            }
+        property variant src: ShaderEffectSource {
+            sourceItem: dataCanvas
+            filtering: ShaderEffectSource.Nearest
+            smooth: false
+            live: true
         }
+
+        fragmentShader: "
+            varying highp vec2 qt_TexCoord0;
+            uniform sampler2D src;
+            uniform lowp float qt_Opacity;
+
+            void main() {
+                lowp vec4 tex = texture2D(src, qt_TexCoord0);
+                gl_FragColor = tex * qt_Opacity;
+            }
+        "
 
         MouseArea {
             anchors.fill: parent
@@ -795,28 +380,23 @@ Window {
                 if (isDrawing) {
                     var gridX = Math.floor(mouse.x / cellSize)
                     var gridY = Math.floor(mouse.y / cellSize)
-                    // Interpolate for smooth drawing
                     var dx = gridX - lastDrawX
                     var dy = gridY - lastDrawY
                     var steps = Math.max(Math.abs(dx), Math.abs(dy))
                     for (var i = 0; i <= steps; i++) {
                         var t = steps > 0 ? i / steps : 0
-                        var ix = Math.round(lastDrawX + dx * t)
-                        var iy = Math.round(lastDrawY + dy * t)
-                        drawBrush(ix, iy, selectedType)
+                        drawBrush(Math.round(lastDrawX + dx * t), Math.round(lastDrawY + dy * t), selectedType)
                     }
                     lastDrawX = gridX
                     lastDrawY = gridY
                 }
             }
 
-            onReleased: {
-                isDrawing = false
-            }
+            onReleased: isDrawing = false
         }
     }
 
-    // Particle selector toolbar
+    // Toolbar
     Rectangle {
         id: toolbar
         anchors.bottom: parent.bottom
@@ -830,7 +410,6 @@ Window {
             anchors.margins: 12
             spacing: 8
 
-            // Brush size slider
             Row {
                 width: parent.width
                 spacing: 12
@@ -846,7 +425,7 @@ Window {
                     id: brushSlider
                     width: parent.width - 180
                     from: 1
-                    to: 10
+                    to: 8
                     value: brushSize
                     onValueChanged: brushSize = Math.round(value)
 
@@ -857,7 +436,6 @@ Window {
                         height: 8
                         radius: 4
                         color: "#333344"
-
                         Rectangle {
                             width: brushSlider.visualPosition * parent.width
                             height: parent.height
@@ -881,7 +459,6 @@ Window {
                     height: 40
                     radius: 8
                     color: "#222233"
-
                     Text {
                         anchors.centerIn: parent
                         text: brushSize
@@ -891,10 +468,8 @@ Window {
                 }
             }
 
-            // Particle grid - row 1
             Row {
                 spacing: 6
-
                 Repeater {
                     model: [
                         { type: tSand, name: "Sand", color: "#d4a574" },
@@ -904,50 +479,24 @@ Window {
                         { type: tOil, name: "Oil", color: "#2a1a0a" },
                         { type: tLava, name: "Lava", color: "#ff4400" }
                     ]
-
                     Rectangle {
-                        width: 105
-                        height: 60
-                        radius: 10
+                        width: 105; height: 60; radius: 10
                         color: selectedType === modelData.type ? "#e94560" : "#222233"
                         border.color: selectedType === modelData.type ? "#fff" : "transparent"
                         border.width: 2
-
                         Column {
                             anchors.centerIn: parent
                             spacing: 2
-
-                            Rectangle {
-                                width: 24
-                                height: 24
-                                radius: 12
-                                color: modelData.color
-                                anchors.horizontalCenter: parent.horizontalCenter
-                            }
-
-                            Text {
-                                text: modelData.name
-                                font.pixelSize: 10 * textScale
-                                color: "#ffffff"
-                                anchors.horizontalCenter: parent.horizontalCenter
-                            }
+                            Rectangle { width: 24; height: 24; radius: 12; color: modelData.color; anchors.horizontalCenter: parent.horizontalCenter }
+                            Text { text: modelData.name; font.pixelSize: 10 * textScale; color: "#ffffff"; anchors.horizontalCenter: parent.horizontalCenter }
                         }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: {
-                                selectedType = modelData.type
-                                Haptic.tap()
-                            }
-                        }
+                        MouseArea { anchors.fill: parent; onClicked: { selectedType = modelData.type; Haptic.tap() } }
                     }
                 }
             }
 
-            // Particle grid - row 2
             Row {
                 spacing: 6
-
                 Repeater {
                     model: [
                         { type: tSteam, name: "Steam", color: "#ccddee" },
@@ -957,176 +506,83 @@ Window {
                         { type: tPlant, name: "Plant", color: "#33aa22" },
                         { type: tGunpowder, name: "Powder", color: "#444444" }
                     ]
-
                     Rectangle {
-                        width: 105
-                        height: 60
-                        radius: 10
+                        width: 105; height: 60; radius: 10
                         color: selectedType === modelData.type ? "#e94560" : "#222233"
                         border.color: selectedType === modelData.type ? "#fff" : "transparent"
                         border.width: 2
-
                         Column {
                             anchors.centerIn: parent
                             spacing: 2
-
-                            Rectangle {
-                                width: 24
-                                height: 24
-                                radius: 12
-                                color: modelData.color
-                                anchors.horizontalCenter: parent.horizontalCenter
-                            }
-
-                            Text {
-                                text: modelData.name
-                                font.pixelSize: 10 * textScale
-                                color: "#ffffff"
-                                anchors.horizontalCenter: parent.horizontalCenter
-                            }
+                            Rectangle { width: 24; height: 24; radius: 12; color: modelData.color; anchors.horizontalCenter: parent.horizontalCenter }
+                            Text { text: modelData.name; font.pixelSize: 10 * textScale; color: "#ffffff"; anchors.horizontalCenter: parent.horizontalCenter }
                         }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: {
-                                selectedType = modelData.type
-                                Haptic.tap()
-                            }
-                        }
+                        MouseArea { anchors.fill: parent; onClicked: { selectedType = modelData.type; Haptic.tap() } }
                     }
                 }
             }
 
-            // Bottom row: Salt, Eraser, Clear
             Row {
                 spacing: 12
                 anchors.horizontalCenter: parent.horizontalCenter
 
                 Rectangle {
-                    width: 105
-                    height: 50
-                    radius: 10
+                    width: 105; height: 50; radius: 10
                     color: selectedType === tSalt ? "#e94560" : "#222233"
                     border.color: selectedType === tSalt ? "#fff" : "transparent"
                     border.width: 2
-
                     Row {
                         anchors.centerIn: parent
                         spacing: 6
-                        Rectangle {
-                            width: 20
-                            height: 20
-                            radius: 10
-                            color: "#f5f5ee"
-                        }
-                        Text {
-                            text: "Salt"
-                            font.pixelSize: 11 * textScale
-                            color: "#ffffff"
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
+                        Rectangle { width: 20; height: 20; radius: 10; color: "#f5f5ee" }
+                        Text { text: "Salt"; font.pixelSize: 11 * textScale; color: "#ffffff"; anchors.verticalCenter: parent.verticalCenter }
                     }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            selectedType = tSalt
-                            Haptic.tap()
-                        }
-                    }
+                    MouseArea { anchors.fill: parent; onClicked: { selectedType = tSalt; Haptic.tap() } }
                 }
 
                 Rectangle {
-                    width: 105
-                    height: 50
-                    radius: 10
+                    width: 105; height: 50; radius: 10
                     color: selectedType === tEmpty ? "#e94560" : "#222233"
                     border.color: selectedType === tEmpty ? "#fff" : "transparent"
                     border.width: 2
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Eraser"
-                        font.pixelSize: 12 * textScale
-                        color: "#ffffff"
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            selectedType = tEmpty
-                            Haptic.tap()
-                        }
-                    }
+                    Text { anchors.centerIn: parent; text: "Eraser"; font.pixelSize: 12 * textScale; color: "#ffffff" }
+                    MouseArea { anchors.fill: parent; onClicked: { selectedType = tEmpty; Haptic.tap() } }
                 }
 
                 Rectangle {
-                    width: 105
-                    height: 50
-                    radius: 10
+                    width: 105; height: 50; radius: 10
                     color: clearMouse.pressed ? "#aa3344" : "#222233"
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Clear All"
-                        font.pixelSize: 12 * textScale
-                        color: "#ff6666"
-                    }
-
-                    MouseArea {
-                        id: clearMouse
-                        anchors.fill: parent
-                        onClicked: {
-                            clearGrid()
-                            Haptic.click()
-                        }
-                    }
+                    Text { anchors.centerIn: parent; text: "Clear"; font.pixelSize: 12 * textScale; color: "#ff6666" }
+                    MouseArea { id: clearMouse; anchors.fill: parent; onClicked: { clearGrid(); Haptic.click() } }
                 }
             }
         }
     }
 
     Timer {
-        interval: 50  // 20 FPS for physics (balanced)
+        interval: 33
         running: true
         repeat: true
         onTriggered: updateParticles()
     }
 
-    // Back button
     Rectangle {
         anchors.left: parent.left
         anchors.bottom: toolbar.top
         anchors.leftMargin: 16
         anchors.bottomMargin: 16
-        width: 56
-        height: 56
-        radius: 28
+        width: 56; height: 56; radius: 28
         color: backMouse.pressed ? "#c23a50" : "#e94560"
         z: 10
-
-        Text {
-            anchors.centerIn: parent
-            text: "←"
-            font.pixelSize: 28
-            color: "#ffffff"
-        }
-
-        MouseArea {
-            id: backMouse
-            anchors.fill: parent
-            onClicked: { Haptic.tap(); Qt.quit() }
-        }
+        Text { anchors.centerIn: parent; text: "←"; font.pixelSize: 28; color: "#ffffff" }
+        MouseArea { id: backMouse; anchors.fill: parent; onClicked: { Haptic.tap(); Qt.quit() } }
     }
 
-    // Home indicator
     Rectangle {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 8
-        width: 120
-        height: 4
-        radius: 2
+        width: 120; height: 4; radius: 2
         color: "#333344"
     }
 }
