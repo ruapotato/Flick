@@ -22,7 +22,6 @@ export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 # Hardware acceleration enabled
 # export QT_QUICK_BACKEND=software  # Using hardware accel
-export QT_OPENGL=software
 
 # Clean up any stale files
 rm -f "$CMD_FILE" "$STATUS_FILE"

@@ -18,7 +18,6 @@ export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 # Force software rendering for hwcomposer compatibility
 # Hardware acceleration enabled
 # export QT_QUICK_BACKEND=software  # Using hardware accel
-export QT_OPENGL=software
 
 # Kill any existing messaging daemon
 pkill -f "messaging_daemon.py daemon" 2>/dev/null

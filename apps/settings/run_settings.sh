@@ -256,7 +256,6 @@ export QT_MESSAGE_PATTERN=""
 export QML_XHR_ALLOW_FILE_READ=1
 # Force software rendering completely
 # export QT_QUICK_BACKEND=software  # Using hardware accel
-export QT_OPENGL=software
 export QMLSCENE_DEVICE=softwarecontext
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1

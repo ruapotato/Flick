@@ -26,7 +26,6 @@ export QML_XHR_ALLOW_FILE_READ=1
 export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false;qt.accessibility.*=false"
 export QT_MESSAGE_PATTERN=""
 # export QT_QUICK_BACKEND=software  # Using hardware accel
-export QT_OPENGL=software
 export QMLSCENE_DEVICE=softwarecontext
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1

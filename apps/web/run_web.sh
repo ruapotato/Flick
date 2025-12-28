@@ -21,7 +21,6 @@ export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu --disable-software-rasterizer -
 # Force software rendering for hwcomposer compatibility
 # Hardware acceleration enabled
 # export QT_QUICK_BACKEND=software  # Using hardware accel
-export QT_OPENGL=software
 
 # Allow XHR file reads for config loading
 export QML_XHR_ALLOW_FILE_READ=1

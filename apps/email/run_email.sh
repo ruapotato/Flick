@@ -17,7 +17,6 @@ export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 # Force software rendering for hwcomposer compatibility
 # Hardware acceleration enabled
 # export QT_QUICK_BACKEND=software  # Using hardware accel
-export QT_OPENGL=software
 
 # Allow XHR file reads for config and backend communication
 export QML_XHR_ALLOW_FILE_READ=1
