@@ -158,7 +158,7 @@ case "$ACTION" in
 
     list-timezones)
         # List available timezones
-        timedatectl list-timezones 2>/dev/null | head -100
+        timedatectl list-timezones 2>/dev/null
         ;;
 
     reboot)

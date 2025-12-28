@@ -1176,13 +1176,14 @@ fn handle_input_event(
                                             "app".to_string()
                                         };
 
-                                        // Capture window preview from SHM buffer
+                                        // Capture window preview from SHM buffer or EGL texture
                                         let preview: Option<slint::Image> = if let Some(toplevel) = window.toplevel() {
                                             compositor::with_states(toplevel.wl_surface(), |states| {
                                                 use std::cell::RefCell;
                                                 use crate::state::SurfaceBufferData;
                                                 if let Some(buffer_data) = states.data_map.get::<RefCell<SurfaceBufferData>>() {
                                                     let bd = buffer_data.borrow();
+                                                    // First try SHM buffer (software rendered apps)
                                                     if let Some(ref buffer) = bd.buffer {
                                                         let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
                                                             &buffer.pixels,
@@ -1190,6 +1191,20 @@ fn handle_input_event(
                                                             buffer.height,
                                                         );
                                                         Some(slint::Image::from_rgba8(pixel_buffer))
+                                                    } else if let Some(ref egl_tex) = bd.egl_texture {
+                                                        // Try reading from EGL texture (hardware rendered apps)
+                                                        unsafe {
+                                                            if let Some(pixels) = gl::read_texture_pixels(egl_tex.texture_id, egl_tex.width, egl_tex.height) {
+                                                                let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                                                    &pixels,
+                                                                    egl_tex.width,
+                                                                    egl_tex.height,
+                                                                );
+                                                                Some(slint::Image::from_rgba8(pixel_buffer))
+                                                            } else {
+                                                                None
+                                                            }
+                                                        }
                                                     } else {
                                                         None
                                                     }
@@ -2719,13 +2734,14 @@ fn render_frame(
                                             "app".to_string()
                                         };
 
-                                        // Capture window preview from SHM buffer
+                                        // Capture window preview from SHM buffer or EGL texture
                                         let preview: Option<slint::Image> = if let Some(toplevel) = window.toplevel() {
                                             compositor::with_states(toplevel.wl_surface(), |states| {
                                                 use std::cell::RefCell;
                                                 use crate::state::SurfaceBufferData;
                                                 if let Some(buffer_data) = states.data_map.get::<RefCell<SurfaceBufferData>>() {
                                                     let bd = buffer_data.borrow();
+                                                    // First try SHM buffer (software rendered apps)
                                                     if let Some(ref buffer) = bd.buffer {
                                                         let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
                                                             &buffer.pixels,
@@ -2733,6 +2749,20 @@ fn render_frame(
                                                             buffer.height,
                                                         );
                                                         Some(slint::Image::from_rgba8(pixel_buffer))
+                                                    } else if let Some(ref egl_tex) = bd.egl_texture {
+                                                        // Try reading from EGL texture (hardware rendered apps)
+                                                        unsafe {
+                                                            if let Some(pixels) = gl::read_texture_pixels(egl_tex.texture_id, egl_tex.width, egl_tex.height) {
+                                                                let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                                                    &pixels,
+                                                                    egl_tex.width,
+                                                                    egl_tex.height,
+                                                                );
+                                                                Some(slint::Image::from_rgba8(pixel_buffer))
+                                                            } else {
+                                                                None
+                                                            }
+                                                        }
                                                     } else {
                                                         None
                                                     }
@@ -2884,13 +2914,14 @@ fn render_frame(
                                 "app".to_string()
                             };
 
-                            // Capture window preview from SHM buffer
+                            // Capture window preview from SHM buffer or EGL texture
                             let preview: Option<slint::Image> = if let Some(toplevel) = window.toplevel() {
                                 compositor::with_states(toplevel.wl_surface(), |states| {
                                     use std::cell::RefCell;
                                     use crate::state::SurfaceBufferData;
                                     if let Some(buffer_data) = states.data_map.get::<RefCell<SurfaceBufferData>>() {
                                         let bd = buffer_data.borrow();
+                                        // First try SHM buffer (software rendered apps)
                                         if let Some(ref buffer) = bd.buffer {
                                             // Convert RGBA pixels to slint::Image
                                             let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
@@ -2899,6 +2930,20 @@ fn render_frame(
                                                 buffer.height,
                                             );
                                             Some(slint::Image::from_rgba8(pixel_buffer))
+                                        } else if let Some(ref egl_tex) = bd.egl_texture {
+                                            // Try reading from EGL texture (hardware rendered apps)
+                                            unsafe {
+                                                if let Some(pixels) = gl::read_texture_pixels(egl_tex.texture_id, egl_tex.width, egl_tex.height) {
+                                                    let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                                        &pixels,
+                                                        egl_tex.width,
+                                                        egl_tex.height,
+                                                    );
+                                                    Some(slint::Image::from_rgba8(pixel_buffer))
+                                                } else {
+                                                    None
+                                                }
+                                            }
                                         } else {
                                             None
                                         }
@@ -3355,6 +3400,10 @@ mod gl {
     static mut FN_CHECK_FRAMEBUFFER_STATUS: Option<unsafe extern "C" fn(u32) -> u32> = None;
     static mut FN_DELETE_FRAMEBUFFERS: Option<unsafe extern "C" fn(i32, *const u32)> = None;
     static mut FN_BLIT_FRAMEBUFFER: Option<unsafe extern "C" fn(i32, i32, i32, i32, i32, i32, i32, i32, u32, u32)> = None;
+    static mut FN_READ_PIXELS: Option<unsafe extern "C" fn(i32, i32, i32, i32, u32, u32, *mut c_void)> = None;
+
+    // Persistent FBO for texture readback (avoid recreating each time)
+    static mut READBACK_FBO: u32 = 0;
 
     // FBO constants
     const GL_FRAMEBUFFER: u32 = 0x8D40;
@@ -4096,11 +4145,12 @@ mod gl {
         FN_CHECK_FRAMEBUFFER_STATUS = load_fn(lib, b"glCheckFramebufferStatus\0");
         FN_DELETE_FRAMEBUFFERS = load_fn(lib, b"glDeleteFramebuffers\0");
         FN_BLIT_FRAMEBUFFER = load_fn(lib, b"glBlitFramebuffer\0");
+        FN_READ_PIXELS = load_fn(lib, b"glReadPixels\0");
 
-        tracing::info!("FBO support: gen={}, bind={}, attach={}, check={}, blit={}",
+        tracing::info!("FBO support: gen={}, bind={}, attach={}, check={}, blit={}, read={}",
             FN_GEN_FRAMEBUFFERS.is_some(), FN_BIND_FRAMEBUFFER.is_some(),
             FN_FRAMEBUFFER_TEXTURE_2D.is_some(), FN_CHECK_FRAMEBUFFER_STATUS.is_some(),
-            FN_BLIT_FRAMEBUFFER.is_some());
+            FN_BLIT_FRAMEBUFFER.is_some(), FN_READ_PIXELS.is_some());
 
         // Create shader program
         if let Some(program) = create_shader_program() {
@@ -4884,6 +4934,55 @@ mod gl {
     /// Get the scene texture ID for use in distortion shader
     pub unsafe fn get_scene_texture() -> u32 {
         SCENE_TEXTURE
+    }
+
+    /// Read pixels from an EGL texture for preview capture
+    /// Returns RGBA pixels if successful, None if readback not supported
+    pub unsafe fn read_texture_pixels(texture_id: u32, width: u32, height: u32) -> Option<Vec<u8>> {
+        // Need FBO and ReadPixels support
+        let gen_fbo = FN_GEN_FRAMEBUFFERS?;
+        let bind_fbo = FN_BIND_FRAMEBUFFER?;
+        let attach_tex = FN_FRAMEBUFFER_TEXTURE_2D?;
+        let check_status = FN_CHECK_FRAMEBUFFER_STATUS?;
+        let read_pixels = FN_READ_PIXELS?;
+
+        // Create readback FBO if not exists
+        if READBACK_FBO == 0 {
+            gen_fbo(1, &mut READBACK_FBO);
+            if READBACK_FBO == 0 {
+                return None;
+            }
+        }
+
+        // Bind FBO and attach texture
+        bind_fbo(GL_FRAMEBUFFER, READBACK_FBO);
+        attach_tex(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, TEXTURE_2D, texture_id, 0);
+
+        // Check framebuffer is complete
+        let status = check_status(GL_FRAMEBUFFER);
+        if status != GL_FRAMEBUFFER_COMPLETE {
+            bind_fbo(GL_FRAMEBUFFER, 0);
+            return None;
+        }
+
+        // Read pixels
+        let size = (width * height * 4) as usize;
+        let mut pixels = vec![0u8; size];
+        read_pixels(0, 0, width as i32, height as i32, RGBA, UNSIGNED_BYTE, pixels.as_mut_ptr() as *mut c_void);
+
+        // Unbind FBO
+        bind_fbo(GL_FRAMEBUFFER, 0);
+
+        // Flip vertically (OpenGL has origin at bottom-left, we need top-left)
+        let row_size = (width * 4) as usize;
+        let mut flipped = vec![0u8; size];
+        for y in 0..height as usize {
+            let src_row = (height as usize - 1 - y) * row_size;
+            let dst_row = y * row_size;
+            flipped[dst_row..dst_row + row_size].copy_from_slice(&pixels[src_row..src_row + row_size]);
+        }
+
+        Some(flipped)
     }
 }
 

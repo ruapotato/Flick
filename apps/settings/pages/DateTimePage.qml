@@ -21,6 +21,8 @@ Page {
     Component.onCompleted: {
         loadDateTimeInfo()
         loadLocationConfig()
+        // Request timezone list to be generated
+        console.warn("DATETIME_CMD:list-timezones")
     }
 
     Timer {
@@ -131,6 +133,68 @@ Page {
     }
 
     property bool locationSearchVisible: false
+    property bool timezonePickerVisible: false
+    property var filteredTimezones: []
+
+    // Common timezones for quick access
+    property var commonTimezones: [
+        {name: "America/New_York", display: "New York (Eastern)"},
+        {name: "America/Chicago", display: "Chicago (Central)"},
+        {name: "America/Denver", display: "Denver (Mountain)"},
+        {name: "America/Los_Angeles", display: "Los Angeles (Pacific)"},
+        {name: "America/Anchorage", display: "Anchorage (Alaska)"},
+        {name: "Pacific/Honolulu", display: "Honolulu (Hawaii)"},
+        {name: "Europe/London", display: "London (GMT)"},
+        {name: "Europe/Paris", display: "Paris (CET)"},
+        {name: "Europe/Berlin", display: "Berlin (CET)"},
+        {name: "Europe/Moscow", display: "Moscow"},
+        {name: "Asia/Tokyo", display: "Tokyo (JST)"},
+        {name: "Asia/Shanghai", display: "Shanghai (CST)"},
+        {name: "Asia/Singapore", display: "Singapore"},
+        {name: "Asia/Dubai", display: "Dubai"},
+        {name: "Asia/Kolkata", display: "India (IST)"},
+        {name: "Australia/Sydney", display: "Sydney (AEST)"},
+        {name: "Pacific/Auckland", display: "Auckland (NZST)"},
+        {name: "UTC", display: "UTC"}
+    ]
+
+    // All available timezones (loaded from system)
+    property var allTimezones: []
+
+    function loadAllTimezones() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///tmp/flick-timezones.txt", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var lines = xhr.responseText.trim().split("\n")
+                allTimezones = lines.filter(function(tz) { return tz.length > 0 })
+            }
+        } catch (e) {}
+    }
+
+    function filterTimezones(query) {
+        if (query.length < 2) {
+            filteredTimezones = []
+            return
+        }
+        var q = query.toLowerCase()
+        var results = []
+        for (var i = 0; i < allTimezones.length && results.length < 10; i++) {
+            if (allTimezones[i].toLowerCase().indexOf(q) !== -1) {
+                results.push(allTimezones[i])
+            }
+        }
+        filteredTimezones = results
+    }
+
+    function setTimezone(tz) {
+        console.warn("DATETIME_CMD:timezone:" + tz)
+        timezonePickerVisible = false
+        timezoneSearchInput.text = ""
+        filteredTimezones = []
+    }
+
     ListModel { id: locationSearchModel }
 
     background: Rectangle {
@@ -152,7 +216,7 @@ Page {
             width: 350
             height: 280
             radius: 175
-            color: "#6366f1"
+            color: Theme.accentColor
             opacity: 0.1
         }
 
@@ -185,7 +249,7 @@ Page {
                 text: currentDay
                 font.pixelSize: 28
                 font.weight: Font.Medium
-                color: "#6366f1"
+                color: Theme.accentColor
             }
 
             Text {
@@ -228,7 +292,7 @@ Page {
                 height: 90
                 radius: 24
                 color: ntpMouse.pressed ? "#1e1e2e" : "#14141e"
-                border.color: ntpEnabled ? "#6366f1" : "#1a1a2e"
+                border.color: ntpEnabled ? Theme.accentColor : "#1a1a2e"
                 border.width: ntpEnabled ? 2 : 1
 
                 RowLayout {
@@ -270,7 +334,7 @@ Page {
                         Layout.preferredWidth: 64
                         Layout.preferredHeight: 36
                         radius: 18
-                        color: ntpEnabled ? "#6366f1" : "#2a2a3e"
+                        color: ntpEnabled ? Theme.accentColor : "#2a2a3e"
 
                         Behavior on color { ColorAnimation { duration: 200 } }
 
@@ -299,9 +363,9 @@ Page {
                 width: settingsColumn.width
                 height: 90
                 radius: 24
-                color: "#14141e"
-                border.color: "#1a1a2e"
-                border.width: 1
+                color: tzMouse.pressed ? "#1e1e2e" : "#14141e"
+                border.color: timezonePickerVisible ? Theme.accentColor : "#1a1a2e"
+                border.width: timezonePickerVisible ? 2 : 1
 
                 RowLayout {
                     anchors.fill: parent
@@ -312,7 +376,7 @@ Page {
                         Layout.preferredWidth: 52
                         Layout.preferredHeight: 52
                         radius: 14
-                        color: "#1a1a28"
+                        color: timezonePickerVisible ? Qt.darker(Theme.accentColor, 2) : "#1a1a28"
 
                         Text {
                             anchors.centerIn: parent
@@ -334,14 +398,223 @@ Page {
                         Text {
                             text: timezone
                             font.pixelSize: 13
-                            color: "#6366f1"
+                            color: Theme.accentColor
                         }
                     }
 
                     Text {
-                        text: "→"
+                        text: timezonePickerVisible ? "×" : "→"
                         font.pixelSize: 24
                         color: "#444455"
+                    }
+                }
+
+                MouseArea {
+                    id: tzMouse
+                    anchors.fill: parent
+                    onClicked: {
+                        timezonePickerVisible = !timezonePickerVisible
+                        if (timezonePickerVisible && allTimezones.length === 0) {
+                            // Load timezones on first open
+                            loadAllTimezones()
+                        }
+                    }
+                }
+            }
+
+            // Timezone picker (expandable)
+            Rectangle {
+                width: settingsColumn.width
+                height: timezonePickerVisible ? tzPickerCol.height + 32 : 0
+                radius: 16
+                color: "#15151f"
+                clip: true
+                visible: height > 0
+
+                Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+                Column {
+                    id: tzPickerCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 12
+
+                    // Search input
+                    Rectangle {
+                        width: parent.width
+                        height: 56
+                        radius: 12
+                        color: "#1a1a28"
+                        border.color: timezoneSearchInput.activeFocus ? Theme.accentColor : "#2a2a3e"
+                        border.width: timezoneSearchInput.activeFocus ? 2 : 1
+
+                        Row {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 12
+
+                            Text {
+                                text: "🔍"
+                                font.pixelSize: 20
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            TextInput {
+                                id: timezoneSearchInput
+                                width: parent.width - 44
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: 18
+                                color: "#ffffff"
+                                clip: true
+
+                                property string placeholderText: "Search timezone..."
+                                Text {
+                                    anchors.fill: parent
+                                    text: parent.placeholderText
+                                    color: "#555566"
+                                    font.pixelSize: 18
+                                    visible: !parent.text && !parent.activeFocus
+                                }
+
+                                onTextChanged: {
+                                    tzSearchDebounce.restart()
+                                }
+
+                                Timer {
+                                    id: tzSearchDebounce
+                                    interval: 200
+                                    onTriggered: filterTimezones(timezoneSearchInput.text)
+                                }
+                            }
+                        }
+                    }
+
+                    // Common timezones (when no search)
+                    Column {
+                        width: parent.width
+                        spacing: 4
+                        visible: filteredTimezones.length === 0 && timezoneSearchInput.text.length < 2
+
+                        Text {
+                            text: "Common Timezones"
+                            font.pixelSize: 13
+                            color: "#555566"
+                            leftPadding: 4
+                        }
+
+                        Repeater {
+                            model: commonTimezones
+
+                            Rectangle {
+                                width: tzPickerCol.width
+                                height: 52
+                                radius: 10
+                                color: commonTzMouse.pressed ? "#2a2a3e" : (timezone === modelData.name ? Qt.darker(Theme.accentColor, 2) : "#1a1a28")
+                                border.color: timezone === modelData.name ? Theme.accentColor : "transparent"
+                                border.width: timezone === modelData.name ? 1 : 0
+
+                                Row {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.margins: 12
+                                    spacing: 8
+
+                                    Text {
+                                        text: timezone === modelData.name ? "✓" : ""
+                                        font.pixelSize: 16
+                                        color: Theme.accentColor
+                                        width: 20
+                                    }
+
+                                    Column {
+                                        spacing: 2
+
+                                        Text {
+                                            text: modelData.display
+                                            font.pixelSize: 15
+                                            color: "#ffffff"
+                                        }
+
+                                        Text {
+                                            text: modelData.name
+                                            font.pixelSize: 11
+                                            color: "#666677"
+                                        }
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: commonTzMouse
+                                    anchors.fill: parent
+                                    onClicked: setTimezone(modelData.name)
+                                }
+                            }
+                        }
+                    }
+
+                    // Search results
+                    Column {
+                        width: parent.width
+                        spacing: 4
+                        visible: filteredTimezones.length > 0
+
+                        Text {
+                            text: "Search Results"
+                            font.pixelSize: 13
+                            color: "#555566"
+                            leftPadding: 4
+                        }
+
+                        Repeater {
+                            model: filteredTimezones
+
+                            Rectangle {
+                                width: tzPickerCol.width
+                                height: 52
+                                radius: 10
+                                color: searchTzMouse.pressed ? "#2a2a3e" : (timezone === modelData ? Qt.darker(Theme.accentColor, 2) : "#1a1a28")
+                                border.color: timezone === modelData ? Theme.accentColor : "transparent"
+                                border.width: timezone === modelData ? 1 : 0
+
+                                Row {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.margins: 12
+                                    spacing: 8
+
+                                    Text {
+                                        text: timezone === modelData ? "✓" : ""
+                                        font.pixelSize: 16
+                                        color: Theme.accentColor
+                                        width: 20
+                                    }
+
+                                    Text {
+                                        text: modelData
+                                        font.pixelSize: 15
+                                        color: "#ffffff"
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: searchTzMouse
+                                    anchors.fill: parent
+                                    onClicked: setTimezone(modelData)
+                                }
+                            }
+                        }
+                    }
+
+                    // Tip text
+                    Text {
+                        text: filteredTimezones.length === 0 && timezoneSearchInput.text.length >= 2 ? "No timezones found" : ""
+                        font.pixelSize: 13
+                        color: "#555566"
+                        visible: text !== ""
                     }
                 }
             }
@@ -386,7 +659,7 @@ Page {
                         Layout.preferredWidth: 64
                         Layout.preferredHeight: 36
                         radius: 18
-                        color: "#6366f1"
+                        color: Theme.accentColor
 
                         Rectangle {
                             x: parent.width - width - 4
