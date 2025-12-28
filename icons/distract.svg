@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" version="1.1" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+ <defs>
+  <linearGradient id="sparkleGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+   <stop offset="0%" style="stop-color:#ff2288;stop-opacity:1" />
+   <stop offset="50%" style="stop-color:#ffaa22;stop-opacity:1" />
+   <stop offset="100%" style="stop-color:#22aaff;stop-opacity:1" />
+  </linearGradient>
+ </defs>
+
+ <!-- Main sparkle star -->
+ <g transform="translate(32,32)">
+  <!-- Large 4-point star -->
+  <path d="M 0,-28 L -3,-3 L -28,0 L -3,3 L 0,28 L 3,3 L 28,0 L 3,-3 Z"
+        fill="url(#sparkleGradient)"
+        stroke="#ffffff"
+        stroke-width="1.5"
+        opacity="0.95"/>
+
+  <!-- Inner bright core -->
+  <circle cx="0" cy="0" r="6" fill="#ffffff" opacity="0.9"/>
+  <circle cx="0" cy="0" r="3" fill="#ffff88" opacity="1"/>
+ </g>
+
+ <!-- Small accent sparkles -->
+ <g fill="#ffffff" opacity="0.8">
+  <path d="M 12,10 L 11,12 L 9,13 L 11,14 L 12,16 L 13,14 L 15,13 L 13,12 Z"/>
+  <path d="M 52,18 L 51,20 L 49,21 L 51,22 L 52,24 L 53,22 L 55,21 L 53,20 Z"/>
+  <path d="M 14,48 L 13,50 L 11,51 L 13,52 L 14,54 L 15,52 L 17,51 L 15,50 Z"/>
+  <path d="M 50,44 L 49,46 L 47,47 L 49,48 L 50,50 L 51,48 L 53,47 L 51,46 Z"/>
+ </g>
+
+ <!-- Tiny sparkles -->
+ <g fill="#ffaa44" opacity="0.7">
+  <circle cx="22" cy="22" r="2"/>
+  <circle cx="42" cy="12" r="2"/>
+  <circle cx="20" cy="42" r="2"/>
+  <circle cx="44" cy="52" r="2"/>
+ </g>
+</svg>

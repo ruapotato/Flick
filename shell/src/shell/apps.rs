@@ -76,6 +76,7 @@ pub enum AppCategory {
     Photos,
     Music,
     Audiobooks,
+    Ebooks,
     Video,
     Files,
     Terminal,
@@ -88,7 +89,9 @@ pub enum AppCategory {
     Weather,
     Podcast,
     Maps,
+    Distract,
     Settings,
+    Sandbox,
 }
 
 impl AppCategory {
@@ -105,6 +108,7 @@ impl AppCategory {
             Self::Video,
             Self::Music,
             Self::Audiobooks,
+            Self::Ebooks,
             Self::Podcast,
             Self::Recorder,
             Self::Files,
@@ -115,6 +119,8 @@ impl AppCategory {
             Self::Notes,
             Self::Calculator,
             Self::Terminal,
+            Self::Distract,
+            Self::Sandbox,
             Self::Settings,
         ]
     }
@@ -130,6 +136,7 @@ impl AppCategory {
             Self::Photos => "Photos",
             Self::Music => "Music",
             Self::Audiobooks => "Audiobooks",
+            Self::Ebooks => "Ebooks",
             Self::Video => "Video",
             Self::Files => "Files",
             Self::Terminal => "Terminal",
@@ -142,7 +149,9 @@ impl AppCategory {
             Self::Weather => "Weather",
             Self::Podcast => "Podcast",
             Self::Maps => "Maps",
+            Self::Distract => "Distract",
             Self::Settings => "Settings",
+            Self::Sandbox => "Sandbox",
         }
     }
 
@@ -158,6 +167,7 @@ impl AppCategory {
             Self::Photos => (vec!["Photography", "Viewer"], vec!["Graphics", "2DGraphics"]),
             Self::Music => (vec!["Music", "Audio"], vec!["Player"]),
             Self::Audiobooks => (vec!["AudioBook"], vec!["Audio", "AudioVideo"]),
+            Self::Ebooks => (vec!["EBook"], vec!["Office", "Viewer"]),
             Self::Video => (vec!["Video"], vec!["AudioVideo"]),
             Self::Files => (vec!["FileManager"], vec!["FileTools", "Filesystem"]),
             Self::Terminal => (vec!["TerminalEmulator"], vec![]), // Only exact terminal matches
@@ -170,7 +180,9 @@ impl AppCategory {
             Self::Weather => (vec!["Weather"], vec!["Network"]),
             Self::Podcast => (vec!["Podcast"], vec!["Audio", "AudioVideo"]),
             Self::Maps => (vec!["Maps"], vec!["Navigation", "Network"]),
+            Self::Distract => (vec!["Game"], vec![]),
             Self::Settings => (vec!["Settings", "DesktopSettings"], vec![]),
+            Self::Sandbox => (vec!["Game"], vec!["Simulation"]),
         }
     }
 
@@ -191,6 +203,7 @@ impl AppCategory {
             Self::Photos => [0.8, 0.4, 0.8, 1.0],    // Purple
             Self::Music => [0.9, 0.4, 0.2, 1.0],     // Orange
             Self::Audiobooks => [0.6, 0.4, 0.2, 1.0], // Brown
+            Self::Ebooks => [0.4, 0.6, 0.8, 1.0],    // Light Blue
             Self::Video => [0.8, 0.2, 0.2, 1.0],     // Dark Red
             Self::Files => [0.8, 0.7, 0.3, 1.0],     // Yellow
             Self::Terminal => [0.2, 0.2, 0.2, 1.0],  // Dark Gray
@@ -203,7 +216,9 @@ impl AppCategory {
             Self::Weather => [0.3, 0.7, 0.9, 1.0],   // Sky Blue
             Self::Podcast => [0.7, 0.3, 0.8, 1.0],   // Purple
             Self::Maps => [0.2, 0.7, 0.5, 1.0],      // Teal
+            Self::Distract => [0.9, 0.2, 0.8, 1.0],  // Bright Magenta
             Self::Settings => [0.5, 0.5, 0.6, 1.0],  // Gray-Blue
+            Self::Sandbox => [0.83, 0.65, 0.45, 1.0], // Sandy tan
         }
     }
 }
@@ -348,6 +363,7 @@ impl Default for AppConfig {
         selections.insert(AppCategory::Photos, r#"sh -c "$HOME/Flick/apps/photos/run_photos.sh""#.to_string());
         selections.insert(AppCategory::Music, r#"sh -c "$HOME/Flick/apps/music/run_music.sh""#.to_string());
         selections.insert(AppCategory::Audiobooks, r#"sh -c "$HOME/Flick/apps/audiobooks/run_audiobooks.sh""#.to_string());
+        selections.insert(AppCategory::Ebooks, r#"sh -c "$HOME/Flick/apps/ebooks/run_ebooks.sh""#.to_string());
         selections.insert(AppCategory::Video, r#"sh -c "$HOME/Flick/apps/video/run_video.sh""#.to_string());
         selections.insert(AppCategory::Files, r#"sh -c "$HOME/Flick/apps/files/run_files.sh""#.to_string());
         selections.insert(AppCategory::Calendar, r#"sh -c "$HOME/Flick/apps/calendar/run_calendar.sh""#.to_string());
@@ -360,6 +376,8 @@ impl Default for AppConfig {
         selections.insert(AppCategory::Weather, r#"sh -c "$HOME/Flick/apps/weather/run_weather.sh""#.to_string());
         selections.insert(AppCategory::Podcast, r#"sh -c "$HOME/Flick/apps/podcast/run_podcast.sh""#.to_string());
         selections.insert(AppCategory::Maps, r#"sh -c "$HOME/Flick/apps/maps/run_maps.sh""#.to_string());
+        selections.insert(AppCategory::Distract, r#"sh -c "$HOME/Flick/apps/distract/run_distract.sh""#.to_string());
+        selections.insert(AppCategory::Sandbox, r#"sh -c "$HOME/Flick/apps/sandbox/run_sandbox.sh""#.to_string());
 
         Self {
             selections,
