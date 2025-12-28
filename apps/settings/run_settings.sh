@@ -285,11 +285,13 @@ stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" |
         local new_scale="$1"
         local new_timeout="$2"
         local new_wallpaper="$3"
+        local new_accent="$4"
 
         # Read existing values
         local scale="${new_scale:-2.0}"
         local timeout="${new_timeout:-30}"
         local wallpaper=""
+        local accent=""
 
         # Handle wallpaper: "CLEAR" means explicitly remove, empty means keep existing
         if [ "$new_wallpaper" = "CLEAR" ]; then
@@ -301,6 +303,13 @@ stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" |
             wallpaper=$(cat "$DISPLAY_CONFIG" | grep -o '"wallpaper"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*: *"//' | sed 's/"$//')
         fi
 
+        # Handle accent color
+        if [ -n "$new_accent" ]; then
+            accent="$new_accent"
+        elif [ -f "$DISPLAY_CONFIG" ]; then
+            accent=$(cat "$DISPLAY_CONFIG" | grep -o '"accent_color"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*: *"//' | sed 's/"$//')
+        fi
+
         if [ -f "$DISPLAY_CONFIG" ]; then
             [ -z "$new_scale" ] && scale=$(cat "$DISPLAY_CONFIG" | grep -o '"text_scale"[[:space:]]*:[[:space:]]*[0-9.]*' | grep -o '[0-9.]*$')
             [ -z "$new_timeout" ] && timeout=$(cat "$DISPLAY_CONFIG" | grep -o '"screen_timeout"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
@@ -310,12 +319,12 @@ stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" |
         [ -z "$scale" ] && scale="2.0"
         [ -z "$timeout" ] && timeout="30"
 
-        # Build JSON with or without wallpaper
-        if [ -n "$wallpaper" ]; then
-            echo "{\"text_scale\": $scale, \"screen_timeout\": $timeout, \"wallpaper\": \"$wallpaper\"}" > "$DISPLAY_CONFIG"
-        else
-            echo "{\"text_scale\": $scale, \"screen_timeout\": $timeout}" > "$DISPLAY_CONFIG"
-        fi
+        # Build JSON
+        local json="{\"text_scale\": $scale, \"screen_timeout\": $timeout"
+        [ -n "$wallpaper" ] && json="$json, \"wallpaper\": \"$wallpaper\""
+        [ -n "$accent" ] && json="$json, \"accent_color\": \"$accent\""
+        json="$json}"
+        echo "$json" > "$DISPLAY_CONFIG"
         echo "Display config saved to $DISPLAY_CONFIG" >> "$LOG_FILE"
     }
 
@@ -335,7 +344,13 @@ stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" |
     if [[ "$line" == *"WALLPAPER_SAVE:"* ]]; then
         WALLPAPER=$(echo "$line" | sed 's/.*WALLPAPER_SAVE://')
         echo "Detected wallpaper change: $WALLPAPER" >> "$LOG_FILE"
-        save_display_config "" "" "$WALLPAPER"
+        save_display_config "" "" "$WALLPAPER" ""
+    fi
+    # Check for accent color save messages
+    if [[ "$line" == *"ACCENT_SAVE:"* ]]; then
+        ACCENT=$(echo "$line" | sed 's/.*ACCENT_SAVE://')
+        echo "Detected accent color change: $ACCENT" >> "$LOG_FILE"
+        save_display_config "" "" "" "$ACCENT"
     fi
     # Check for picker clear command
     if [[ "$line" == *"PICKER_CLEAR:"* ]]; then

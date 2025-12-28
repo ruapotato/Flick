@@ -12,6 +12,9 @@ Page {
     property var timeoutValues: [15, 30, 60, 300, 0]  // Seconds for each option
     property real textScale: 2.0  // Text scale factor (0.5 to 3.0, default 2.0)
     property string wallpaperPath: ""  // Path to wallpaper image
+    property string accentColor: "#e94560"  // Accent color for buttons
+    property var accentColors: ["#e94560", "#4a90d9", "#50c878", "#ffa500", "#9b59b6", "#1abc9c", "#e74c3c", "#f39c12"]
+    property var accentColorNames: ["Pink", "Blue", "Green", "Orange", "Purple", "Teal", "Red", "Gold"]
     property string scaleConfigPath: "/home/droidian/.local/state/flick/display_config.json"
     property string pickerResultFile: "/tmp/flick_wallpaper_pick.txt"
     property bool waitingForPicker: false
@@ -74,6 +77,9 @@ Page {
                 if (config.wallpaper !== undefined) {
                     wallpaperPath = config.wallpaper
                 }
+                if (config.accent_color !== undefined && config.accent_color !== "") {
+                    accentColor = config.accent_color
+                }
             }
         } catch (e) {
             console.log("Using default config")
@@ -94,6 +100,10 @@ Page {
         // Use "CLEAR" as special marker to explicitly clear wallpaper
         var pathToSave = wallpaperPath === "" ? "CLEAR" : wallpaperPath
         console.warn("WALLPAPER_SAVE:" + pathToSave)
+    }
+
+    function saveAccentColor() {
+        console.warn("ACCENT_SAVE:" + accentColor)
     }
 
     function openImagePicker() {
@@ -734,6 +744,84 @@ Page {
                 leftPadding: 8
             }
 
+            Item { height: 24 }
+
+            Text {
+                text: "ACCENT COLOR"
+                font.pixelSize: 12
+                font.letterSpacing: 2
+                color: "#555566"
+                leftPadding: 8
+            }
+
+            // Accent color selection
+            Rectangle {
+                width: settingsColumn.width
+                height: 140
+                radius: 24
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                border.width: 1
+
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 16
+
+                    Text {
+                        text: "Button Color"
+                        font.pixelSize: 18
+                        color: "#ffffff"
+                    }
+
+                    // Color grid
+                    Grid {
+                        columns: 4
+                        spacing: 16
+                        anchors.horizontalCenter: parent.horizontalCenter
+
+                        Repeater {
+                            model: accentColors.length
+
+                            Rectangle {
+                                width: 56
+                                height: 56
+                                radius: 28
+                                color: accentColors[index]
+                                border.color: accentColor === accentColors[index] ? "#ffffff" : "transparent"
+                                border.width: 3
+
+                                Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        accentColor = accentColors[index]
+                                        saveAccentColor()
+                                    }
+                                }
+
+                                // Checkmark for selected
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: accentColor === accentColors[index] ? "✓" : ""
+                                    font.pixelSize: 24
+                                    font.weight: Font.Bold
+                                    color: "#ffffff"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text {
+                text: "Changes the color of buttons and accents in all apps."
+                font.pixelSize: 13
+                color: "#666677"
+                leftPadding: 8
+            }
+
             Item { height: 20 }
         }
     }
@@ -747,7 +835,7 @@ Page {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? Qt.darker(accentColor, 1.2) : accentColor
 
         Behavior on color { ColorAnimation { duration: 150 } }
 
