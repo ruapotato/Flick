@@ -2632,8 +2632,8 @@ export component FlickShell inherits Window {
         image-fit: cover;
     }
 
-    // Home screen - visible except in app view (where we only show keyboard overlay)
-    if current-view != "app": HomeScreen {
+    // Home screen - only visible in home view
+    if current-view == "home": HomeScreen {
         width: 100%;
         height: 100%;
         categories: categories;
