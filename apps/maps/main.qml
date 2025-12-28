@@ -31,6 +31,10 @@ Window {
     property bool voiceEnabled: true
     property var lastSpokenDistance: -1  // Track what distance we last spoke at
 
+    // GPS state
+    property bool hasGpsFix: false
+    property bool gpsWaiting: true
+
     Component.onCompleted: {
         loadConfig()
         loadFavorites()
@@ -365,10 +369,21 @@ Window {
         id: positionSource
         updateInterval: 1000  // More frequent updates during navigation
         active: true
+        preferredPositioningMethods: PositionSource.AllPositioningMethods
 
         onPositionChanged: {
             if (position.latitudeValid && position.longitudeValid) {
+                gpsWaiting = false
                 gpsMarker.coordinate = position.coordinate
+
+                // Auto-center on first GPS fix
+                if (!hasGpsFix) {
+                    hasGpsFix = true
+                    map.center = position.coordinate
+                    map.zoomLevel = 15
+                    console.log("GPS fix acquired:", position.coordinate.latitude, position.coordinate.longitude)
+                }
+
                 if (followGps && !searchVisible) {
                     map.center = position.coordinate
                 }
@@ -376,6 +391,19 @@ Window {
                 if (navigating) {
                     updateNavigation(position.coordinate)
                 }
+            }
+        }
+
+        onSourceErrorChanged: {
+            if (sourceError !== PositionSource.NoError) {
+                console.log("GPS error:", sourceError)
+            }
+        }
+
+        Component.onCompleted: {
+            console.log("PositionSource initialized, valid:", valid, "name:", name)
+            if (valid) {
+                start()
             }
         }
     }
@@ -1229,6 +1257,83 @@ Window {
                     }
                     map.activeMapType = types[(currentIdx + 1) % types.length]
                 }
+            }
+        }
+    }
+
+    // GPS status indicator (bottom center, above home indicator)
+    Rectangle {
+        id: gpsStatusBar
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 40
+        width: gpsStatusRow.width + 24
+        height: 36
+        radius: 18
+        color: "#1a1a2e"
+        visible: gpsWaiting || !hasGpsFix
+        z: 100
+
+        Row {
+            id: gpsStatusRow
+            anchors.centerIn: parent
+            spacing: 8
+
+            // Animated GPS icon
+            Text {
+                text: "📡"
+                font.pixelSize: 18
+
+                SequentialAnimation on opacity {
+                    running: gpsWaiting
+                    loops: Animation.Infinite
+                    NumberAnimation { from: 1.0; to: 0.3; duration: 500 }
+                    NumberAnimation { from: 0.3; to: 1.0; duration: 500 }
+                }
+            }
+
+            Text {
+                text: gpsWaiting ? "Locating..." : "No GPS signal"
+                color: "#ffffff"
+                font.pixelSize: 14
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+    }
+
+    // GPS accuracy indicator (shown when we have a fix)
+    Rectangle {
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 80
+        anchors.bottomMargin: 100
+        width: gpsInfoRow.width + 16
+        height: 32
+        radius: 16
+        color: "#1a1a2e"
+        visible: hasGpsFix && !navigating
+        z: 99
+
+        Row {
+            id: gpsInfoRow
+            anchors.centerIn: parent
+            spacing: 6
+
+            Rectangle {
+                width: 10
+                height: 10
+                radius: 5
+                color: positionSource.position.horizontalAccuracyValid &&
+                       positionSource.position.horizontalAccuracy < 50 ? "#4ade80" : "#fbbf24"
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+                text: positionSource.position.horizontalAccuracyValid ?
+                      "±" + Math.round(positionSource.position.horizontalAccuracy) + "m" : "GPS"
+                color: "#ffffff"
+                font.pixelSize: 12
+                anchors.verticalCenter: parent.verticalCenter
             }
         }
     }
