@@ -21,9 +21,16 @@ Page {
     property bool lpShootingStars: true  // Occasional shooting stars
     property bool rainEffectEnabled: false // Compiz-style rain ripples
 
-    property string configPath: "/home/droidian/.local/state/flick/effects_config.json"
+    // Lock screen effects
+    property bool spyEyeEnabled: true    // Spooky eye that appears on lock screen
 
-    Component.onCompleted: loadConfig()
+    property string configPath: "/home/droidian/.local/state/flick/effects_config.json"
+    property string displayConfigPath: "/home/droidian/.local/state/flick/display_config.json"
+
+    Component.onCompleted: {
+        loadConfig()
+        loadDisplayConfig()
+    }
 
     function loadConfig() {
         var xhr = new XMLHttpRequest()
@@ -76,6 +83,47 @@ Page {
             xhr.send(JSON.stringify(config, null, 2))
         } catch (e) {
             console.error("Failed to save effects config:", e)
+        }
+    }
+
+    // Load display config (for lock screen effects)
+    function loadDisplayConfig() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + displayConfigPath, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200) {
+                var config = JSON.parse(xhr.responseText)
+                if (config.spy_eye_enabled !== undefined) spyEyeEnabled = config.spy_eye_enabled
+            }
+        } catch (e) {
+            console.log("Using default display config for effects")
+        }
+    }
+
+    // Save display config (preserving existing settings)
+    function saveDisplayConfig() {
+        // First load existing config to preserve other settings
+        var existingConfig = {}
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + displayConfigPath, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200) {
+                existingConfig = JSON.parse(xhr.responseText)
+            }
+        } catch (e) {}
+
+        // Update with spy eye setting
+        existingConfig.spy_eye_enabled = spyEyeEnabled
+
+        // Save back
+        var xhrWrite = new XMLHttpRequest()
+        xhrWrite.open("PUT", "file://" + displayConfigPath, false)
+        try {
+            xhrWrite.send(JSON.stringify(existingConfig, null, 2))
+        } catch (e) {
+            console.error("Failed to save display config:", e)
         }
     }
 
@@ -518,6 +566,65 @@ Page {
                         accentColor: "#00ff00"
                         suffix: "x"
                         onValueChanged: { asciiDensity = value; saveConfig() }
+                    }
+                }
+            }
+
+            // ===== LOCK SCREEN EFFECTS =====
+            Item { height: 16 }
+
+            Text {
+                text: "LOCK SCREEN EFFECTS"
+                font.pixelSize: 11
+                font.letterSpacing: 2
+                color: "#555566"
+                leftPadding: 8
+            }
+
+            // Spy Eye toggle
+            EffectToggle {
+                width: settingsColumn.width
+                title: "Spy Eye"
+                subtitle: "Spooky eye that watches when idle"
+                icon: "👁️"
+                checked: spyEyeEnabled
+                accentColor: "#9944ff"
+                onToggled: {
+                    spyEyeEnabled = !spyEyeEnabled
+                    saveDisplayConfig()
+                }
+            }
+
+            // Spy Eye description card
+            Rectangle {
+                width: settingsColumn.width
+                height: spyEyeDescCol.height + 24
+                radius: 20
+                color: "#14141e"
+                border.color: spyEyeEnabled ? "#9944ff" : "#1a1a2e"
+                border.width: spyEyeEnabled ? 1 : 1
+
+                Column {
+                    id: spyEyeDescCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 8
+
+                    Text {
+                        width: parent.width
+                        text: "A line-drawn eye appears on the lock screen after a few seconds of inactivity. It opens, looks around curiously, then closes again."
+                        font.pixelSize: 13
+                        color: "#888899"
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        text: "Touch the screen to make it close quickly."
+                        font.pixelSize: 12
+                        color: "#666677"
+                        font.italic: true
                     }
                 }
             }
