@@ -17,6 +17,8 @@ Window {
     property string currentOperation: ""
     property bool newNumber: true
     property int maxDigits: 12
+    property color accentColor: Theme.accentColor
+    property color accentPressed: Qt.darker(accentColor, 1.2)
 
     function appendDigit(digit) {
         Haptic.tap()
@@ -222,7 +224,7 @@ Window {
             }
             CalcButton {
                 width: buttonArea.btnW; height: buttonArea.btnH
-                label: "÷"; btnColor: "#e94560"; pressedColor: "#c23a50"
+                label: "÷"; btnColor: accentColor; pressedColor: accentPressed
                 onClicked: setOperation("/")
             }
         }
@@ -251,7 +253,7 @@ Window {
             }
             CalcButton {
                 width: buttonArea.btnW; height: buttonArea.btnH
-                label: "×"; btnColor: "#e94560"; pressedColor: "#c23a50"
+                label: "×"; btnColor: accentColor; pressedColor: accentPressed
                 onClicked: setOperation("*")
             }
         }
@@ -280,7 +282,7 @@ Window {
             }
             CalcButton {
                 width: buttonArea.btnW; height: buttonArea.btnH
-                label: "-"; btnColor: "#e94560"; pressedColor: "#c23a50"; fontSize: 48
+                label: "-"; btnColor: accentColor; pressedColor: accentPressed; fontSize: 48
                 onClicked: setOperation("-")
             }
         }
@@ -309,7 +311,7 @@ Window {
             }
             CalcButton {
                 width: buttonArea.btnW; height: buttonArea.btnH
-                label: "+"; btnColor: "#e94560"; pressedColor: "#c23a50"; fontSize: 48
+                label: "+"; btnColor: accentColor; pressedColor: accentPressed; fontSize: 48
                 onClicked: setOperation("+")
             }
         }
@@ -333,7 +335,7 @@ Window {
             }
             CalcButton {
                 width: buttonArea.btnW; height: buttonArea.btnH
-                label: "="; btnColor: "#e94560"; pressedColor: "#c23a50"; fontSize: 48
+                label: "="; btnColor: accentColor; pressedColor: accentPressed; fontSize: 48
                 onClicked: calculate()
             }
         }
