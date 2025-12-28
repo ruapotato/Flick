@@ -24,10 +24,12 @@ Droidian and similar Android-based Linux distributions require **HWComposer** in
 ✅ **Working:**
 - Display output via hwcomposer (tested on Pixel 3a)
 - EGL/GLES rendering through libhybris HWCNativeWindow
+- **Hardware acceleration for ALL apps** (including lock screen)
 - Wayland compositor with full client support
 - Lock screen, shell UI, and native Wayland apps (terminals, Settings, etc.)
 - Edge gesture detection (swipe from edges)
 - App switcher with fan-out card stack and gesture-driven animations
+- **App switcher previews** - captures EGL textures with GL state save/restore
 - Smooth shrink animation when entering app switcher (follows finger)
 - On-screen keyboard overlay with touch input to apps
 - Keyboard input injection to focused Wayland clients
@@ -70,19 +72,26 @@ Flick comes with a set of QML apps. Status of each:
 
 | App | Status | Notes |
 |-----|--------|-------|
-| **Settings** | ✅ Working | WiFi, Bluetooth, Display, Sound, Battery, Storage, Date/Time, About |
+| **Settings** | ✅ Working | WiFi, Bluetooth, Display, Sound, Battery, Storage, Date/Time, Timezone, About |
 | **Calculator** | ✅ Working | Basic calculator with standard operations |
 | **Calendar** | ✅ Working | Basic calendar view |
 | **Music** | ✅ Working | Music player with playback controls |
 | **Audiobooks** | ✅ Working | Audiobook player with chapter support |
+| **Podcast** | ✅ Working | Podcast player with RSS feed support |
+| **Video** | ✅ Working | Video player for local files |
+| **Ebooks** | ✅ Working | EPUB reader with bookmarks |
 | **Camera** | ✅ Working | Camera with live preview (uses droidian-camera on Droidian) |
 | **Notes** | ✅ Working | Simple note-taking app with audio recording |
+| **Recorder** | ✅ Working | Audio recorder with playback |
 | **Files** | ✅ Working | File browser with context menu |
 | **Photos** | ✅ Working | Photo gallery viewer |
 | **Terminal** | ✅ Working | Terminal emulator |
-| **Lock Screen** | ✅ Working | Pattern/PIN entry, swipe to unlock |
+| **Clock** | ✅ Working | Clock with alarms and timer |
+| **Contacts** | ✅ Working | Contact management |
+| **Lock Screen** | ✅ Working | Pattern/PIN entry, swipe to unlock, hardware accelerated |
+| **Distract** | ✅ Working | Toddler distraction app with interactive animations |
 | **Phone** | ⚠️ Partial | Dialer UI works, audio controls work, modem integration in progress |
-| **Messages** | 🚧 TODO | SMS interface (requires modem integration) |
+| **Messages** | ⚠️ Partial | SMS interface UI (requires modem integration) |
 | **Email** | 🚧 TODO | Email client (UI only, needs backend) |
 | **Web** | 🚧 TODO | Web browser (UI only, needs browser engine) |
 
