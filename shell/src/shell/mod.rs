@@ -625,6 +625,10 @@ impl Shell {
                     slint_ui.set_keyboard_visible(false);
                 }
             }
+            // Reload wallpaper when returning from app (settings might have changed it)
+            if new_view == ShellView::Home {
+                self.reload_wallpaper();
+            }
         }
         self.view = new_view;
 
