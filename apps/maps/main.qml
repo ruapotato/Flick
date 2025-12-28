@@ -21,6 +21,16 @@ Window {
     property var favorites: []
     property string favoritesFile: "/home/droidian/.local/state/flick/map_favorites.json"
 
+    // Navigation state
+    property bool navigating: false
+    property var routeSteps: []
+    property int currentStepIndex: 0
+    property real distanceToNextStep: 0
+    property string currentInstruction: ""
+    property string nextInstruction: ""
+    property bool voiceEnabled: true
+    property var lastSpokenDistance: -1  // Track what distance we last spoke at
+
     Component.onCompleted: {
         loadConfig()
         loadFavorites()
@@ -113,6 +123,8 @@ Window {
         var dur = Math.round(route.duration / 60)
         routeInfoText.text = dist.toFixed(1) + " km • " + dur + " min"
         routeInfoPanel.visible = true
+        // Start voice navigation
+        startNavigation(route)
     }
 
     function formatDistance(meters) {
@@ -120,10 +132,238 @@ Window {
         return (meters / 1000).toFixed(1) + " km"
     }
 
+    // Voice navigation functions
+    property string speakQueueFile: "/home/droidian/.local/state/flick/speak_queue"
+
+    function speak(text) {
+        if (!voiceEnabled || !text) return
+        // Write to speak queue file - background process will pick it up
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file://" + speakQueueFile)
+        xhr.send(text + "\n")
+    }
+
+    function parseOsrmManeuver(step) {
+        var maneuver = step.maneuver
+        var type = maneuver.type
+        var modifier = maneuver.modifier || ""
+        var name = step.name || "the road"
+
+        // Build spoken instruction
+        var instruction = ""
+
+        switch (type) {
+            case "depart":
+                instruction = "Start by heading " + (modifier || "forward")
+                if (name) instruction += " on " + name
+                break
+            case "arrive":
+                if (modifier === "left") instruction = "Your destination is on the left"
+                else if (modifier === "right") instruction = "Your destination is on the right"
+                else instruction = "You have arrived at your destination"
+                break
+            case "turn":
+                instruction = "Turn " + modifier
+                if (name && name !== "") instruction += " onto " + name
+                break
+            case "merge":
+                instruction = "Merge " + modifier
+                if (name) instruction += " onto " + name
+                break
+            case "on ramp":
+            case "off ramp":
+                instruction = "Take the ramp " + modifier
+                break
+            case "fork":
+                instruction = "Keep " + modifier + " at the fork"
+                break
+            case "end of road":
+                instruction = "At the end of the road, turn " + modifier
+                break
+            case "continue":
+                instruction = "Continue " + (modifier || "straight")
+                if (name && name !== "") instruction += " on " + name
+                break
+            case "roundabout":
+                var exit = maneuver.exit || 1
+                instruction = "At the roundabout, take exit " + exit
+                break
+            case "rotary":
+                instruction = "At the rotary, take exit " + (maneuver.exit || 1)
+                break
+            case "new name":
+                instruction = "Continue onto " + name
+                break
+            case "notification":
+                instruction = step.notification || ""
+                break
+            default:
+                if (modifier) {
+                    instruction = modifier.charAt(0).toUpperCase() + modifier.slice(1)
+                    if (name) instruction += " onto " + name
+                } else {
+                    instruction = "Continue"
+                }
+        }
+
+        return instruction
+    }
+
+    function getShortInstruction(step) {
+        var maneuver = step.maneuver
+        var type = maneuver.type
+        var modifier = maneuver.modifier || ""
+
+        switch (type) {
+            case "turn":
+                if (modifier.indexOf("left") >= 0) return "↰ Turn left"
+                if (modifier.indexOf("right") >= 0) return "↱ Turn right"
+                return "↑ " + modifier
+            case "arrive":
+                return "🏁 Arrive"
+            case "depart":
+                return "▶ Start"
+            case "merge":
+                return "⤭ Merge " + modifier
+            case "fork":
+                if (modifier.indexOf("left") >= 0) return "⤿ Keep left"
+                if (modifier.indexOf("right") >= 0) return "⤾ Keep right"
+                return "Fork " + modifier
+            case "roundabout":
+            case "rotary":
+                return "⟳ Roundabout exit " + (maneuver.exit || 1)
+            case "continue":
+            case "new name":
+                return "↑ Continue"
+            default:
+                if (modifier.indexOf("left") >= 0) return "↰ " + modifier
+                if (modifier.indexOf("right") >= 0) return "↱ " + modifier
+                return "↑ " + (modifier || type)
+        }
+    }
+
+    function startNavigation(route) {
+        if (!route || !route.legs || route.legs.length === 0) return
+
+        // Extract steps from all legs
+        routeSteps = []
+        for (var i = 0; i < route.legs.length; i++) {
+            var leg = route.legs[i]
+            for (var j = 0; j < leg.steps.length; j++) {
+                routeSteps.push(leg.steps[j])
+            }
+        }
+
+        if (routeSteps.length === 0) return
+
+        currentStepIndex = 0
+        navigating = true
+        followGps = true
+        lastSpokenDistance = -1
+
+        updateCurrentStep()
+
+        // Initial announcement
+        speak("Starting navigation. " + currentInstruction)
+    }
+
+    function updateCurrentStep() {
+        if (currentStepIndex >= routeSteps.length) {
+            // Navigation complete
+            speak("You have arrived at your destination")
+            stopNavigation()
+            return
+        }
+
+        var step = routeSteps[currentStepIndex]
+        currentInstruction = parseOsrmManeuver(step)
+
+        if (currentStepIndex + 1 < routeSteps.length) {
+            nextInstruction = getShortInstruction(routeSteps[currentStepIndex + 1])
+        } else {
+            nextInstruction = ""
+        }
+    }
+
+    function stopNavigation() {
+        navigating = false
+        routeSteps = []
+        currentStepIndex = 0
+        currentInstruction = ""
+        nextInstruction = ""
+        lastSpokenDistance = -1
+    }
+
+    function calculateDistanceToStep(pos, stepIndex) {
+        if (stepIndex >= routeSteps.length) return 0
+
+        var step = routeSteps[stepIndex]
+        var maneuverLat = step.maneuver.location[1]
+        var maneuverLon = step.maneuver.location[0]
+
+        // Haversine formula for distance
+        var R = 6371000 // Earth radius in meters
+        var lat1 = pos.latitude * Math.PI / 180
+        var lat2 = maneuverLat * Math.PI / 180
+        var dLat = (maneuverLat - pos.latitude) * Math.PI / 180
+        var dLon = (maneuverLon - pos.longitude) * Math.PI / 180
+
+        var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1) * Math.cos(lat2) *
+                Math.sin(dLon/2) * Math.sin(dLon/2)
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+
+        return R * c
+    }
+
+    function updateNavigation(pos) {
+        if (!navigating || routeSteps.length === 0) return
+
+        // Calculate distance to next maneuver
+        distanceToNextStep = calculateDistanceToStep(pos, currentStepIndex)
+
+        // Check if we've passed the current step (within 30m threshold)
+        if (distanceToNextStep < 30 && currentStepIndex < routeSteps.length - 1) {
+            currentStepIndex++
+            updateCurrentStep()
+            lastSpokenDistance = -1
+
+            // Announce next step immediately
+            if (currentStepIndex < routeSteps.length) {
+                speak(currentInstruction)
+            }
+            return
+        }
+
+        // Voice announcements at key distances
+        checkVoiceAnnouncement(distanceToNextStep)
+    }
+
+    function checkVoiceAnnouncement(distance) {
+        // Announce at 500m, 200m, 100m, and 50m before turn
+        var thresholds = [500, 200, 100, 50]
+
+        for (var i = 0; i < thresholds.length; i++) {
+            var threshold = thresholds[i]
+            // Check if we crossed this threshold
+            if (distance < threshold && (lastSpokenDistance < 0 || lastSpokenDistance >= threshold)) {
+                var prefix = ""
+                if (threshold >= 1000) {
+                    prefix = "In " + (threshold / 1000).toFixed(1) + " kilometers, "
+                } else {
+                    prefix = "In " + threshold + " meters, "
+                }
+                speak(prefix + currentInstruction)
+                lastSpokenDistance = distance
+                break
+            }
+        }
+    }
+
     // Position source for GPS
     PositionSource {
         id: positionSource
-        updateInterval: 2000
+        updateInterval: 1000  // More frequent updates during navigation
         active: true
 
         onPositionChanged: {
@@ -131,6 +371,10 @@ Window {
                 gpsMarker.coordinate = position.coordinate
                 if (followGps && !searchVisible) {
                     map.center = position.coordinate
+                }
+                // Update navigation if active
+                if (navigating) {
+                    updateNavigation(position.coordinate)
                 }
             }
         }
@@ -686,8 +930,92 @@ Window {
                         routePath.path = []
                         routeInfoPanel.visible = false
                         currentRoute = null
+                        stopNavigation()
                     }
                 }
+            }
+        }
+    }
+
+    // Navigation instructions panel (shown during active navigation)
+    Rectangle {
+        id: navPanel
+        anchors.top: searchBar.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: 16
+        anchors.topMargin: 8
+        height: 140
+        radius: 16
+        color: "#1a1a2e"
+        visible: navigating
+        z: 100
+
+        Column {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 8
+
+            // Distance to next maneuver
+            Row {
+                spacing: 12
+                anchors.horizontalCenter: parent.horizontalCenter
+
+                Text {
+                    text: formatDistance(distanceToNextStep)
+                    color: "#4285f4"
+                    font.pixelSize: 36
+                    font.weight: Font.Bold
+                }
+
+                // Voice toggle button
+                Rectangle {
+                    width: 44
+                    height: 44
+                    radius: 22
+                    color: voiceToggleMouse.pressed ? "#333344" : (voiceEnabled ? "#4285f4" : "#2a2a3e")
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: voiceEnabled ? "🔊" : "🔇"
+                        font.pixelSize: 20
+                    }
+
+                    MouseArea {
+                        id: voiceToggleMouse
+                        anchors.fill: parent
+                        onClicked: {
+                            Haptic.tap()
+                            voiceEnabled = !voiceEnabled
+                            if (voiceEnabled) {
+                                speak("Voice navigation enabled")
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Current instruction
+            Text {
+                text: currentInstruction
+                color: "#ffffff"
+                font.pixelSize: 18
+                width: parent.width
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                maximumLineCount: 2
+            }
+
+            // Next instruction preview
+            Text {
+                text: nextInstruction ? "Then: " + nextInstruction : ""
+                color: "#888899"
+                font.pixelSize: 14
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                visible: nextInstruction !== ""
             }
         }
     }
