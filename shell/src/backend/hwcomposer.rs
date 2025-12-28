@@ -4992,14 +4992,12 @@ mod gl {
 
             let status = check_status(GL_FRAMEBUFFER);
             if status != GL_FRAMEBUFFER_COMPLETE {
-                info!("Preview FBO incomplete: status={:#x}", status);
                 bind_fbo(GL_FRAMEBUFFER, 0);
                 return None;
             }
 
             PREVIEW_TEX_WIDTH = width;
             PREVIEW_TEX_HEIGHT = height;
-            info!("Created preview FBO {}x{}", width, height);
         }
 
         // Bind our preview FBO
