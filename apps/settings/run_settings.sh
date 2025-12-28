@@ -48,6 +48,9 @@ mkdir -p "$(dirname "$LOCK_CONFIG")"
 > "$LOG_FILE"
 rm -f "$PENDING_FILE" "$PATTERN_FILE" "$DISPLAY_PENDING"
 
+# Clean up deep link page file on exit
+trap 'rm -f /tmp/flick_settings_page' EXIT
+
 # Function to update WiFi status
 update_wifi_status() {
     if [ -x "$WIFI_HELPER" ]; then

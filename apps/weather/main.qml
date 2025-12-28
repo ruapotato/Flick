@@ -78,12 +78,24 @@ Window {
         }
     }
 
-    property bool showLocationHelp: false
-
     function openSettings() {
-        // Show help message
-        showLocationHelp = true
+        // Write the target page to temp file for settings to read
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file:///tmp/flick_settings_page", false)
+        try {
+            xhr.send("DateTimePage")
+        } catch (e) {
+            console.log("Failed to write settings page: " + e)
+        }
+
+        // Write launch request for shell script to pick up
+        var xhr2 = new XMLHttpRequest()
+        xhr2.open("PUT", "file:///tmp/flick_launch_settings", false)
+        try {
+            xhr2.send("1")
+        } catch (e) {}
     }
+
 
     function saveWeatherConfig() {
         var config = {
@@ -610,74 +622,4 @@ Window {
         color: "#333344"
     }
 
-    // Location help overlay
-    Rectangle {
-        anchors.fill: parent
-        color: "#000000"
-        opacity: showLocationHelp ? 0.9 : 0
-        visible: opacity > 0
-        z: 100
-
-        Behavior on opacity { NumberAnimation { duration: 200 } }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: showLocationHelp = false
-        }
-
-        Column {
-            anchors.centerIn: parent
-            spacing: 24
-            width: parent.width - 80
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "📍"
-                font.pixelSize: 64
-            }
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "Set Your Location"
-                font.pixelSize: 28
-                font.weight: Font.Medium
-                color: "#ffffff"
-            }
-
-            Text {
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                text: "To set your weather location:\n\n1. Go back to the home screen\n2. Open Settings\n3. Tap 'Time'\n4. Scroll down to 'Location'\n5. Search for your city"
-                font.pixelSize: 18
-                color: "#ccccdd"
-                wrapMode: Text.WordWrap
-                lineHeight: 1.4
-            }
-
-            Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 140
-                height: 52
-                radius: 26
-                color: closeMouse.pressed ? Qt.darker(accentColor, 1.2) : accentColor
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "Got it"
-                    font.pixelSize: 18
-                    font.weight: Font.Medium
-                    color: "#ffffff"
-                }
-
-                MouseArea {
-                    id: closeMouse
-                    anchors.fill: parent
-                    onClicked: {
-                        Haptic.tap()
-                        showLocationHelp = false
-                    }
-                }
-            }
-        }
-    }
 }
