@@ -47,67 +47,95 @@ Window {
     ]
 
     ListModel { id: videoModel }
+    property var pendingScans: 0
+    property var scannedFolders: []
+    property var videoExtensions: ["mp4", "mkv", "avi", "webm", "mov", "m4v", "3gp", "MP4", "MKV", "AVI", "WEBM", "MOV", "M4V", "3GP"]
 
     Component.onCompleted: {
         loadConfig()
-        scanVideos()
+        startScan()
     }
 
-    function scanVideos() {
+    function startScan() {
         videoModel.clear()
+        scannedFolders = []
+        pendingScans = 0
         for (var i = 0; i < videoFolders.length; i++) {
-            scanFolder(videoFolders[i])
+            scanFolderRecursive(videoFolders[i])
         }
     }
 
-    function scanFolder(folder) {
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + folder, false)
-        try {
-            xhr.send()
-        } catch(e) {}
+    function scanFolderRecursive(folderPath) {
+        // Avoid rescanning
+        if (scannedFolders.indexOf(folderPath) >= 0) return
+        scannedFolders.push(folderPath)
+        pendingScans++
+
+        // Create a folder model to scan this directory
+        var scanner = folderScannerComponent.createObject(root, {
+            scanPath: folderPath
+        })
     }
 
-    // Folder models for each location
-    FolderListModel {
-        id: videosFolder
-        folder: "file:///home/droidian/Videos"
-        nameFilters: ["*.mp4", "*.mkv", "*.avi", "*.webm", "*.mov", "*.m4v", "*.3gp"]
-        showDirs: false
-        onCountChanged: updateVideoList()
+    function isVideoFile(fileName) {
+        var ext = fileName.split(".").pop().toLowerCase()
+        return videoExtensions.indexOf(ext) >= 0 || videoExtensions.indexOf(ext.toUpperCase()) >= 0
     }
 
-    FolderListModel {
-        id: moviesFolder
-        folder: "file:///home/droidian/Movies"
-        nameFilters: ["*.mp4", "*.mkv", "*.avi", "*.webm", "*.mov", "*.m4v", "*.3gp"]
-        showDirs: false
-        onCountChanged: updateVideoList()
-    }
+    // Component to scan a folder
+    Component {
+        id: folderScannerComponent
+        Item {
+            id: scanner
+            property string scanPath: ""
 
-    FolderListModel {
-        id: downloadsFolder
-        folder: "file:///home/droidian/Downloads"
-        nameFilters: ["*.mp4", "*.mkv", "*.avi", "*.webm", "*.mov", "*.m4v", "*.3gp"]
-        showDirs: false
-        onCountChanged: updateVideoList()
-    }
+            FolderListModel {
+                id: folderModel
+                folder: "file://" + scanner.scanPath
+                showDirs: true
+                showDirsFirst: true
+                showDotAndDotDot: false
+                showOnlyReadable: true
 
-    function updateVideoList() {
-        videoModel.clear()
-        addFromFolder(videosFolder, "/home/droidian/Videos")
-        addFromFolder(moviesFolder, "/home/droidian/Movies")
-        addFromFolder(downloadsFolder, "/home/droidian/Downloads")
-    }
+                onStatusChanged: {
+                    if (status === FolderListModel.Ready) {
+                        processFolder()
+                    }
+                }
+            }
 
-    function addFromFolder(model, basePath) {
-        for (var i = 0; i < model.count; i++) {
-            videoModel.append({
-                name: model.get(i, "fileBaseName"),
-                fileName: model.get(i, "fileName"),
-                filePath: basePath + "/" + model.get(i, "fileName"),
-                folder: basePath.split("/").pop()
-            })
+            function processFolder() {
+                var baseName = scanPath.split("/").pop()
+
+                for (var i = 0; i < folderModel.count; i++) {
+                    var fileName = folderModel.get(i, "fileName")
+                    var isDir = folderModel.get(i, "fileIsDir")
+                    var filePath = scanPath + "/" + fileName
+
+                    if (isDir) {
+                        // Recursively scan subdirectory
+                        scanFolderRecursive(filePath)
+                    } else if (isVideoFile(fileName)) {
+                        // Add video to model
+                        videoModel.append({
+                            name: folderModel.get(i, "fileBaseName"),
+                            fileName: fileName,
+                            filePath: filePath,
+                            folder: baseName
+                        })
+                    }
+                }
+
+                pendingScans--
+                // Clean up after a delay
+                destroyTimer.start()
+            }
+
+            Timer {
+                id: destroyTimer
+                interval: 100
+                onTriggered: scanner.destroy()
+            }
         }
     }
 
@@ -467,7 +495,7 @@ Window {
                     anchors.fill: parent
                     onClicked: {
                         Haptic.tap()
-                        updateVideoList()
+                        startScan()
                     }
                 }
             }
