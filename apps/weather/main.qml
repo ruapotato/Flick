@@ -50,6 +50,8 @@ Window {
         } catch (e) {}
     }
 
+    property bool hasLocation: false
+
     function loadWeatherConfig() {
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + configFile, false)
@@ -57,14 +59,28 @@ Window {
             xhr.send()
             if (xhr.status === 200 || xhr.status === 0) {
                 var config = JSON.parse(xhr.responseText)
-                if (config.latitude) latitude = config.latitude
-                if (config.longitude) longitude = config.longitude
-                if (config.locationName) locationName = config.locationName
+                if (config.latitude && config.longitude && config.locationName) {
+                    latitude = config.latitude
+                    longitude = config.longitude
+                    locationName = config.locationName
+                    hasLocation = true
+                } else {
+                    hasLocation = false
+                    locationName = "Location not set"
+                }
+            } else {
+                hasLocation = false
+                locationName = "Location not set"
             }
         } catch (e) {
-            // Use defaults
-            locationName = "New York"
+            hasLocation = false
+            locationName = "Location not set"
         }
+    }
+
+    function openSettings() {
+        // Launch settings app - it will open to main page, user can navigate to Time
+        console.warn("LAUNCH_SETTINGS:")
     }
 
     function saveWeatherConfig() {
@@ -81,6 +97,11 @@ Window {
     }
 
     function fetchWeather() {
+        if (!hasLocation) {
+            currentCondition = "Set your location"
+            currentIcon = "📍"
+            return
+        }
         var url = "https://api.open-meteo.com/v1/forecast?" +
                   "latitude=" + latitude +
                   "&longitude=" + longitude +
@@ -217,15 +238,19 @@ Window {
             Row {
                 width: parent.width
                 height: 80
+                spacing: 12
 
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - 140
 
                     Text {
                         text: locationName
                         font.pixelSize: 28 * textScale
                         font.weight: Font.Medium
                         color: "#ffffff"
+                        elide: Text.ElideRight
+                        width: parent.width
                     }
 
                     Text {
@@ -235,14 +260,41 @@ Window {
                     }
                 }
 
-                Item { width: parent.width - 200; height: 1 }
+                Item { Layout.fillWidth: true }
 
+                // Settings button
+                Rectangle {
+                    width: 56
+                    height: 56
+                    radius: 28
+                    color: settingsMouse.pressed ? Qt.darker(accentColor, 1.2) : accentColor
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⚙"
+                        font.pixelSize: 24
+                        color: "#ffffff"
+                    }
+
+                    MouseArea {
+                        id: settingsMouse
+                        anchors.fill: parent
+                        onClicked: {
+                            Haptic.tap()
+                            openSettings()
+                        }
+                    }
+                }
+
+                // Refresh button
                 Rectangle {
                     width: 56
                     height: 56
                     radius: 28
                     color: refreshMouse.pressed ? "#333344" : "#222233"
                     anchors.verticalCenter: parent.verticalCenter
+                    visible: hasLocation
 
                     Text {
                         anchors.centerIn: parent
@@ -272,9 +324,64 @@ Window {
                     GradientStop { position: 1.0; color: "#15151f" }
                 }
 
+                // No location prompt
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 16
+                    visible: !hasLocation
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "📍"
+                        font.pixelSize: 64
+                    }
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "No Location Set"
+                        font.pixelSize: 24
+                        font.weight: Font.Medium
+                        color: "#ffffff"
+                    }
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "Tap the settings button to set your location"
+                        font.pixelSize: 14
+                        color: "#888899"
+                    }
+
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 160
+                        height: 48
+                        radius: 24
+                        color: setLocMouse.pressed ? Qt.darker(accentColor, 1.2) : accentColor
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Set Location"
+                            font.pixelSize: 16
+                            font.weight: Font.Medium
+                            color: "#ffffff"
+                        }
+
+                        MouseArea {
+                            id: setLocMouse
+                            anchors.fill: parent
+                            onClicked: {
+                                Haptic.tap()
+                                openSettings()
+                            }
+                        }
+                    }
+                }
+
+                // Weather display (when location is set)
                 Row {
                     anchors.fill: parent
                     anchors.margins: 32
+                    visible: hasLocation
 
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
@@ -336,6 +443,7 @@ Window {
                 font.pixelSize: 20 * textScale
                 font.weight: Font.Medium
                 color: "#ffffff"
+                visible: hasLocation
             }
 
             Rectangle {
@@ -343,6 +451,7 @@ Window {
                 height: 140
                 radius: 16
                 color: "#15151f"
+                visible: hasLocation
 
                 ListView {
                     anchors.fill: parent
@@ -386,6 +495,7 @@ Window {
                 font.pixelSize: 20 * textScale
                 font.weight: Font.Medium
                 color: "#ffffff"
+                visible: hasLocation
             }
 
             Rectangle {
@@ -393,6 +503,7 @@ Window {
                 height: forecastCol.height + 32
                 radius: 16
                 color: "#15151f"
+                visible: hasLocation
 
                 Column {
                     id: forecastCol

@@ -2,6 +2,6 @@
 Name=Flick Weather
 Comment=Weather forecast
 Exec=sh -c "$HOME/Flick/apps/weather/run_weather.sh"
-Icon=weather-clear
+Icon=weather
 Type=Application
 Categories=Utility;
