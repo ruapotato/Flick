@@ -1,3 +1,4 @@
+import "../../shared"
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -422,7 +423,7 @@ Page {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
         Behavior on color { ColorAnimation { duration: 150 } }
 

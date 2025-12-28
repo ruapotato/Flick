@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import "../shared"
 
 Page {
     id: settingsMain
@@ -26,7 +27,7 @@ Page {
             width: 300
             height: 200
             radius: 150
-            color: "#e94560"
+            color: Theme.accentColor
             opacity: 0.08
 
             NumberAnimation on opacity {
@@ -70,8 +71,8 @@ Page {
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.2; color: "#e94560" }
-                GradientStop { position: 0.8; color: "#e94560" }
+                GradientStop { position: 0.2; color: Theme.accentColor }
+                GradientStop { position: 0.8; color: Theme.accentColor }
                 GradientStop { position: 1.0; color: "transparent" }
             }
             opacity: 0.3
@@ -280,7 +281,7 @@ Page {
         width: 72
         height: 72
         radius: 36
-        color: backButtonMouse.pressed ? "#c23a50" : "#e94560"
+        color: backButtonMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
         Behavior on color { ColorAnimation { duration: 150 } }
 

@@ -1,3 +1,4 @@
+import "../../shared"
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -153,7 +154,7 @@ Page {
                 text: silentMode ? "MUTED" : "VOLUME " + Math.round(mediaVolume * 100) + "%"
                 font.pixelSize: 12
                 font.letterSpacing: 2
-                color: silentMode ? "#e94560" : "#555566"
+                color: silentMode ? Theme.accentColor : "#555566"
 
                 Behavior on color { ColorAnimation { duration: 300 } }
             }
@@ -212,7 +213,7 @@ Page {
                             text: Math.round(mediaVolume * 100) + "%"
                             font.pixelSize: 18
                             font.weight: Font.Medium
-                            color: "#e94560"
+                            color: Theme.accentColor
                         }
                     }
 
@@ -232,7 +233,7 @@ Page {
                                 width: parent.width * mediaVolume
                                 height: parent.height
                                 radius: 4
-                                color: "#e94560"
+                                color: Theme.accentColor
 
                                 Behavior on width { NumberAnimation { duration: 50 } }
                             }
@@ -245,7 +246,7 @@ Page {
                             height: 40
                             radius: 20
                             color: "#ffffff"
-                            border.color: "#e94560"
+                            border.color: Theme.accentColor
                             border.width: 3
 
                             Behavior on x { NumberAnimation { duration: 50 } }
@@ -268,7 +269,7 @@ Page {
                 height: 120
                 radius: 24
                 color: "#14141e"
-                border.color: micMuted ? "#e94560" : "#1a1a2e"
+                border.color: micMuted ? Theme.accentColor : "#1a1a2e"
                 border.width: micMuted ? 2 : 1
                 opacity: micMuted ? 0.5 : 1
 
@@ -297,7 +298,7 @@ Page {
                             text: micMuted ? "Muted" : Math.round(micVolume * 100) + "%"
                             font.pixelSize: 18
                             font.weight: Font.Medium
-                            color: micMuted ? "#e94560" : "#4a8abf"
+                            color: micMuted ? Theme.accentColor : "#4a8abf"
                         }
                     }
 
@@ -386,7 +387,7 @@ Page {
                 height: 90
                 radius: 24
                 color: muteMouse.pressed ? "#1e1e2e" : "#14141e"
-                border.color: silentMode ? "#e94560" : "#1a1a2e"
+                border.color: silentMode ? Theme.accentColor : "#1a1a2e"
                 border.width: silentMode ? 2 : 1
 
                 RowLayout {
@@ -420,7 +421,7 @@ Page {
                         Text {
                             text: silentMode ? "Audio is muted" : "Audio is on"
                             font.pixelSize: 13
-                            color: silentMode ? "#e94560" : "#666677"
+                            color: silentMode ? Theme.accentColor : "#666677"
                         }
                     }
 
@@ -428,7 +429,7 @@ Page {
                         Layout.preferredWidth: 64
                         Layout.preferredHeight: 36
                         radius: 18
-                        color: silentMode ? "#e94560" : "#2a2a3e"
+                        color: silentMode ? Theme.accentColor : "#2a2a3e"
 
                         Behavior on color { ColorAnimation { duration: 200 } }
 
@@ -465,7 +466,7 @@ Page {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
         Behavior on color { ColorAnimation { duration: 150 } }
 

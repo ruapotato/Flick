@@ -1,3 +1,4 @@
+import "../../shared"
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -99,7 +100,7 @@ Page {
             width: 180
             height: 180
             radius: 90
-            color: "#e94560"
+            color: Theme.accentColor
             opacity: 0.12
 
             SequentialAnimation on opacity {
@@ -316,7 +317,7 @@ Page {
                         value: fisheyeSize
                         minVal: 0.05
                         maxVal: 0.30
-                        accentColor: "#e94560"
+                        accentColor: Theme.accentColor
                         onValueChanged: { fisheyeSize = value; saveConfig() }
                     }
 
@@ -327,7 +328,7 @@ Page {
                         value: fisheyeStrength
                         minVal: 0.0
                         maxVal: 0.5
-                        accentColor: "#e94560"
+                        accentColor: Theme.accentColor
                         onValueChanged: { fisheyeStrength = value; saveConfig() }
                     }
                 }
@@ -534,7 +535,7 @@ Page {
         width: 64
         height: 64
         radius: 32
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
         Text {
             anchors.centerIn: parent
@@ -556,7 +557,7 @@ Page {
         property string subtitle
         property string icon
         property bool checked
-        property color accentColor: "#e94560"
+        property color accentColor: Theme.accentColor
         signal toggled()
 
         height: 88
@@ -690,7 +691,7 @@ Page {
         property real value
         property real minVal: 0.0
         property real maxVal: 1.0
-        property color accentColor: "#e94560"
+        property color accentColor: Theme.accentColor
         property string suffix: "%"
 
         spacing: 6

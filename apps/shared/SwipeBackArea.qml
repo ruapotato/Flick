@@ -26,7 +26,7 @@ Item {
 
     // Visual feedback
     property bool showIndicator: true
-    property color indicatorColor: "#e94560"
+    property color indicatorColor: Theme.accentColor
 
     // Internal state
     property real startX: 0

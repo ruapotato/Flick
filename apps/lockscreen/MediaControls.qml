@@ -23,6 +23,7 @@ Item {
     property int position: 0
     property int duration: 0
     property string stateDir: "/home/droidian/.local/state/flick"
+    property color accentColor: "#e94560"  // Can be set from parent
 
     Behavior on height { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
 
@@ -110,7 +111,7 @@ Item {
             width: 80
             height: 80
             radius: 12
-            color: app === "audiobooks" ? "#e94560" : "#4a9eff"
+            color: app === "audiobooks" ? accentColor : "#4a9eff"
             opacity: 0.3
             anchors.verticalCenter: parent.verticalCenter
 
@@ -178,7 +179,7 @@ Item {
                     width: 56
                     height: 56
                     radius: 28
-                    color: playPauseMouse.pressed ? "#c23a50" : "#e94560"
+                    color: playPauseMouse.pressed ? Qt.darker(accentColor, 1.2) : accentColor
 
                     Text {
                         anchors.centerIn: parent

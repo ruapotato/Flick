@@ -108,6 +108,7 @@ Item {
         opacity: showingUnlock ? 0 : (1 - swipeProgress * 1.5)
         visible: opacity > 0 && hasMedia
         stateDir: lockScreen.stateDir
+        accentColor: lockScreen.accentColor
 
         Behavior on opacity { NumberAnimation { duration: 150 } }
     }
@@ -196,7 +197,7 @@ Item {
                     radius: 16
                     color: "#1a1a2e"
                     border.width: 1
-                    border.color: modelData.urgency === "critical" ? "#e94560" :
+                    border.color: modelData.urgency === "critical" ? accentColor :
                                   modelData.urgency === "low" ? "#4a6fa5" : "#2a2a4e"
                     opacity: 1 - Math.abs(swipeOffset) / (lockScreen.width * 0.5)
 
@@ -210,7 +211,7 @@ Item {
                         anchors.bottom: parent.bottom
                         width: 4
                         radius: 2
-                        color: modelData.urgency === "critical" ? "#e94560" :
+                        color: modelData.urgency === "critical" ? accentColor :
                                modelData.urgency === "low" ? "#4a9a5a" : "#4a6fa5"
                     }
 
@@ -461,6 +462,7 @@ Item {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: showingUnlock ? -80 : 200
             correctPin: lockScreen.correctPin
+            accentColor: lockScreen.accentColor
 
             Behavior on anchors.verticalCenterOffset {
                 NumberAnimation { duration: 400; easing.type: Easing.OutBack }

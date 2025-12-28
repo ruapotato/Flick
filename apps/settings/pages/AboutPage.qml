@@ -1,3 +1,4 @@
+import "../../shared"
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -86,7 +87,7 @@ Page {
                 width: 2 + Math.random() * 4
                 height: width
                 radius: width / 2
-                color: "#e94560"
+                color: Theme.accentColor
                 opacity: 0.1 + Math.random() * 0.2
 
                 SequentialAnimation on y {
@@ -134,7 +135,7 @@ Page {
                     height: 160
                     radius: 80
                     color: "transparent"
-                    border.color: "#e94560"
+                    border.color: Theme.accentColor
                     border.width: 2
                     opacity: 0
 
@@ -158,8 +159,8 @@ Page {
                     radius: 25
 
                     gradient: Gradient {
-                        GradientStop { position: 0.0; color: "#e94560" }
-                        GradientStop { position: 1.0; color: "#c23a50" }
+                        GradientStop { position: 0.0; color: Theme.accentColor }
+                        GradientStop { position: 1.0; color: Qt.darker(Theme.accentColor, 1.2) }
                     }
 
                     Text {
@@ -467,7 +468,7 @@ Page {
                                     text: model.value
                                     font.pixelSize: 16
                                     font.weight: Font.Medium
-                                    color: model.label === "Flick Version" ? "#e94560" : "#ffffff"
+                                    color: model.label === "Flick Version" ? Theme.accentColor : "#ffffff"
                                 }
                             }
 
@@ -518,7 +519,7 @@ Page {
                         Text {
                             text: "github.com/ruapotato/Flick"
                             font.pixelSize: 13
-                            color: "#e94560"
+                            color: Theme.accentColor
                         }
                     }
 
@@ -549,7 +550,7 @@ Page {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
         Behavior on color { ColorAnimation { duration: 150 } }
 

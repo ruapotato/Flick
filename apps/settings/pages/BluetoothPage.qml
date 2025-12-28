@@ -1,3 +1,4 @@
+import "../../shared"
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -509,7 +510,7 @@ Page {
                                 height: width
                                 radius: width / 2
                                 color: "transparent"
-                                border.color: "#e94560"
+                                border.color: Theme.accentColor
                                 border.width: 2
                                 opacity: 0
 
@@ -537,7 +538,7 @@ Page {
                             width: 8
                             height: 8
                             radius: 4
-                            color: "#e94560"
+                            color: Theme.accentColor
                         }
                     }
 
@@ -671,7 +672,7 @@ Page {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
         Behavior on color { ColorAnimation { duration: 150 } }
 

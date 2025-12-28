@@ -1,3 +1,4 @@
+import "../../shared"
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -612,7 +613,7 @@ Page {
                                         width: 6
                                         height: 6 + index * 6
                                         radius: 3
-                                        color: index < signal ? "#e94560" : "#2a2a3e"
+                                        color: index < signal ? Theme.accentColor : "#2a2a3e"
                                         anchors.bottom: parent.bottom
                                     }
                                 }
@@ -699,7 +700,7 @@ Page {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
         Behavior on color { ColorAnimation { duration: 150 } }
 

@@ -311,7 +311,7 @@ Window {
                     ]
                     Rectangle {
                         width: 105; height: 55; radius: 10
-                        color: selectedType === modelData.t ? "#e94560" : "#222233"
+                        color: selectedType === modelData.t ? Theme.accentColor : "#222233"
                         border.color: selectedType === modelData.t ? "#fff" : "transparent"
                         border.width: 2
                         Column {
@@ -337,7 +337,7 @@ Window {
                     ]
                     Rectangle {
                         width: 105; height: 55; radius: 10
-                        color: selectedType === modelData.t ? "#e94560" : "#222233"
+                        color: selectedType === modelData.t ? Theme.accentColor : "#222233"
                         border.color: selectedType === modelData.t ? "#fff" : "transparent"
                         border.width: 2
                         Column {
@@ -354,7 +354,7 @@ Window {
                 spacing: 8; anchors.horizontalCenter: parent.horizontalCenter
                 Rectangle {
                     width: 100; height: 48; radius: 10
-                    color: selectedType === tSalt ? "#e94560" : "#222233"
+                    color: selectedType === tSalt ? Theme.accentColor : "#222233"
                     Row { anchors.centerIn: parent; spacing: 4
                         Rectangle { width: 18; height: 18; radius: 9; color: "#f0f0e8" }
                         Text { text: "Salt"; font.pixelSize: 10 * textScale; color: "#fff"; anchors.verticalCenter: parent.verticalCenter }
@@ -363,7 +363,7 @@ Window {
                 }
                 Rectangle {
                     width: 100; height: 48; radius: 10
-                    color: selectedType === tEmpty ? "#e94560" : "#222233"
+                    color: selectedType === tEmpty ? Theme.accentColor : "#222233"
                     Text { anchors.centerIn: parent; text: "Eraser"; font.pixelSize: 11 * textScale; color: "#fff" }
                     MouseArea { anchors.fill: parent; onClicked: { selectedType = tEmpty; Haptic.tap() } }
                 }
@@ -382,7 +382,7 @@ Window {
                     model: [1, 2, 3, 4]
                     Rectangle {
                         width: 48; height: 40; radius: 8
-                        color: brushSize === modelData ? "#e94560" : "#222233"
+                        color: brushSize === modelData ? Theme.accentColor : "#222233"
                         Text { anchors.centerIn: parent; text: modelData; font.pixelSize: 12 * textScale; color: "#fff" }
                         MouseArea { anchors.fill: parent; onClicked: { brushSize = modelData; Haptic.tap() } }
                     }
@@ -404,7 +404,7 @@ Window {
         anchors.leftMargin: 16
         anchors.topMargin: 16
         width: 56; height: 56; radius: 28
-        color: bkM.pressed ? "#c23a50" : "#e94560"
+        color: bkM.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
         z: 10
         Text { anchors.centerIn: parent; text: "←"; font.pixelSize: 28; color: "#fff" }
         MouseArea { id: bkM; anchors.fill: parent; onClicked: { Haptic.tap(); Qt.quit() } }

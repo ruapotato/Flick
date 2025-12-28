@@ -1,3 +1,4 @@
+import "../../shared"
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -417,7 +418,7 @@ Page {
                         Layout.preferredWidth: 64
                         Layout.preferredHeight: 36
                         radius: 18
-                        color: autoBrightness ? "#e94560" : "#2a2a3e"
+                        color: autoBrightness ? accentColor : "#2a2a3e"
 
                         Behavior on color { ColorAnimation { duration: 200 } }
 
@@ -466,7 +467,7 @@ Page {
                     height: 70
                     radius: 20
                     color: timeoutMouse.pressed ? "#1e1e2e" : "#14141e"
-                    border.color: selectedTimeout === index ? "#e94560" : "#1a1a2e"
+                    border.color: selectedTimeout === index ? accentColor : "#1a1a2e"
                     border.width: selectedTimeout === index ? 2 : 1
 
                     Behavior on border.color { ColorAnimation { duration: 150 } }
@@ -489,7 +490,7 @@ Page {
                             Layout.preferredHeight: 28
                             radius: 14
                             color: "transparent"
-                            border.color: selectedTimeout === index ? "#e94560" : "#3a3a4e"
+                            border.color: selectedTimeout === index ? accentColor : "#3a3a4e"
                             border.width: 2
 
                             Rectangle {
@@ -497,7 +498,7 @@ Page {
                                 width: selectedTimeout === index ? 14 : 0
                                 height: width
                                 radius: width / 2
-                                color: "#e94560"
+                                color: accentColor
 
                                 Behavior on width {
                                     NumberAnimation { duration: 150; easing.type: Easing.OutBack }
@@ -562,7 +563,7 @@ Page {
                         text: textScale.toFixed(1) + "x"
                         font.pixelSize: 24
                         font.weight: Font.Bold
-                        color: "#e94560"
+                        color: accentColor
                     }
 
                     // Slider
@@ -617,7 +618,7 @@ Page {
                                 gradient: Gradient {
                                     orientation: Gradient.Horizontal
                                     GradientStop { position: 0.0; color: "#993366" }
-                                    GradientStop { position: 1.0; color: "#e94560" }
+                                    GradientStop { position: 1.0; color: accentColor }
                                 }
 
                                 Behavior on width { NumberAnimation { duration: 50 } }
@@ -632,7 +633,7 @@ Page {
                             height: 36
                             radius: 18
                             color: "#ffffff"
-                            border.color: "#e94560"
+                            border.color: accentColor
                             border.width: 3
 
                             Behavior on x { NumberAnimation { duration: 50 } }
@@ -642,7 +643,7 @@ Page {
                                 text: "Aa"
                                 font.pixelSize: 14
                                 font.weight: Font.Bold
-                                color: "#e94560"
+                                color: accentColor
                             }
                         }
 
@@ -685,7 +686,7 @@ Page {
                 height: 180
                 radius: 24
                 color: "#14141e"
-                border.color: wallpaperPath !== "" ? "#e94560" : "#1a1a2e"
+                border.color: wallpaperPath !== "" ? accentColor : "#1a1a2e"
                 border.width: wallpaperPath !== "" ? 2 : 1
 
                 Behavior on border.color { ColorAnimation { duration: 200 } }
@@ -749,7 +750,7 @@ Page {
                                 width: 100
                                 height: 44
                                 radius: 12
-                                color: selectMouse.pressed ? "#c23a50" : "#e94560"
+                                color: selectMouse.pressed ? Qt.darker(accentColor, 1.2) : accentColor
 
                                 Behavior on color { ColorAnimation { duration: 100 } }
 

@@ -1,3 +1,4 @@
+import "../../shared"
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -128,7 +129,7 @@ Page {
         background: Rectangle {
             color: "#1a1a24"
             radius: 24
-            border.color: "#e94560"
+            border.color: Theme.accentColor
             border.width: 2
         }
 
@@ -162,7 +163,7 @@ Page {
                         width: 16
                         height: 16
                         radius: 8
-                        color: index < (pinSetupDialog.confirming ? pinSetupDialog.confirmPin.length : pinSetupDialog.enteredPin.length) ? "#e94560" : "transparent"
+                        color: index < (pinSetupDialog.confirming ? pinSetupDialog.confirmPin.length : pinSetupDialog.enteredPin.length) ? Theme.accentColor : "transparent"
                         border.width: 2
                         border.color: "#666677"
                     }
@@ -253,7 +254,7 @@ Page {
                     width: 100
                     height: 44
                     radius: 22
-                    color: confirmPinMouse.pressed ? "#c23a50" : "#e94560"
+                    color: confirmPinMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
                     opacity: (pinSetupDialog.confirming ? pinSetupDialog.confirmPin.length : pinSetupDialog.enteredPin.length) >= 4 ? 1.0 : 0.5
 
                     Text {
@@ -332,7 +333,7 @@ Page {
         background: Rectangle {
             color: "#1a1a24"
             radius: 24
-            border.color: "#e94560"
+            border.color: Theme.accentColor
             border.width: 2
         }
 
@@ -410,7 +411,7 @@ Page {
                             width: 80
                             height: 80
                             radius: 40
-                            color: patternSetupDialog.isSelected(index) ? "#e94560" : "#3a3a4e"
+                            color: patternSetupDialog.isSelected(index) ? Theme.accentColor : "#3a3a4e"
                             border.width: 4
                             border.color: patternSetupDialog.isSelected(index) ? "#ff6b8a" : "#555566"
 
@@ -545,7 +546,7 @@ Page {
                     width: 90
                     height: 50
                     radius: 25
-                    color: confirmPatternMouse.pressed ? "#c23a50" : "#e94560"
+                    color: confirmPatternMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
                     opacity: patternSetupDialog.currentLength() >= 4 ? 1.0 : 0.4
 
                     Text {
@@ -623,7 +624,7 @@ Page {
                     width: 100
                     height: 100
                     radius: 50
-                    color: "#e94560"
+                    color: Theme.accentColor
                     opacity: 0.1
 
                     SequentialAnimation on opacity {
@@ -639,7 +640,7 @@ Page {
                     height: 70
                     radius: 35
                     color: "#4a1a3a"
-                    border.color: "#e94560"
+                    border.color: Theme.accentColor
                     border.width: 2
 
                     Text {
@@ -700,7 +701,7 @@ Page {
                 height: 76
                 radius: 20
                 color: pinMouse.pressed ? "#1e1e2e" : "#14141e"
-                border.color: selectedMethod === 0 ? "#e94560" : "#1a1a2e"
+                border.color: selectedMethod === 0 ? Theme.accentColor : "#1a1a2e"
                 border.width: selectedMethod === 0 ? 2 : 1
 
                 Behavior on border.color { ColorAnimation { duration: 150 } }
@@ -746,7 +747,7 @@ Page {
                         Layout.preferredHeight: 24
                         radius: 12
                         color: "transparent"
-                        border.color: selectedMethod === 0 ? "#e94560" : "#3a3a4e"
+                        border.color: selectedMethod === 0 ? Theme.accentColor : "#3a3a4e"
                         border.width: 2
 
                         Rectangle {
@@ -754,7 +755,7 @@ Page {
                             width: selectedMethod === 0 ? 12 : 0
                             height: width
                             radius: width / 2
-                            color: "#e94560"
+                            color: Theme.accentColor
 
                             Behavior on width {
                                 NumberAnimation { duration: 150; easing.type: Easing.OutBack }
@@ -776,7 +777,7 @@ Page {
                 height: 76
                 radius: 20
                 color: passwordMouse.pressed ? "#1e1e2e" : "#14141e"
-                border.color: selectedMethod === 1 ? "#e94560" : "#1a1a2e"
+                border.color: selectedMethod === 1 ? Theme.accentColor : "#1a1a2e"
                 border.width: selectedMethod === 1 ? 2 : 1
 
                 Behavior on border.color { ColorAnimation { duration: 150 } }
@@ -822,7 +823,7 @@ Page {
                         Layout.preferredHeight: 24
                         radius: 12
                         color: "transparent"
-                        border.color: selectedMethod === 1 ? "#e94560" : "#3a3a4e"
+                        border.color: selectedMethod === 1 ? Theme.accentColor : "#3a3a4e"
                         border.width: 2
 
                         Rectangle {
@@ -830,7 +831,7 @@ Page {
                             width: selectedMethod === 1 ? 12 : 0
                             height: width
                             radius: width / 2
-                            color: "#e94560"
+                            color: Theme.accentColor
 
                             Behavior on width {
                                 NumberAnimation { duration: 150; easing.type: Easing.OutBack }
@@ -852,7 +853,7 @@ Page {
                 height: 76
                 radius: 20
                 color: patternMouse.pressed ? "#1e1e2e" : "#14141e"
-                border.color: selectedMethod === 2 ? "#e94560" : "#1a1a2e"
+                border.color: selectedMethod === 2 ? Theme.accentColor : "#1a1a2e"
                 border.width: selectedMethod === 2 ? 2 : 1
 
                 Behavior on border.color { ColorAnimation { duration: 150 } }
@@ -880,7 +881,7 @@ Page {
                                     width: 8
                                     height: 8
                                     radius: 4
-                                    color: (index === 0 || index === 4 || index === 8) ? "#e94560" : "#444455"
+                                    color: (index === 0 || index === 4 || index === 8) ? Theme.accentColor : "#444455"
                                 }
                             }
                         }
@@ -909,7 +910,7 @@ Page {
                         Layout.preferredHeight: 24
                         radius: 12
                         color: "transparent"
-                        border.color: selectedMethod === 2 ? "#e94560" : "#3a3a4e"
+                        border.color: selectedMethod === 2 ? Theme.accentColor : "#3a3a4e"
                         border.width: 2
 
                         Rectangle {
@@ -917,7 +918,7 @@ Page {
                             width: selectedMethod === 2 ? 12 : 0
                             height: width
                             radius: width / 2
-                            color: "#e94560"
+                            color: Theme.accentColor
 
                             Behavior on width {
                                 NumberAnimation { duration: 150; easing.type: Easing.OutBack }
@@ -1052,7 +1053,7 @@ Page {
         width: 72
         height: 72
         radius: 36
-        color: backMouse.pressed ? "#c23a50" : "#e94560"
+        color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
         Behavior on color { ColorAnimation { duration: 150 } }
 

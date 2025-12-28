@@ -11,6 +11,7 @@ Item {
     property string correctPin: "1234"
     property string enteredPin: ""
     property int maxDigits: 4
+    property color accentColor: "#e94560"  // Can be set from parent
 
     // Dynamic sizing based on available space
     property real buttonSize: Math.min((width - 60) / 3, height / 6.5, 140)
@@ -28,7 +29,7 @@ Item {
         width: 200
         height: 60
         radius: 30
-        color: "#e94560"
+        color: accentColor
         opacity: 0.08
 
         NumberAnimation on opacity {
@@ -73,7 +74,7 @@ Item {
                     anchors.fill: parent
                     radius: width / 2
                     color: "transparent"
-                    border.color: index < enteredPin.length ? "#e94560" : "#3a3a4e"
+                    border.color: index < enteredPin.length ? accentColor : "#3a3a4e"
                     border.width: 3
 
                     Behavior on border.color {
@@ -87,7 +88,7 @@ Item {
                     width: index < enteredPin.length ? parent.width * 0.6 : 0
                     height: width
                     radius: width / 2
-                    color: "#e94560"
+                    color: accentColor
 
                     Behavior on width {
                         NumberAnimation {
@@ -124,7 +125,7 @@ Item {
                     anchors.fill: parent
                     radius: width / 2
                     color: buttonMouse.pressed ? "#2a2a3e" : "#1a1a28"
-                    border.color: buttonMouse.pressed ? "#e94560" : "#2a2a3e"
+                    border.color: buttonMouse.pressed ? accentColor : "#2a2a3e"
                     border.width: 2
 
                     Behavior on color {
@@ -152,7 +153,7 @@ Item {
                     text: modelData
                     font.pixelSize: modelData === "⌫" ? buttonSize * 0.35 : buttonSize * 0.42
                     font.weight: Font.Light
-                    color: buttonMouse.pressed ? "#e94560" : "#ffffff"
+                    color: buttonMouse.pressed ? accentColor : "#ffffff"
 
                     Behavior on color {
                         ColorAnimation { duration: 100 }
@@ -166,7 +167,7 @@ Item {
                     width: 0
                     height: width
                     radius: width / 2
-                    color: "#e94560"
+                    color: accentColor
                     opacity: 0
 
                     SequentialAnimation {
@@ -223,7 +224,7 @@ Item {
             font.pixelSize: Math.min(22, buttonSize * 0.22)
             font.weight: Font.Light
             font.letterSpacing: 2
-            color: cancelMouse.pressed ? "#e94560" : "#666677"
+            color: cancelMouse.pressed ? accentColor : "#666677"
 
             Behavior on color {
                 ColorAnimation { duration: 100 }

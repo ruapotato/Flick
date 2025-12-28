@@ -171,7 +171,7 @@ Item {
         anchors.topMargin: 20
         text: errorMessage
         font.pixelSize: 16
-        color: "#e94560"
+        color: accentColor
         visible: errorMessage !== ""
     }
 
