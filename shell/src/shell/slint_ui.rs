@@ -468,6 +468,16 @@ impl SlintShell {
         self.shell.set_text_scale(scale);
     }
 
+    /// Set wallpaper image
+    pub fn set_wallpaper(&self, image: slint::Image) {
+        self.shell.set_wallpaper(image);
+    }
+
+    /// Set whether wallpaper is enabled
+    pub fn set_has_wallpaper(&self, has: bool) {
+        self.shell.set_has_wallpaper(has);
+    }
+
     /// Show/hide the long press popup menu
     pub fn set_show_popup(&self, show: bool) {
         *self.popup_showing.borrow_mut() = show;

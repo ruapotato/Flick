@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import QtQuick.Dialogs 1.3
 
 Page {
     id: displayPage
@@ -11,6 +12,7 @@ Page {
     property int selectedTimeout: 1  // Index into timeout list (default 30s)
     property var timeoutValues: [15, 30, 60, 300, 0]  // Seconds for each option
     property real textScale: 2.0  // Text scale factor (0.5 to 3.0, default 2.0)
+    property string wallpaperPath: ""  // Path to wallpaper image
     property string scaleConfigPath: "/home/droidian/.local/state/flick/display_config.json"
 
     Component.onCompleted: {
@@ -68,6 +70,9 @@ Page {
                         }
                     }
                 }
+                if (config.wallpaper !== undefined) {
+                    wallpaperPath = config.wallpaper
+                }
             }
         } catch (e) {
             console.log("Using default config")
@@ -82,6 +87,27 @@ Page {
     function saveTimeoutConfig() {
         var timeoutSecs = timeoutValues[selectedTimeout]
         console.warn("TIMEOUT_SAVE:" + timeoutSecs)
+    }
+
+    function saveWallpaperConfig() {
+        console.warn("WALLPAPER_SAVE:" + wallpaperPath)
+    }
+
+    // File dialog for wallpaper selection
+    FileDialog {
+        id: wallpaperDialog
+        title: "Select Wallpaper"
+        folder: shortcuts.pictures
+        nameFilters: ["Image files (*.png *.jpg *.jpeg *.webp *.bmp)"]
+        onAccepted: {
+            // Convert file URL to path
+            var path = fileUrl.toString()
+            if (path.startsWith("file://")) {
+                path = path.substring(7)
+            }
+            wallpaperPath = path
+            saveWallpaperConfig()
+        }
     }
 
     background: Rectangle {
@@ -545,6 +571,143 @@ Page {
             // Description
             Text {
                 text: "Adjusts text size in apps. Default is 2.0x."
+                font.pixelSize: 13
+                color: "#666677"
+                leftPadding: 8
+            }
+
+            Item { height: 24 }
+
+            Text {
+                text: "WALLPAPER"
+                font.pixelSize: 12
+                font.letterSpacing: 2
+                color: "#555566"
+                leftPadding: 8
+            }
+
+            // Wallpaper selection card
+            Rectangle {
+                width: settingsColumn.width
+                height: 180
+                radius: 24
+                color: "#14141e"
+                border.color: wallpaperPath !== "" ? "#e94560" : "#1a1a2e"
+                border.width: wallpaperPath !== "" ? 2 : 1
+
+                Behavior on border.color { ColorAnimation { duration: 200 } }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 16
+
+                    // Wallpaper preview
+                    Rectangle {
+                        Layout.preferredWidth: 120
+                        Layout.preferredHeight: 148
+                        radius: 16
+                        color: "#1a1a28"
+                        clip: true
+
+                        Image {
+                            id: wallpaperPreview
+                            anchors.fill: parent
+                            source: wallpaperPath !== "" ? "file://" + wallpaperPath : ""
+                            fillMode: Image.PreserveAspectCrop
+                            visible: wallpaperPath !== ""
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "🖼"
+                            font.pixelSize: 48
+                            visible: wallpaperPath === ""
+                            opacity: 0.3
+                        }
+                    }
+
+                    Column {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        spacing: 8
+
+                        Text {
+                            text: wallpaperPath !== "" ? "Custom Wallpaper" : "No Wallpaper"
+                            font.pixelSize: 20
+                            color: "#ffffff"
+                        }
+
+                        Text {
+                            text: wallpaperPath !== "" ? wallpaperPath.split("/").pop() : "Tap to select an image"
+                            font.pixelSize: 13
+                            color: "#666677"
+                            elide: Text.ElideMiddle
+                            width: parent.width
+                        }
+
+                        Item { height: 8 }
+
+                        Row {
+                            spacing: 12
+
+                            // Select button
+                            Rectangle {
+                                width: 100
+                                height: 44
+                                radius: 12
+                                color: selectMouse.pressed ? "#c23a50" : "#e94560"
+
+                                Behavior on color { ColorAnimation { duration: 100 } }
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "Select"
+                                    font.pixelSize: 15
+                                    font.weight: Font.Medium
+                                    color: "#ffffff"
+                                }
+
+                                MouseArea {
+                                    id: selectMouse
+                                    anchors.fill: parent
+                                    onClicked: wallpaperDialog.open()
+                                }
+                            }
+
+                            // Clear button (only show if wallpaper is set)
+                            Rectangle {
+                                width: 80
+                                height: 44
+                                radius: 12
+                                color: clearMouse.pressed ? "#2a2a3e" : "#1a1a28"
+                                visible: wallpaperPath !== ""
+
+                                Behavior on color { ColorAnimation { duration: 100 } }
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "Clear"
+                                    font.pixelSize: 15
+                                    color: "#888899"
+                                }
+
+                                MouseArea {
+                                    id: clearMouse
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        wallpaperPath = ""
+                                        saveWallpaperConfig()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text {
+                text: "Select an image to use as your home screen wallpaper."
                 font.pixelSize: 13
                 color: "#666677"
                 leftPadding: 8

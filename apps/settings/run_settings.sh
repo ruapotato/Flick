@@ -274,39 +274,53 @@ stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" |
         echo "Detected pattern save: $PATTERN" >> "$LOG_FILE"
         echo "$PATTERN" > "$PATTERN_FILE"
     fi
+    # Helper function to save display config (preserves all fields)
+    save_display_config() {
+        local new_scale="$1"
+        local new_timeout="$2"
+        local new_wallpaper="$3"
+
+        # Read existing values
+        local scale="${new_scale:-2.0}"
+        local timeout="${new_timeout:-30}"
+        local wallpaper="${new_wallpaper:-}"
+
+        if [ -f "$DISPLAY_CONFIG" ]; then
+            [ -z "$new_scale" ] && scale=$(cat "$DISPLAY_CONFIG" | grep -o '"text_scale"[[:space:]]*:[[:space:]]*[0-9.]*' | grep -o '[0-9.]*$')
+            [ -z "$new_timeout" ] && timeout=$(cat "$DISPLAY_CONFIG" | grep -o '"screen_timeout"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
+            [ -z "$new_wallpaper" ] && wallpaper=$(cat "$DISPLAY_CONFIG" | grep -o '"wallpaper"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*: *"//' | sed 's/"$//')
+        fi
+
+        # Set defaults if empty
+        [ -z "$scale" ] && scale="2.0"
+        [ -z "$timeout" ] && timeout="30"
+
+        # Build JSON with or without wallpaper
+        if [ -n "$wallpaper" ]; then
+            echo "{\"text_scale\": $scale, \"screen_timeout\": $timeout, \"wallpaper\": \"$wallpaper\"}" > "$DISPLAY_CONFIG"
+        else
+            echo "{\"text_scale\": $scale, \"screen_timeout\": $timeout}" > "$DISPLAY_CONFIG"
+        fi
+        echo "Display config saved to $DISPLAY_CONFIG" >> "$LOG_FILE"
+    }
+
     # Check for text scale save messages - save immediately
     if [[ "$line" == *"SCALE_SAVE:"* ]]; then
         SCALE=$(echo "$line" | sed 's/.*SCALE_SAVE://')
         echo "Detected text scale change: $SCALE" >> "$LOG_FILE"
-        # Read existing config and merge
-        if [ -f "$DISPLAY_CONFIG" ]; then
-            TIMEOUT=$(cat "$DISPLAY_CONFIG" | grep -o '"screen_timeout"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
-            if [ -n "$TIMEOUT" ]; then
-                echo "{\"text_scale\": $SCALE, \"screen_timeout\": $TIMEOUT}" > "$DISPLAY_CONFIG"
-            else
-                echo "{\"text_scale\": $SCALE, \"screen_timeout\": 30}" > "$DISPLAY_CONFIG"
-            fi
-        else
-            echo "{\"text_scale\": $SCALE, \"screen_timeout\": 30}" > "$DISPLAY_CONFIG"
-        fi
-        echo "Display config saved to $DISPLAY_CONFIG" >> "$LOG_FILE"
+        save_display_config "$SCALE" "" ""
     fi
     # Check for timeout save messages - save immediately
     if [[ "$line" == *"TIMEOUT_SAVE:"* ]]; then
         TIMEOUT=$(echo "$line" | sed 's/.*TIMEOUT_SAVE://')
         echo "Detected timeout change: $TIMEOUT" >> "$LOG_FILE"
-        # Read existing config and merge
-        if [ -f "$DISPLAY_CONFIG" ]; then
-            SCALE=$(cat "$DISPLAY_CONFIG" | grep -o '"text_scale"[[:space:]]*:[[:space:]]*[0-9.]*' | grep -o '[0-9.]*$')
-            if [ -n "$SCALE" ]; then
-                echo "{\"text_scale\": $SCALE, \"screen_timeout\": $TIMEOUT}" > "$DISPLAY_CONFIG"
-            else
-                echo "{\"text_scale\": 2.0, \"screen_timeout\": $TIMEOUT}" > "$DISPLAY_CONFIG"
-            fi
-        else
-            echo "{\"text_scale\": 2.0, \"screen_timeout\": $TIMEOUT}" > "$DISPLAY_CONFIG"
-        fi
-        echo "Display config saved to $DISPLAY_CONFIG" >> "$LOG_FILE"
+        save_display_config "" "$TIMEOUT" ""
+    fi
+    # Check for wallpaper save messages - save immediately
+    if [[ "$line" == *"WALLPAPER_SAVE:"* ]]; then
+        WALLPAPER=$(echo "$line" | sed 's/.*WALLPAPER_SAVE://')
+        echo "Detected wallpaper change: $WALLPAPER" >> "$LOG_FILE"
+        save_display_config "" "" "$WALLPAPER"
     fi
     # Check for WiFi commands
     if [[ "$line" == *"WIFI_CMD:"* ]]; then

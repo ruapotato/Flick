@@ -327,6 +327,12 @@ impl Shell {
                 let text_scale = Self::load_text_scale();
                 ui.set_text_scale(text_scale);
                 tracing::info!("Text scale initialized to: {}", text_scale);
+                // Initialize wallpaper from config
+                if let Some(wallpaper) = Self::load_wallpaper_image() {
+                    ui.set_wallpaper(wallpaper);
+                    ui.set_has_wallpaper(true);
+                    tracing::info!("Wallpaper loaded and set");
+                }
                 Some(ui)
             }
             Err(e) => {
@@ -457,6 +463,63 @@ impl Shell {
     /// Reload text scale from config
     pub fn reload_text_scale(&mut self) {
         self.text_scale = Self::load_text_scale();
+    }
+
+    /// Load wallpaper path from display config file
+    pub fn load_wallpaper_path() -> Option<std::path::PathBuf> {
+        let config_path = Self::get_display_config_path();
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(path_str) = json.get("wallpaper").and_then(|v| v.as_str()) {
+                    if !path_str.is_empty() {
+                        let path = std::path::PathBuf::from(path_str);
+                        if path.exists() {
+                            tracing::info!("Loaded wallpaper path: {:?}", path);
+                            return Some(path);
+                        } else {
+                            tracing::warn!("Wallpaper file not found: {:?}", path);
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Load wallpaper image as slint::Image
+    pub fn load_wallpaper_image() -> Option<slint::Image> {
+        let path = Self::load_wallpaper_path()?;
+        match image::open(&path) {
+            Ok(img) => {
+                let rgba = img.to_rgba8();
+                let (width, height) = rgba.dimensions();
+                let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                    rgba.as_raw(),
+                    width,
+                    height,
+                );
+                tracing::info!("Loaded wallpaper: {}x{}", width, height);
+                Some(slint::Image::from_rgba8(pixel_buffer))
+            }
+            Err(e) => {
+                tracing::error!("Failed to load wallpaper {:?}: {}", path, e);
+                None
+            }
+        }
+    }
+
+    /// Reload wallpaper from config (called when settings change)
+    pub fn reload_wallpaper(&self) {
+        if let Some(ref slint_ui) = self.slint_ui {
+            if let Some(wallpaper) = Self::load_wallpaper_image() {
+                slint_ui.set_wallpaper(wallpaper);
+                slint_ui.set_has_wallpaper(true);
+                tracing::info!("Wallpaper reloaded");
+            } else {
+                slint_ui.set_has_wallpaper(false);
+                tracing::info!("Wallpaper cleared");
+            }
+        }
     }
 
     /// Attempt to unlock with the current input
