@@ -262,7 +262,7 @@ Window {
                     }
                 }
 
-                Item { Layout.fillWidth: true }
+                Item { width: 1; height: 1 }  // spacer
 
                 // Settings button
                 Rectangle {
