@@ -14,7 +14,7 @@ Item {
     property real pupilX: 0             // -1 to 1, horizontal look direction
     property real pupilY: 0             // -1 to 1, vertical look direction
 
-    property string state: "closed"     // closed, opening, looking, closing
+    property string eyeState: "closed"   // closed, opening, looking, closing
 
     visible: enabled && openAmount > 0.01
     opacity: Math.min(1, openAmount * 2)
@@ -23,9 +23,9 @@ Item {
     Timer {
         id: inactivityTimer
         interval: spyEye.inactivityDelay
-        running: spyEye.enabled && spyEye.state === "closed"
+        running: spyEye.enabled && spyEye.eyeState === "closed"
         onTriggered: {
-            spyEye.state = "opening"
+            spyEye.eyeState = "opening"
             openAnimation.start()
         }
     }
@@ -45,7 +45,7 @@ Item {
 
         ScriptAction {
             script: {
-                spyEye.state = "looking"
+                spyEye.eyeState = "looking"
                 lookTimer.start()
                 pupilMoveTimer.start()
             }
@@ -58,7 +58,7 @@ Item {
         interval: spyEye.lookDuration
         onTriggered: {
             pupilMoveTimer.stop()
-            spyEye.state = "closing"
+            spyEye.eyeState = "closing"
             closeAnimation.start()
         }
     }
@@ -132,7 +132,7 @@ Item {
 
         ScriptAction {
             script: {
-                spyEye.state = "closed"
+                spyEye.eyeState = "closed"
                 cycleTimer.start()
             }
         }
@@ -151,7 +151,7 @@ Item {
 
     // Reset on user activity
     function onUserActivity() {
-        if (state !== "closed") {
+        if (eyeState !== "closed") {
             openAnimation.stop()
             lookTimer.stop()
             pupilMoveTimer.stop()
@@ -176,7 +176,7 @@ Item {
         }
         ScriptAction {
             script: {
-                spyEye.state = "closed"
+                spyEye.eyeState = "closed"
                 spyEye.pupilX = 0
                 spyEye.pupilY = 0
                 inactivityTimer.restart()
