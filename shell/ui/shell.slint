@@ -1594,6 +1594,7 @@ component QuickSettingsPanel inherits Rectangle {
     in property <string> time: "12:00";
     in property <[Notification]> notifications: [];
     in property <UiIcons> icons;
+    in property <bool> has-wallpaper: false;
 
     callback brightness-changed(float);
     callback volume-changed(int);
@@ -1611,7 +1612,7 @@ component QuickSettingsPanel inherits Rectangle {
 
     width: 100%;
     height: 100%;
-    background: Theme.background;
+    background: has-wallpaper ? #cc0a0a0f : Theme.background;
 
     VerticalLayout {
         padding: 0px;
@@ -2213,13 +2214,14 @@ component AppSwitcherPanel inherits Rectangle {
     in property <[WindowCard]> windows: [];
     in property <float> scroll-offset: 0;  // Horizontal scroll position
     in property <float> enter-progress: 1.0;  // 0.0 = full screen (animating), 1.0 = card size (complete)
+    in property <bool> has-wallpaper: false;
 
     callback window-tapped(int);  // Window ID
     callback close-requested();   // Swipe down to close
 
     width: 100%;
     height: 100%;
-    background: #0a0a12;
+    background: has-wallpaper ? #cc0a0a12 : #0a0a12;
 
     // Card layout constants (calculated from self dimensions)
     property <length> card-width: self.width * 0.80;
@@ -2668,6 +2670,7 @@ export component FlickShell inherits Window {
         notifications: notifications;
         time: root.time;
         icons: root.ui-icons;
+        has-wallpaper: root.has-wallpaper;
         brightness-changed(v) => { brightness-changed(v); }
         volume-changed(v) => { volume-changed(v); }
         wifi-toggled => { wifi-toggled(); }
@@ -2691,6 +2694,7 @@ export component FlickShell inherits Window {
         windows: switcher-windows;
         scroll-offset: switcher-scroll;
         enter-progress: switcher-enter-progress;
+        has-wallpaper: root.has-wallpaper;
         window-tapped(id) => { switcher-window-tapped(id); }
     }
 
@@ -2698,7 +2702,7 @@ export component FlickShell inherits Window {
     if current-view == "lock": Rectangle {
         width: 100%;
         height: 100%;
-        background: #0a0a0f;
+        background: has-wallpaper ? transparent : #0a0a0f;
 
         Text {
             x: (parent.width - self.width) / 2;

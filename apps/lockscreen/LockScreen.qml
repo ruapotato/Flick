@@ -10,12 +10,14 @@ Item {
     property string stateDir: ""
     property bool showingUnlock: false
     property real swipeProgress: 0  // 0-1 for swipe animation
+    property bool hasWallpaper: false
 
     signal unlocked()
 
-    // Beautiful gradient background
+    // Beautiful gradient background (hidden when wallpaper is set)
     Rectangle {
         anchors.fill: parent
+        visible: !hasWallpaper
         gradient: Gradient {
             GradientStop { position: 0.0; color: "#0f0f1a" }
             GradientStop { position: 0.4; color: "#1a1a2e" }
