@@ -2951,25 +2951,74 @@ fn render_frame(
                 };
 
                 if let Some(wl_surface) = wl_surface {
-                    let buffer_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(&wl_surface, |data| {
+                    // Check if we need to import EGL buffer
+                    let (needs_import, egl_texture_info) = compositor::with_states(&wl_surface, |data| {
                         use std::cell::RefCell;
                         use crate::state::SurfaceBufferData;
 
                         if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
-                            let data = buffer_data.borrow();
-                            if let Some(ref stored) = data.buffer {
-                                Some((stored.width, stored.height, stored.pixels.clone()))
-                            } else {
-                                None
-                            }
+                            let bd = buffer_data.borrow();
+                            let egl_info = bd.egl_texture.as_ref().map(|t| (t.texture_id, t.width, t.height));
+                            (bd.needs_egl_import, egl_info)
                         } else {
-                            None
+                            (false, None)
                         }
                     });
 
-                    if let Some((width, height, pixels)) = buffer_info {
+                    // Try EGL import if needed
+                    if needs_import {
+                        if let Some(imported) = try_import_egl_buffer(&wl_surface, display) {
+                            compositor::with_states(&wl_surface, |data| {
+                                use std::cell::RefCell;
+                                use crate::state::{SurfaceBufferData, EglTextureBuffer};
+                                data.data_map.insert_if_missing(|| RefCell::new(SurfaceBufferData::default()));
+                                if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                    let mut bd = buffer_data.borrow_mut();
+                                    bd.egl_texture = Some(EglTextureBuffer {
+                                        texture_id: imported.0,
+                                        width: imported.1,
+                                        height: imported.2,
+                                        egl_image: imported.3,
+                                    });
+                                    bd.needs_egl_import = false;
+                                    bd.wl_buffer_ptr = None;
+                                    if let Some(buffer) = bd.pending_buffer.take() {
+                                        buffer.release();
+                                    }
+                                }
+                            });
+                            // Render the newly imported texture
+                            unsafe {
+                                gl::render_egl_texture_at(imported.0, imported.1, imported.2, display.width, display.height, 0, 0);
+                            }
+                        }
+                    } else if let Some((texture_id, width, height)) = egl_texture_info {
+                        // Render existing EGL texture
                         unsafe {
-                            gl::render_texture(width, height, &pixels, display.width, display.height);
+                            gl::render_egl_texture_at(texture_id, width, height, display.width, display.height, 0, 0);
+                        }
+                    } else {
+                        // Fallback to SHM buffer
+                        let buffer_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(&wl_surface, |data| {
+                            use std::cell::RefCell;
+                            use crate::state::SurfaceBufferData;
+
+                            if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                let data = buffer_data.borrow();
+                                if let Some(ref stored) = data.buffer {
+                                    Some((stored.width, stored.height, stored.pixels.clone()))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        });
+
+                        if let Some((width, height, pixels)) = buffer_info {
+                            unsafe {
+                                gl::render_texture(width, height, &pixels, display.width, display.height);
+                            }
                         }
                     }
                 }
