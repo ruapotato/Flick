@@ -1191,8 +1191,21 @@ fn handle_input_event(
                                                             buffer.height,
                                                         );
                                                         Some(slint::Image::from_rgba8(pixel_buffer))
+                                                    } else if let Some(ref egl_tex) = bd.egl_texture {
+                                                        // Try reading from EGL texture (hardware rendered apps)
+                                                        unsafe {
+                                                            if let Some(pixels) = gl::read_texture_pixels(egl_tex.texture_id, egl_tex.width, egl_tex.height) {
+                                                                let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                                                    &pixels,
+                                                                    egl_tex.width,
+                                                                    egl_tex.height,
+                                                                );
+                                                                Some(slint::Image::from_rgba8(pixel_buffer))
+                                                            } else {
+                                                                None
+                                                            }
+                                                        }
                                                     } else {
-                                                        // EGL texture readback disabled - corrupts GL state
                                                         None
                                                     }
                                                 } else {
@@ -2736,8 +2749,21 @@ fn render_frame(
                                                             buffer.height,
                                                         );
                                                         Some(slint::Image::from_rgba8(pixel_buffer))
+                                                    } else if let Some(ref egl_tex) = bd.egl_texture {
+                                                        // Try reading from EGL texture (hardware rendered apps)
+                                                        unsafe {
+                                                            if let Some(pixels) = gl::read_texture_pixels(egl_tex.texture_id, egl_tex.width, egl_tex.height) {
+                                                                let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                                                    &pixels,
+                                                                    egl_tex.width,
+                                                                    egl_tex.height,
+                                                                );
+                                                                Some(slint::Image::from_rgba8(pixel_buffer))
+                                                            } else {
+                                                                None
+                                                            }
+                                                        }
                                                     } else {
-                                                        // EGL texture readback disabled - corrupts GL state
                                                         None
                                                     }
                                                 } else {
@@ -2904,8 +2930,21 @@ fn render_frame(
                                                 buffer.height,
                                             );
                                             Some(slint::Image::from_rgba8(pixel_buffer))
+                                        } else if let Some(ref egl_tex) = bd.egl_texture {
+                                            // Try reading from EGL texture (hardware rendered apps)
+                                            unsafe {
+                                                if let Some(pixels) = gl::read_texture_pixels(egl_tex.texture_id, egl_tex.width, egl_tex.height) {
+                                                    let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                                        &pixels,
+                                                        egl_tex.width,
+                                                        egl_tex.height,
+                                                    );
+                                                    Some(slint::Image::from_rgba8(pixel_buffer))
+                                                } else {
+                                                    None
+                                                }
+                                            }
                                         } else {
-                                            // EGL texture readback disabled - corrupts GL state
                                             None
                                         }
                                     } else {
@@ -3318,6 +3357,7 @@ mod gl {
     type Uniform1fFn = unsafe extern "C" fn(i32, f32);
     type Uniform2fvFn = unsafe extern "C" fn(i32, i32, *const f32);
     type Uniform4fvFn = unsafe extern "C" fn(i32, i32, *const f32);
+    type GetIntegervFn = unsafe extern "C" fn(u32, *mut i32);
 
     // Cached function pointers
     static mut FN_CLEAR_COLOR: Option<ClearColorFn> = None;
@@ -3411,9 +3451,16 @@ mod gl {
     static mut FN_DELETE_FRAMEBUFFERS: Option<unsafe extern "C" fn(i32, *const u32)> = None;
     static mut FN_BLIT_FRAMEBUFFER: Option<unsafe extern "C" fn(i32, i32, i32, i32, i32, i32, i32, i32, u32, u32)> = None;
     static mut FN_READ_PIXELS: Option<unsafe extern "C" fn(i32, i32, i32, i32, u32, u32, *mut c_void)> = None;
+    static mut FN_GET_INTEGERV: Option<GetIntegervFn> = None;
 
     // Persistent FBO for texture readback (avoid recreating each time)
     static mut READBACK_FBO: u32 = 0;
+
+    // GL state query constants
+    const GL_FRAMEBUFFER_BINDING: u32 = 0x8CA6;
+    const GL_VIEWPORT_BINDING: u32 = 0x0BA2;  // GL_VIEWPORT
+    const GL_TEXTURE_BINDING_2D: u32 = 0x8069;
+    const GL_CURRENT_PROGRAM: u32 = 0x8B8D;
 
     // FBO constants
     const GL_FRAMEBUFFER: u32 = 0x8D40;
@@ -4156,6 +4203,7 @@ mod gl {
         FN_DELETE_FRAMEBUFFERS = load_fn(lib, b"glDeleteFramebuffers\0");
         FN_BLIT_FRAMEBUFFER = load_fn(lib, b"glBlitFramebuffer\0");
         FN_READ_PIXELS = load_fn(lib, b"glReadPixels\0");
+        FN_GET_INTEGERV = load_fn(lib, b"glGetIntegerv\0");
 
         tracing::info!("FBO support: gen={}, bind={}, attach={}, check={}, blit={}, read={}",
             FN_GEN_FRAMEBUFFERS.is_some(), FN_BIND_FRAMEBUFFER.is_some(),
@@ -4969,10 +5017,21 @@ mod gl {
         let viewport = FN_VIEWPORT?;
         let clear = FN_CLEAR?;
         let clear_color = FN_CLEAR_COLOR?;
+        let get_integerv = FN_GET_INTEGERV?;
 
         if SHADER_PROGRAM == 0 {
             return None;
         }
+
+        // Save current GL state
+        let mut saved_fbo: i32 = 0;
+        let mut saved_viewport: [i32; 4] = [0; 4];
+        let mut saved_texture: i32 = 0;
+        let mut saved_program: i32 = 0;
+        get_integerv(GL_FRAMEBUFFER_BINDING, &mut saved_fbo);
+        get_integerv(0x0BA2, saved_viewport.as_mut_ptr()); // GL_VIEWPORT
+        get_integerv(GL_TEXTURE_BINDING_2D, &mut saved_texture);
+        get_integerv(GL_CURRENT_PROGRAM, &mut saved_program);
 
         // Create or resize preview FBO and texture if needed
         if PREVIEW_FBO == 0 || PREVIEW_TEX_WIDTH != width || PREVIEW_TEX_HEIGHT != height {
@@ -5056,8 +5115,11 @@ mod gl {
         let mut pixels = vec![0u8; size];
         read_pixels(0, 0, width as i32, height as i32, RGBA, UNSIGNED_BYTE, pixels.as_mut_ptr() as *mut c_void);
 
-        // Unbind FBO
-        bind_fbo(GL_FRAMEBUFFER, 0);
+        // Restore GL state
+        bind_fbo(GL_FRAMEBUFFER, saved_fbo as u32);
+        viewport(saved_viewport[0], saved_viewport[1], saved_viewport[2], saved_viewport[3]);
+        bind_texture(TEXTURE_2D, saved_texture as u32);
+        if let Some(use_prog) = FN_USE_PROGRAM { use_prog(saved_program as u32); }
 
         // Flip vertically (OpenGL has origin at bottom-left, we need top-left)
         let row_size = (width * 4) as usize;
