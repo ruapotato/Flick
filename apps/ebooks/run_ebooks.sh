@@ -28,9 +28,11 @@ extract_epub() {
 # Pre-extract all existing EPUBs
 for dir in ~/Books ~/Documents ~/Downloads; do
     if [ -d "$dir" ]; then
-        for epub in "$dir"/*.epub "$dir"/*.EPUB 2>/dev/null; do
+        shopt -s nullglob
+        for epub in "$dir"/*.epub "$dir"/*.EPUB; do
             extract_epub "$epub"
         done
+        shopt -u nullglob
     fi
 done
 
@@ -40,9 +42,11 @@ done
         sleep 2
         for dir in ~/Books ~/Documents ~/Downloads; do
             if [ -d "$dir" ]; then
-                for epub in "$dir"/*.epub "$dir"/*.EPUB 2>/dev/null; do
+                shopt -s nullglob
+                for epub in "$dir"/*.epub "$dir"/*.EPUB; do
                     extract_epub "$epub"
                 done
+                shopt -u nullglob
             fi
         done
     done
