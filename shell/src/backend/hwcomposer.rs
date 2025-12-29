@@ -1176,9 +1176,17 @@ fn handle_input_event(
 
                             // Update Slint UI with window list
                             if let Some(ref slint_ui) = state.shell.slint_ui {
+                                // Calculate visibility bounds for preview culling
+                                let scroll = state.shell.switcher_scroll;
+                                let visible_margin = screen_w * 1.5; // Extra margin for partially visible cards
+
                                 let windows: Vec<_> = state.space.elements()
                                     .enumerate()
                                     .map(|(i, window)| {
+                                        // Check if this window is visible in the fanout
+                                        let window_pos = (i as f64) * card_spacing - scroll;
+                                        let is_visible = window_pos > -visible_margin && window_pos < screen_w + visible_margin;
+
                                         // Try X11 surface first, then Wayland toplevel, fall back to generic name
                                         let title = if let Some(x11) = window.x11_surface() {
                                             let t = x11.title();
@@ -1217,7 +1225,11 @@ fn handle_input_event(
                                         };
 
                                         // Capture window preview from SHM buffer or EGL texture
-                                        let preview: Option<slint::Image> = if let Some(toplevel) = window.toplevel() {
+                                        // Only capture preview if window is visible (performance optimization)
+                                        let preview: Option<slint::Image> = if !is_visible {
+                                            // Skip expensive texture read for off-screen windows
+                                            None
+                                        } else if let Some(toplevel) = window.toplevel() {
                                             compositor::with_states(toplevel.wl_surface(), |states| {
                                                 use std::cell::RefCell;
                                                 use crate::state::SurfaceBufferData;
@@ -1263,7 +1275,6 @@ fn handle_input_event(
                                 // Sort by render order: furthest from center first, center last
                                 // This ensures center card renders on top
                                 let scroll = state.shell.switcher_scroll;
-                                let card_spacing = screen_w * 0.80 * 0.35;
                                 let mut windows = windows;
                                 windows.sort_by(|a, b| {
                                     let dist_a = ((a.3 as f64) * card_spacing - scroll).abs();
@@ -2777,10 +2788,21 @@ fn render_frame(
                                 // Update enter animation progress
                                 let enter_progress = state.shell.get_switcher_enter_progress();
                                 slint_ui.set_switcher_enter_progress(enter_progress);
+
+                                // Calculate visibility bounds for preview culling (performance optimization)
+                                let screen_w = state.screen_size.w as f64;
+                                let scroll = state.shell.switcher_scroll;
+                                let card_spacing = screen_w * 0.80 * 0.35;
+                                let visible_margin = screen_w * 1.5;
+
                                 // Update window list for Slint Switcher
                                 let windows: Vec<_> = state.space.elements()
                                     .enumerate()
                                     .map(|(i, window)| {
+                                        // Check if this window is visible in the fanout
+                                        let window_pos = (i as f64) * card_spacing - scroll;
+                                        let is_visible = window_pos > -visible_margin && window_pos < screen_w + visible_margin;
+
                                         // Try X11 surface first, then Wayland toplevel, fall back to generic name
                                         let title = if let Some(x11) = window.x11_surface() {
                                             let t = x11.title();
@@ -2818,7 +2840,11 @@ fn render_frame(
                                         };
 
                                         // Capture window preview from SHM buffer or EGL texture
-                                        let preview: Option<slint::Image> = if let Some(toplevel) = window.toplevel() {
+                                        // Only capture preview if window is visible (performance optimization)
+                                        let preview: Option<slint::Image> = if !is_visible {
+                                            // Skip expensive texture read for off-screen windows
+                                            None
+                                        } else if let Some(toplevel) = window.toplevel() {
                                             compositor::with_states(toplevel.wl_surface(), |states| {
                                                 use std::cell::RefCell;
                                                 use crate::state::SurfaceBufferData;
@@ -2863,9 +2889,6 @@ fn render_frame(
 
                                 // Sort by render order: furthest from center first, center last
                                 // This ensures center card renders on top
-                                let scroll = state.shell.switcher_scroll;
-                                let screen_w = state.screen_size.w as f64;
-                                let card_spacing = screen_w * 0.80 * 0.35;
                                 let mut windows = windows;
                                 windows.sort_by(|a, b| {
                                     let dist_a = ((a.3 as f64) * card_spacing - scroll).abs();
@@ -2964,9 +2987,16 @@ fn render_frame(
                     };
                     slint_ui.set_switcher_scroll(scroll as f32);
 
+                    // Calculate visibility bounds for preview culling (performance optimization)
+                    let visible_margin = screen_w * 1.5;
+
                     let windows: Vec<_> = state.space.elements()
                         .enumerate()
                         .map(|(i, window)| {
+                            // Check if this window is visible in the fanout
+                            let window_pos = (i as f64) * card_spacing - scroll;
+                            let is_visible = window_pos > -visible_margin && window_pos < screen_w + visible_margin;
+
                             let title = if let Some(x11) = window.x11_surface() {
                                 let t = x11.title();
                                 if !t.is_empty() { t } else { x11.class() }
@@ -2998,7 +3028,11 @@ fn render_frame(
                             };
 
                             // Capture window preview from SHM buffer or EGL texture
-                            let preview: Option<slint::Image> = if let Some(toplevel) = window.toplevel() {
+                            // Only capture preview if window is visible (performance optimization)
+                            let preview: Option<slint::Image> = if !is_visible {
+                                // Skip expensive texture read for off-screen windows
+                                None
+                            } else if let Some(toplevel) = window.toplevel() {
                                 compositor::with_states(toplevel.wl_surface(), |states| {
                                     use std::cell::RefCell;
                                     use crate::state::SurfaceBufferData;
