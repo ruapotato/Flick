@@ -495,17 +495,27 @@ fn handle_input_event(
             state.last_activity = std::time::Instant::now();
 
             // Volume buttons (evdev keycodes: 114=down, 115=up)
-            if evdev_keycode == 115 && pressed {
-                info!("Volume up pressed");
-                state.system.volume_up();
-                state.system.haptic_tap();
-                info!("Volume now: {}%", state.system.volume);
+            if evdev_keycode == 115 {
+                if pressed {
+                    info!("Volume up pressed");
+                    state.system.volume_up();
+                    state.system.haptic_tap();
+                    state.system.set_volume_key_held(Some(115));
+                    info!("Volume now: {}%", state.system.volume);
+                } else {
+                    state.system.set_volume_key_held(None);
+                }
             }
-            if evdev_keycode == 114 && pressed {
-                info!("Volume down pressed");
-                state.system.volume_down();
-                state.system.haptic_tap();
-                info!("Volume now: {}%", state.system.volume);
+            if evdev_keycode == 114 {
+                if pressed {
+                    info!("Volume down pressed");
+                    state.system.volume_down();
+                    state.system.haptic_tap();
+                    state.system.set_volume_key_held(Some(114));
+                    info!("Volume now: {}%", state.system.volume);
+                } else {
+                    state.system.set_volume_key_held(None);
+                }
             }
 
             // KEY_WAKEUP (evdev keycode 143) - wake blanked screen
@@ -2227,6 +2237,17 @@ pub fn run() -> Result<()> {
             }
             // Vibrate for incoming call (continuous pattern)
             state.system.haptic_heavy();
+        }
+
+        // Check for volume key repeat (held down)
+        if state.system.check_volume_key_repeat() {
+            if let Some(keycode) = state.system.volume_key_held {
+                if keycode == 115 {
+                    state.system.volume_up();
+                } else if keycode == 114 {
+                    state.system.volume_down();
+                }
+            }
         }
 
         // Check for haptic requests from apps (via /tmp/flick_haptic)

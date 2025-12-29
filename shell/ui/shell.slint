@@ -140,13 +140,13 @@ component VolumeOverlay inherits Rectangle {
     in property <int> volume: 50;  // 0 to 100
     in property <bool> muted: false;
 
-    width: 80px;
-    height: 260px;
+    width: 140px;
+    height: 420px;
     background: #000000e8;
-    border-radius: 20px;
+    border-radius: 28px;
     drop-shadow-color: #000000aa;
-    drop-shadow-blur: 20px;
-    drop-shadow-offset-y: 4px;
+    drop-shadow-blur: 30px;
+    drop-shadow-offset-y: 6px;
 
     // Subtle border
     Rectangle {
@@ -160,30 +160,30 @@ component VolumeOverlay inherits Rectangle {
 
     VerticalLayout {
         alignment: center;
-        padding: 16px;
-        spacing: 12px;
+        padding: 24px;
+        spacing: 20px;
 
         // Speaker icon with glow effect
         Rectangle {
-            width: 48px;
-            height: 48px;
-            border-radius: 24px;
+            width: 72px;
+            height: 72px;
+            border-radius: 36px;
             background: root.muted ? #ff444430 : #60a0ff30;
 
             Text {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 text: root.muted ? "🔇" : (root.volume > 66 ? "🔊" : (root.volume > 33 ? "🔉" : (root.volume > 0 ? "🔈" : "🔇")));
-                font-size: 26px;
+                font-size: 42px;
             }
         }
 
         // Vertical volume bar container
         Rectangle {
-            width: 16px;
-            height: 140px;
+            width: 28px;
+            height: 240px;
             background: #ffffff18;
-            border-radius: 8px;
+            border-radius: 14px;
 
             // Track marks for visual feedback
             for i in [0, 25, 50, 75, 100]: Rectangle {
@@ -198,15 +198,15 @@ component VolumeOverlay inherits Rectangle {
                 y: parent.height - self.height;
                 width: 100%;
                 height: root.muted ? 0px : parent.height * (root.volume / 100.0);
-                border-radius: 8px;
+                border-radius: 14px;
                 background: root.muted ? #ff4444 : (root.volume > 80 ? @linear-gradient(0deg, #60a0ff 0%, #80ff80 100%) : @linear-gradient(0deg, #4080e0 0%, #60a0ff 100%));
 
                 // Glow at top
                 Rectangle {
                     y: 0;
                     width: 100%;
-                    height: min(20px, parent.height);
-                    border-radius: 8px;
+                    height: min(30px, parent.height);
+                    border-radius: 14px;
                     background: @linear-gradient(180deg, #ffffff40 0%, transparent 100%);
                 }
 
@@ -216,9 +216,9 @@ component VolumeOverlay inherits Rectangle {
 
         // Volume percentage with subtle styling
         Rectangle {
-            width: 48px;
-            height: 24px;
-            border-radius: 12px;
+            width: 72px;
+            height: 36px;
+            border-radius: 18px;
             background: #ffffff10;
 
             Text {
@@ -226,7 +226,7 @@ component VolumeOverlay inherits Rectangle {
                 y: (parent.height - self.height) / 2;
                 text: root.muted ? "OFF" : "\{root.volume}%";
                 color: root.muted ? #ff6666 : #ffffff;
-                font-size: 12px;
+                font-size: 18px;
                 font-weight: 600;
             }
         }

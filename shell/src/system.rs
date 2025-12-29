@@ -942,6 +942,12 @@ pub struct SystemStatus {
     pub phone: PhoneStatus,
     /// Last time we checked phone status
     phone_last_check: std::time::Instant,
+    /// Volume key held state (114=down, 115=up)
+    pub volume_key_held: Option<u32>,
+    /// When the volume key was first pressed
+    pub volume_key_held_since: Option<std::time::Instant>,
+    /// When we last triggered a volume repeat
+    pub volume_key_last_repeat: Option<std::time::Instant>,
 }
 
 impl SystemStatus {
@@ -965,7 +971,49 @@ impl SystemStatus {
             vibrator,
             phone: PhoneStatus::default(),
             phone_last_check: std::time::Instant::now(),
+            volume_key_held: None,
+            volume_key_held_since: None,
+            volume_key_last_repeat: None,
         }
+    }
+
+    /// Set volume key held state
+    pub fn set_volume_key_held(&mut self, keycode: Option<u32>) {
+        if keycode.is_some() {
+            self.volume_key_held = keycode;
+            self.volume_key_held_since = Some(std::time::Instant::now());
+            self.volume_key_last_repeat = None;
+        } else {
+            self.volume_key_held = None;
+            self.volume_key_held_since = None;
+            self.volume_key_last_repeat = None;
+        }
+    }
+
+    /// Check if we should trigger a volume key repeat, returns true if repeat should happen
+    pub fn check_volume_key_repeat(&mut self) -> bool {
+        const INITIAL_DELAY_MS: u64 = 400;  // Wait this long before starting repeat
+        const REPEAT_INTERVAL_MS: u64 = 80; // Repeat every N ms after initial delay
+
+        if let (Some(_keycode), Some(held_since)) = (self.volume_key_held, self.volume_key_held_since) {
+            let elapsed = held_since.elapsed().as_millis() as u64;
+
+            // Check if we've passed the initial delay
+            if elapsed >= INITIAL_DELAY_MS {
+                // Check if it's time for another repeat
+                if let Some(last_repeat) = self.volume_key_last_repeat {
+                    if last_repeat.elapsed().as_millis() as u64 >= REPEAT_INTERVAL_MS {
+                        self.volume_key_last_repeat = Some(std::time::Instant::now());
+                        return true;
+                    }
+                } else {
+                    // First repeat after initial delay
+                    self.volume_key_last_repeat = Some(std::time::Instant::now());
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Trigger haptic feedback (short tap)
