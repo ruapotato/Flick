@@ -13,7 +13,7 @@ Window {
 
     // Don't use shell textScale - phone dialpad has fixed dimensions
     property real textScale: 1.0  // Fixed, don't load from config
-    property color accentColor: Theme.accentColor
+    property color accentColor: "#e94560"
     property color accentPressed: Qt.darker(accentColor, 1.2)
     property string phoneNumber: ""
     property bool inCall: false
@@ -35,7 +35,18 @@ Window {
 
     function loadConfig() {
         // Phone app uses fixed scaling - don't load textScale from shell config
-        // The dialpad is designed for a fixed layout
+        // But load accent color
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var config = JSON.parse(xhr.responseText)
+                if (config.accent_color && config.accent_color !== "") {
+                    accentColor = config.accent_color
+                }
+            }
+        } catch (e) {}
     }
 
     function loadHistory() {
