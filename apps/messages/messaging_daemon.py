@@ -26,9 +26,57 @@ except ImportError:
 # Paths
 STATE_DIR = os.path.expanduser("~/.local/state/flick")
 MESSAGES_FILE = os.path.join(STATE_DIR, "messages.json")
+NOTIFICATIONS_FILE = os.path.join(STATE_DIR, "notifications_display.json")
 CMD_FILE = "/tmp/flick_messages_cmd"
 
 os.makedirs(STATE_DIR, exist_ok=True)
+
+
+def create_notification(phone_number, text, contact_name=None):
+    """Create a notification for incoming SMS"""
+    try:
+        # Load existing notifications
+        notifications = []
+        if os.path.exists(NOTIFICATIONS_FILE):
+            try:
+                with open(NOTIFICATIONS_FILE, 'r') as f:
+                    data = json.load(f)
+                    notifications = data.get("notifications", [])
+            except:
+                pass
+
+        # Generate unique ID
+        notif_id = int(time.time() * 1000) % 1000000
+
+        # Create notification
+        notif = {
+            "id": notif_id,
+            "app_name": "Messages",
+            "app_icon": "💬",
+            "title": contact_name or phone_number,
+            "body": text[:100] + ("..." if len(text) > 100 else ""),
+            "time": datetime.now().strftime("%H:%M"),
+            "urgency": 1,
+            "phone_number": phone_number  # For opening the right conversation
+        }
+
+        # Add to front of list
+        notifications.insert(0, notif)
+
+        # Keep only last 20 notifications
+        notifications = notifications[:20]
+
+        # Save
+        with open(NOTIFICATIONS_FILE, 'w') as f:
+            json.dump({
+                "notifications": notifications,
+                "count": len(notifications)
+            }, f, indent=2)
+
+        print(f"Created notification for SMS from {phone_number}")
+
+    except Exception as e:
+        print(f"Failed to create notification: {e}")
 
 
 class ModemManagerSMS:
@@ -148,6 +196,9 @@ class ModemManagerSMS:
             timestamp = timestamp_variant.unpack()[0]
 
             print(f"SMS from {number}: {text}")
+
+            # Create notification for lock screen / quick settings
+            create_notification(number, text)
 
             # Add to messages
             self.add_message(number, text, "incoming", timestamp)
@@ -314,6 +365,11 @@ class ModemManagerSMS:
                     direction = "incoming" if state == 1 else "outgoing"
 
                     print(f"Importing SMS from {number}: {text[:30]}...")
+
+                    # Create notification for incoming messages
+                    if direction == "incoming":
+                        create_notification(number, text)
+
                     self.add_message(number, text, direction, timestamp)
 
                     # Delete from modem
