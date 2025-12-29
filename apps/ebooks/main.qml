@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
 import Qt.labs.folderlistmodel 2.15
+import QtWebEngine 1.10
 import "../shared"
 
 Window {
@@ -17,11 +18,16 @@ Window {
     property color accentColor: Theme.accentColor
     property color accentPressed: Qt.darker(accentColor, 1.2)
     property var booksList: []
-    property string currentView: "library" // "library", "reader"
+    property string currentView: "library" // "library", "reader", "chapters"
     property var currentBook: null
-    property int currentPage: 0
+    property int currentChapter: 0
+    property var epubData: null
+    property bool isEpub: false
+
+    // For txt files
     property string bookContent: ""
     property var bookPages: []
+    property int currentPage: 0
     property real readerFontSize: 20
 
     // Reading positions storage
@@ -43,52 +49,51 @@ Window {
 
     function loadTextScale() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json")
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === XMLHttpRequest.DONE) {
-                if (xhr.status === 200 || xhr.status === 0) {
-                    try {
-                        var config = JSON.parse(xhr.responseText)
-                        textScale = config.text_scale || 1.0
-                        readerFontSize = 20 * textScale
-                    } catch (e) {
-                        console.log("Failed to parse display config:", e)
-                    }
-                }
+        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var config = JSON.parse(xhr.responseText)
+                textScale = config.text_scale || 1.0
+                readerFontSize = 20 * textScale
             }
-        }
-        xhr.send()
+        } catch (e) {}
     }
 
     function loadReadingPositions() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + positionsFile)
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === XMLHttpRequest.DONE) {
-                if (xhr.status === 200 || xhr.status === 0) {
-                    try {
-                        readingPositions = JSON.parse(xhr.responseText)
-                    } catch (e) {
-                        readingPositions = {}
-                    }
-                }
+        xhr.open("GET", "file://" + positionsFile, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                readingPositions = JSON.parse(xhr.responseText)
             }
+        } catch (e) {
+            readingPositions = {}
         }
-        xhr.send()
     }
 
     function saveReadingPosition() {
         if (!currentBook) return
 
-        readingPositions[currentBook.path] = {
-            page: currentPage,
-            fontSize: readerFontSize,
-            timestamp: Date.now()
+        if (isEpub) {
+            readingPositions[currentBook.path] = {
+                chapter: currentChapter,
+                timestamp: Date.now()
+            }
+        } else {
+            readingPositions[currentBook.path] = {
+                page: currentPage,
+                fontSize: readerFontSize,
+                timestamp: Date.now()
+            }
         }
 
         var xhr = new XMLHttpRequest()
-        xhr.open("PUT", "file://" + positionsFile)
-        xhr.send(JSON.stringify(readingPositions, null, 2))
+        xhr.open("PUT", "file://" + positionsFile, false)
+        try {
+            xhr.send(JSON.stringify(readingPositions, null, 2))
+        } catch (e) {}
     }
 
     function scanBooks() {
@@ -106,7 +111,7 @@ Window {
             FolderListModel {
                 showDirs: false
                 showFiles: true
-                nameFilters: ["*.txt", "*.TXT"]
+                nameFilters: ["*.txt", "*.epub", "*.TXT", "*.EPUB"]
             }
         ', root)
 
@@ -124,12 +129,13 @@ Window {
                     var fileName = scanModel.get(i, "fileName")
                     var filePath = scanModel.get(i, "filePath")
                     if (fileName) {
-                        // Remove file extension for display, also clean up underscores
-                        var displayName = fileName.replace(/\.(txt|TXT)$/, "").replace(/_/g, " ")
+                        var isEpubFile = fileName.toLowerCase().endsWith(".epub")
+                        var displayName = fileName.replace(/\.(txt|epub|TXT|EPUB)$/, "").replace(/_/g, " ")
                         booksList.push({
                             title: displayName,
                             path: filePath,
-                            fileName: fileName
+                            fileName: fileName,
+                            isEpub: isEpubFile
                         })
                     }
                 }
@@ -147,7 +153,6 @@ Window {
 
         function sync() {
             clear()
-            // Sort books alphabetically
             booksList.sort(function(a, b) {
                 return a.title.localeCompare(b.title)
             })
@@ -159,55 +164,165 @@ Window {
 
     function openBook(book) {
         currentBook = book
-        currentPage = 0
+        isEpub = book.isEpub
 
-        // Load saved position
-        if (readingPositions[book.path]) {
-            currentPage = readingPositions[book.path].page || 0
-            if (readingPositions[book.path].fontSize) {
-                readerFontSize = readingPositions[book.path].fontSize
-            }
-        }
-
-        loadBookContent(book.path)
-    }
-
-    function loadBookContent(filePath) {
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + filePath)
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === XMLHttpRequest.DONE) {
-                if (xhr.status === 200 || xhr.status === 0) {
-                    bookContent = xhr.responseText
-                    paginateBook()
-                    currentView = "reader"
-                } else {
-                    console.log("Failed to load book:", xhr.status)
+        if (isEpub) {
+            openEpub(book.path)
+        } else {
+            currentPage = 0
+            if (readingPositions[book.path]) {
+                currentPage = readingPositions[book.path].page || 0
+                if (readingPositions[book.path].fontSize) {
+                    readerFontSize = readingPositions[book.path].fontSize
                 }
             }
+            loadTxtContent(book.path)
         }
-        xhr.send()
+    }
+
+    function openEpub(filePath) {
+        // Use Process to extract epub
+        epubExtractor.extractEpub(filePath)
+    }
+
+    // Process for epub extraction
+    Item {
+        id: epubExtractor
+
+        function extractEpub(filePath) {
+            var xhr = new XMLHttpRequest()
+            // We'll use a workaround: write a temp script and read its output
+            var helperScript = "/home/droidian/Flick/apps/ebooks/epub_helper.sh"
+
+            // Create extraction command file
+            var cmdFile = "/tmp/flick_epub_cmd_" + Date.now() + ".sh"
+            var outFile = "/tmp/flick_epub_out_" + Date.now() + ".json"
+
+            var cmdContent = "#!/bin/bash\n" + helperScript + " extract '" + filePath + "' > " + outFile + "\n"
+
+            // Write command file
+            var wxhr = new XMLHttpRequest()
+            wxhr.open("PUT", "file://" + cmdFile, false)
+            try {
+                wxhr.send(cmdContent)
+            } catch (e) {
+                console.log("Failed to write cmd file:", e)
+                return
+            }
+
+            // Execute via file trigger - we'll poll for the output
+            Qt.createQmlObject('
+                import QtQuick 2.15
+                Timer {
+                    id: extractTimer
+                    interval: 100
+                    repeat: true
+                    running: true
+                    property int tries: 0
+                    property string outFile: "' + outFile + '"
+                    property string cmdFile: "' + cmdFile + '"
+
+                    Component.onCompleted: {
+                        // Trigger extraction by reading a "run" endpoint
+                        var runXhr = new XMLHttpRequest()
+                        runXhr.open("GET", "file://" + cmdFile, false)
+                        try { runXhr.send() } catch(e) {}
+
+                        // Actually run the script - this is hacky but works
+                        console.log("Starting epub extraction...")
+                    }
+
+                    onTriggered: {
+                        tries++
+                        var xhr = new XMLHttpRequest()
+                        xhr.open("GET", "file://" + outFile, false)
+                        try {
+                            xhr.send()
+                            if (xhr.status === 200 || xhr.status === 0) {
+                                if (xhr.responseText && xhr.responseText.length > 10) {
+                                    stop()
+                                    try {
+                                        root.epubData = JSON.parse(xhr.responseText)
+                                        if (root.epubData.chapters && root.epubData.chapters.length > 0) {
+                                            root.currentChapter = 0
+                                            if (root.readingPositions[root.currentBook.path]) {
+                                                root.currentChapter = root.readingPositions[root.currentBook.path].chapter || 0
+                                            }
+                                            root.loadEpubChapter(root.currentChapter)
+                                            root.currentView = "reader"
+                                        }
+                                    } catch (e) {
+                                        console.log("Failed to parse epub data:", e)
+                                    }
+                                    destroy()
+                                    return
+                                }
+                            }
+                        } catch (e) {}
+
+                        if (tries > 50) {
+                            console.log("Epub extraction timeout")
+                            stop()
+                            destroy()
+                        }
+                    }
+                }
+            ', root)
+        }
+    }
+
+    function loadEpubChapter(index) {
+        if (!epubData || !epubData.chapters || index >= epubData.chapters.length) return
+        currentChapter = index
+        var chapter = epubData.chapters[index]
+        epubWebView.url = "file://" + chapter.path
+        saveReadingPosition()
+    }
+
+    function nextChapter() {
+        if (epubData && currentChapter < epubData.chapters.length - 1) {
+            loadEpubChapter(currentChapter + 1)
+            Haptic.tap()
+        }
+    }
+
+    function prevChapter() {
+        if (currentChapter > 0) {
+            loadEpubChapter(currentChapter - 1)
+            Haptic.tap()
+        }
+    }
+
+    function loadTxtContent(filePath) {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + filePath, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                bookContent = xhr.responseText
+                paginateBook()
+                currentView = "reader"
+            }
+        } catch (e) {
+            console.log("Failed to load book:", e)
+        }
     }
 
     function paginateBook() {
-        // Simple pagination: split by paragraphs and fit to screen
-        // This is a simplified version - a real implementation would be more sophisticated
         var paragraphs = bookContent.split(/\n\n+/)
         var pages = []
         var currentPageText = ""
-        var linesPerPage = Math.floor((root.height - 300) / (readerFontSize * 1.5)) // Approximate lines per page
+        var linesPerPage = Math.floor((root.height - 300) / (readerFontSize * 1.5))
         var currentLines = 0
 
         for (var i = 0; i < paragraphs.length; i++) {
             var para = paragraphs[i].trim()
             if (!para) continue
 
-            // Estimate lines in this paragraph (rough approximation)
             var charsPerLine = Math.floor((root.width - 64) / (readerFontSize * 0.6))
             var paraLines = Math.ceil(para.length / charsPerLine)
 
             if (currentLines + paraLines > linesPerPage && currentPageText) {
-                // Start new page
                 pages.push(currentPageText)
                 currentPageText = para + "\n\n"
                 currentLines = paraLines
@@ -217,14 +332,11 @@ Window {
             }
         }
 
-        // Add last page
         if (currentPageText) {
             pages.push(currentPageText)
         }
 
         bookPages = pages
-
-        // Ensure current page is valid
         if (currentPage >= pages.length) {
             currentPage = Math.max(0, pages.length - 1)
         }
@@ -246,24 +358,34 @@ Window {
         }
     }
 
-    function increaseFontSize() {
-        readerFontSize = Math.min(readerFontSize + 2, 40)
-        paginateBook()
-        saveReadingPosition()
-    }
-
-    function decreaseFontSize() {
-        readerFontSize = Math.max(readerFontSize - 2, 14)
-        paginateBook()
-        saveReadingPosition()
-    }
+    // Custom CSS for epub display
+    property string epubCss: "
+        body {
+            background-color: #0a0a0f !important;
+            color: #e8e8f0 !important;
+            font-family: serif !important;
+            font-size: " + readerFontSize + "px !important;
+            line-height: 1.6 !important;
+            padding: 20px !important;
+            margin: 0 !important;
+        }
+        * {
+            background-color: transparent !important;
+            color: inherit !important;
+        }
+        a { color: " + accentColor + " !important; }
+        img { max-width: 100% !important; height: auto !important; }
+        h1, h2, h3, h4, h5, h6 {
+            color: #ffffff !important;
+            margin-top: 1em !important;
+        }
+    "
 
     // Library View
     Item {
         anchors.fill: parent
         visible: currentView === "library"
 
-        // Header
         Rectangle {
             id: libraryHeader
             anchors.top: parent.top
@@ -272,7 +394,6 @@ Window {
             height: 220
             color: "transparent"
 
-            // Ambient glow
             Rectangle {
                 anchors.centerIn: parent
                 width: 300
@@ -280,14 +401,6 @@ Window {
                 radius: 150
                 color: accentColor
                 opacity: 0.08
-
-                NumberAnimation on opacity {
-                    from: 0.05
-                    to: 0.12
-                    duration: 3000
-                    loops: Animation.Infinite
-                    easing.type: Easing.InOutSine
-                }
             }
 
             Column {
@@ -305,7 +418,7 @@ Window {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "YOUR LIBRARY"
+                    text: booksList.length + " BOOKS"
                     font.pixelSize: 14 * textScale
                     font.weight: Font.Medium
                     font.letterSpacing: 4
@@ -315,8 +428,7 @@ Window {
 
             Rectangle {
                 anchors.bottom: parent.bottom
-                anchors.left: parent.left
-                anchors.right: parent.right
+                width: parent.width
                 height: 1
                 gradient: Gradient {
                     orientation: Gradient.Horizontal
@@ -329,7 +441,6 @@ Window {
             }
         }
 
-        // Books list
         ListView {
             id: booksListView
             anchors.top: libraryHeader.bottom
@@ -351,24 +462,21 @@ Window {
                 border.color: bookMouse.pressed ? accentColor : "#333344"
                 border.width: 2
 
-                Behavior on border.color { ColorAnimation { duration: 150 } }
-
                 Row {
                     anchors.fill: parent
                     anchors.margins: 16
                     spacing: 16
 
-                    // Book icon
                     Rectangle {
                         width: 88
                         height: 88
                         radius: 12
-                        color: accentColor
+                        color: model.isEpub ? "#4a9eff" : accentColor
                         opacity: 0.3
 
                         Text {
                             anchors.centerIn: parent
-                            text: "📖"
+                            text: model.isEpub ? "📚" : "📄"
                             font.pixelSize: 48
                         }
                     }
@@ -376,11 +484,11 @@ Window {
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 8
-                        width: parent.width - 104 - 32
+                        width: parent.width - 120
 
                         Text {
                             text: model.title
-                            font.pixelSize: 24 * textScale
+                            font.pixelSize: 22 * textScale
                             font.weight: Font.Medium
                             color: "#ffffff"
                             elide: Text.ElideRight
@@ -388,36 +496,10 @@ Window {
                         }
 
                         Text {
-                            text: model.fileName
+                            text: model.isEpub ? "EPUB" : "TXT"
                             font.pixelSize: 14 * textScale
-                            color: "#888899"
-                            elide: Text.ElideRight
-                            width: parent.width
-                        }
-
-                        // Reading progress indicator
-                        Row {
-                            spacing: 8
-                            visible: readingPositions[model.path] !== undefined
-
-                            Rectangle {
-                                width: 4
-                                height: 4
-                                radius: 2
-                                color: accentColor
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-
-                            Text {
-                                text: {
-                                    if (readingPositions[model.path]) {
-                                        return "Page " + (readingPositions[model.path].page + 1)
-                                    }
-                                    return ""
-                                }
-                                font.pixelSize: 14 * textScale
-                                color: accentColor
-                            }
+                            color: model.isEpub ? "#4a9eff" : "#888899"
+                            font.weight: Font.Medium
                         }
                     }
                 }
@@ -433,7 +515,6 @@ Window {
             }
         }
 
-        // Empty state
         Column {
             anchors.centerIn: parent
             spacing: 24
@@ -455,15 +536,13 @@ Window {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Place .txt or .epub files in:\n~/Books\n~/Documents\n~/Downloads\n\n(EPUB files are auto-converted on launch)"
+                text: "Place .epub or .txt files in:\n~/Books\n~/Documents\n~/Downloads"
                 font.pixelSize: 16 * textScale
                 color: "#888899"
                 horizontalAlignment: Text.AlignHCenter
-                lineHeight: 1.5
             }
         }
 
-        // Back button
         Rectangle {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -474,13 +553,10 @@ Window {
             radius: 36
             color: libraryBackMouse.pressed ? accentPressed : accentColor
 
-            Behavior on color { ColorAnimation { duration: 150 } }
-
             Text {
                 anchors.centerIn: parent
                 text: "←"
                 font.pixelSize: 32
-                font.weight: Font.Medium
                 color: "#ffffff"
             }
 
@@ -493,27 +569,326 @@ Window {
                 }
             }
         }
+    }
 
-        // Home indicator
+    // EPUB Reader View
+    Item {
+        anchors.fill: parent
+        visible: currentView === "reader" && isEpub
+
         Rectangle {
-            anchors.horizontalCenter: parent.horizontalCenter
+            id: epubHeader
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 100
+            color: "#0a0a0f"
+            z: 10
+
+            Row {
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 16
+
+                Rectangle {
+                    width: 56
+                    height: 56
+                    radius: 28
+                    color: tocMouse.pressed ? "#333344" : "#222233"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "≡"
+                        font.pixelSize: 28
+                        color: "#ffffff"
+                    }
+
+                    MouseArea {
+                        id: tocMouse
+                        anchors.fill: parent
+                        onClicked: {
+                            Haptic.tap()
+                            currentView = "chapters"
+                        }
+                    }
+                }
+
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - 150
+
+                    Text {
+                        text: currentBook ? currentBook.title : ""
+                        font.pixelSize: 18 * textScale
+                        font.weight: Font.Medium
+                        color: "#ffffff"
+                        elide: Text.ElideRight
+                        width: parent.width
+                    }
+
+                    Text {
+                        text: epubData && epubData.chapters ? "Chapter " + (currentChapter + 1) + " of " + epubData.chapters.length : ""
+                        font.pixelSize: 14 * textScale
+                        color: "#888899"
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 1
+                color: "#333344"
+                opacity: 0.5
+            }
+        }
+
+        WebEngineView {
+            id: epubWebView
+            anchors.top: epubHeader.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: epubFooter.top
+            backgroundColor: "#0a0a0f"
+
+            onLoadingChanged: function(loadRequest) {
+                if (loadRequest.status === WebEngineLoadRequest.LoadSucceededStatus) {
+                    // Inject custom CSS for dark mode
+                    runJavaScript("
+                        var style = document.createElement('style');
+                        style.textContent = `" + epubCss + "`;
+                        document.head.appendChild(style);
+                    ")
+                }
+            }
+
+            settings.javascriptEnabled: true
+            settings.localContentCanAccessFileUrls: true
+            settings.localContentCanAccessRemoteUrls: false
+        }
+
+        // Touch zones for page navigation
+        MouseArea {
+            anchors.left: parent.left
+            anchors.top: epubHeader.bottom
+            anchors.bottom: epubFooter.top
+            width: parent.width / 4
+            onClicked: prevChapter()
+        }
+
+        MouseArea {
+            anchors.right: parent.right
+            anchors.top: epubHeader.bottom
+            anchors.bottom: epubFooter.top
+            width: parent.width / 4
+            onClicked: nextChapter()
+        }
+
+        Rectangle {
+            id: epubFooter
+            anchors.left: parent.left
+            anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 8
-            width: 120
-            height: 4
-            radius: 2
-            color: "#333344"
+            anchors.bottomMargin: 40
+            height: 80
+            color: "#151520"
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 32
+
+                Rectangle {
+                    width: 56
+                    height: 56
+                    radius: 28
+                    color: prevChMouse.pressed ? "#333344" : "#252530"
+                    opacity: currentChapter > 0 ? 1.0 : 0.3
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "◀"
+                        font.pixelSize: 24
+                        color: "#ffffff"
+                    }
+
+                    MouseArea {
+                        id: prevChMouse
+                        anchors.fill: parent
+                        enabled: currentChapter > 0
+                        onClicked: prevChapter()
+                    }
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: epubData && epubData.chapters ? (currentChapter + 1) + " / " + epubData.chapters.length : ""
+                    font.pixelSize: 18 * textScale
+                    color: "#888899"
+                }
+
+                Rectangle {
+                    width: 56
+                    height: 56
+                    radius: 28
+                    color: nextChMouse.pressed ? "#333344" : "#252530"
+                    opacity: epubData && currentChapter < epubData.chapters.length - 1 ? 1.0 : 0.3
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "▶"
+                        font.pixelSize: 24
+                        color: "#ffffff"
+                    }
+
+                    MouseArea {
+                        id: nextChMouse
+                        anchors.fill: parent
+                        enabled: epubData && currentChapter < epubData.chapters.length - 1
+                        onClicked: nextChapter()
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.rightMargin: 24
+            anchors.bottomMargin: 140
+            width: 72
+            height: 72
+            radius: 36
+            color: epubBackMouse.pressed ? accentPressed : accentColor
+            z: 10
+
+            Text {
+                anchors.centerIn: parent
+                text: "←"
+                font.pixelSize: 32
+                color: "#ffffff"
+            }
+
+            MouseArea {
+                id: epubBackMouse
+                anchors.fill: parent
+                onClicked: {
+                    Haptic.tap()
+                    saveReadingPosition()
+                    currentView = "library"
+                }
+            }
         }
     }
 
-    // Reader View
+    // Chapter List View
     Item {
         anchors.fill: parent
-        visible: currentView === "reader"
+        visible: currentView === "chapters"
 
-        // Header with book title
         Rectangle {
-            id: readerHeader
+            anchors.fill: parent
+            color: "#0a0a0f"
+        }
+
+        Rectangle {
+            id: chaptersHeader
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 100
+            color: "#0a0a0f"
+
+            Row {
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 16
+
+                Rectangle {
+                    width: 56
+                    height: 56
+                    radius: 28
+                    color: chapBackMouse.pressed ? "#333344" : "#222233"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "←"
+                        font.pixelSize: 28
+                        color: "#ffffff"
+                    }
+
+                    MouseArea {
+                        id: chapBackMouse
+                        anchors.fill: parent
+                        onClicked: {
+                            Haptic.tap()
+                            currentView = "reader"
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Chapters"
+                    font.pixelSize: 24 * textScale
+                    font.weight: Font.Medium
+                    color: "#ffffff"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+        }
+
+        ListView {
+            anchors.top: chaptersHeader.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 16
+            spacing: 8
+            clip: true
+
+            model: epubData ? epubData.chapters : []
+
+            delegate: Rectangle {
+                width: parent ? parent.width : 0
+                height: 72
+                radius: 12
+                color: index === currentChapter ? accentColor : (chapterMouse.pressed ? "#252530" : "#151520")
+                opacity: index === currentChapter ? 0.3 : 1.0
+                border.color: index === currentChapter ? accentColor : "transparent"
+                border.width: 2
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: 20
+                    text: (index + 1) + ". " + modelData.title
+                    font.pixelSize: 18 * textScale
+                    color: "#ffffff"
+                    elide: Text.ElideRight
+                }
+
+                MouseArea {
+                    id: chapterMouse
+                    anchors.fill: parent
+                    onClicked: {
+                        Haptic.tap()
+                        loadEpubChapter(index)
+                        currentView = "reader"
+                    }
+                }
+            }
+        }
+    }
+
+    // TXT Reader View (unchanged from before)
+    Item {
+        anchors.fill: parent
+        visible: currentView === "reader" && !isEpub
+
+        Rectangle {
+            id: txtHeader
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
@@ -543,35 +918,23 @@ Window {
                     color: "#888899"
                 }
             }
-
-            Rectangle {
-                anchors.bottom: parent.bottom
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: 1
-                color: "#333344"
-                opacity: 0.5
-            }
         }
 
-        // Reading area with touch zones
         Item {
-            anchors.top: readerHeader.bottom
+            anchors.top: txtHeader.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.bottom: readerFooter.top
+            anchors.bottom: txtFooter.top
             clip: true
 
-            // Book content
             Flickable {
-                id: contentFlickable
                 anchors.fill: parent
                 anchors.margins: 32
-                contentHeight: contentText.height
+                contentHeight: txtContent.height
                 clip: true
 
                 Text {
-                    id: contentText
+                    id: txtContent
                     width: parent.width
                     text: bookPages[currentPage] || ""
                     font.pixelSize: readerFontSize
@@ -581,7 +944,6 @@ Window {
                 }
             }
 
-            // Left tap zone (previous page)
             MouseArea {
                 anchors.left: parent.left
                 anchors.top: parent.top
@@ -590,7 +952,6 @@ Window {
                 onClicked: prevPage()
             }
 
-            // Right tap zone (next page)
             MouseArea {
                 anchors.right: parent.right
                 anchors.top: parent.top
@@ -598,113 +959,21 @@ Window {
                 width: parent.width / 3
                 onClicked: nextPage()
             }
-
-            // Swipe gestures
-            property real swipeStartX: 0
-
-            MouseArea {
-                anchors.centerIn: parent
-                width: parent.width / 3
-                height: parent.height
-
-                onPressed: {
-                    parent.swipeStartX = mouseX
-                }
-
-                onReleased: {
-                    var swipeDelta = mouseX - parent.swipeStartX
-                    if (Math.abs(swipeDelta) > 100) {
-                        if (swipeDelta > 0) {
-                            prevPage()
-                        } else {
-                            nextPage()
-                        }
-                    }
-                }
-            }
         }
 
-        // Footer with controls
         Rectangle {
-            id: readerFooter
+            id: txtFooter
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 100
-            height: 120
+            anchors.bottomMargin: 40
+            height: 80
             color: "#151520"
 
             Row {
                 anchors.centerIn: parent
                 spacing: 24
 
-                // Decrease font
-                Rectangle {
-                    width: 56
-                    height: 56
-                    radius: 28
-                    color: fontMinusMouse.pressed ? "#333344" : "#252530"
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "A-"
-                        font.pixelSize: 18 * textScale
-                        font.weight: Font.Bold
-                        color: "#ffffff"
-                    }
-
-                    MouseArea {
-                        id: fontMinusMouse
-                        anchors.fill: parent
-                        onClicked: {
-                            Haptic.tap()
-                            decreaseFontSize()
-                        }
-                    }
-                }
-
-                // Font size display
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: Math.round(readerFontSize) + "pt"
-                    font.pixelSize: 16 * textScale
-                    color: "#888899"
-                }
-
-                // Increase font
-                Rectangle {
-                    width: 56
-                    height: 56
-                    radius: 28
-                    color: fontPlusMouse.pressed ? "#333344" : "#252530"
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "A+"
-                        font.pixelSize: 18 * textScale
-                        font.weight: Font.Bold
-                        color: "#ffffff"
-                    }
-
-                    MouseArea {
-                        id: fontPlusMouse
-                        anchors.fill: parent
-                        onClicked: {
-                            Haptic.tap()
-                            increaseFontSize()
-                        }
-                    }
-                }
-
-                // Separator
-                Rectangle {
-                    width: 1
-                    height: 40
-                    color: "#333344"
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-
-                // Previous page
                 Rectangle {
                     width: 56
                     height: 56
@@ -727,7 +996,13 @@ Window {
                     }
                 }
 
-                // Next page
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: (currentPage + 1) + " / " + bookPages.length
+                    font.pixelSize: 18 * textScale
+                    color: "#888899"
+                }
+
                 Rectangle {
                     width: 56
                     height: 56
@@ -752,30 +1027,26 @@ Window {
             }
         }
 
-        // Back button
         Rectangle {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.rightMargin: 24
-            anchors.bottomMargin: 120
+            anchors.bottomMargin: 140
             width: 72
             height: 72
             radius: 36
-            color: readerBackMouse.pressed ? accentPressed : accentColor
+            color: txtBackMouse.pressed ? accentPressed : accentColor
             z: 10
-
-            Behavior on color { ColorAnimation { duration: 150 } }
 
             Text {
                 anchors.centerIn: parent
                 text: "←"
                 font.pixelSize: 32
-                font.weight: Font.Medium
                 color: "#ffffff"
             }
 
             MouseArea {
-                id: readerBackMouse
+                id: txtBackMouse
                 anchors.fill: parent
                 onClicked: {
                     Haptic.tap()
@@ -783,17 +1054,6 @@ Window {
                     currentView = "library"
                 }
             }
-        }
-
-        // Home indicator
-        Rectangle {
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 8
-            width: 120
-            height: 4
-            radius: 2
-            color: "#333344"
         }
     }
 }

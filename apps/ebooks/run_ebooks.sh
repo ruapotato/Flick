@@ -3,25 +3,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
-# Hardware acceleration enabled
-# export QT_QUICK_BACKEND=software  # Using hardware accel
+export QML_XHR_ALLOW_FILE_READ=1
+export QML_XHR_ALLOW_FILE_WRITE=1
+
+# QtWebEngine settings
+export QTWEBENGINE_DISABLE_SANDBOX=1
+export QTWEBENGINE_CHROMIUM_FLAGS="--enable-gpu-rasterization --enable-native-gpu-memory-buffers --enable-features=OverlayScrollbar --force-dark-mode --use-gl=egl"
 
 mkdir -p ~/.local/state/flick
 
-# Pre-extract any epub files to txt for reading
-for dir in ~/Books ~/Documents ~/Downloads; do
-    if [ -d "$dir" ]; then
-        for epub in "$dir"/*.epub "$dir"/*.EPUB; do
-            if [ -f "$epub" ]; then
-                txt_file="${epub%.*}.txt"
-                # Only extract if txt doesn't exist or epub is newer
-                if [ ! -f "$txt_file" ] || [ "$epub" -nt "$txt_file" ]; then
-                    echo "Extracting: $epub"
-                    "$SCRIPT_DIR/extract_epub.sh" "$epub" > /dev/null 2>&1
-                fi
+# Background process to watch for epub extraction requests
+(
+    while true; do
+        for cmd in /tmp/flick_epub_cmd_*.sh; do
+            if [ -f "$cmd" ]; then
+                chmod +x "$cmd"
+                bash "$cmd"
+                rm -f "$cmd"
             fi
         done
-    fi
-done
+        sleep 0.1
+    done
+) &
+WATCHER_PID=$!
+
+# Cleanup on exit
+trap "kill $WATCHER_PID 2>/dev/null" EXIT
 
 qmlscene "$SCRIPT_DIR/main.qml"
