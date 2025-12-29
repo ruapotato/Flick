@@ -1104,6 +1104,11 @@ fn handle_input_event(
                     // Left edge = Quick Settings
                     if *edge == crate::input::Edge::Left {
                         if *completed && state.qs_gesture_active {
+                            // Cancel touch sequences before leaving App view
+                            if let Some(touch) = state.seat.get_touch() {
+                                touch.cancel(state);
+                                info!("Quick Settings gesture: cancelled pending touch sequences");
+                            }
                             // Open Quick Settings
                             state.shell.view = crate::shell::ShellView::QuickSettings;
                             state.system.refresh();
@@ -1125,6 +1130,11 @@ fn handle_input_event(
                     // Right edge = App Switcher
                     if *edge == crate::input::Edge::Right {
                         if *completed && state.switcher_gesture_active {
+                            // Cancel touch sequences before leaving App view
+                            if let Some(touch) = state.seat.get_touch() {
+                                touch.cancel(state);
+                                info!("Switcher gesture: cancelled pending touch sequences");
+                            }
                             // Open App Switcher with proper initialization
                             let num_windows = state.space.elements().count();
                             let screen_w = state.screen_size.w as f64;
