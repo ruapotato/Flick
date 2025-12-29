@@ -32,6 +32,28 @@ CMD_FILE = "/tmp/flick_messages_cmd"
 os.makedirs(STATE_DIR, exist_ok=True)
 
 
+def normalize_phone_number(number):
+    """Normalize phone number for consistent matching.
+
+    Handles formats like:
+    - +15417999824 -> 5417999824
+    - 15417999824 -> 5417999824  (if 11 digits starting with 1)
+    - 5417999824 -> 5417999824
+    - (541) 799-9824 -> 5417999824
+    """
+    if not number:
+        return ""
+
+    # Remove all non-digit characters
+    digits = ''.join(c for c in number if c.isdigit())
+
+    # If it's 11 digits and starts with 1 (US country code), remove the 1
+    if len(digits) == 11 and digits.startswith('1'):
+        digits = digits[1:]
+
+    return digits
+
+
 def trigger_haptic():
     """Trigger haptic feedback for new SMS"""
     try:
@@ -258,17 +280,21 @@ class ModemManagerSMS:
 
         data = load_messages()
 
-        # Find or create conversation
+        # Normalize phone number for matching
+        normalized_input = normalize_phone_number(phone_number)
+
+        # Find or create conversation (match by normalized phone number)
         conversation = None
         for conv in data["conversations"]:
-            if conv["phone_number"] == phone_number:
+            if normalize_phone_number(conv["phone_number"]) == normalized_input:
                 conversation = conv
                 break
 
         if conversation is None:
+            # Store the normalized version for consistency
             conversation = {
-                "phone_number": phone_number,
-                "contact_name": phone_number,  # TODO: lookup from contacts
+                "phone_number": normalized_input,
+                "contact_name": normalized_input,  # TODO: lookup from contacts
                 "messages": [],
                 "last_message": "",
                 "last_message_time": "",
