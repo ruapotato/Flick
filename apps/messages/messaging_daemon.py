@@ -388,9 +388,9 @@ class ModemManagerSMS:
 
                     print(f"Importing SMS from {number}: {text[:30]}...")
 
-                    # Create notification for incoming messages
-                    if direction == "incoming":
-                        create_notification(number, text)
+                    # Note: Don't create notifications for imported messages
+                    # These are old messages from modem storage, not new ones
+                    # Notifications are only created in _on_sms_added for truly new messages
 
                     self.add_message(number, text, direction, timestamp)
 
