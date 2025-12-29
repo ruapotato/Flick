@@ -105,15 +105,21 @@ Window {
         }
     }
 
+    function normalizePhone(phone) {
+        // Strip to digits only, remove leading 1 if 11 digits
+        var digits = phone.replace(/\D/g, "")
+        if (digits.length === 11 && digits.charAt(0) === '1') {
+            digits = digits.substring(1)
+        }
+        return digits
+    }
+
     function getContactName(phoneNumber) {
-        // Normalize phone number for comparison (remove spaces, dashes)
-        var normalizedInput = phoneNumber.replace(/[\s\-\(\)]/g, "")
+        var normalizedInput = normalizePhone(phoneNumber)
         for (var i = 0; i < contactsModel.count; i++) {
             var contact = contactsModel.get(i)
-            var normalizedContact = contact.phone.replace(/[\s\-\(\)]/g, "")
-            if (normalizedInput === normalizedContact ||
-                normalizedInput.endsWith(normalizedContact) ||
-                normalizedContact.endsWith(normalizedInput)) {
+            var normalizedContact = normalizePhone(contact.phone)
+            if (normalizedInput === normalizedContact) {
                 return contact.name
             }
         }
