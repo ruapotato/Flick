@@ -29,6 +29,33 @@ Window {
     Component.onCompleted: {
         loadConfig()
         loadContacts()
+        checkAddContactHint()
+    }
+
+    function checkAddContactHint() {
+        var hintPath = "/home/droidian/.local/state/flick/add_contact.json"
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + hintPath, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0 && xhr.responseText.length > 0) {
+                var hint = JSON.parse(xhr.responseText)
+                if (hint.phone_number) {
+                    // Pre-fill phone and open add view
+                    nameInput.text = ""
+                    phoneInput.text = hint.phone_number
+                    emailInput.text = ""
+                    selectedContactIndex = -1
+                    currentView = "edit"
+                    // Clear hint file
+                    var clearXhr = new XMLHttpRequest()
+                    clearXhr.open("PUT", "file://" + hintPath, false)
+                    try { clearXhr.send("") } catch (e) {}
+                }
+            }
+        } catch (e) {
+            // No hint file, normal startup
+        }
     }
 
     function loadConfig() {

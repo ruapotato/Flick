@@ -39,13 +39,16 @@ trap cleanup EXIT
 
 # Run QML and capture CMD: lines to write to command file
 # QML prefixes output with "qml: " so we look for *CMD:*
-qmlscene "$SCRIPT_DIR/main.qml" 2>&1 | while IFS= read -r line; do
+stdbuf -oL -eL qmlscene "$SCRIPT_DIR/main.qml" 2>&1 | tee -a "$LOG_FILE" | while IFS= read -r line; do
     if [[ "$line" == *CMD:* ]]; then
         # Extract JSON after CMD: prefix
         json="${line#*CMD:}"
         echo "$json" > "$CMD_FILE"
         echo "Command: $json" >> "$LOG_FILE"
-    else
-        echo "$line" >> "$LOG_FILE"
+    # Handle app launch commands
+    elif [[ "$line" == *"LAUNCH:"* ]]; then
+        APP_CMD=$(echo "$line" | sed 's/.*LAUNCH://')
+        echo "Launching app: $APP_CMD" >> "$LOG_FILE"
+        "$APP_CMD" &
     fi
 done

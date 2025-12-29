@@ -168,6 +168,20 @@ Window {
         loadContacts()
     }
 
+    function launchAddContact(phone) {
+        // Write hint file for contacts app to pre-fill the phone number
+        var hintPath = "/home/droidian/.local/state/flick/add_contact.json"
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file://" + hintPath, false)
+        try {
+            xhr.send(JSON.stringify({phone_number: phone}))
+        } catch (e) {
+            console.log("Error writing add contact hint: " + e)
+        }
+        // Launch contacts app
+        console.warn("LAUNCH:/home/droidian/Flick/apps/contacts/run_contacts.sh")
+    }
+
     function loadConversations() {
         var messagesPath = "/home/droidian/.local/state/flick/messages.json"
         var xhr = new XMLHttpRequest()
@@ -612,28 +626,28 @@ Window {
 
                 // Save contact button (only for unknown numbers)
                 Rectangle {
-                    width: 24 * textScale
-                    height: 24 * textScale
-                    radius: 12 * textScale
+                    width: 48 * textScale
+                    height: 48 * textScale
+                    radius: 24 * textScale
                     anchors.verticalCenter: parent.verticalCenter
-                    color: saveContactArea.pressed ? "#2a6a2a" : "#228B22"
+                    color: saveContactArea.pressed ? "#1a6a2a" : "#228B22"
                     visible: currentContactName === currentConversation
 
                     Text {
                         anchors.centerIn: parent
                         text: "+"
                         color: "white"
-                        font.pixelSize: 14 * textScale
+                        font.pixelSize: 28 * textScale
                         font.weight: Font.Bold
                     }
 
                     MouseArea {
                         id: saveContactArea
                         anchors.fill: parent
+                        anchors.margins: -8  // Extend hitbox
                         onClicked: {
-                            saveContactPhone = currentConversation
-                            saveContactName = ""
-                            currentView = "saveContact"
+                            Haptic.click()
+                            launchAddContact(currentConversation)
                         }
                     }
                 }
