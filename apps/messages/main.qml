@@ -633,7 +633,7 @@ Window {
             anchors.top: detailHeader.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.bottom: inputArea.top
+            anchors.bottom: footerArea.top
             anchors.margins: 8 * textScale
             anchors.bottomMargin: 4 * textScale
             model: messagesModel
@@ -820,22 +820,35 @@ Window {
             }
         }
 
-        // Back button - bottom right, above input
+        // Footer area for back button (prevents messages from rendering behind it)
+        Rectangle {
+            id: footerArea
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: inputArea.top
+            height: 110
+            color: "transparent"
+            z: 50
+        }
+
+        // Back button - bottom right, above input (matches other apps)
         Rectangle {
             anchors.right: parent.right
             anchors.bottom: inputArea.top
-            anchors.rightMargin: 12
+            anchors.rightMargin: 24
             anchors.bottomMargin: 8
-            width: 56
-            height: 56
-            radius: 28
+            width: 96
+            height: 96
+            radius: 48
             color: backArea.pressed ? accentPressed : accentColor
             z: 100
+
+            Behavior on color { ColorAnimation { duration: 150 } }
 
             Text {
                 anchors.centerIn: parent
                 text: "←"
-                font.pixelSize: 28
+                font.pixelSize: 40
                 font.weight: Font.Medium
                 color: "#ffffff"
             }
