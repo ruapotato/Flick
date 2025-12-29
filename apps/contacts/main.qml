@@ -19,7 +19,10 @@ Window {
     property int selectedContactIndex: -1
     property string searchText: ""
     property string exportPath: "/home/droidian/Documents/contacts.vcf"
-    property string importPath: "/home/droidian/Documents/contacts.vcf"
+    property string importPath: ""
+    property string pickerResultFile: "/tmp/flick_vcf_pick.txt"
+    property bool waitingForPicker: false
+    property string statusMessage: ""
 
     ListModel { id: contactsModel }
 
@@ -56,6 +59,58 @@ Window {
             console.log("No contacts file yet")
         }
         sortContacts()
+    }
+
+    function launchVcfPicker() {
+        // Clear result file first
+        console.warn("PICKER_CLEAR:" + pickerResultFile)
+        waitingForPicker = true
+        // Launch file app in picker mode for vcf files in Documents
+        console.warn("PICKER_LAUNCH:vcf:/home/droidian/Documents:" + pickerResultFile)
+        // Start polling for result
+        pickerPollTimer.start()
+    }
+
+    function checkPickerResult() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + pickerResultFile, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 && xhr.responseText.trim().length > 0) {
+                var path = xhr.responseText.trim()
+                console.log("Picker returned: " + path)
+                importPath = path
+                waitingForPicker = false
+                pickerPollTimer.stop()
+                // Now import from the selected file
+                var count = importContacts()
+                if (count > 0) {
+                    statusMessage = "Imported " + count + " contacts"
+                } else {
+                    statusMessage = "No new contacts found in file"
+                }
+            }
+        } catch (e) {
+            // File doesn't exist yet, keep polling
+        }
+    }
+
+    Timer {
+        id: pickerPollTimer
+        interval: 300
+        repeat: true
+        property int attempts: 0
+        onTriggered: {
+            attempts++
+            checkPickerResult()
+            // Timeout after 60 seconds
+            if (attempts > 200) {
+                pickerPollTimer.stop()
+                waitingForPicker = false
+                attempts = 0
+                statusMessage = "File selection cancelled"
+            }
+        }
     }
 
     function saveContacts() {
@@ -209,6 +264,10 @@ Window {
     }
 
     function importContacts() {
+        if (!importPath || importPath === "") {
+            console.log("No import path set")
+            return 0
+        }
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + importPath, false)
         try {
@@ -1010,7 +1069,7 @@ Window {
                     width: parent.width
                     height: 80
                     radius: 16
-                    color: importMouse.pressed ? "#2a2a3e" : "#1a1a2e"
+                    color: waitingForPicker ? "#2a3a2e" : (importMouse.pressed ? "#2a2a3e" : "#1a1a2e")
 
                     Row {
                         anchors.fill: parent
@@ -1037,14 +1096,14 @@ Window {
                             spacing: 4
 
                             Text {
-                                text: "Import Contacts"
+                                text: waitingForPicker ? "Waiting for file..." : "Import Contacts"
                                 font.pixelSize: 18 * textScale
                                 font.weight: Font.Medium
                                 color: "#ffffff"
                             }
 
                             Text {
-                                text: "From ~/Documents/contacts.vcf"
+                                text: "Browse for VCF file"
                                 font.pixelSize: 12 * textScale
                                 color: "#888899"
                             }
@@ -1054,14 +1113,10 @@ Window {
                     MouseArea {
                         id: importMouse
                         anchors.fill: parent
+                        enabled: !waitingForPicker
                         onClicked: {
                             Haptic.click()
-                            var count = importContacts()
-                            if (count > 0) {
-                                parent.parent.parent.statusMessage = "Imported " + count + " contacts"
-                            } else {
-                                parent.parent.parent.statusMessage = "No new contacts found"
-                            }
+                            launchVcfPicker()
                         }
                     }
                 }
