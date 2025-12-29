@@ -575,6 +575,12 @@ impl GestureRecognizer {
     pub fn touch_count(&self) -> usize {
         self.points.len()
     }
+
+    /// Check if any touch is in a potential edge swipe state
+    /// (touch started in edge zone but hasn't moved enough to activate yet)
+    pub fn has_potential_edge_swipe(&self) -> bool {
+        self.slot_gestures.values().any(|g| matches!(g, SlotGesture::PotentialEdgeSwipe { .. }))
+    }
 }
 
 /// Actions that can be triggered by gestures
