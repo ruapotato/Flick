@@ -981,6 +981,8 @@ Window {
                     height: 60
                     radius: 12
                     color: "#1a1a2e"
+                    border.color: nameInput.activeFocus ? accentColor : "transparent"
+                    border.width: 2
 
                     TextInput {
                         id: nameInput
@@ -989,6 +991,13 @@ Window {
                         font.pixelSize: 20 * textScale
                         color: "#ffffff"
                         verticalAlignment: TextInput.AlignVCenter
+                        activeFocusOnPress: true
+                        clip: true
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: nameInput.forceActiveFocus()
                     }
                 }
 
@@ -1003,6 +1012,8 @@ Window {
                     height: 60
                     radius: 12
                     color: "#1a1a2e"
+                    border.color: phoneInput.activeFocus ? accentColor : "transparent"
+                    border.width: 2
 
                     TextInput {
                         id: phoneInput
@@ -1011,7 +1022,14 @@ Window {
                         font.pixelSize: 20 * textScale
                         color: "#ffffff"
                         verticalAlignment: TextInput.AlignVCenter
+                        activeFocusOnPress: true
+                        clip: true
                         inputMethodHints: Qt.ImhDialableCharactersOnly
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: phoneInput.forceActiveFocus()
                     }
                 }
 
@@ -1026,6 +1044,8 @@ Window {
                     height: 60
                     radius: 12
                     color: "#1a1a2e"
+                    border.color: emailInput.activeFocus ? accentColor : "transparent"
+                    border.width: 2
 
                     TextInput {
                         id: emailInput
@@ -1034,7 +1054,14 @@ Window {
                         font.pixelSize: 20 * textScale
                         color: "#ffffff"
                         verticalAlignment: TextInput.AlignVCenter
+                        activeFocusOnPress: true
+                        clip: true
                         inputMethodHints: Qt.ImhEmailCharactersOnly
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: emailInput.forceActiveFocus()
                     }
                 }
             }
