@@ -890,11 +890,14 @@ Window {
             spacing: 24
 
             // Header
-            Row {
+            Item {
                 width: parent.width
-                spacing: 16
+                height: 56
 
                 Rectangle {
+                    id: cancelBtn
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
                     width: 56
                     height: 56
                     radius: 28
@@ -918,17 +921,19 @@ Window {
                 }
 
                 Text {
+                    anchors.left: cancelBtn.right
+                    anchors.leftMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
                     text: selectedContactIndex >= 0 ? "Edit Contact" : "New Contact"
                     font.pixelSize: 24 * textScale
                     font.weight: Font.Medium
                     color: "#ffffff"
-                    anchors.verticalCenter: parent.verticalCenter
                 }
 
-                Item { width: parent.width - 300; height: 1 }
-
                 Rectangle {
-                    width: 80
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 100
                     height: 56
                     radius: 28
                     color: saveMouse.pressed ? "#1a7a3a" : "#228B22"
