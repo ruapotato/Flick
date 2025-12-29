@@ -91,9 +91,9 @@ Flick comes with a set of QML apps. Status of each:
 | **Lock Screen** | ✅ Working | Pattern/PIN entry, swipe to unlock, hardware accelerated |
 | **Distract** | ✅ Working | Toddler distraction app with interactive animations |
 | **Phone** | ⚠️ Partial | Dialer UI works, audio controls work, modem integration in progress |
-| **Messages** | ⚠️ Partial | SMS interface UI (requires modem integration) |
+| **Messages** | ✅ Working | SMS send/receive via ModemManager, notifications, haptic feedback |
 | **Email** | 🚧 TODO | Email client (UI only, needs backend) |
-| **Web** | 🚧 TODO | Web browser (UI only, needs browser engine) |
+| **Web** | ✅ Working | Web browser with tabs, bookmarks, and history |
 
 ## Architecture
 
@@ -202,11 +202,23 @@ sudo apt install qmlscene qml-module-qtquick2 qml-module-qtquick-window2 \
 
 ### Build & Run
 
+**On Droidian (Android phones):**
 ```bash
-# Quick start
-./start.sh
+# Start Flick (compositor + background services)
+sudo ./start.sh
 
-# Or manually
+# Or run in background
+sudo ./start.sh --bg
+```
+
+**On desktop/DRM (for development):**
+```bash
+# Build and run with DRM/KMS backend
+./start_drm.sh
+```
+
+**Manual build:**
+```bash
 cd shell
 cargo build --release
 ```
@@ -272,20 +284,22 @@ flick/
 │   │   │   ├── quick_settings.rs
 │   │   │   └── apps.rs        # .desktop file parsing
 │   │   ├── backend/
-│   │   │   └── udev.rs        # DRM/KMS backend + gesture security
+│   │   │   ├── hwcomposer.rs  # Droidian HWComposer backend
+│   │   │   └── udev.rs        # DRM/KMS backend
 │   │   ├── android_wlegl.rs   # libhybris buffer sharing protocol
-│   │   └── system.rs          # Hardware integration
+│   │   └── system.rs          # Hardware integration (volume, haptics)
 │   └── ui/
 │       └── shell.slint        # Slint UI definitions (keyboard, home, etc.)
 ├── apps/                       # App layer - Qt/QML apps
 │   ├── lockscreen/            # Lock screen (QML)
-│   │   ├── main.qml           # Entry point
-│   │   ├── LockScreen.qml     # Main lock screen UI
-│   │   └── PinEntry.qml       # PIN input component
-│   └── settings/              # Settings app (QML)
-│       ├── main.qml           # Entry point
-│       └── pages/             # Settings pages
-└── start.sh                   # Launch script
+│   ├── settings/              # Settings app (QML)
+│   ├── messages/              # SMS app + daemon
+│   │   ├── main.qml           # SMS UI
+│   │   └── messaging_daemon.py # ModemManager SMS service
+│   ├── phone/                 # Phone dialer
+│   └── ...                    # Other apps
+├── start.sh                   # Droidian start script (hwcomposer + daemons)
+└── start_drm.sh               # Desktop/DRM start script
 ```
 
 ## Contributing
