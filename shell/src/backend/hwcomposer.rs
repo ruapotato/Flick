@@ -2370,7 +2370,7 @@ fn try_import_egl_buffer(
     };
 
     if egl_image == EGL_NO_IMAGE_KHR {
-        debug!("eglCreateImageKHR failed");
+        info!("eglCreateImageKHR failed for buffer {:?}", buffer_ptr);
         return None;
     }
 
@@ -3159,8 +3159,30 @@ fn render_frame(
                                 gl::render_egl_texture_at(imported.0, imported.1, imported.2, display.width, display.height,
                                                            window_pos.x, window_pos.y);
                             }
-                        } else if log_frame {
-                            info!("EGL IMPORT FAILED[{}] frame {}", i, frame_num);
+                        } else {
+                            // EGL import failed - clear the flag and try to use cached texture
+                            if log_frame {
+                                info!("EGL IMPORT FAILED[{}] frame {}, trying cached texture", i, frame_num);
+                            }
+                            compositor::with_states(&wl_surface, |data| {
+                                use std::cell::RefCell;
+                                use crate::state::SurfaceBufferData;
+                                if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                    let mut bd = buffer_data.borrow_mut();
+                                    bd.needs_egl_import = false; // Don't retry on every frame
+                                }
+                            });
+                            // Try to use existing cached texture as fallback
+                            if let Some((texture_id, width, height)) = egl_texture_info {
+                                let window_pos = state.space.element_location(window).unwrap_or_default();
+                                if log_frame {
+                                    info!("EGL FALLBACK[{}] frame {}: using cached texture_id={}", i, frame_num, texture_id);
+                                }
+                                unsafe {
+                                    gl::render_egl_texture_at(texture_id, width, height, display.width, display.height,
+                                                               window_pos.x, window_pos.y);
+                                }
+                            }
                         }
                     } else if let Some((texture_id, width, height)) = egl_texture_info {
                         // Use existing cached EGL texture
