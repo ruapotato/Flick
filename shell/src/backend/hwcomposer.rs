@@ -2256,7 +2256,14 @@ pub fn run() -> Result<()> {
         state.system.check_app_haptic();
 
         // Check for app notifications (via ~/.local/state/flick/app_notifications.json)
-        crate::shell::quick_settings::check_app_notifications();
+        let new_notifications = crate::shell::quick_settings::check_app_notifications();
+        if new_notifications && state.shell.display_blanked {
+            info!("New notification received, waking screen");
+            state.shell.wake_lock_screen();
+            if let Err(e) = hwc_display.hwc_ctx.set_power(true) {
+                error!("Failed to wake display for notification: {}", e);
+            }
+        }
         // Check for dismiss requests from lock screen
         crate::shell::quick_settings::check_dismiss_requests();
         // Export notifications for lock screen display

@@ -769,7 +769,8 @@ struct AppNotificationRequest {
 /// Check for new notifications from apps (file-based IPC)
 /// Apps write to ~/.local/state/flick/app_notifications.json
 /// Format: { "notifications": [ { "app_name": "...", "summary": "...", "body": "...", "urgency": "normal" } ] }
-pub fn check_app_notifications() {
+/// Returns true if new notifications were added (to trigger screen wake)
+pub fn check_app_notifications() -> bool {
     use std::fs;
     use std::path::Path;
 
@@ -778,13 +779,13 @@ pub fn check_app_notifications() {
     let path = Path::new(&notif_path);
 
     if !path.exists() {
-        return;
+        return false;
     }
 
     // Read and immediately delete to prevent re-processing
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
-        Err(_) => return,
+        Err(_) => return false,
     };
 
     // Only delete if we successfully read
@@ -801,9 +802,11 @@ pub fn check_app_notifications() {
         Ok(d) => d,
         Err(e) => {
             tracing::warn!("Failed to parse app_notifications.json: {}", e);
-            return;
+            return false;
         }
     };
+
+    let mut added_any = false;
 
     // Add each notification
     for req in file_data.notifications {
@@ -815,8 +818,11 @@ pub fn check_app_notifications() {
 
         if let Some(id) = add_notification_with_urgency(&req.app_name, &req.summary, &req.body, urgency) {
             tracing::info!("Added app notification #{}: {} - {}", id, req.app_name, req.summary);
+            added_any = true;
         }
     }
+
+    added_any
 }
 
 /// Check for dismiss requests from lock screen
