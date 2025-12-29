@@ -221,7 +221,8 @@ Window {
 
                 // Only auto-scroll if user hasn't scrolled up and we have new messages
                 if (hasNewMessages && !userScrolledUp && messagesModel.count > 0) {
-                    messagesList.positionViewAtEnd()
+                    // Use a small delay to ensure layout is complete
+                    scrollAfterLoadTimer.restart()
                 }
             }
         } catch (e) {
@@ -358,6 +359,17 @@ Window {
                 loadConversations()
             } else if (currentView === "conversation" && currentConversation.length > 0) {
                 loadMessages(currentConversation)
+            }
+        }
+    }
+
+    // Timer for scrolling after new messages load
+    Timer {
+        id: scrollAfterLoadTimer
+        interval: 100
+        onTriggered: {
+            if (!userScrolledUp && messagesModel.count > 0) {
+                messagesList.positionViewAtEnd()
             }
         }
     }
@@ -641,30 +653,11 @@ Window {
             spacing: 5 * textScale
             verticalLayoutDirection: ListView.TopToBottom
 
-            // Track when user scrolls
+            // Track when user manually scrolls away from bottom
             onContentYChanged: {
-                // If not at bottom, user has scrolled up
                 if (contentHeight > height) {
                     var atBottom = (contentY + height) >= (contentHeight - 50)
                     userScrolledUp = !atBottom
-                }
-            }
-
-            // When content height changes (new messages), scroll to bottom if not user-scrolled
-            onContentHeightChanged: {
-                if (!userScrolledUp && contentHeight > height) {
-                    // Use a timer to ensure layout is complete
-                    scrollToBottomTimer.restart()
-                }
-            }
-
-            Timer {
-                id: scrollToBottomTimer
-                interval: 50
-                onTriggered: {
-                    if (!userScrolledUp) {
-                        messagesList.positionViewAtEnd()
-                    }
                 }
             }
 
