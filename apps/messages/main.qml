@@ -484,6 +484,24 @@ Window {
                 }
             }
 
+            // When content height changes (new messages), scroll to bottom if not user-scrolled
+            onContentHeightChanged: {
+                if (!userScrolledUp && contentHeight > height) {
+                    // Use a timer to ensure layout is complete
+                    scrollToBottomTimer.restart()
+                }
+            }
+
+            Timer {
+                id: scrollToBottomTimer
+                interval: 50
+                onTriggered: {
+                    if (!userScrolledUp) {
+                        messagesList.positionViewAtEnd()
+                    }
+                }
+            }
+
             delegate: Item {
                 width: messagesList.width
                 height: messageBubble.height + 4 * textScale
