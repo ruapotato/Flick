@@ -1220,10 +1220,22 @@ impl Default for SoundConfig {
 impl SoundConfig {
     const CONFIG_FILE: &'static str = "sound_config.json";
 
+    /// Get the Flick state directory path
+    fn get_state_dir() -> std::path::PathBuf {
+        if let Ok(dir) = std::env::var("FLICK_STATE_DIR") {
+            std::path::PathBuf::from(dir)
+        } else {
+            let home = if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+                format!("/home/{}", sudo_user)
+            } else {
+                std::env::var("HOME").unwrap_or_else(|_| "/home/droidian".to_string())
+            };
+            std::path::PathBuf::from(home).join(".local/state/flick")
+        }
+    }
+
     pub fn load() -> Self {
-        let state_dir = dirs::state_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-            .join("flick");
+        let state_dir = Self::get_state_dir();
         let config_path = state_dir.join(Self::CONFIG_FILE);
 
         if let Ok(content) = fs::read_to_string(&config_path) {
@@ -1250,9 +1262,7 @@ impl SoundConfig {
     }
 
     pub fn save(&self) {
-        let state_dir = dirs::state_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-            .join("flick");
+        let state_dir = Self::get_state_dir();
         let _ = fs::create_dir_all(&state_dir);
         let config_path = state_dir.join(Self::CONFIG_FILE);
 
@@ -1268,12 +1278,17 @@ impl SoundConfig {
 
     /// Get the full path to a sound file
     fn get_sound_path(sound_name: &str) -> Option<std::path::PathBuf> {
-        // Check user sounds directory first
-        if let Some(data_dir) = dirs::data_dir() {
-            let user_path = data_dir.join("flick").join("sounds").join(sound_name);
-            if user_path.exists() {
-                return Some(user_path);
-            }
+        // Check user data directory first
+        let home = if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+            format!("/home/{}", sudo_user)
+        } else {
+            std::env::var("HOME").unwrap_or_else(|_| "/home/droidian".to_string())
+        };
+        let user_data_path = std::path::PathBuf::from(&home)
+            .join(".local/share/flick/sounds")
+            .join(sound_name);
+        if user_data_path.exists() {
+            return Some(user_data_path);
         }
 
         // Check system sounds directory (relative to binary/Flick dir)
