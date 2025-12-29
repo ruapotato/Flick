@@ -682,6 +682,14 @@ impl Flick {
             if past_keyboard {
                 // User went past the buffer zone - keyboard is already hidden, go home
                 tracing::info!("Home gesture: past buffer zone (offset={}px) - going home", actual_offset);
+
+                // Cancel any pending touch sequences before leaving app
+                // This ensures the app doesn't think a touch is still in progress
+                if let Some(touch) = self.seat.get_touch() {
+                    touch.cancel(self);
+                    tracing::info!("Home gesture: cancelled pending touch sequences");
+                }
+
                 // Haptic feedback for returning to home
                 self.system.haptic_click();
                 self.shell.set_view(crate::shell::ShellView::Home);
