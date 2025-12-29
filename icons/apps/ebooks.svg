@@ -1,1 +1,16 @@
-audiobooks.svg
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" version="1.1">
+ <!-- Shadow -->
+ <path style="opacity:0.2" d="M 8,54 L 8,56 C 8,58 10,60 12,60 L 32,58 L 52,60 C 54,60 56,58 56,56 L 56,54 C 56,56 54,58 52,58 L 32,56 L 12,58 C 10,58 8,56 8,54 Z"/>
+ <!-- Left page -->
+ <path style="fill:#5c6bc0" d="M 12,8 C 10,8 8,10 8,12 L 8,52 C 8,54 10,56 12,56 L 32,54 L 32,12 L 12,8 Z"/>
+ <!-- Right page -->
+ <path style="fill:#7986cb" d="M 52,8 C 54,8 56,10 56,12 L 56,52 C 56,54 54,56 52,56 L 32,54 L 32,12 L 52,8 Z"/>
+ <!-- Spine highlight -->
+ <path style="opacity:0.3;fill:#ffffff" d="M 30,12 L 30,54 L 34,54 L 34,12 Z"/>
+ <!-- Page lines left -->
+ <path style="opacity:0.3;fill:#ffffff" d="M 14,18 L 28,16 L 28,18 L 14,20 Z M 14,24 L 28,22 L 28,24 L 14,26 Z M 14,30 L 28,28 L 28,30 L 14,32 Z M 14,36 L 28,34 L 28,36 L 14,38 Z"/>
+ <!-- Page lines right -->
+ <path style="opacity:0.3;fill:#ffffff" d="M 36,16 L 50,18 L 50,20 L 36,18 Z M 36,22 L 50,24 L 50,26 L 36,24 Z M 36,28 L 50,30 L 50,32 L 36,30 Z M 36,34 L 50,36 L 50,38 L 36,36 Z"/>
+ <!-- Top highlight -->
+ <path style="opacity:0.2;fill:#ffffff" d="M 12,8 C 10,8 8,10 8,12 L 8,13 C 8,11 10,9 12,9 L 32,13 L 52,9 C 54,9 56,11 56,13 L 56,12 C 56,10 54,8 52,8 L 32,12 Z"/>
+</svg>
