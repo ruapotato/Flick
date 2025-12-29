@@ -47,6 +47,14 @@ Window {
         scanBooks()
     }
 
+    // Auto-refresh library every 3 seconds to pick up new books
+    Timer {
+        interval: 3000
+        running: currentView === "library"
+        repeat: true
+        onTriggered: scanBooks()
+    }
+
     function loadTextScale() {
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json", false)
