@@ -299,23 +299,26 @@ class ModemManagerSMS:
             }
             data["conversations"].append(conversation)
 
-        # Check for duplicate message (same text, direction, and similar timestamp)
+        # Check for duplicate message (same text and similar timestamp, ignore direction)
         for existing in conversation["messages"]:
-            if existing["text"] == text and existing["direction"] == direction:
-                # If timestamps match or both are close (within 60 seconds), skip
+            if existing["text"] == text:
+                # If timestamps match exactly, skip
                 if existing.get("timestamp") == timestamp:
                     print(f"Skipping duplicate message: {text[:30]}...")
                     return
-                # Also check if timestamps are within 60 seconds of each other
+                # Also check if timestamps are within 120 seconds of each other
                 try:
                     from dateutil import parser as dateparser
                     existing_time = dateparser.parse(existing.get("timestamp", ""))
                     new_time = dateparser.parse(timestamp) if timestamp else datetime.now()
-                    if abs((new_time - existing_time).total_seconds()) < 60:
+                    if abs((new_time - existing_time).total_seconds()) < 120:
                         print(f"Skipping near-duplicate message: {text[:30]}...")
                         return
                 except:
-                    pass  # If we can't parse, just add the message
+                    # If timestamps are empty or can't parse, check for exact text match within last 5 messages
+                    if not timestamp or not existing.get("timestamp"):
+                        print(f"Skipping duplicate (no timestamp): {text[:30]}...")
+                        return
 
         # Add message
         message = {
@@ -384,16 +387,27 @@ class ModemManagerSMS:
                     )
                     timestamp = timestamp_variant.unpack()[0]
 
-                    # Check state to determine if incoming or outgoing
-                    state_variant = props_proxy.call_sync(
-                        "Get",
-                        GLib.Variant("(ss)", ("org.freedesktop.ModemManager1.Sms", "State")),
-                        Gio.DBusCallFlags.NONE, -1, None
-                    )
-                    state = state_variant.unpack()[0]
-
-                    # State: 1=received, 2=sending, 3=sent
-                    direction = "incoming" if state == 1 else "outgoing"
+                    # Check PduType/Direction to determine if incoming or outgoing
+                    # Direction: 1=unknown, 2=mobile-originated (outgoing), 3=mobile-terminated (incoming)
+                    try:
+                        pdu_variant = props_proxy.call_sync(
+                            "Get",
+                            GLib.Variant("(ss)", ("org.freedesktop.ModemManager1.Sms", "PduType")),
+                            Gio.DBusCallFlags.NONE, -1, None
+                        )
+                        pdu_type = pdu_variant.unpack()[0]
+                        # PduType: 0=unknown, 1=deliver (incoming), 2=submit (outgoing), 3=status-report
+                        direction = "incoming" if pdu_type == 1 else "outgoing"
+                    except:
+                        # Fallback to State if PduType not available
+                        state_variant = props_proxy.call_sync(
+                            "Get",
+                            GLib.Variant("(ss)", ("org.freedesktop.ModemManager1.Sms", "State")),
+                            Gio.DBusCallFlags.NONE, -1, None
+                        )
+                        state = state_variant.unpack()[0]
+                        # State: 1=received, 2=sending, 3=sent
+                        direction = "incoming" if state == 1 else "outgoing"
 
                     print(f"Importing SMS from {number}: {text[:30]}...")
 
