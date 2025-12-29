@@ -448,33 +448,14 @@ impl VolumeManager {
         }
     }
 
-    /// Run amixer command as the audio user (blocking)
+    /// Run amixer command (blocking) - unset XDG_RUNTIME_DIR to use ALSA directly
     fn run_amixer(args: &[&str]) -> Option<std::process::Output> {
-        if let Some((uid, _username)) = Self::get_audio_user() {
-            let current_uid = unsafe { libc::getuid() };
-
-            if current_uid == uid {
-                // Already the right user, run directly
-                Command::new("amixer")
-                    .args(args)
-                    .output()
-                    .ok()
-            } else {
-                // Need to switch users
-                let quoted_args: Vec<String> = args.iter().map(|a| format!("'{}'", a)).collect();
-                let shell_cmd = format!("amixer {}", quoted_args.join(" "));
-                Command::new("sudo")
-                    .args(["-u", &format!("#{}", uid), "sh", "-c", &shell_cmd])
-                    .output()
-                    .ok()
-            }
-        } else {
-            // Fallback to direct call
-            Command::new("amixer")
-                .args(args)
-                .output()
-                .ok()
-        }
+        // Remove XDG_RUNTIME_DIR so amixer uses ALSA directly instead of PulseAudio
+        Command::new("amixer")
+            .env_remove("XDG_RUNTIME_DIR")
+            .args(args)
+            .output()
+            .ok()
     }
 
     /// Get current volume (0-100) using amixer (works with droid audio)
