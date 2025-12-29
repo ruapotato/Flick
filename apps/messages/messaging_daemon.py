@@ -32,6 +32,16 @@ CMD_FILE = "/tmp/flick_messages_cmd"
 os.makedirs(STATE_DIR, exist_ok=True)
 
 
+def trigger_haptic():
+    """Trigger haptic feedback for new SMS"""
+    try:
+        with open("/tmp/flick_haptic", "w") as f:
+            f.write("click")
+        print("Triggered haptic feedback")
+    except Exception as e:
+        print(f"Failed to trigger haptic: {e}")
+
+
 def create_notification(phone_number, text, contact_name=None):
     """Create a notification for incoming SMS"""
     try:
@@ -45,19 +55,19 @@ def create_notification(phone_number, text, contact_name=None):
             except:
                 pass
 
-        # Generate unique ID
-        notif_id = int(time.time() * 1000) % 1000000
+        # Generate unique ID and timestamp
+        now = int(time.time())
+        notif_id = now % 1000000
 
-        # Create notification
+        # Create notification in format lockscreen expects
         notif = {
             "id": notif_id,
             "app_name": "Messages",
-            "app_icon": "💬",
-            "title": contact_name or phone_number,
+            "summary": contact_name or phone_number,
             "body": text[:100] + ("..." if len(text) > 100 else ""),
-            "time": datetime.now().strftime("%H:%M"),
-            "urgency": 1,
-            "phone_number": phone_number  # For opening the right conversation
+            "urgency": "normal",
+            "time_ago": "now",
+            "timestamp": now
         }
 
         # Add to front of list
@@ -74,6 +84,9 @@ def create_notification(phone_number, text, contact_name=None):
             }, f, indent=2)
 
         print(f"Created notification for SMS from {phone_number}")
+
+        # Trigger haptic feedback
+        trigger_haptic()
 
     except Exception as e:
         print(f"Failed to create notification: {e}")
@@ -285,6 +298,24 @@ class ModemManagerSMS:
                 "unread_count": 0
             }
             data["conversations"].append(conversation)
+
+        # Check for duplicate message (same text, direction, and similar timestamp)
+        for existing in conversation["messages"]:
+            if existing["text"] == text and existing["direction"] == direction:
+                # If timestamps match or both are close (within 60 seconds), skip
+                if existing.get("timestamp") == timestamp:
+                    print(f"Skipping duplicate message: {text[:30]}...")
+                    return
+                # Also check if timestamps are within 60 seconds of each other
+                try:
+                    from dateutil import parser as dateparser
+                    existing_time = dateparser.parse(existing.get("timestamp", ""))
+                    new_time = dateparser.parse(timestamp) if timestamp else datetime.now()
+                    if abs((new_time - existing_time).total_seconds()) < 60:
+                        print(f"Skipping near-duplicate message: {text[:30]}...")
+                        return
+                except:
+                    pass  # If we can't parse, just add the message
 
         # Add message
         message = {
