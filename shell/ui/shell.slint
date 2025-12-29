@@ -140,46 +140,95 @@ component VolumeOverlay inherits Rectangle {
     in property <int> volume: 50;  // 0 to 100
     in property <bool> muted: false;
 
-    width: 60px;
-    height: 200px;
-    background: #000000cc;
-    border-radius: 16px;
+    width: 80px;
+    height: 260px;
+    background: #000000e8;
+    border-radius: 20px;
+    drop-shadow-color: #000000aa;
+    drop-shadow-blur: 20px;
+    drop-shadow-offset-y: 4px;
+
+    // Subtle border
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: parent.border-radius;
+        border-width: 1px;
+        border-color: #ffffff20;
+        background: transparent;
+    }
 
     VerticalLayout {
         alignment: center;
-        padding: 12px;
-        spacing: 8px;
+        padding: 16px;
+        spacing: 12px;
 
-        // Speaker icon
-        Text {
-            horizontal-alignment: center;
-            text: root.muted ? "🔇" : (root.volume > 50 ? "🔊" : (root.volume > 0 ? "🔉" : "🔈"));
-            font-size: 24px;
+        // Speaker icon with glow effect
+        Rectangle {
+            width: 48px;
+            height: 48px;
+            border-radius: 24px;
+            background: root.muted ? #ff444430 : #60a0ff30;
+
+            Text {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                text: root.muted ? "🔇" : (root.volume > 66 ? "🔊" : (root.volume > 33 ? "🔉" : (root.volume > 0 ? "🔈" : "🔇")));
+                font-size: 26px;
+            }
         }
 
         // Vertical volume bar container
         Rectangle {
-            width: 12px;
-            height: 120px;
-            background: #ffffff33;
-            border-radius: 6px;
+            width: 16px;
+            height: 140px;
+            background: #ffffff18;
+            border-radius: 8px;
 
-            // Filled portion from bottom
+            // Track marks for visual feedback
+            for i in [0, 25, 50, 75, 100]: Rectangle {
+                y: parent.height - (parent.height * (i / 100.0)) - 1px;
+                width: 100%;
+                height: 2px;
+                background: #ffffff15;
+            }
+
+            // Filled portion from bottom with gradient
             Rectangle {
                 y: parent.height - self.height;
                 width: 100%;
                 height: root.muted ? 0px : parent.height * (root.volume / 100.0);
-                background: root.muted ? #ff4444 : #60a0ff;
-                border-radius: 6px;
+                border-radius: 8px;
+                background: root.muted ? #ff4444 : (root.volume > 80 ? @linear-gradient(0deg, #60a0ff 0%, #80ff80 100%) : @linear-gradient(0deg, #4080e0 0%, #60a0ff 100%));
+
+                // Glow at top
+                Rectangle {
+                    y: 0;
+                    width: 100%;
+                    height: min(20px, parent.height);
+                    border-radius: 8px;
+                    background: @linear-gradient(180deg, #ffffff40 0%, transparent 100%);
+                }
+
+                animate height { duration: 100ms; easing: ease-out; }
             }
         }
 
-        // Volume percentage
-        Text {
-            horizontal-alignment: center;
-            text: root.muted ? "Muted" : "\{root.volume}%";
-            color: white;
-            font-size: 11px;
+        // Volume percentage with subtle styling
+        Rectangle {
+            width: 48px;
+            height: 24px;
+            border-radius: 12px;
+            background: #ffffff10;
+
+            Text {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                text: root.muted ? "OFF" : "\{root.volume}%";
+                color: root.muted ? #ff6666 : #ffffff;
+                font-size: 12px;
+                font-weight: 600;
+            }
         }
     }
 }

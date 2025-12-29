@@ -448,19 +448,22 @@ impl VolumeManager {
         }
     }
 
-    /// Get current volume (0-100) using pactl list sinks (compatible with older pactl)
+    /// Get current volume (0-100) using amixer (works with droid audio)
     pub fn get_volume() -> u8 {
-        Self::run_pactl(&["list", "sinks"])
+        // Use amixer which works with droid audio backend
+        Command::new("amixer")
+            .args(["get", "Master"])
+            .output()
+            .ok()
             .and_then(|o| {
                 let output = String::from_utf8_lossy(&o.stdout);
-                // Find primary sink volume line, parse "Volume: front-left: 65536 / 100% / 0.00 dB, ..."
+                // Parse "Front Left: Playback 32768 [50%] [on]"
                 for line in output.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.starts_with("Volume:") && !trimmed.contains("Base Volume") {
-                        // Extract percentage from "front-left: 65536 / 100% / ..."
-                        if let Some(pct_part) = trimmed.split('/').nth(1) {
-                            if let Some(pct_str) = pct_part.trim().strip_suffix('%') {
-                                if let Ok(vol) = pct_str.trim().parse::<u8>() {
+                    if line.contains("Playback") && line.contains('[') {
+                        // Extract percentage from "[50%]"
+                        if let Some(start) = line.find('[') {
+                            if let Some(end) = line[start..].find('%') {
+                                if let Ok(vol) = line[start+1..start+end].parse::<u8>() {
                                     return Some(vol);
                                 }
                             }
@@ -475,47 +478,52 @@ impl VolumeManager {
     /// Set volume (0-100)
     pub fn set_volume(value: u8) {
         let clamped = value.min(100);
-        Self::run_pactl_async(&["set-sink-volume", "@DEFAULT_SINK@", &format!("{}%", clamped)]);
+        let _ = Command::new("amixer")
+            .args(["set", "Master", &format!("{}%", clamped)])
+            .spawn();
     }
 
     /// Increase volume by 5%
     pub fn volume_up() {
-        // Use synchronous run_pactl so volume change completes before we read it back
-        let _ = Self::run_pactl(&["set-sink-volume", "@DEFAULT_SINK@", "+5%"]);
+        let _ = Command::new("amixer")
+            .args(["set", "Master", "5%+"])
+            .output();
     }
 
     /// Decrease volume by 5%
     pub fn volume_down() {
-        // Use synchronous run_pactl so volume change completes before we read it back
-        let _ = Self::run_pactl(&["set-sink-volume", "@DEFAULT_SINK@", "-5%"]);
+        let _ = Command::new("amixer")
+            .args(["set", "Master", "5%-"])
+            .output();
     }
 
-    /// Check if muted (using pactl list sinks for compatibility)
+    /// Check if muted (using amixer)
     pub fn is_muted() -> bool {
-        Self::run_pactl(&["list", "sinks"])
+        Command::new("amixer")
+            .args(["get", "Master"])
+            .output()
+            .ok()
             .map(|o| {
                 let output = String::from_utf8_lossy(&o.stdout);
-                // Look for "Mute: yes" line (first sink)
-                for line in output.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.starts_with("Mute:") {
-                        return trimmed.contains("yes");
-                    }
-                }
-                false
+                // Look for "[off]" in the output
+                output.contains("[off]")
             })
             .unwrap_or(false)
     }
 
     /// Set mute state
     pub fn set_mute(muted: bool) {
-        let state = if muted { "1" } else { "0" };
-        Self::run_pactl_async(&["set-sink-mute", "@DEFAULT_SINK@", state]);
+        let state = if muted { "mute" } else { "unmute" };
+        let _ = Command::new("amixer")
+            .args(["set", "Master", state])
+            .spawn();
     }
 
     /// Toggle mute
     pub fn toggle_mute() {
-        Self::run_pactl_async(&["set-sink-mute", "@DEFAULT_SINK@", "toggle"]);
+        let _ = Command::new("amixer")
+            .args(["set", "Master", "toggle"])
+            .spawn();
     }
 }
 
