@@ -2429,6 +2429,34 @@ fn try_import_egl_buffer(
     Some((texture_id, width as u32, height as u32, egl_image))
 }
 
+/// Destroy an EGL texture and its associated EGL image to prevent resource leaks
+fn destroy_egl_texture(
+    texture_id: u32,
+    egl_image: *mut std::ffi::c_void,
+    display: &HwcDisplay,
+) {
+    // Delete the GL texture
+    if texture_id != 0 {
+        unsafe {
+            gl::delete_texture(texture_id);
+        }
+        debug!("Deleted GL texture {}", texture_id);
+    }
+
+    // Destroy the EGL image
+    if !egl_image.is_null() {
+        if let Some(destroy_fn) = display.egl_destroy_image {
+            let egl_display_ptr = display.egl_display.as_ptr() as *mut std::ffi::c_void;
+            let result = unsafe { destroy_fn(egl_display_ptr, egl_image) };
+            if result == 1 {
+                debug!("Destroyed EGL image {:?}", egl_image);
+            } else {
+                warn!("Failed to destroy EGL image {:?}", egl_image);
+            }
+        }
+    }
+}
+
 /// Recursively render subsurfaces of a parent surface
 /// This is needed for camera preview which uses EGL/dmabuf subsurfaces
 fn render_subsurfaces(
@@ -2466,14 +2494,19 @@ fn render_subsurfaces(
         let buffer_state = compositor::with_states(child, |data| {
             if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
                 let bd = buffer_data.borrow();
+                let old_tex = if bd.needs_egl_import {
+                    bd.egl_texture.as_ref().map(|t| (t.texture_id, t.egl_image))
+                } else {
+                    None
+                };
                 (bd.needs_egl_import, bd.buffer.is_some(), bd.egl_texture.is_some(),
-                 bd.egl_texture.as_ref().map(|t| (t.texture_id, t.width, t.height)))
+                 bd.egl_texture.as_ref().map(|t| (t.texture_id, t.width, t.height)), old_tex)
             } else {
-                (false, false, false, None)
+                (false, false, false, None, None)
             }
         });
 
-        let (needs_egl, has_shm, has_egl_tex, egl_info) = buffer_state;
+        let (needs_egl, has_shm, has_egl_tex, egl_info, old_egl_texture) = buffer_state;
 
         if log_frame {
             info!("  Subsurface[{}] {:?}: needs_egl={}, has_shm={}, has_egl_tex={}, pos=({},{})",
@@ -2490,6 +2523,11 @@ fn render_subsurfaces(
                                           child_pos.x, child_pos.y);
             }
         } else if needs_egl {
+            // Destroy old EGL texture first to prevent resource leak
+            if let Some((old_tex_id, old_egl_image)) = old_egl_texture {
+                destroy_egl_texture(old_tex_id, old_egl_image, display);
+            }
+
             // Try to import EGL buffer
             if log_frame {
                 info!("  Subsurface[{}] attempting EGL import...", idx);
@@ -3035,22 +3073,33 @@ fn render_frame(
                 };
 
                 if let Some(wl_surface) = wl_surface {
-                    // Check if we need to import EGL buffer
-                    let (needs_import, egl_texture_info) = compositor::with_states(&wl_surface, |data| {
+                    // Check if we need to import EGL buffer, and get old texture for cleanup
+                    let (needs_import, egl_texture_info, old_egl_texture) = compositor::with_states(&wl_surface, |data| {
                         use std::cell::RefCell;
                         use crate::state::SurfaceBufferData;
 
                         if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
                             let bd = buffer_data.borrow();
                             let egl_info = bd.egl_texture.as_ref().map(|t| (t.texture_id, t.width, t.height));
-                            (bd.needs_egl_import, egl_info)
+                            // Get old texture info for cleanup if we're about to import a new one
+                            let old_tex = if bd.needs_egl_import {
+                                bd.egl_texture.as_ref().map(|t| (t.texture_id, t.egl_image))
+                            } else {
+                                None
+                            };
+                            (bd.needs_egl_import, egl_info, old_tex)
                         } else {
-                            (false, None)
+                            (false, None, None)
                         }
                     });
 
                     // Try EGL import if needed
                     if needs_import {
+                        // Destroy old EGL texture first to prevent resource leak
+                        if let Some((old_tex_id, old_egl_image)) = old_egl_texture {
+                            destroy_egl_texture(old_tex_id, old_egl_image, display);
+                        }
+
                         if let Some(imported) = try_import_egl_buffer(&wl_surface, display) {
                             compositor::with_states(&wl_surface, |data| {
                                 use std::cell::RefCell;
@@ -3152,22 +3201,32 @@ fn render_frame(
                     // Render using stored buffer data from commit handler
                     debug!("Window {} trying to render stored buffer", i);
 
-                    // Check buffer state - do we need to (re-)import?
-                    let (needs_import, has_shm, egl_texture_info) = compositor::with_states(&wl_surface, |data| {
+                    // Check buffer state - do we need to (re-)import? Also get old texture for cleanup
+                    let (needs_import, has_shm, egl_texture_info, old_egl_texture) = compositor::with_states(&wl_surface, |data| {
                         use std::cell::RefCell;
                         use crate::state::SurfaceBufferData;
 
                         if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
                             let bd = buffer_data.borrow();
                             let egl_info = bd.egl_texture.as_ref().map(|t| (t.texture_id, t.width, t.height));
-                            (bd.needs_egl_import, bd.buffer.is_some(), egl_info)
+                            let old_tex = if bd.needs_egl_import {
+                                bd.egl_texture.as_ref().map(|t| (t.texture_id, t.egl_image))
+                            } else {
+                                None
+                            };
+                            (bd.needs_egl_import, bd.buffer.is_some(), egl_info, old_tex)
                         } else {
-                            (false, false, None)
+                            (false, false, None, None)
                         }
                     });
 
                     // If we need to import (new buffer arrived), do it now
                     if needs_import {
+                        // Destroy old EGL texture first to prevent resource leak
+                        if let Some((old_tex_id, old_egl_image)) = old_egl_texture {
+                            destroy_egl_texture(old_tex_id, old_egl_image, display);
+                        }
+
                         if log_frame {
                             info!("Window {} needs EGL re-import", i);
                         }
