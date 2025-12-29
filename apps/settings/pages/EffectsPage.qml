@@ -21,15 +21,10 @@ Page {
     property bool lpShootingStars: true  // Occasional shooting stars
     property bool rainEffectEnabled: false // Compiz-style rain ripples
 
-    // Lock screen effects
-    property bool spyEyeEnabled: true    // Screen savers enabled
-
     property string configPath: "/home/droidian/.local/state/flick/effects_config.json"
-    property string displayConfigPath: "/home/droidian/.local/state/flick/display_config.json"
 
     Component.onCompleted: {
         loadConfig()
-        loadDisplayConfig()
     }
 
     function loadConfig() {
@@ -83,47 +78,6 @@ Page {
             xhr.send(JSON.stringify(config, null, 2))
         } catch (e) {
             console.error("Failed to save effects config:", e)
-        }
-    }
-
-    // Load display config (for lock screen effects)
-    function loadDisplayConfig() {
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + displayConfigPath, false)
-        try {
-            xhr.send()
-            if (xhr.status === 200) {
-                var config = JSON.parse(xhr.responseText)
-                if (config.screen_saver_enabled !== undefined) spyEyeEnabled = config.screen_saver_enabled
-            }
-        } catch (e) {
-            console.log("Using default display config for effects")
-        }
-    }
-
-    // Save display config (preserving existing settings)
-    function saveDisplayConfig() {
-        // First load existing config to preserve other settings
-        var existingConfig = {}
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + displayConfigPath, false)
-        try {
-            xhr.send()
-            if (xhr.status === 200) {
-                existingConfig = JSON.parse(xhr.responseText)
-            }
-        } catch (e) {}
-
-        // Update with screen saver setting
-        existingConfig.screen_saver_enabled = spyEyeEnabled
-
-        // Save back
-        var xhrWrite = new XMLHttpRequest()
-        xhrWrite.open("PUT", "file://" + displayConfigPath, false)
-        try {
-            xhrWrite.send(JSON.stringify(existingConfig, null, 2))
-        } catch (e) {
-            console.error("Failed to save display config:", e)
         }
     }
 
@@ -566,65 +520,6 @@ Page {
                         accentColor: "#00ff00"
                         suffix: "x"
                         onValueChanged: { asciiDensity = value; saveConfig() }
-                    }
-                }
-            }
-
-            // ===== LOCK SCREEN EFFECTS =====
-            Item { height: 16 }
-
-            Text {
-                text: "LOCK SCREEN EFFECTS"
-                font.pixelSize: 11
-                font.letterSpacing: 2
-                color: "#555566"
-                leftPadding: 8
-            }
-
-            // Screen Saver toggle
-            EffectToggle {
-                width: settingsColumn.width
-                title: "Screen Savers"
-                subtitle: "Fun effects when screen is blanked"
-                icon: "🖥️"
-                checked: spyEyeEnabled
-                accentColor: "#9944ff"
-                onToggled: {
-                    spyEyeEnabled = !spyEyeEnabled
-                    saveDisplayConfig()
-                }
-            }
-
-            // Screen Saver description card
-            Rectangle {
-                width: settingsColumn.width
-                height: spyEyeDescCol.height + 24
-                radius: 20
-                color: "#14141e"
-                border.color: spyEyeEnabled ? "#9944ff" : "#1a1a2e"
-                border.width: spyEyeEnabled ? 1 : 1
-
-                Column {
-                    id: spyEyeDescCol
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: 16
-                    spacing: 8
-
-                    Text {
-                        width: parent.width
-                        text: "Screen savers appear briefly after the display blanks. Effects include a spooky eye that looks around, Pacman crossing the screen, and more. Active for 1 minute after locking."
-                        font.pixelSize: 13
-                        color: "#888899"
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Text {
-                        text: "Touch the screen to wake it normally."
-                        font.pixelSize: 12
-                        color: "#666677"
-                        font.italic: true
                     }
                 }
             }
