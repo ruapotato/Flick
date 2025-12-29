@@ -10,7 +10,7 @@ Window {
     title: "Messages"
     color: "#0a0a0f"
 
-    property real textScale: 1.0
+    property real textScale: 2.0
     property color accentColor: "#e94560"
     property color accentPressed: Qt.darker(accentColor, 1.2)
     property string currentView: "list"  // "list" or "conversation"
@@ -192,7 +192,7 @@ Window {
     Item {
         id: conversationListView
         anchors.fill: parent
-        anchors.bottomMargin: 40
+        anchors.bottomMargin: 20 * textScale
         visible: currentView === "list"
 
         // Header
@@ -201,7 +201,7 @@ Window {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 60
+            height: 30 * textScale
             color: "#0a0a0f"
             z: 10
 
@@ -209,7 +209,7 @@ Window {
                 anchors.centerIn: parent
                 text: "Messages"
                 color: accentColor
-                font.pixelSize: 24
+                font.pixelSize: 12 * textScale
                 font.weight: Font.Bold
             }
 
@@ -230,27 +230,27 @@ Window {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.topMargin: 4
+            anchors.topMargin: 2 * textScale
             model: conversationsModel
             clip: true
-            spacing: 2
+            spacing: 1 * textScale
 
             delegate: Rectangle {
                 width: conversationsList.width
-                height: 72
+                height: 36 * textScale
                 color: conversationArea.pressed ? "#2a2a4e" : "#1a1a2e"
                 radius: 0
 
                 Row {
                     anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 12
+                    anchors.margins: 6 * textScale
+                    spacing: 6 * textScale
 
                     // Avatar circle
                     Rectangle {
-                        width: 48
-                        height: 48
-                        radius: 24
+                        width: 24 * textScale
+                        height: 24 * textScale
+                        radius: 12 * textScale
                         anchors.verticalCenter: parent.verticalCenter
                         color: accentColor
 
@@ -261,7 +261,7 @@ Window {
                                 return name.charAt(0).toUpperCase()
                             }
                             color: "white"
-                            font.pixelSize: 20
+                            font.pixelSize: 10 * textScale
                             font.weight: Font.Bold
                         }
                     }
@@ -269,48 +269,48 @@ Window {
                     // Message info
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 72
-                        spacing: 4
+                        width: parent.width - 36 * textScale
+                        spacing: 2 * textScale
 
                         Row {
                             width: parent.width
-                            spacing: 8
+                            spacing: 4 * textScale
 
                             Text {
                                 text: model.contact_name || model.phone_number
                                 color: "white"
-                                font.pixelSize: 17
+                                font.pixelSize: 9 * textScale
                                 font.weight: Font.Bold
                                 elide: Text.ElideRight
-                                width: parent.width - 80
+                                width: parent.width - 40 * textScale
                             }
 
                             Text {
                                 text: formatTimestamp(model.last_message_time)
                                 color: "#888899"
-                                font.pixelSize: 13
+                                font.pixelSize: 7 * textScale
                                 anchors.verticalCenter: parent.verticalCenter
                             }
                         }
 
                         Row {
-                            spacing: 8
+                            spacing: 4 * textScale
                             width: parent.width
 
                             Text {
                                 text: model.last_message
                                 color: "#aaaacc"
-                                font.pixelSize: 15
+                                font.pixelSize: 8 * textScale
                                 elide: Text.ElideRight
-                                width: parent.width - (model.unread_count > 0 ? 36 : 0)
+                                width: parent.width - (model.unread_count > 0 ? 18 * textScale : 0)
                                 maximumLineCount: 1
                             }
 
                             // Unread badge
                             Rectangle {
-                                width: 28
-                                height: 28
-                                radius: 14
+                                width: 14 * textScale
+                                height: 14 * textScale
+                                radius: 7 * textScale
                                 color: accentColor
                                 visible: model.unread_count > 0
 
@@ -318,7 +318,7 @@ Window {
                                     anchors.centerIn: parent
                                     text: model.unread_count
                                     color: "white"
-                                    font.pixelSize: 13
+                                    font.pixelSize: 7 * textScale
                                     font.weight: Font.Bold
                                 }
                             }
@@ -331,7 +331,7 @@ Window {
                     anchors.bottom: parent.bottom
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.leftMargin: 72
+                    anchors.leftMargin: 36 * textScale
                     height: 1
                     color: "#2a2a4e"
                 }
@@ -346,20 +346,20 @@ Window {
             // Empty state
             Column {
                 anchors.centerIn: parent
-                spacing: 16
+                spacing: 8 * textScale
                 visible: conversationsModel.count === 0
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "💬"
-                    font.pixelSize: 64
+                    font.pixelSize: 32 * textScale
                 }
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "No messages yet"
                     color: "#666688"
-                    font.pixelSize: 18
+                    font.pixelSize: 9 * textScale
                 }
             }
         }
@@ -369,7 +369,7 @@ Window {
     Item {
         id: conversationDetailView
         anchors.fill: parent
-        anchors.bottomMargin: 40
+        anchors.bottomMargin: 20 * textScale
         visible: currentView === "conversation"
 
         // Header
@@ -378,20 +378,20 @@ Window {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 56
+            height: 28 * textScale
             color: "#0f0f14"
             z: 10
 
             Row {
                 anchors.fill: parent
-                anchors.margins: 12
-                spacing: 12
+                anchors.margins: 6 * textScale
+                spacing: 6 * textScale
 
                 // Back button
                 Rectangle {
-                    width: 40
-                    height: 40
-                    radius: 20
+                    width: 20 * textScale
+                    height: 20 * textScale
+                    radius: 10 * textScale
                     anchors.verticalCenter: parent.verticalCenter
                     color: backArea.pressed ? "#3a3a4e" : "#2a2a3e"
 
@@ -399,7 +399,7 @@ Window {
                         anchors.centerIn: parent
                         text: "<"
                         color: accentColor
-                        font.pixelSize: 20
+                        font.pixelSize: 10 * textScale
                         font.weight: Font.Bold
                     }
 
@@ -413,19 +413,19 @@ Window {
                 // Contact info
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 2
+                    spacing: 1 * textScale
 
                     Text {
                         text: currentContactName
                         color: "white"
-                        font.pixelSize: 18
+                        font.pixelSize: 9 * textScale
                         font.weight: Font.Bold
                     }
 
                     Text {
                         text: currentConversation !== currentContactName ? currentConversation : ""
                         color: "#888899"
-                        font.pixelSize: 13
+                        font.pixelSize: 7 * textScale
                         visible: currentConversation !== currentContactName
                     }
                 }
@@ -448,49 +448,49 @@ Window {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: inputArea.top
-            anchors.margins: 12
-            anchors.bottomMargin: 8
+            anchors.margins: 6 * textScale
+            anchors.bottomMargin: 4 * textScale
             model: messagesModel
             clip: true
-            spacing: 8
+            spacing: 4 * textScale
             verticalLayoutDirection: ListView.TopToBottom
 
             delegate: Item {
                 width: messagesList.width
-                height: messageBubble.height + 6
+                height: messageBubble.height + 3 * textScale
 
                 Rectangle {
                     id: messageBubble
                     anchors.left: model.direction === "incoming" ? parent.left : undefined
                     anchors.right: model.direction === "outgoing" ? parent.right : undefined
-                    width: Math.min(messageText.implicitWidth + 24, parent.width * 0.85)
-                    height: messageColumn.height + 16
-                    radius: 16
+                    width: Math.min(messageText.implicitWidth + 12 * textScale, parent.width * 0.85)
+                    height: messageColumn.height + 8 * textScale
+                    radius: 8 * textScale
                     color: model.direction === "outgoing" ? accentColor : "#1a1a2e"
 
                     Column {
                         id: messageColumn
                         anchors.centerIn: parent
-                        width: parent.width - 16
-                        spacing: 4
+                        width: parent.width - 8 * textScale
+                        spacing: 2 * textScale
 
                         Text {
                             id: messageText
                             text: model.text
                             color: "white"
-                            font.pixelSize: 16
+                            font.pixelSize: 8 * textScale
                             wrapMode: Text.Wrap
                             width: parent.width
                         }
 
                         Row {
                             anchors.right: parent.right
-                            spacing: 6
+                            spacing: 3 * textScale
 
                             Text {
                                 text: formatMessageTime(model.timestamp)
                                 color: model.direction === "outgoing" ? "#ffffff99" : "#88889999"
-                                font.pixelSize: 11
+                                font.pixelSize: 6 * textScale
                             }
 
                             Text {
@@ -503,7 +503,7 @@ Window {
                                     return ""
                                 }
                                 color: "#ffffff99"
-                                font.pixelSize: 11
+                                font.pixelSize: 6 * textScale
                                 visible: model.direction === "outgoing"
                             }
                         }
@@ -514,20 +514,20 @@ Window {
             // Empty state
             Column {
                 anchors.centerIn: parent
-                spacing: 16
+                spacing: 8 * textScale
                 visible: messagesModel.count === 0
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "💬"
-                    font.pixelSize: 48
+                    font.pixelSize: 24 * textScale
                 }
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "No messages yet"
                     color: "#666688"
-                    font.pixelSize: 16
+                    font.pixelSize: 8 * textScale
                 }
             }
         }
@@ -538,21 +538,21 @@ Window {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.margins: 12
-            height: 52
+            anchors.margins: 6 * textScale
+            height: 26 * textScale
             color: "#1a1a2e"
-            radius: 26
+            radius: 13 * textScale
             border.color: "#2a2a4e"
             border.width: 1
 
             Row {
                 anchors.fill: parent
-                anchors.margins: 8
-                spacing: 8
+                anchors.margins: 4 * textScale
+                spacing: 4 * textScale
 
                 // Text input
                 Rectangle {
-                    width: parent.width - 52
+                    width: parent.width - 26 * textScale
                     height: parent.height
                     color: "transparent"
                     anchors.verticalCenter: parent.verticalCenter
@@ -560,11 +560,11 @@ Window {
                     TextInput {
                         id: messageInputField
                         anchors.fill: parent
-                        anchors.leftMargin: 8
+                        anchors.leftMargin: 4 * textScale
                         text: messageInput
                         onTextChanged: messageInput = text
                         color: "white"
-                        font.pixelSize: 16
+                        font.pixelSize: 8 * textScale
                         verticalAlignment: TextInput.AlignVCenter
                         clip: true
 
@@ -575,7 +575,7 @@ Window {
                             anchors.left: parent.left
                             text: "Type a message..."
                             color: "#666688"
-                            font.pixelSize: 16
+                            font.pixelSize: 8 * textScale
                             visible: messageInput.length === 0
                         }
                     }
@@ -583,9 +583,9 @@ Window {
 
                 // Send button
                 Rectangle {
-                    width: 40
-                    height: 40
-                    radius: 20
+                    width: 20 * textScale
+                    height: 20 * textScale
+                    radius: 10 * textScale
                     anchors.verticalCenter: parent.verticalCenter
                     color: messageInput.length > 0 ? (sendArea.pressed ? "#d93550" : accentColor) : "#3a3a4e"
 
@@ -593,7 +593,7 @@ Window {
                         anchors.centerIn: parent
                         text: ">"
                         color: messageInput.length > 0 ? "white" : "#666"
-                        font.pixelSize: 18
+                        font.pixelSize: 9 * textScale
                         font.weight: Font.Bold
                     }
 
@@ -612,11 +612,11 @@ Window {
     Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.rightMargin: 20
-        anchors.bottomMargin: 50
-        width: 48
-        height: 48
-        radius: 24
+        anchors.rightMargin: 10 * textScale
+        anchors.bottomMargin: 25 * textScale
+        width: 24 * textScale
+        height: 24 * textScale
+        radius: 12 * textScale
         color: backBtnArea.pressed ? "#d93550" : accentColor
         visible: currentView === "list"
         z: 100
@@ -625,7 +625,7 @@ Window {
             anchors.centerIn: parent
             text: "<"
             color: "white"
-            font.pixelSize: 22
+            font.pixelSize: 11 * textScale
             font.weight: Font.Bold
         }
 
@@ -640,10 +640,10 @@ Window {
     Rectangle {
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottomMargin: 8
-        width: 134
-        height: 5
-        radius: 2.5
+        anchors.bottomMargin: 4 * textScale
+        width: 67 * textScale
+        height: 2.5 * textScale
+        radius: 1.25 * textScale
         color: "#333344"
     }
 }
