@@ -17,11 +17,6 @@ Window {
     property int exitTapCount: 0
     property var exitTimer: null
     property real globalTime: 0
-    property bool isSwiping: false
-    property real lastSwipeX: 0
-    property real lastSwipeY: 0
-    property real swipeStartX: 0
-    property real swipeStartY: 0
 
     // Effect types - 25 effects
     readonly property var effectTypes: [
@@ -104,16 +99,14 @@ Window {
         // Haptic feedback
         Haptic.tap()
 
-        // Create visual feedback
-        for (var i = 0; i < 3; i++) {
-            var wave = soundWaveComponent.createObject(root, {
-                centerX: x,
-                centerY: y,
-                hue: normX,
-                delay: i * 50,
-                waveSize: 50 + volume * 100
-            })
-        }
+        // Create visual feedback (single wave for reduced resource usage)
+        var wave = soundWaveComponent.createObject(root, {
+            centerX: x,
+            centerY: y,
+            hue: normX,
+            delay: 0,
+            waveSize: 50 + volume * 100
+        })
     }
 
     // Play a beep from pre-generated sound files
@@ -183,79 +176,148 @@ Window {
         }
     }
 
-    // ==================== MAIN TOUCH AREA ====================
+    // ==================== MAIN TOUCH AREA (MULTI-TOUCH) ====================
 
-    MouseArea {
+    // Track per-touch state for multi-touch support
+    property var touchStates: ({})
+
+    function handleTouchStart(touchPoint) {
+        var x = touchPoint.x
+        var y = touchPoint.y
+        var pointId = touchPoint.pointId
+
+        // Initialize touch state for this point
+        touchStates[pointId] = {
+            isSwiping: false,
+            swipeStartX: x,
+            swipeStartY: y,
+            lastSwipeX: x,
+            lastSwipeY: y,
+            swipeEffect: getRandomSwipeEffect()
+        }
+
+        // Play sound
+        playSound(x, y, true)
+
+        // Change to random effect
+        var newEffect = currentEffect
+        while (newEffect === currentEffect && effectTypes.length > 1) {
+            newEffect = getRandomEffect()
+        }
+        currentEffect = newEffect
+
+        // Trigger tap effect
+        triggerEffect(x, y)
+    }
+
+    function handleTouchUpdate(touchPoint) {
+        var x = touchPoint.x
+        var y = touchPoint.y
+        var pointId = touchPoint.pointId
+
+        var state = touchStates[pointId]
+        if (!state) return
+
+        var dx = x - state.lastSwipeX
+        var dy = y - state.lastSwipeY
+        var dist = Math.sqrt(dx*dx + dy*dy)
+
+        // Only trigger swipe effects if moved enough
+        if (dist > 15) {
+            if (!state.isSwiping) {
+                state.isSwiping = true
+                // Change swipe effect type for this touch
+                state.swipeEffect = getRandomSwipeEffect()
+            }
+
+            // Temporarily set current swipe effect for this touch
+            var prevSwipeEffect = currentSwipeEffect
+            currentSwipeEffect = state.swipeEffect
+
+            // Play swipe sound (position-based, reduced frequency for performance)
+            if (Math.random() < 0.3) {
+                playSound(x, y, false)
+            }
+
+            // Create swipe trail effect
+            createSwipeEffect(state.lastSwipeX, state.lastSwipeY, x, y, dx, dy)
+
+            // Restore previous swipe effect
+            currentSwipeEffect = prevSwipeEffect
+
+            state.lastSwipeX = x
+            state.lastSwipeY = y
+        }
+    }
+
+    function handleTouchEnd(touchPoint) {
+        var x = touchPoint.x
+        var y = touchPoint.y
+        var pointId = touchPoint.pointId
+
+        var state = touchStates[pointId]
+        if (!state) return
+
+        if (state.isSwiping) {
+            // Calculate swipe velocity
+            var dx = x - state.swipeStartX
+            var dy = y - state.swipeStartY
+            var speed = Math.sqrt(dx*dx + dy*dy)
+
+            // Temporarily set current swipe effect for this touch
+            var prevSwipeEffect = currentSwipeEffect
+            currentSwipeEffect = state.swipeEffect
+
+            // Big swipe finale effect
+            if (speed > 200) {
+                createSwipeFinale(x, y, dx, dy, speed)
+                // Play a fun high-pitched finale sound
+                playSound(x, y, true)
+            }
+
+            // Restore previous swipe effect
+            currentSwipeEffect = prevSwipeEffect
+        }
+
+        // Clean up touch state
+        delete touchStates[pointId]
+    }
+
+    MultiPointTouchArea {
         anchors.fill: parent
         z: 1
+        minimumTouchPoints: 1
+        maximumTouchPoints: 10
 
-        onPressed: {
-            var x = mouse.x
-            var y = mouse.y
+        touchPoints: [
+            TouchPoint { id: touch1 },
+            TouchPoint { id: touch2 },
+            TouchPoint { id: touch3 },
+            TouchPoint { id: touch4 },
+            TouchPoint { id: touch5 },
+            TouchPoint { id: touch6 },
+            TouchPoint { id: touch7 },
+            TouchPoint { id: touch8 },
+            TouchPoint { id: touch9 },
+            TouchPoint { id: touch10 }
+        ]
 
-            isSwiping = false
-            swipeStartX = x
-            swipeStartY = y
-            lastSwipeX = x
-            lastSwipeY = y
-
-            // Play sound
-            playSound(x, y, true)
-
-            // Change to random effect
-            var newEffect = currentEffect
-            while (newEffect === currentEffect && effectTypes.length > 1) {
-                newEffect = getRandomEffect()
-            }
-            currentEffect = newEffect
-
-            // Trigger tap effect
-            triggerEffect(x, y)
-        }
-
-        onPositionChanged: {
-            var x = mouse.x
-            var y = mouse.y
-            var dx = x - lastSwipeX
-            var dy = y - lastSwipeY
-            var dist = Math.sqrt(dx*dx + dy*dy)
-
-            // Only trigger swipe effects if moved enough
-            if (dist > 15) {
-                if (!isSwiping) {
-                    isSwiping = true
-                    // Change swipe effect type
-                    currentSwipeEffect = getRandomSwipeEffect()
-                }
-
-                // Play swipe sound (position-based, more frequent for fun)
-                if (Math.random() < 0.5) {
-                    playSound(x, y, false)
-                }
-
-                // Create swipe trail effect
-                createSwipeEffect(lastSwipeX, lastSwipeY, x, y, dx, dy)
-
-                lastSwipeX = x
-                lastSwipeY = y
+        onPressed: function(touchPoints) {
+            for (var i = 0; i < touchPoints.length; i++) {
+                handleTouchStart(touchPoints[i])
             }
         }
 
-        onReleased: {
-            if (isSwiping) {
-                // Calculate swipe velocity
-                var dx = mouse.x - swipeStartX
-                var dy = mouse.y - swipeStartY
-                var speed = Math.sqrt(dx*dx + dy*dy)
-
-                // Big swipe finale effect
-                if (speed > 200) {
-                    createSwipeFinale(mouse.x, mouse.y, dx, dy, speed)
-                    // Play a fun high-pitched finale sound
-                    playSound(mouse.x, mouse.y, true)
-                }
+        onUpdated: function(touchPoints) {
+            for (var i = 0; i < touchPoints.length; i++) {
+                handleTouchUpdate(touchPoints[i])
             }
-            isSwiping = false
+        }
+
+        onReleased: function(touchPoints) {
+            for (var i = 0; i < touchPoints.length; i++) {
+                handleTouchEnd(touchPoints[i])
+            }
         }
     }
 
@@ -281,7 +343,7 @@ Window {
     function createSwipeFinale(x, y, dx, dy, speed) {
         var effect = swipeEffectTypes[currentSwipeEffect]
         var angle = Math.atan2(dy, dx)
-        var numParticles = Math.min(50, Math.floor(speed / 10))
+        var numParticles = Math.min(20, Math.floor(speed / 20))
 
         // Burst of particles in swipe direction
         for (var i = 0; i < numParticles; i++) {
@@ -713,7 +775,7 @@ Window {
 
     function createShapes(x, y) { shapeComponent.createObject(root, { x: x - 50, y: y - 50 }) }
     function createGalaxy(x, y) {
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < 15; i++) {
             galaxyStarComponent.createObject(root, {
                 centerX: x, centerY: y,
                 angle: Math.random() * Math.PI * 2,
@@ -723,7 +785,7 @@ Window {
         }
     }
     function createRain(x, y) {
-        for (var i = 0; i < 20; i++) {
+        for (var i = 0; i < 10; i++) {
             rainComponent.createObject(root, {
                 x: x + (Math.random() - 0.5) * 250,
                 startY: y - 300 - Math.random() * 150,
@@ -741,7 +803,7 @@ Window {
     function createWaves(x, y) { waveComponent.createObject(root, { centerX: x, centerY: y }) }
     function createHearts(x, y) {
         var colors = ["#ff3366", "#ff6699", "#ff99cc"]
-        for (var i = 0; i < 12; i++) {
+        for (var i = 0; i < 6; i++) {
             heartComponent.createObject(root, {
                 x: x + (Math.random() - 0.5) * 150,
                 y: y,
@@ -751,7 +813,7 @@ Window {
         }
     }
     function createStars(x, y) {
-        for (var i = 0; i < 25; i++) {
+        for (var i = 0; i < 10; i++) {
             twinkleComponent.createObject(root, {
                 x: x + (Math.random() - 0.5) * 300,
                 y: y + (Math.random() - 0.5) * 300,
@@ -771,7 +833,7 @@ Window {
         }
     }
     function createMatrix(x, y) {
-        for (var i = 0; i < 15; i++) {
+        for (var i = 0; i < 8; i++) {
             matrixComponent.createObject(root, {
                 x: x + (Math.random() - 0.5) * 300,
                 startY: y - 150
@@ -779,7 +841,7 @@ Window {
         }
     }
     function createDisco(x, y) {
-        for (var i = 0; i < 20; i++) {
+        for (var i = 0; i < 10; i++) {
             discoComponent.createObject(root, {
                 centerX: x, centerY: y,
                 angle: Math.random() * Math.PI * 2
@@ -1125,9 +1187,9 @@ Window {
                 for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) if (!(dx === 0 && dy === 0) && getCell(x + dx, y + dy)) c++
                 return c
             }
-            Timer { interval: 120; running: true; repeat: true
+            Timer { interval: 200; running: true; repeat: true
                 onTriggered: {
-                    lf.gen++; if (lf.gen > 25) { lf.destroy(); return }
+                    lf.gen++; if (lf.gen > 15) { lf.destroy(); return }
                     var nc = []
                     for (var i = 0; i < lf.gridSize * lf.gridSize; i++) {
                         var n = lf.countN(i % lf.gridSize, Math.floor(i / lf.gridSize))
@@ -1212,7 +1274,7 @@ Window {
             property real centerY: 0
             property real t: 0
             width: root.width; height: root.height; z: 5
-            Timer { interval: 20; running: true; repeat: true; onTriggered: { wv.t += 0.08; wv.requestPaint() } }
+            Timer { interval: 50; running: true; repeat: true; onTriggered: { wv.t += 0.2; wv.requestPaint() } }
             onPaint: {
                 var ctx = getContext("2d"); ctx.clearRect(0, 0, width, height)
                 for (var r = 15; r < 250; r += 18) {
@@ -1322,7 +1384,7 @@ Window {
             property real centerY: 0
             property real t: 0
             width: root.width; height: root.height; z: 5
-            Timer { interval: 28; running: true; repeat: true; onTriggered: { au.t += 0.04; au.requestPaint() } }
+            Timer { interval: 50; running: true; repeat: true; onTriggered: { au.t += 0.07; au.requestPaint() } }
             onPaint: {
                 var ctx = getContext("2d"); ctx.clearRect(0, 0, width, height)
                 var colors = ["#00ff88", "#00ffcc", "#88ff00", "#00ccff"]
