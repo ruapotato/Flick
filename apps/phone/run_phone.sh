@@ -19,30 +19,24 @@ export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 # Hardware acceleration enabled
 # export QT_QUICK_BACKEND=software  # Using hardware accel
 
-# Kill any existing phone helper daemon
-sudo pkill -f "phone_helper.py daemon" 2>/dev/null
-sleep 0.5
+# Check if phone daemon is already running (started by start.sh)
+if ! pgrep -f "phone_helper.py daemon" > /dev/null; then
+    echo "Starting phone helper daemon..." >> "$LOG_FILE"
+    # Start the helper daemon in background AS ROOT (needed for oFono D-Bus access)
+    sudo python3 "$SCRIPT_DIR/phone_helper.py" daemon >> "$LOG_FILE" 2>&1 &
+    HELPER_PID=$!
+    echo "Started phone helper daemon (PID: $HELPER_PID)" >> "$LOG_FILE"
+    # Wait a moment for daemon to initialize
+    sleep 1
+else
+    echo "Phone helper daemon already running" >> "$LOG_FILE"
+fi
 
-# Clear old status/cmd files
-rm -f /tmp/flick_phone_cmd /tmp/flick_phone_status 2>/dev/null
+# Clear old command file (but keep status file for daemon communication)
+rm -f /tmp/flick_phone_cmd 2>/dev/null
 
-# Start the helper daemon in background AS ROOT (needed for oFono D-Bus access)
-# The default oFono D-Bus policy denies access to non-root users
-sudo python3 "$SCRIPT_DIR/phone_helper.py" daemon >> "$LOG_FILE" 2>&1 &
-HELPER_PID=$!
-echo "Started phone helper daemon (PID: $HELPER_PID)" >> "$LOG_FILE"
-
-# Wait a moment for daemon to initialize
-sleep 1
-
-# Cleanup on exit
-cleanup() {
-    echo "Cleaning up..." >> "$LOG_FILE"
-    sudo kill $HELPER_PID 2>/dev/null
-    sudo pkill -f "phone_helper.py daemon" 2>/dev/null
-    rm -f "$CMD_FILE" /tmp/flick_phone_status
-}
-trap cleanup EXIT
+# Note: We don't kill the daemon on exit - it should keep running for incoming calls
+# The daemon is managed by start.sh
 
 # Run QML and capture CMD: lines to write to command file
 # Note: QML prefixes output with "qml: " so we look for *CMD:*

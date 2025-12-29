@@ -24,6 +24,7 @@ start_daemons() {
 
     # Kill any existing daemons
     sudo -u "$REAL_USER" pkill -f "messaging_daemon.py" 2>/dev/null || true
+    sudo pkill -f "phone_helper.py daemon" 2>/dev/null || true
 
     # Start messaging daemon as the real user
     if [ -f "$FLICK_DIR/apps/messages/messaging_daemon.py" ]; then
@@ -35,13 +36,19 @@ start_daemons() {
             > /tmp/flick_messages.log 2>&1 &
     fi
 
-    # Add more daemons here as needed
+    # Start phone helper daemon as root (needed for oFono D-Bus access)
+    if [ -f "$FLICK_DIR/apps/phone/phone_helper.py" ]; then
+        echo "  Starting phone daemon..."
+        python3 "$FLICK_DIR/apps/phone/phone_helper.py" daemon \
+            > /tmp/flick_phone.log 2>&1 &
+    fi
 }
 
 echo "Stopping existing processes..."
 sudo killall -9 flick 2>/dev/null || true
 sudo systemctl stop phosh 2>/dev/null || true
 sudo -u "$REAL_USER" pkill -f "messaging_daemon.py" 2>/dev/null || true
+sudo pkill -f "phone_helper.py daemon" 2>/dev/null || true
 sleep 1
 
 echo "Restarting hwcomposer..."
@@ -91,6 +98,7 @@ if [ "$1" = "--bg" ]; then
     echo "Flick running in background."
     echo "  Compositor log: /tmp/flick.log"
     echo "  Messages log: /tmp/flick_messages.log"
+    echo "  Phone log: /tmp/flick_phone.log"
 else
     sudo -E "$FLICK_BIN"
 fi
