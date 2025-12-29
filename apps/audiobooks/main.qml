@@ -741,7 +741,10 @@ Window {
             MouseArea {
                 id: resumeMouse
                 anchors.fill: parent
-                onClicked: resumeLastBook()
+                onClicked: {
+                    Haptic.tap()
+                    resumeLastBook()
+                }
             }
         }
 

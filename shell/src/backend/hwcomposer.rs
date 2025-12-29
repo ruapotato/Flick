@@ -1459,6 +1459,8 @@ fn handle_input_event(
                             // Normal mode - end home touch tracking, returns pending app if it was a tap (not scroll)
                             if let Some(exec) = state.shell.end_home_touch() {
                                 info!("Launching app from home touch: {}", exec);
+                                // Haptic feedback on app launch
+                                state.system.haptic_tap();
                                 // Get socket name for WAYLAND_DISPLAY
                                 let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
                                 // Get text scale for app scaling
