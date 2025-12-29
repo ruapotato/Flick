@@ -448,19 +448,43 @@ impl VolumeManager {
         }
     }
 
+    /// Run amixer command as the audio user (blocking)
+    fn run_amixer(args: &[&str]) -> Option<std::process::Output> {
+        if let Some((uid, _username)) = Self::get_audio_user() {
+            let current_uid = unsafe { libc::getuid() };
+
+            if current_uid == uid {
+                // Already the right user, run directly
+                Command::new("amixer")
+                    .args(args)
+                    .output()
+                    .ok()
+            } else {
+                // Need to switch users
+                let quoted_args: Vec<String> = args.iter().map(|a| format!("'{}'", a)).collect();
+                let shell_cmd = format!("amixer {}", quoted_args.join(" "));
+                Command::new("sudo")
+                    .args(["-u", &format!("#{}", uid), "sh", "-c", &shell_cmd])
+                    .output()
+                    .ok()
+            }
+        } else {
+            // Fallback to direct call
+            Command::new("amixer")
+                .args(args)
+                .output()
+                .ok()
+        }
+    }
+
     /// Get current volume (0-100) using amixer (works with droid audio)
     pub fn get_volume() -> u8 {
-        // Use amixer which works with droid audio backend
-        Command::new("amixer")
-            .args(["get", "Master"])
-            .output()
-            .ok()
+        Self::run_amixer(&["get", "Master"])
             .and_then(|o| {
                 let output = String::from_utf8_lossy(&o.stdout);
                 // Parse "Front Left: Playback 32768 [50%] [on]"
                 for line in output.lines() {
                     if line.contains("Playback") && line.contains('[') {
-                        // Extract percentage from "[50%]"
                         if let Some(start) = line.find('[') {
                             if let Some(end) = line[start..].find('%') {
                                 if let Ok(vol) = line[start+1..start+end].parse::<u8>() {
@@ -478,52 +502,35 @@ impl VolumeManager {
     /// Set volume (0-100)
     pub fn set_volume(value: u8) {
         let clamped = value.min(100);
-        let _ = Command::new("amixer")
-            .args(["set", "Master", &format!("{}%", clamped)])
-            .spawn();
+        let _ = Self::run_amixer(&["set", "Master", &format!("{}%", clamped)]);
     }
 
     /// Increase volume by 5%
     pub fn volume_up() {
-        let _ = Command::new("amixer")
-            .args(["set", "Master", "5%+"])
-            .output();
+        let _ = Self::run_amixer(&["set", "Master", "5%+"]);
     }
 
     /// Decrease volume by 5%
     pub fn volume_down() {
-        let _ = Command::new("amixer")
-            .args(["set", "Master", "5%-"])
-            .output();
+        let _ = Self::run_amixer(&["set", "Master", "5%-"]);
     }
 
     /// Check if muted (using amixer)
     pub fn is_muted() -> bool {
-        Command::new("amixer")
-            .args(["get", "Master"])
-            .output()
-            .ok()
-            .map(|o| {
-                let output = String::from_utf8_lossy(&o.stdout);
-                // Look for "[off]" in the output
-                output.contains("[off]")
-            })
+        Self::run_amixer(&["get", "Master"])
+            .map(|o| String::from_utf8_lossy(&o.stdout).contains("[off]"))
             .unwrap_or(false)
     }
 
     /// Set mute state
     pub fn set_mute(muted: bool) {
         let state = if muted { "mute" } else { "unmute" };
-        let _ = Command::new("amixer")
-            .args(["set", "Master", state])
-            .spawn();
+        let _ = Self::run_amixer(&["set", "Master", state]);
     }
 
     /// Toggle mute
     pub fn toggle_mute() {
-        let _ = Command::new("amixer")
-            .args(["set", "Master", "toggle"])
-            .spawn();
+        let _ = Self::run_amixer(&["set", "Master", "toggle"]);
     }
 }
 
