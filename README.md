@@ -205,10 +205,10 @@ sudo apt install qmlscene qml-module-qtquick2 qml-module-qtquick-window2 \
 **On Droidian (Android phones):**
 ```bash
 # Start Flick (compositor + background services)
-sudo ./start.sh
+./start.sh
 
 # Or run in background
-sudo ./start.sh --bg
+./start.sh --bg
 ```
 
 **On desktop/DRM (for development):**
