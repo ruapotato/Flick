@@ -325,8 +325,8 @@ Window {
         currentConversation = phoneNumber
         // Reload contacts in case a new one was added
         loadContacts()
-        // Try to get contact name from contacts if not provided
-        var name = contactName || getContactName(phoneNumber)
+        // Always look up contact name from contacts (ignore cached contact_name which may be stale)
+        var name = getContactName(phoneNumber)
         currentContactName = name || phoneNumber
         currentView = "conversation"
         lastMessageText = ""
