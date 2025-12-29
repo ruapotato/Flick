@@ -12,22 +12,20 @@ export QTWEBENGINE_CHROMIUM_FLAGS="--enable-gpu-rasterization --enable-native-gp
 
 mkdir -p ~/.local/state/flick
 
-# Background process to watch for epub extraction requests
-(
-    while true; do
-        for cmd in /tmp/flick_epub_cmd_*.sh; do
-            if [ -f "$cmd" ]; then
-                chmod +x "$cmd"
-                bash "$cmd"
-                rm -f "$cmd"
+# Pre-extract all EPUBs on launch for faster opening
+for dir in ~/Books ~/Documents ~/Downloads; do
+    if [ -d "$dir" ]; then
+        for epub in "$dir"/*.epub "$dir"/*.EPUB 2>/dev/null; do
+            if [ -f "$epub" ]; then
+                BOOK_HASH=$(echo "$epub" | md5sum | cut -d' ' -f1)
+                JSON_FILE="/tmp/flick_epub_${BOOK_HASH}.json"
+                if [ ! -f "$JSON_FILE" ]; then
+                    echo "Pre-extracting: $(basename "$epub")"
+                    "$SCRIPT_DIR/epub_helper.sh" extract "$epub" > "$JSON_FILE" 2>/dev/null
+                fi
             fi
         done
-        sleep 0.1
-    done
-) &
-WATCHER_PID=$!
-
-# Cleanup on exit
-trap "kill $WATCHER_PID 2>/dev/null" EXIT
+    fi
+done
 
 qmlscene "$SCRIPT_DIR/main.qml"

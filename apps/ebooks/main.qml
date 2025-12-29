@@ -181,93 +181,34 @@ Window {
     }
 
     function openEpub(filePath) {
-        // Use Process to extract epub
-        epubExtractor.extractEpub(filePath)
-    }
+        // Read pre-extracted JSON (extracted by run script on launch)
+        var bookHash = Qt.md5(filePath)
+        var jsonFile = "/tmp/flick_epub_" + bookHash + ".json"
 
-    // Process for epub extraction
-    Item {
-        id: epubExtractor
-
-        function extractEpub(filePath) {
-            var xhr = new XMLHttpRequest()
-            // We'll use a workaround: write a temp script and read its output
-            var helperScript = "/home/droidian/Flick/apps/ebooks/epub_helper.sh"
-
-            // Create extraction command file
-            var cmdFile = "/tmp/flick_epub_cmd_" + Date.now() + ".sh"
-            var outFile = "/tmp/flick_epub_out_" + Date.now() + ".json"
-
-            var cmdContent = "#!/bin/bash\n" + helperScript + " extract '" + filePath + "' > " + outFile + "\n"
-
-            // Write command file
-            var wxhr = new XMLHttpRequest()
-            wxhr.open("PUT", "file://" + cmdFile, false)
-            try {
-                wxhr.send(cmdContent)
-            } catch (e) {
-                console.log("Failed to write cmd file:", e)
-                return
-            }
-
-            // Execute via file trigger - we'll poll for the output
-            Qt.createQmlObject('
-                import QtQuick 2.15
-                Timer {
-                    id: extractTimer
-                    interval: 100
-                    repeat: true
-                    running: true
-                    property int tries: 0
-                    property string outFile: "' + outFile + '"
-                    property string cmdFile: "' + cmdFile + '"
-
-                    Component.onCompleted: {
-                        // Trigger extraction by reading a "run" endpoint
-                        var runXhr = new XMLHttpRequest()
-                        runXhr.open("GET", "file://" + cmdFile, false)
-                        try { runXhr.send() } catch(e) {}
-
-                        // Actually run the script - this is hacky but works
-                        console.log("Starting epub extraction...")
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + jsonFile, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                epubData = JSON.parse(xhr.responseText)
+                if (epubData.chapters && epubData.chapters.length > 0) {
+                    currentChapter = 0
+                    if (readingPositions[currentBook.path]) {
+                        currentChapter = readingPositions[currentBook.path].chapter || 0
                     }
-
-                    onTriggered: {
-                        tries++
-                        var xhr = new XMLHttpRequest()
-                        xhr.open("GET", "file://" + outFile, false)
-                        try {
-                            xhr.send()
-                            if (xhr.status === 200 || xhr.status === 0) {
-                                if (xhr.responseText && xhr.responseText.length > 10) {
-                                    stop()
-                                    try {
-                                        root.epubData = JSON.parse(xhr.responseText)
-                                        if (root.epubData.chapters && root.epubData.chapters.length > 0) {
-                                            root.currentChapter = 0
-                                            if (root.readingPositions[root.currentBook.path]) {
-                                                root.currentChapter = root.readingPositions[root.currentBook.path].chapter || 0
-                                            }
-                                            root.loadEpubChapter(root.currentChapter)
-                                            root.currentView = "reader"
-                                        }
-                                    } catch (e) {
-                                        console.log("Failed to parse epub data:", e)
-                                    }
-                                    destroy()
-                                    return
-                                }
-                            }
-                        } catch (e) {}
-
-                        if (tries > 50) {
-                            console.log("Epub extraction timeout")
-                            stop()
-                            destroy()
-                        }
+                    if (currentChapter >= epubData.chapters.length) {
+                        currentChapter = 0
                     }
+                    loadEpubChapter(currentChapter)
+                    currentView = "reader"
+                } else {
+                    console.log("No chapters found in epub")
                 }
-            ', root)
+            } else {
+                console.log("Failed to load epub JSON:", xhr.status)
+            }
+        } catch (e) {
+            console.log("Failed to open epub:", e)
         }
     }
 
