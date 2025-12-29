@@ -723,7 +723,10 @@ fn handle_input_event(
 
             // Forward touch to Wayland client if connected (but not if touching keyboard)
             // Forward to QML lock screen when on lock screen, or to apps when not locked
-            let forward_to_wayland = has_wayland_window && !touch_on_keyboard &&
+            // Don't forward while an edge gesture is active (touch was cancelled)
+            let gesture_active = state.switcher_gesture_active || state.qs_gesture_active ||
+                                 state.home_gesture_window.is_some() || state.close_gesture_window.is_some();
+            let forward_to_wayland = has_wayland_window && !touch_on_keyboard && !gesture_active &&
                 (shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active ||
                  shell_view == crate::shell::ShellView::LockScreen);
             if forward_to_wayland {
@@ -982,7 +985,10 @@ fn handle_input_event(
 
             // Forward touch to Wayland client if connected (but not if touching keyboard)
             // Forward to QML lock screen when on lock screen, or to apps when not locked
-            let forward_to_wayland = has_wayland_window && !touch_on_keyboard &&
+            // Don't forward while an edge gesture is active (touch was cancelled)
+            let gesture_active = state.switcher_gesture_active || state.qs_gesture_active ||
+                                 state.home_gesture_window.is_some() || state.close_gesture_window.is_some();
+            let forward_to_wayland = has_wayland_window && !touch_on_keyboard && !gesture_active &&
                 (shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active ||
                  shell_view == crate::shell::ShellView::LockScreen);
             if forward_to_wayland {
@@ -1320,7 +1326,10 @@ fn handle_input_event(
 
             // Forward touch to Wayland client if connected (but not if touching keyboard)
             // Forward to QML lock screen when on lock screen, or to apps when not locked
-            let forward_to_wayland = has_wayland_window && !touch_on_keyboard &&
+            // Don't forward while an edge gesture is active (touch was cancelled)
+            let gesture_active = state.switcher_gesture_active || state.qs_gesture_active ||
+                                 state.home_gesture_window.is_some() || state.close_gesture_window.is_some();
+            let forward_to_wayland = has_wayland_window && !touch_on_keyboard && !gesture_active &&
                 (shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active ||
                  shell_view == crate::shell::ShellView::LockScreen);
             if forward_to_wayland {
