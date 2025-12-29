@@ -21,6 +21,8 @@ Window {
     property bool userScrolledUp: false  // Track if user scrolled away from bottom
     property string newMessagePhone: ""  // Phone number for new message
     property string newMessageSearch: "" // Search filter for contacts
+    property string saveContactPhone: "" // Phone number when saving new contact
+    property string saveContactName: ""  // Name input for new contact
 
     // Models
     ListModel {
@@ -112,6 +114,55 @@ Window {
             }
         }
         return ""
+    }
+
+    function saveNewContact(name, phone) {
+        // Load existing contacts
+        var contactsPath = "/home/droidian/.local/state/flick/contacts.json"
+        var contacts = []
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + contactsPath, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var data = JSON.parse(xhr.responseText)
+                contacts = data.contacts || []
+            }
+        } catch (e) {}
+
+        // Get initials
+        var parts = name.trim().split(" ")
+        var initials = ""
+        if (parts.length >= 2) {
+            initials = (parts[0][0] + parts[parts.length-1][0]).toUpperCase()
+        } else {
+            initials = name.substring(0, 2).toUpperCase()
+        }
+
+        // Add new contact
+        contacts.push({
+            name: name,
+            phone: phone,
+            email: "",
+            initials: initials
+        })
+
+        // Sort by name
+        contacts.sort(function(a, b) {
+            return a.name.localeCompare(b.name)
+        })
+
+        // Save back
+        var saveXhr = new XMLHttpRequest()
+        saveXhr.open("PUT", "file://" + contactsPath, false)
+        try {
+            saveXhr.send(JSON.stringify({contacts: contacts}, null, 2))
+        } catch (e) {
+            console.log("Error saving contact: " + e)
+        }
+
+        // Reload contacts
+        loadContacts()
     }
 
     function loadConversations() {
@@ -499,12 +550,15 @@ Window {
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 1 * textScale
+                    width: parent.width - 80 * textScale
 
                     Text {
                         text: currentContactName
                         color: "white"
                         font.pixelSize: 11 * textScale
                         font.weight: Font.Bold
+                        elide: Text.ElideRight
+                        width: parent.width
                     }
 
                     Text {
@@ -512,6 +566,36 @@ Window {
                         color: "#888899"
                         font.pixelSize: 8 * textScale
                         visible: currentConversation !== currentContactName
+                    }
+                }
+
+                Item { Layout.fillWidth: true; width: 1 }
+
+                // Save contact button (only for unknown numbers)
+                Rectangle {
+                    width: 24 * textScale
+                    height: 24 * textScale
+                    radius: 12 * textScale
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: saveContactArea.pressed ? "#2a6a2a" : "#228B22"
+                    visible: currentContactName === currentConversation
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "+"
+                        color: "white"
+                        font.pixelSize: 14 * textScale
+                        font.weight: Font.Bold
+                    }
+
+                    MouseArea {
+                        id: saveContactArea
+                        anchors.fill: parent
+                        onClicked: {
+                            saveContactPhone = currentConversation
+                            saveContactName = ""
+                            currentView = "saveContact"
+                        }
                     }
                 }
             }
@@ -978,6 +1062,179 @@ Window {
                     text: "Type a phone number above"
                     color: "#555577"
                     font.pixelSize: 9 * textScale
+                }
+            }
+        }
+    }
+
+    // ===== SAVE CONTACT VIEW =====
+    Item {
+        id: saveContactView
+        anchors.fill: parent
+        anchors.bottomMargin: 24 * textScale
+        visible: currentView === "saveContact"
+
+        // Header
+        Rectangle {
+            id: saveContactHeader
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 36 * textScale
+            color: "#0f0f14"
+            z: 10
+
+            Row {
+                anchors.fill: parent
+                anchors.margins: 8 * textScale
+                spacing: 8 * textScale
+
+                // Back button
+                Rectangle {
+                    width: 24 * textScale
+                    height: 24 * textScale
+                    radius: 12 * textScale
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: saveBackArea.pressed ? "#3a3a4e" : "#2a2a3e"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "←"
+                        color: accentColor
+                        font.pixelSize: 12 * textScale
+                        font.weight: Font.Bold
+                    }
+
+                    MouseArea {
+                        id: saveBackArea
+                        anchors.fill: parent
+                        onClicked: {
+                            currentView = "conversation"
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Save Contact"
+                    color: "white"
+                    font.pixelSize: 11 * textScale
+                    font.weight: Font.Bold
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            // Separator line
+            Rectangle {
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 1
+                color: "#2a2a4e"
+            }
+        }
+
+        // Form
+        Column {
+            anchors.top: saveContactHeader.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 16 * textScale
+            anchors.topMargin: 24 * textScale
+            spacing: 16 * textScale
+
+            // Phone number display
+            Column {
+                width: parent.width
+                spacing: 4 * textScale
+
+                Text {
+                    text: "Phone Number"
+                    color: "#888899"
+                    font.pixelSize: 9 * textScale
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 28 * textScale
+                    color: "#1a1a2e"
+                    radius: 8 * textScale
+
+                    Text {
+                        anchors.fill: parent
+                        anchors.margins: 8 * textScale
+                        text: saveContactPhone
+                        color: "#aaaacc"
+                        font.pixelSize: 10 * textScale
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+            }
+
+            // Name input
+            Column {
+                width: parent.width
+                spacing: 4 * textScale
+
+                Text {
+                    text: "Name"
+                    color: "#888899"
+                    font.pixelSize: 9 * textScale
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 28 * textScale
+                    color: "#1a1a2e"
+                    radius: 8 * textScale
+                    border.color: "#2a2a4e"
+                    border.width: 1
+
+                    TextInput {
+                        id: saveContactNameInput
+                        anchors.fill: parent
+                        anchors.margins: 8 * textScale
+                        text: saveContactName
+                        onTextChanged: saveContactName = text
+                        color: "white"
+                        font.pixelSize: 10 * textScale
+                        verticalAlignment: TextInput.AlignVCenter
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Enter name..."
+                            color: "#666688"
+                            font.pixelSize: 10 * textScale
+                            visible: saveContactName.length === 0
+                        }
+                    }
+                }
+            }
+
+            // Save button
+            Rectangle {
+                width: parent.width
+                height: 32 * textScale
+                radius: 16 * textScale
+                color: saveContactName.length > 0 ? (doSaveArea.pressed ? "#1a6a1a" : "#228B22") : "#3a3a4e"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Save Contact"
+                    color: saveContactName.length > 0 ? "white" : "#666"
+                    font.pixelSize: 10 * textScale
+                    font.weight: Font.Bold
+                }
+
+                MouseArea {
+                    id: doSaveArea
+                    anchors.fill: parent
+                    enabled: saveContactName.length > 0
+                    onClicked: {
+                        saveNewContact(saveContactName, saveContactPhone)
+                        // Update current contact name
+                        currentContactName = saveContactName
+                        currentView = "conversation"
+                    }
                 }
             }
         }
