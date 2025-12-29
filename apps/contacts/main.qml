@@ -138,7 +138,15 @@ Window {
 
     function messageContact(phone) {
         Haptic.click()
-        console.log("MESSAGE:" + phone)
+        // Write hint file for messages app to open this conversation
+        var hintPath = "/home/droidian/.local/state/flick/open_conversation.json"
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file://" + hintPath, false)
+        try {
+            xhr.send(JSON.stringify({phone_number: phone}))
+        } catch (e) {}
+        // Launch messages app
+        console.log("LAUNCH:/home/droidian/Flick/apps/messages/run_messages.sh")
     }
 
     function filteredContacts() {

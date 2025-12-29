@@ -19,6 +19,8 @@ Window {
     property string messageInput: ""
     property string lastMessageText: ""  // Track last message for smart scrolling
     property bool userScrolledUp: false  // Track if user scrolled away from bottom
+    property string newMessagePhone: ""  // Phone number for new message
+    property string newMessageSearch: "" // Search filter for contacts
 
     // Models
     ListModel {
@@ -29,9 +31,37 @@ Window {
         id: messagesModel
     }
 
+    ListModel {
+        id: contactsModel
+    }
+
     Component.onCompleted: {
         loadConfig()
+        loadContacts()
         loadConversations()
+        checkOpenConversationHint()
+    }
+
+    function checkOpenConversationHint() {
+        var hintPath = "/home/droidian/.local/state/flick/open_conversation.json"
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + hintPath, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var data = JSON.parse(xhr.responseText)
+                if (data.phone_number) {
+                    // Clear the hint file
+                    var clearXhr = new XMLHttpRequest()
+                    clearXhr.open("PUT", "file://" + hintPath, false)
+                    clearXhr.send("{}")
+                    // Open the conversation
+                    openConversation(data.phone_number, "")
+                }
+            }
+        } catch (e) {
+            // No hint file or invalid
+        }
     }
 
     function loadConfig() {
@@ -49,6 +79,39 @@ Window {
         } catch (e) {
             console.log("Using default text scale: " + textScale)
         }
+    }
+
+    function loadContacts() {
+        var contactsPath = "/home/droidian/.local/state/flick/contacts.json"
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + contactsPath, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var data = JSON.parse(xhr.responseText)
+                contactsModel.clear()
+                for (var i = 0; i < data.contacts.length; i++) {
+                    contactsModel.append(data.contacts[i])
+                }
+            }
+        } catch (e) {
+            console.log("No contacts found")
+        }
+    }
+
+    function getContactName(phoneNumber) {
+        // Normalize phone number for comparison (remove spaces, dashes)
+        var normalizedInput = phoneNumber.replace(/[\s\-\(\)]/g, "")
+        for (var i = 0; i < contactsModel.count; i++) {
+            var contact = contactsModel.get(i)
+            var normalizedContact = contact.phone.replace(/[\s\-\(\)]/g, "")
+            if (normalizedInput === normalizedContact ||
+                normalizedInput.endsWith(normalizedContact) ||
+                normalizedContact.endsWith(normalizedInput)) {
+                return contact.name
+            }
+        }
+        return ""
     }
 
     function loadConversations() {
@@ -176,7 +239,9 @@ Window {
 
     function openConversation(phoneNumber, contactName) {
         currentConversation = phoneNumber
-        currentContactName = contactName || phoneNumber
+        // Try to get contact name from contacts if not provided
+        var name = contactName || getContactName(phoneNumber)
+        currentContactName = name || phoneNumber
         currentView = "conversation"
         lastMessageText = ""
         userScrolledUp = false
@@ -655,15 +720,313 @@ Window {
         }
     }
 
+    // ===== NEW MESSAGE VIEW =====
+    Item {
+        id: newMessageView
+        anchors.fill: parent
+        anchors.bottomMargin: 24 * textScale
+        visible: currentView === "newMessage"
+
+        // Header
+        Rectangle {
+            id: newMsgHeader
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 36 * textScale
+            color: "#0f0f14"
+            z: 10
+
+            Row {
+                anchors.fill: parent
+                anchors.margins: 8 * textScale
+                spacing: 8 * textScale
+
+                // Back button
+                Rectangle {
+                    width: 24 * textScale
+                    height: 24 * textScale
+                    radius: 12 * textScale
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: newMsgBackArea.pressed ? "#3a3a4e" : "#2a2a3e"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "←"
+                        color: accentColor
+                        font.pixelSize: 12 * textScale
+                        font.weight: Font.Bold
+                    }
+
+                    MouseArea {
+                        id: newMsgBackArea
+                        anchors.fill: parent
+                        onClicked: {
+                            currentView = "list"
+                        }
+                    }
+                }
+
+                Text {
+                    text: "New Message"
+                    color: "white"
+                    font.pixelSize: 11 * textScale
+                    font.weight: Font.Bold
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            // Separator line
+            Rectangle {
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 1
+                color: "#2a2a4e"
+            }
+        }
+
+        // Phone number input
+        Rectangle {
+            id: phoneInputRow
+            anchors.top: newMsgHeader.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 8 * textScale
+            anchors.topMargin: 8 * textScale
+            height: 28 * textScale
+            color: "#1a1a2e"
+            radius: 14 * textScale
+            border.color: "#2a2a4e"
+            border.width: 1
+
+            Row {
+                anchors.fill: parent
+                anchors.margins: 5 * textScale
+                spacing: 5 * textScale
+
+                Text {
+                    text: "To:"
+                    color: "#888899"
+                    font.pixelSize: 10 * textScale
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                TextInput {
+                    id: phoneInputField
+                    width: parent.width - 80 * textScale
+                    height: parent.height
+                    text: newMessagePhone
+                    onTextChanged: {
+                        newMessagePhone = text
+                        newMessageSearch = text
+                    }
+                    color: "white"
+                    font.pixelSize: 10 * textScale
+                    verticalAlignment: TextInput.AlignVCenter
+                    clip: true
+                    inputMethodHints: Qt.ImhDialableCharactersOnly
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Phone number or name..."
+                        color: "#666688"
+                        font.pixelSize: 10 * textScale
+                        visible: newMessagePhone.length === 0
+                    }
+                }
+
+                // Start conversation button
+                Rectangle {
+                    width: 50 * textScale
+                    height: 18 * textScale
+                    radius: 9 * textScale
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: newMessagePhone.length > 0 ? (startChatArea.pressed ? "#d93550" : accentColor) : "#3a3a4e"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Start"
+                        color: newMessagePhone.length > 0 ? "white" : "#666"
+                        font.pixelSize: 8 * textScale
+                        font.weight: Font.Bold
+                    }
+
+                    MouseArea {
+                        id: startChatArea
+                        anchors.fill: parent
+                        enabled: newMessagePhone.length > 0
+                        onClicked: {
+                            openConversation(newMessagePhone, "")
+                        }
+                    }
+                }
+            }
+        }
+
+        // Contacts list
+        ListView {
+            id: contactsListView
+            anchors.top: phoneInputRow.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 8 * textScale
+            anchors.topMargin: 4 * textScale
+            model: contactsModel
+            clip: true
+            spacing: 2 * textScale
+
+            delegate: Rectangle {
+                width: contactsListView.width
+                height: visible ? 36 * textScale : 0
+                visible: {
+                    if (newMessageSearch.length === 0) return true
+                    var search = newMessageSearch.toLowerCase()
+                    return model.name.toLowerCase().indexOf(search) >= 0 ||
+                           model.phone.indexOf(search) >= 0
+                }
+                color: contactItemArea.pressed ? "#2a2a4e" : "#1a1a2e"
+                radius: 8 * textScale
+
+                Row {
+                    anchors.fill: parent
+                    anchors.margins: 6 * textScale
+                    spacing: 8 * textScale
+
+                    // Avatar circle
+                    Rectangle {
+                        width: 24 * textScale
+                        height: 24 * textScale
+                        radius: 12 * textScale
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: {
+                            var colors = [accentColor, "#4a9eff", "#50c878", "#ff8c42", "#9b59b6", "#1abc9c"]
+                            var hash = 0
+                            var name = model.name
+                            for (var i = 0; i < name.length; i++) {
+                                hash = name.charCodeAt(i) + ((hash << 5) - hash)
+                            }
+                            return colors[Math.abs(hash) % colors.length]
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: {
+                                var parts = model.name.trim().split(" ")
+                                if (parts.length >= 2) {
+                                    return (parts[0][0] + parts[parts.length-1][0]).toUpperCase()
+                                }
+                                return model.name.substring(0, 2).toUpperCase()
+                            }
+                            color: "white"
+                            font.pixelSize: 9 * textScale
+                            font.weight: Font.Bold
+                        }
+                    }
+
+                    // Contact info
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 1 * textScale
+
+                        Text {
+                            text: model.name
+                            color: "white"
+                            font.pixelSize: 10 * textScale
+                            font.weight: Font.Bold
+                        }
+
+                        Text {
+                            text: model.phone
+                            color: "#888899"
+                            font.pixelSize: 8 * textScale
+                        }
+                    }
+                }
+
+                MouseArea {
+                    id: contactItemArea
+                    anchors.fill: parent
+                    onClicked: {
+                        openConversation(model.phone, model.name)
+                    }
+                }
+            }
+
+            // Empty state
+            Column {
+                anchors.centerIn: parent
+                spacing: 10 * textScale
+                visible: contactsModel.count === 0
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "📱"
+                    font.pixelSize: 29 * textScale
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "No contacts yet"
+                    color: "#666688"
+                    font.pixelSize: 10 * textScale
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Type a phone number above"
+                    color: "#555577"
+                    font.pixelSize: 9 * textScale
+                }
+            }
+        }
+    }
+
+    // New message FAB (only on list view)
+    Rectangle {
+        anchors.right: parent.right
+        anchors.bottom: backBtn.top
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 16
+        width: 96
+        height: 96
+        radius: 48
+        color: newMsgArea.pressed ? Qt.darker("#4a9eff", 1.2) : "#4a9eff"
+        visible: currentView === "list"
+        z: 100
+
+        Behavior on color { ColorAnimation { duration: 150 } }
+
+        Text {
+            anchors.centerIn: parent
+            text: "+"
+            font.pixelSize: 48
+            font.weight: Font.Medium
+            color: "#ffffff"
+        }
+
+        MouseArea {
+            id: newMsgArea
+            anchors.fill: parent
+            onClicked: {
+                currentView = "newMessage"
+                newMessagePhone = ""
+                newMessageSearch = ""
+            }
+        }
+    }
+
     // Back button (only on list view) - matches other apps
     Rectangle {
+        id: backBtn
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
-        radius: 36
+        width: 96
+        height: 96
+        radius: 48
         color: backBtnArea.pressed ? accentPressed : accentColor
         visible: currentView === "list"
         z: 100
@@ -673,7 +1036,7 @@ Window {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 40
             font.weight: Font.Medium
             color: "#ffffff"
         }
