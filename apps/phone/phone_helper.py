@@ -34,6 +34,54 @@ CMD_FILE = "/tmp/flick_phone_cmd"
 os.makedirs(STATE_DIR, exist_ok=True)
 
 
+def trigger_haptic():
+    """Trigger haptic feedback"""
+    try:
+        with open("/tmp/flick_haptic", "w") as f:
+            f.write("click")
+    except:
+        pass
+
+
+def play_ringtone():
+    """Play ringtone for incoming call"""
+    sound_file = os.path.expanduser("~/Flick/sounds/ringtone_gentle.wav")
+    if os.path.exists(sound_file):
+        try:
+            # Play ringtone in loop (will be killed when call is answered/rejected)
+            global ringtone_process
+            try:
+                ringtone_process = subprocess.Popen(
+                    ["paplay", "--volume=65536", sound_file],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            except FileNotFoundError:
+                ringtone_process = subprocess.Popen(
+                    ["aplay", sound_file],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            print("Playing ringtone")
+        except Exception as e:
+            print(f"Failed to play ringtone: {e}")
+
+
+def stop_ringtone():
+    """Stop playing ringtone"""
+    global ringtone_process
+    try:
+        if 'ringtone_process' in globals() and ringtone_process:
+            ringtone_process.terminate()
+            ringtone_process = None
+            print("Stopped ringtone")
+    except:
+        pass
+
+
+ringtone_process = None
+
+
 def setup_call_audio():
     """Setup audio routing for voice call on Droidian/Android devices"""
     try:
@@ -348,23 +396,28 @@ def daemon_mode():
             status = ofono.get_status()
             current_state = status.get("state", "idle")
 
-            # Detect call becoming active - setup audio
+            # Detect call becoming active - setup audio, stop ringtone
             if current_state == "active" and last_state != "active":
                 print("Call became active - setting up audio")
+                stop_ringtone()
                 setup_call_audio()
 
             # Detect call end
-            if last_state in ["active", "alerting", "dialing"] and current_state == "idle":
+            if last_state in ["active", "alerting", "dialing", "incoming"] and current_state == "idle":
                 duration = int(time.time() - call_start) if call_start else 0
                 direction = "outgoing" if last_state == "dialing" else "incoming"
                 add_to_history(call_number, direction, duration)
                 call_start = None
                 call_number = ""
+                stop_ringtone()
                 teardown_call_audio()
 
-            # Detect incoming call
+            # Detect incoming call - play ringtone
             if current_state == "incoming" and last_state == "idle":
                 call_number = status.get("number", "Unknown")
+                print(f"Incoming call from {call_number}")
+                trigger_haptic()
+                play_ringtone()
 
             # Update status file
             status["duration"] = int(time.time() - call_start) if call_start else 0

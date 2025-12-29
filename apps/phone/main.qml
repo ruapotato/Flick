@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
+import "../shared"
 
 Window {
     id: root
@@ -126,6 +127,7 @@ Window {
 
     function dial() {
         if (phoneNumber.length > 0) {
+            Haptic.click()
             callState = "dialing"
             callerNumber = phoneNumber
             inCall = true
@@ -135,6 +137,7 @@ Window {
     }
 
     function hangup() {
+        Haptic.click()
         writeCommand("hangup", "")
         inCall = false
         callState = "idle"
@@ -142,6 +145,7 @@ Window {
     }
 
     function answer() {
+        Haptic.click()
         writeCommand("answer", "")
         callState = "active"
     }
