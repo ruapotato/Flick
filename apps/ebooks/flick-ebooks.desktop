@@ -1,7 +1,0 @@
-[Desktop Entry]
-Name=Flick Ebooks
-Comment=Ebook reader
-Exec=sh -c "$HOME/Flick/apps/ebooks/run_ebooks.sh"
-Icon=ebooks
-Type=Application
-Categories=Office;Viewer;
