@@ -20,47 +20,30 @@ fi
 TEMP_DIR=$(mktemp -d)
 unzip -q -o "$EPUB_FILE" -d "$TEMP_DIR" 2>/dev/null
 
-# Find OPF file
-OPF=$(find "$TEMP_DIR" -name "*.opf" 2>/dev/null | head -1)
-if [ -z "$OPF" ]; then
-    rm -rf "$TEMP_DIR"
-    exit 1
-fi
-
-OPF_DIR=$(dirname "$OPF")
-
-# Get spine order
-SPINE_IDS=$(grep -oP '<itemref[^>]*idref="\K[^"]+' "$OPF" 2>/dev/null)
-
-# Extract text in order
+# Find all HTML/XHTML files and extract text
 > "$TXT_FILE"
 
-for IDREF in $SPINE_IDS; do
-    HREF=$(grep -oP "<item[^>]*id=\"$IDREF\"[^>]*href=\"\K[^\"]+|<item[^>]*href=\"([^\"]+)\"[^>]*id=\"$IDREF\"" "$OPF" 2>/dev/null | head -1)
-    if [ -n "$HREF" ]; then
-        CHAPTER="$OPF_DIR/$HREF"
-        if [ -f "$CHAPTER" ]; then
-            # Strip HTML tags, decode entities, clean up
-            sed -e 's/<style[^>]*>.*<\/style>//g' \
-                -e 's/<script[^>]*>.*<\/script>//g' \
-                -e 's/<br[^>]*>/\n/gi' \
-                -e 's/<\/p>/\n\n/gi' \
-                -e 's/<\/div>/\n/gi' \
-                -e 's/<\/h[1-6]>/\n\n/gi' \
-                -e 's/<[^>]*>//g' \
-                "$CHAPTER" | \
-            sed -e 's/&nbsp;/ /g' \
-                -e 's/&amp;/\&/g' \
-                -e 's/&lt;/</g' \
-                -e 's/&gt;/>/g' \
-                -e 's/&quot;/"/g' \
-                -e "s/&#39;/'/g" \
-                -e 's/&#[0-9]*;//g' | \
-            tr -s ' \t' ' ' | \
-            sed -e 's/^ *//' -e '/^$/d' >> "$TXT_FILE"
-            echo -e "\n\n" >> "$TXT_FILE"
-        fi
-    fi
+find "$TEMP_DIR" -type f \( -name "*.html" -o -name "*.xhtml" -o -name "*.htm" \) | sort | while read -r CHAPTER; do
+    # Strip HTML tags and decode entities
+    sed -e 's/<style[^>]*>.*<\/style>//g' \
+        -e 's/<script[^>]*>.*<\/script>//g' \
+        -e 's/<br[^>]*>/\n/gi' \
+        -e 's/<\/p>/\n\n/gi' \
+        -e 's/<\/div>/\n/gi' \
+        -e 's/<\/h[1-6]>/\n\n/gi' \
+        -e 's/<[^>]*>//g' \
+        "$CHAPTER" 2>/dev/null | \
+    sed -e 's/&nbsp;/ /g' \
+        -e 's/&amp;/\&/g' \
+        -e 's/&lt;/</g' \
+        -e 's/&gt;/>/g' \
+        -e 's/&quot;/"/g' \
+        -e "s/&#39;/'/g" \
+        -e 's/&#[0-9]*;//g' \
+        -e 's/&[a-z]*;//g' | \
+    tr -s ' \t' ' ' | \
+    sed -e 's/^ *//' >> "$TXT_FILE"
+    echo -e "\n\n" >> "$TXT_FILE"
 done
 
 rm -rf "$TEMP_DIR"
