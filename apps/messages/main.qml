@@ -194,34 +194,43 @@ Window {
             if (xhr.status === 200 || xhr.status === 0) {
                 var data = JSON.parse(xhr.responseText)
 
-                // Find conversation for this phone number
+                // Find conversation for this phone number (with normalization)
+                var normalizedInput = phoneNumber.replace(/[\s\-\(\)\+]/g, "")
+                if (normalizedInput.length === 11 && normalizedInput.charAt(0) === '1') {
+                    normalizedInput = normalizedInput.substring(1)
+                }
+
                 var newMessages = []
                 for (var i = 0; i < data.conversations.length; i++) {
-                    if (data.conversations[i].phone_number === phoneNumber) {
+                    var convPhone = data.conversations[i].phone_number.replace(/[\s\-\(\)\+]/g, "")
+                    if (convPhone.length === 11 && convPhone.charAt(0) === '1') {
+                        convPhone = convPhone.substring(1)
+                    }
+                    if (convPhone === normalizedInput) {
                         newMessages = data.conversations[i].messages || []
                         break
                     }
                 }
 
-                // Check if we have new messages
-                var hasNewMessages = false
-                if (newMessages.length > 0) {
-                    var newestMsg = newMessages[newMessages.length - 1]
-                    if (newestMsg.text !== lastMessageText) {
-                        hasNewMessages = true
-                        lastMessageText = newestMsg.text
+                // Check if message count changed (new messages arrived)
+                var hasNewMessages = newMessages.length > messagesModel.count
+
+                // Only rebuild model if count changed
+                if (newMessages.length !== messagesModel.count) {
+                    messagesModel.clear()
+                    for (var j = 0; j < newMessages.length; j++) {
+                        messagesModel.append(newMessages[j])
                     }
-                }
 
-                // Update model
-                messagesModel.clear()
-                for (var j = 0; j < newMessages.length; j++) {
-                    messagesModel.append(newMessages[j])
-                }
+                    // Update last message text
+                    if (newMessages.length > 0) {
+                        lastMessageText = newMessages[newMessages.length - 1].text
+                    }
 
-                // Only auto-scroll if user hasn't scrolled up and we have new messages
-                if (hasNewMessages && !userScrolledUp && messagesModel.count > 0) {
-                    scrollToBottomTimer.restart()
+                    // Only auto-scroll if we have NEW messages (not on initial load handled elsewhere)
+                    if (hasNewMessages && !userScrolledUp && messagesModel.count > 0) {
+                        scrollToBottomTimer.restart()
+                    }
                 }
             }
         } catch (e) {
