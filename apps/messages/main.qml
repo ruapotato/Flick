@@ -317,6 +317,8 @@ Window {
 
     function openConversation(phoneNumber, contactName) {
         currentConversation = phoneNumber
+        // Reload contacts in case a new one was added
+        loadContacts()
         // Try to get contact name from contacts if not provided
         var name = contactName || getContactName(phoneNumber)
         currentContactName = name || phoneNumber
@@ -606,7 +608,7 @@ Window {
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 1 * textScale
-                    width: parent.width - 40 * textScale
+                    width: parent.width
 
                     Text {
                         text: currentContactName
@@ -622,34 +624,6 @@ Window {
                         color: "#888899"
                         font.pixelSize: 8 * textScale
                         visible: currentConversation !== currentContactName
-                    }
-                }
-
-                // Save contact button (only for unknown numbers)
-                Rectangle {
-                    width: 48 * textScale
-                    height: 48 * textScale
-                    radius: 24 * textScale
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: saveContactArea.pressed ? "#1a6a2a" : "#228B22"
-                    visible: currentContactName === currentConversation
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "+"
-                        color: "white"
-                        font.pixelSize: 28 * textScale
-                        font.weight: Font.Bold
-                    }
-
-                    MouseArea {
-                        id: saveContactArea
-                        anchors.fill: parent
-                        anchors.margins: -8  // Extend hitbox
-                        onClicked: {
-                            Haptic.click()
-                            launchAddContact(currentConversation)
-                        }
                     }
                 }
             }
@@ -875,6 +849,39 @@ Window {
                 id: backArea
                 anchors.fill: parent
                 onClicked: backToList()
+            }
+        }
+
+        // Save contact button - floating on left (only for unknown numbers)
+        Rectangle {
+            anchors.left: parent.left
+            anchors.bottom: inputArea.top
+            anchors.leftMargin: 24
+            anchors.bottomMargin: 8
+            width: 96
+            height: 96
+            radius: 48
+            color: saveContactArea.pressed ? "#1a6a2a" : "#228B22"
+            visible: currentContactName === currentConversation
+            z: 100
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            Text {
+                anchors.centerIn: parent
+                text: "+"
+                color: "white"
+                font.pixelSize: 48
+                font.weight: Font.Bold
+            }
+
+            MouseArea {
+                id: saveContactArea
+                anchors.fill: parent
+                onClicked: {
+                    Haptic.click()
+                    launchAddContact(currentConversation)
+                }
             }
         }
     }
