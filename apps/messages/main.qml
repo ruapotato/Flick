@@ -297,9 +297,47 @@ Window {
         lastMessageText = ""
         userScrolledUp = false
         loadMessages(phoneNumber)
+        // Clear unread count for this conversation
+        markConversationRead(phoneNumber)
         // Initial load always scrolls to bottom
         if (messagesModel.count > 0) {
             messagesList.positionViewAtEnd()
+        }
+    }
+
+    function markConversationRead(phoneNumber) {
+        var messagesPath = "/home/droidian/.local/state/flick/messages.json"
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + messagesPath, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var data = JSON.parse(xhr.responseText)
+                var normalizedInput = phoneNumber.replace(/[\s\-\(\)\+]/g, "")
+                if (normalizedInput.length === 11 && normalizedInput.charAt(0) === '1') {
+                    normalizedInput = normalizedInput.substring(1)
+                }
+
+                // Find and update conversation
+                for (var i = 0; i < data.conversations.length; i++) {
+                    var conv = data.conversations[i]
+                    var normalizedConv = conv.phone_number.replace(/[\s\-\(\)\+]/g, "")
+                    if (normalizedConv.length === 11 && normalizedConv.charAt(0) === '1') {
+                        normalizedConv = normalizedConv.substring(1)
+                    }
+                    if (normalizedInput === normalizedConv) {
+                        conv.unread_count = 0
+                        break
+                    }
+                }
+
+                // Save back
+                var saveXhr = new XMLHttpRequest()
+                saveXhr.open("PUT", "file://" + messagesPath, false)
+                saveXhr.send(JSON.stringify(data, null, 2))
+            }
+        } catch (e) {
+            console.log("Failed to mark conversation read: " + e)
         }
     }
 
@@ -527,34 +565,11 @@ Window {
                 anchors.margins: 8 * textScale
                 spacing: 8 * textScale
 
-                // Back button
-                Rectangle {
-                    width: 24 * textScale
-                    height: 24 * textScale
-                    radius: 12 * textScale
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: backArea.pressed ? "#3a3a4e" : "#2a2a3e"
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "←"
-                        color: accentColor
-                        font.pixelSize: 12 * textScale
-                        font.weight: Font.Bold
-                    }
-
-                    MouseArea {
-                        id: backArea
-                        anchors.fill: parent
-                        onClicked: backToList()
-                    }
-                }
-
                 // Contact info
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 1 * textScale
-                    width: parent.width - 80 * textScale
+                    width: parent.width - 40 * textScale
 
                     Text {
                         text: currentContactName
@@ -572,9 +587,6 @@ Window {
                         visible: currentConversation !== currentContactName
                     }
                 }
-
-                // Spacer
-                Item { width: 8 * textScale; height: 1 }
 
                 // Save contact button (only for unknown numbers)
                 Rectangle {
@@ -805,6 +817,33 @@ Window {
                         onClicked: sendMessage()
                     }
                 }
+            }
+        }
+
+        // Back button - bottom right, above input
+        Rectangle {
+            anchors.right: parent.right
+            anchors.bottom: inputArea.top
+            anchors.rightMargin: 12
+            anchors.bottomMargin: 8
+            width: 56
+            height: 56
+            radius: 28
+            color: backArea.pressed ? accentPressed : accentColor
+            z: 100
+
+            Text {
+                anchors.centerIn: parent
+                text: "←"
+                font.pixelSize: 28
+                font.weight: Font.Medium
+                color: "#ffffff"
+            }
+
+            MouseArea {
+                id: backArea
+                anchors.fill: parent
+                onClicked: backToList()
             }
         }
     }
