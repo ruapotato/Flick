@@ -662,6 +662,16 @@ fn handle_input_event(
                 // Handle edge swipe start for quick settings, app switcher, and home/close gestures
                 if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
                     let shell_view = state.shell.view;
+
+                    // Cancel any pending touch sequences immediately when edge gesture starts
+                    // This prevents the app from having a "stuck" touch when gesture is recognized
+                    if shell_view == crate::shell::ShellView::App {
+                        if let Some(touch) = state.seat.get_touch() {
+                            touch.cancel(state);
+                            info!("Edge gesture started: cancelled pending touch sequences");
+                        }
+                    }
+
                     // Left edge = Quick Settings (blocked on lock screen)
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
                         state.qs_gesture_active = true;
@@ -894,6 +904,16 @@ fn handle_input_event(
                 // Handle edge swipe start (when PotentialEdgeSwipe activates after min drag distance)
                 if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
                     let shell_view = state.shell.view;
+
+                    // Cancel any pending touch sequences immediately when edge gesture starts
+                    // This prevents the app from having a "stuck" touch when gesture is recognized
+                    if shell_view == crate::shell::ShellView::App {
+                        if let Some(touch) = state.seat.get_touch() {
+                            touch.cancel(state);
+                            info!("Edge gesture started (motion): cancelled pending touch sequences");
+                        }
+                    }
+
                     // Left edge = Quick Settings
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
                         state.qs_gesture_active = true;
