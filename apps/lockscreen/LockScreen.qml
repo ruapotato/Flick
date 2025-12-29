@@ -14,7 +14,6 @@ Item {
     property color accentColor: "#e94560"  // Default accent color
 
     signal unlocked()
-    signal userActivity()  // Emitted on any touch to hide effects
 
     // Load accent color from config
     Component.onCompleted: loadAccentColor()
@@ -332,7 +331,6 @@ Item {
             isHorizontal = false
             gestureDecided = false
             touchedNotifIndex = findNotificationAt(mouse.x, mouse.y)
-            lockScreen.userActivity()  // Notify of user interaction
         }
 
         onPositionChanged: {
@@ -448,16 +446,6 @@ Item {
 
         Behavior on opacity {
             NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
-        }
-
-        // Activity detector - emit userActivity on any touch in unlock overlay
-        MouseArea {
-            anchors.fill: parent
-            propagateComposedEvents: true
-            onPressed: {
-                lockScreen.userActivity()
-                mouse.accepted = false  // Let children handle it
-            }
         }
 
         // Semi-transparent background

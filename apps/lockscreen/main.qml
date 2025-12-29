@@ -15,7 +15,6 @@ Window {
     // State dir - use droidian home on phone, wrapper script sets this path
     property string stateDir: "/home/droidian/.local/state/flick"
     property string wallpaperPath: ""
-    property bool spyEyeEnabled: true  // Enable the spooky eye effect
 
     Component.onCompleted: {
         console.log("Lock screen started")
@@ -35,11 +34,6 @@ Window {
                 if (config.wallpaper) {
                     wallpaperPath = config.wallpaper
                     console.log("Loaded wallpaper:", wallpaperPath)
-                }
-                // Load spy eye setting (default to true if not set)
-                if (config.spy_eye_enabled !== undefined) {
-                    spyEyeEnabled = config.spy_eye_enabled
-                    console.log("Spy eye enabled:", spyEyeEnabled)
                 }
             }
         } catch (e) {
@@ -88,14 +82,6 @@ Window {
         opacity: wallpaperPath !== "" ? 0.4 : 0
     }
 
-    // Spooky spy eye effect - appears after inactivity
-    SpyEye {
-        id: spyEye
-        anchors.fill: parent
-        enabled: spyEyeEnabled
-        z: 5  // Above background, below UI elements
-    }
-
     LockScreen {
         anchors.fill: parent
         lockMethod: root.lockMethod
@@ -107,10 +93,6 @@ Window {
         onUnlocked: {
             console.log("Unlocked! Quitting...")
             Qt.quit()
-        }
-
-        onUserActivity: {
-            spyEye.onUserActivity()
         }
     }
 }

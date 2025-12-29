@@ -22,7 +22,7 @@ Page {
     property bool rainEffectEnabled: false // Compiz-style rain ripples
 
     // Lock screen effects
-    property bool spyEyeEnabled: true    // Spooky eye that appears on lock screen
+    property bool spyEyeEnabled: true    // Screen savers enabled
 
     property string configPath: "/home/droidian/.local/state/flick/effects_config.json"
     property string displayConfigPath: "/home/droidian/.local/state/flick/display_config.json"
@@ -94,7 +94,7 @@ Page {
             xhr.send()
             if (xhr.status === 200) {
                 var config = JSON.parse(xhr.responseText)
-                if (config.spy_eye_enabled !== undefined) spyEyeEnabled = config.spy_eye_enabled
+                if (config.screen_saver_enabled !== undefined) spyEyeEnabled = config.screen_saver_enabled
             }
         } catch (e) {
             console.log("Using default display config for effects")
@@ -114,8 +114,8 @@ Page {
             }
         } catch (e) {}
 
-        // Update with spy eye setting
-        existingConfig.spy_eye_enabled = spyEyeEnabled
+        // Update with screen saver setting
+        existingConfig.screen_saver_enabled = spyEyeEnabled
 
         // Save back
         var xhrWrite = new XMLHttpRequest()
@@ -581,12 +581,12 @@ Page {
                 leftPadding: 8
             }
 
-            // Spy Eye toggle
+            // Screen Saver toggle
             EffectToggle {
                 width: settingsColumn.width
-                title: "Spy Eye"
-                subtitle: "Spooky eye that watches when idle"
-                icon: "👁️"
+                title: "Screen Savers"
+                subtitle: "Fun effects when screen is blanked"
+                icon: "🖥️"
                 checked: spyEyeEnabled
                 accentColor: "#9944ff"
                 onToggled: {
@@ -595,7 +595,7 @@ Page {
                 }
             }
 
-            // Spy Eye description card
+            // Screen Saver description card
             Rectangle {
                 width: settingsColumn.width
                 height: spyEyeDescCol.height + 24
@@ -614,14 +614,14 @@ Page {
 
                     Text {
                         width: parent.width
-                        text: "A line-drawn eye appears on the lock screen after a few seconds of inactivity. It opens, looks around curiously, then closes again."
+                        text: "Screen savers appear briefly after the display blanks. Effects include a spooky eye that looks around, Pacman crossing the screen, and more. Active for 1 minute after locking."
                         font.pixelSize: 13
                         color: "#888899"
                         wrapMode: Text.WordWrap
                     }
 
                     Text {
-                        text: "Touch the screen to make it close quickly."
+                        text: "Touch the screen to wake it normally."
                         font.pixelSize: 12
                         color: "#666677"
                         font.italic: true

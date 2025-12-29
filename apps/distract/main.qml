@@ -56,74 +56,79 @@ Window {
 
     // ==================== SOUND GENERATION ====================
 
-    // Generate and play a tone using AudioOutput
-    // Frequency based on X position, duration based on touch type
+    // Audio player pool for polyphonic sound playback
+    property var audioPool: []
+    property int audioPoolSize: 10
+    property int currentAudioIndex: 0
+
+    // Available frequencies and waveforms
+    property var frequencies: [200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800]
+    property var waveformNames: ["sine", "square", "triangle", "sawtooth"]
+
+    // Initialize audio pool
+    Component.onCompleted: {
+        for (var i = 0; i < audioPoolSize; i++) {
+            var audio = Qt.createQmlObject('
+                import QtQuick 2.15
+                import QtMultimedia 5.15
+                Audio {
+                    autoPlay: false
+                    volume: 0.5
+                }
+            ', root)
+            audioPool.push(audio)
+        }
+    }
+
+    // Generate and play a tone
+    // Frequency based on X position, volume/timbre based on Y position
     function playSound(x, y, isTap) {
         // Normalize position
         var normX = x / root.width   // 0-1, affects pitch
         var normY = y / root.height  // 0-1, affects volume/character
 
-        // Create audio player for this sound
-        var freq = 200 + normX * 600  // 200-800 Hz based on X
-        var volume = 0.3 + (1 - normY) * 0.5  // louder at top
+        // Map X to frequency index (0-12 for 13 frequencies)
+        var freqIndex = Math.floor(normX * (frequencies.length - 1))
+        var freq = frequencies[freqIndex]
 
-        // Use different sound characteristics
-        var soundType = Math.floor(Math.random() * 4)
+        // Map Y to volume (louder at top)
+        var volume = 0.3 + (1 - normY) * 0.5  // 0.3-0.8
 
-        var player = soundPlayerComponent.createObject(root, {
-            frequency: freq,
-            soundVolume: volume,
-            soundType: soundType,
-            duration: isTap ? 150 : 80
-        })
+        // Map Y to waveform type (different timbre vertically)
+        var waveType = Math.floor(normY * 3.99)  // 0-3 based on Y position
+        waveType = Math.min(3, Math.max(0, waveType))
+
+        // Play the beep
+        playBeep(freq, waveType, volume)
+
+        // Haptic feedback
+        Haptic.tap()
+
+        // Create visual feedback
+        for (var i = 0; i < 3; i++) {
+            var wave = soundWaveComponent.createObject(root, {
+                centerX: x,
+                centerY: y,
+                hue: normX,
+                delay: i * 50,
+                waveSize: 50 + volume * 100
+            })
+        }
     }
 
-    // Sound player component that generates tones
-    Component {
-        id: soundPlayerComponent
-        Item {
-            id: soundPlayer
-            property real frequency: 440
-            property real soundVolume: 0.5
-            property int soundType: 0
-            property int duration: 150
+    // Play a beep from pre-generated sound files
+    function playBeep(freq, waveType, volume) {
+        // Get next available audio player from pool
+        var audio = audioPool[currentAudioIndex]
+        currentAudioIndex = (currentAudioIndex + 1) % audioPoolSize
 
-            Component.onCompleted: {
-                // Play the generated tone
-                generateAndPlay()
-            }
+        // Set audio source and volume
+        var soundFile = "sounds/beep_" + freq + "_" + waveType + ".wav"
+        audio.source = soundFile
+        audio.volume = volume
 
-            function generateAndPlay() {
-                // Use MediaPlayer with generated audio data
-                // For now, trigger haptic as audio feedback
-                Haptic.tap()
-
-                // Create visual feedback as "sound"
-                createSoundVisual()
-
-                // Destroy after duration
-                destroyTimer.start()
-            }
-
-            function createSoundVisual() {
-                // Create expanding sound wave visualization
-                for (var i = 0; i < 3; i++) {
-                    var wave = soundWaveComponent.createObject(root, {
-                        centerX: root.width * (frequency - 200) / 600,
-                        centerY: root.height * (1 - soundVolume),
-                        hue: (frequency - 200) / 600,
-                        delay: i * 50,
-                        waveSize: 50 + soundVolume * 100
-                    })
-                }
-            }
-
-            Timer {
-                id: destroyTimer
-                interval: soundPlayer.duration + 200
-                onTriggered: soundPlayer.destroy()
-            }
-        }
+        // Play the sound
+        audio.play()
     }
 
     // Sound wave visual component
@@ -223,8 +228,8 @@ Window {
                     currentSwipeEffect = getRandomSwipeEffect()
                 }
 
-                // Play swipe sound (quieter, position-based)
-                if (Math.random() < 0.3) {
+                // Play swipe sound (position-based, more frequent for fun)
+                if (Math.random() < 0.5) {
                     playSound(x, y, false)
                 }
 
@@ -246,6 +251,8 @@ Window {
                 // Big swipe finale effect
                 if (speed > 200) {
                     createSwipeFinale(mouse.x, mouse.y, dx, dy, speed)
+                    // Play a fun high-pitched finale sound
+                    playSound(mouse.x, mouse.y, true)
                 }
             }
             isSwiping = false

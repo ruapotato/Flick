@@ -2143,11 +2143,34 @@ pub fn run() -> Result<()> {
         }
         was_blanked = state.shell.display_blanked;
 
-        // Skip rendering if display is blanked
+        // Check for screen saver when display is blanked
         if state.shell.display_blanked {
-            // Still need to dispatch events but don't render
-            std::thread::sleep(Duration::from_millis(100));
-            continue;
+            // Check if screen saver should start
+            if state.shell.screen_saver.should_start_saver() {
+                // Wake display for screen saver
+                info!("Waking display for screen saver");
+                if let Err(e) = hwc_display.hwc_ctx.set_power(true) {
+                    error!("Failed to wake display for screen saver: {}", e);
+                }
+                // Continue to render the screen saver below
+            } else if state.shell.screen_saver.active_saver.is_some() {
+                // Screen saver running - update and check if done
+                let still_running = state.shell.screen_saver.update();
+                if !still_running {
+                    // Screen saver done - blank display again
+                    info!("Screen saver finished, blanking display");
+                    if let Err(e) = hwc_display.hwc_ctx.set_power(false) {
+                        error!("Failed to blank display after screen saver: {}", e);
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                    continue;
+                }
+                // Continue to render the screen saver below
+            } else {
+                // No screen saver active, display is blanked
+                std::thread::sleep(Duration::from_millis(100));
+                continue;
+            }
         }
 
         // Periodic system refresh (battery, wifi, etc.) - every 10 seconds
@@ -2524,6 +2547,22 @@ fn render_frame(
         Some(display.egl_surface),
         Some(display.egl_context),
     ).map_err(|e| anyhow::anyhow!("Failed to make context current: {:?}", e))?;
+
+    // Check if screen saver is active - if so, render it and skip normal content
+    if let Some(ref saver) = state.shell.screen_saver.active_saver {
+        unsafe {
+            gl::render_screen_saver(
+                display.width as u32,
+                display.height as u32,
+                saver,
+            );
+            gl::Flush();
+        }
+        // Swap buffers and return
+        display.egl_instance.swap_buffers(display.egl_display, display.egl_surface)
+            .map_err(|e| anyhow::anyhow!("Failed to swap buffers: {:?}", e))?;
+        return Ok(());
+    }
 
     // Calculate effect time for animated effects (living pixels, CRT flicker)
     let effect_time = unsafe {
@@ -5131,6 +5170,258 @@ mod gl {
         }
 
         Some(flipped)
+    }
+
+    /// Render the Spy Eye screen saver
+    /// eye_open: 0.0 (closed) to 1.0 (open)
+    /// look_x, look_y: -1 to 1 for eye direction
+    pub unsafe fn render_spy_eye(
+        screen_width: u32,
+        screen_height: u32,
+        eye_open: f32,
+        look_x: f32,
+        look_y: f32,
+        accent_color: [f32; 4],
+    ) {
+        // Clear to black
+        ClearColor(0.0, 0.0, 0.0, 1.0);
+        Clear(COLOR_BUFFER_BIT);
+
+        if eye_open < 0.01 {
+            return; // Eye is closed, just black screen
+        }
+
+        // Eye dimensions - xeyes style, big and simple
+        let center_x = screen_width as f32 / 2.0;
+        let center_y = screen_height as f32 / 2.0;
+
+        // Large eye - 70% of screen width
+        let eye_width = screen_width as f32 * 0.7;
+        let eye_height = eye_width * 0.5 * eye_open; // Oval shape, height based on openness
+
+        // Draw using a simple colored texture approach
+        // Create a texture buffer for the eye
+        let tex_size = 256u32;
+        let mut pixels = vec![0u8; (tex_size * tex_size * 4) as usize];
+
+        // Draw eye shape in the texture
+        let tex_center = tex_size as f32 / 2.0;
+        let eye_radius_x = tex_size as f32 * 0.45;
+        let eye_radius_y = eye_radius_x * 0.5 * eye_open;
+
+        // Pupil parameters
+        let pupil_radius = eye_radius_y * 0.4;
+        let iris_radius = pupil_radius * 1.8;
+        let pupil_offset_x = look_x * eye_radius_x * 0.3;
+        let pupil_offset_y = look_y * eye_radius_y * 0.4;
+
+        for py in 0..tex_size {
+            for px in 0..tex_size {
+                let x = px as f32 - tex_center;
+                let y = py as f32 - tex_center;
+                let idx = ((py * tex_size + px) * 4) as usize;
+
+                // Check if inside eye outline (ellipse)
+                let eye_dist = (x / eye_radius_x).powi(2) + (y / eye_radius_y).powi(2);
+
+                if eye_dist <= 1.0 {
+                    // Inside eye - white sclera
+                    pixels[idx] = 255;     // R
+                    pixels[idx + 1] = 255; // G
+                    pixels[idx + 2] = 255; // B
+                    pixels[idx + 3] = 255; // A
+
+                    // Check for iris
+                    let dx = x - pupil_offset_x;
+                    let dy = y - pupil_offset_y;
+                    let dist_from_pupil = (dx * dx + dy * dy).sqrt();
+
+                    if dist_from_pupil <= iris_radius {
+                        // Iris - accent color
+                        let r = (accent_color[0] * 255.0) as u8;
+                        let g = (accent_color[1] * 255.0) as u8;
+                        let b = (accent_color[2] * 255.0) as u8;
+                        pixels[idx] = r;
+                        pixels[idx + 1] = g;
+                        pixels[idx + 2] = b;
+
+                        if dist_from_pupil <= pupil_radius {
+                            // Pupil - black
+                            pixels[idx] = 0;
+                            pixels[idx + 1] = 0;
+                            pixels[idx + 2] = 0;
+
+                            // Highlight
+                            let hx = dx + pupil_radius * 0.3;
+                            let hy = dy + pupil_radius * 0.3;
+                            if (hx * hx + hy * hy).sqrt() <= pupil_radius * 0.25 {
+                                pixels[idx] = 255;
+                                pixels[idx + 1] = 255;
+                                pixels[idx + 2] = 255;
+                            }
+                        }
+                    }
+                } else if eye_dist <= 1.1 {
+                    // Eye outline - accent color
+                    let r = (accent_color[0] * 255.0) as u8;
+                    let g = (accent_color[1] * 255.0) as u8;
+                    let b = (accent_color[2] * 255.0) as u8;
+                    pixels[idx] = r;
+                    pixels[idx + 1] = g;
+                    pixels[idx + 2] = b;
+                    pixels[idx + 3] = 255;
+                }
+            }
+        }
+
+        // Render the eye texture centered on screen
+        let eye_x = ((screen_width as f32 - eye_width) / 2.0) as i32;
+        let eye_y = ((screen_height as f32 - eye_height) / 2.0) as i32;
+
+        render_texture_at(
+            tex_size, tex_size, &pixels,
+            screen_width, screen_height,
+            eye_x, eye_y,
+        );
+    }
+
+    /// Render the Pacman screen saver
+    /// pacman_x: 0.0 to 1.0 for screen position
+    /// mouth_open: 0.0 to 1.0 for mouth animation
+    pub unsafe fn render_pacman(
+        screen_width: u32,
+        screen_height: u32,
+        pacman_x: f32,
+        mouth_open: f32,
+        accent_color: [f32; 4],
+    ) {
+        // Clear to black
+        ClearColor(0.0, 0.0, 0.0, 1.0);
+        Clear(COLOR_BUFFER_BIT);
+
+        // Pacman size - about 15% of screen width
+        let pac_size = (screen_width as f32 * 0.15) as u32;
+        let pac_radius = pac_size as f32 / 2.0;
+
+        // Position
+        let x_pos = (pacman_x * screen_width as f32) as i32 - (pac_size as i32 / 2);
+        let y_pos = (screen_height as i32 / 2) - (pac_size as i32 / 2);
+
+        // Create pacman texture
+        let mut pixels = vec![0u8; (pac_size * pac_size * 4) as usize];
+        let center = pac_size as f32 / 2.0;
+        let mouth_angle = mouth_open * 0.4; // Max 40 degree mouth opening
+
+        for py in 0..pac_size {
+            for px in 0..pac_size {
+                let x = px as f32 - center;
+                let y = py as f32 - center;
+                let idx = ((py * pac_size + px) * 4) as usize;
+
+                let dist = (x * x + y * y).sqrt();
+                if dist <= pac_radius * 0.95 {
+                    // Check if in mouth area
+                    let angle = y.atan2(x).abs();
+                    if angle < mouth_angle * std::f32::consts::PI {
+                        // Mouth - transparent
+                        continue;
+                    }
+
+                    // Pacman body - yellow (or accent color)
+                    pixels[idx] = (accent_color[0] * 255.0) as u8;
+                    pixels[idx + 1] = (accent_color[1] * 255.0) as u8;
+                    pixels[idx + 2] = (accent_color[2] * 255.0) as u8;
+                    pixels[idx + 3] = 255;
+
+                    // Eye
+                    let eye_x = center * 0.2;
+                    let eye_y = -center * 0.4;
+                    let eye_dist = ((x - eye_x).powi(2) + (y - eye_y).powi(2)).sqrt();
+                    if eye_dist <= pac_radius * 0.12 {
+                        pixels[idx] = 0;
+                        pixels[idx + 1] = 0;
+                        pixels[idx + 2] = 0;
+                    }
+                }
+            }
+        }
+
+        // Draw some dots ahead of pacman
+        let dot_size = 16u32;
+        let mut dot_pixels = vec![0u8; (dot_size * dot_size * 4) as usize];
+        for py in 0..dot_size {
+            for px in 0..dot_size {
+                let x = px as f32 - dot_size as f32 / 2.0;
+                let y = py as f32 - dot_size as f32 / 2.0;
+                let idx = ((py * dot_size + px) * 4) as usize;
+                if (x * x + y * y).sqrt() <= dot_size as f32 / 2.5 {
+                    dot_pixels[idx] = 255;
+                    dot_pixels[idx + 1] = 255;
+                    dot_pixels[idx + 2] = 255;
+                    dot_pixels[idx + 3] = 255;
+                }
+            }
+        }
+
+        // Render dots ahead of pacman
+        let dot_y = screen_height as i32 / 2 - dot_size as i32 / 2;
+        for i in 0..5 {
+            let dot_x = x_pos + pac_size as i32 + 50 + (i * 80);
+            if dot_x > 0 && dot_x < screen_width as i32 {
+                render_texture_at(
+                    dot_size, dot_size, &dot_pixels,
+                    screen_width, screen_height,
+                    dot_x, dot_y,
+                );
+            }
+        }
+
+        // Render pacman
+        render_texture_at(
+            pac_size, pac_size, &pixels,
+            screen_width, screen_height,
+            x_pos, y_pos,
+        );
+    }
+
+    /// Check if screen saver is active and render it
+    /// Returns true if screen saver was rendered (caller should skip normal rendering)
+    pub unsafe fn render_screen_saver(
+        screen_width: u32,
+        screen_height: u32,
+        saver: &crate::shell::screen_saver::ActiveScreenSaver,
+    ) -> bool {
+        use crate::shell::screen_saver::ScreenSaverType;
+
+        match saver.saver_type {
+            ScreenSaverType::SpyEye => {
+                render_spy_eye(
+                    screen_width,
+                    screen_height,
+                    saver.eye_open,
+                    saver.eye_look_x,
+                    saver.eye_look_y,
+                    saver.accent_color,
+                );
+                true
+            }
+            ScreenSaverType::Pacman => {
+                render_pacman(
+                    screen_width,
+                    screen_height,
+                    saver.pacman_x,
+                    saver.pacman_mouth,
+                    saver.accent_color,
+                );
+                true
+            }
+            _ => {
+                // Other savers not implemented yet - just show black
+                ClearColor(0.0, 0.0, 0.0, 1.0);
+                Clear(COLOR_BUFFER_BIT);
+                true
+            }
+        }
     }
 }
 

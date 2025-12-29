@@ -1,3 +1,37 @@
+// Flick Sandbox - Enhanced Falling Sand Simulation
+//
+// CONTROLS:
+// ========
+// Numbers 1-0, -, =:  Select basic elements (Sand, Water, Stone, Fire, Oil, Lava, Steam, Wood, Ice, Acid, Plant, Gunpowder)
+// Q, W:               Salt, Smoke
+// A, S, D, F:         Snow, Ash, Metal, Glass
+// G, H, J, K, L:      Gas, Poison Gas, Mud, Clay, Seed
+// Z:                  Lightning
+// E:                  Eraser
+// R, T, X, V:         Quick select common elements (Sand, Fire, Water, Wood)
+// C:                  Clear screen
+// Up/Down arrows:     Increase/decrease brush size
+// ESC:                Quit
+//
+// FEATURES:
+// =========
+// - 360x640 simulation grid (230,400 pixels) for detailed simulations
+// - 25 different element types with realistic physics
+// - Complex element interactions:
+//   * Sand + Heat (Fire/Lava) = Glass
+//   * Clay + Water = Mud
+//   * Seed + Water/Mud = Plant (grows)
+//   * Water + Fire = Steam
+//   * Water + Lava = Stone + Steam
+//   * Ice/Snow melts near heat
+//   * Acid dissolves most materials (produces Poison Gas)
+//   * Fire burns Wood/Oil/Plant (produces Ash/Smoke)
+//   * Lightning ignites flammables, spreads through Metal
+//   * Plants grow near Water and produce Seeds
+//   * Poison Gas kills Plants
+//   * Metal melts in Lava
+//   * And many more!
+
 use rand::Rng;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -6,9 +40,9 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use std::time::{Duration, Instant};
 
-const WIDTH: usize = 180;
-const HEIGHT: usize = 320;
-const CELL_SIZE: u32 = 6;
+const WIDTH: usize = 360;
+const HEIGHT: usize = 640;
+const CELL_SIZE: u32 = 3;
 const SCREEN_W: u32 = WIDTH as u32 * CELL_SIZE;
 const SCREEN_H: u32 = HEIGHT as u32 * CELL_SIZE;
 
@@ -30,6 +64,16 @@ enum Cell {
     Plant,
     Gunpowder,
     Salt,
+    Snow,
+    Ash,
+    Metal,
+    Glass,
+    Gas,
+    PoisonGas,
+    Mud,
+    Clay,
+    Seed,
+    Lightning,
 }
 
 impl Cell {
@@ -50,15 +94,25 @@ impl Cell {
             Cell::Plant => Color::RGB(51, 170, 34),
             Cell::Gunpowder => Color::RGB(68, 68, 68),
             Cell::Salt => Color::RGB(240, 240, 232),
+            Cell::Snow => Color::RGB(245, 250, 255),
+            Cell::Ash => Color::RGB(60, 60, 64),
+            Cell::Metal => Color::RGB(140, 145, 160),
+            Cell::Glass => Color::RGB(180, 220, 240),
+            Cell::Gas => Color::RGB(230, 240, 220),
+            Cell::PoisonGas => Color::RGB(120, 190, 100),
+            Cell::Mud => Color::RGB(90, 70, 50),
+            Cell::Clay => Color::RGB(180, 140, 100),
+            Cell::Seed => Color::RGB(100, 80, 40),
+            Cell::Lightning => Color::RGB(200 + (rand::random::<u8>() % 55), 220 + (rand::random::<u8>() % 35), 255),
         }
     }
 
     fn is_liquid(&self) -> bool {
-        matches!(self, Cell::Water | Cell::Oil | Cell::Lava | Cell::Acid)
+        matches!(self, Cell::Water | Cell::Oil | Cell::Lava | Cell::Acid | Cell::Mud)
     }
 
     fn is_gas(&self) -> bool {
-        matches!(self, Cell::Steam | Cell::Smoke | Cell::Fire)
+        matches!(self, Cell::Steam | Cell::Smoke | Cell::Fire | Cell::Gas | Cell::PoisonGas)
     }
 
     fn density(&self) -> u8 {
@@ -66,18 +120,28 @@ impl Cell {
             Cell::Empty => 0,
             Cell::Steam => 1,
             Cell::Smoke => 2,
+            Cell::Gas => 2,
+            Cell::PoisonGas => 2,
             Cell::Fire => 3,
+            Cell::Lightning => 1,
             Cell::Oil => 4,
             Cell::Water => 5,
             Cell::Acid => 5,
+            Cell::Mud => 6,
             Cell::Salt => 6,
+            Cell::Snow => 3,
+            Cell::Ash => 4,
             Cell::Sand => 7,
             Cell::Gunpowder => 7,
+            Cell::Clay => 7,
             Cell::Ice => 5,
             Cell::Wood => 4,
             Cell::Plant => 4,
+            Cell::Seed => 6,
             Cell::Lava => 8,
+            Cell::Glass => 8,
             Cell::Stone => 10,
+            Cell::Metal => 11,
         }
     }
 }
@@ -155,7 +219,36 @@ impl World {
                 let below = self.get(x, y + 1);
 
                 match cell {
-                    Cell::Sand | Cell::Gunpowder | Cell::Salt => {
+                    Cell::Sand | Cell::Gunpowder | Cell::Salt | Cell::Clay | Cell::Ash | Cell::Seed => {
+                        // Special interactions
+                        if cell == Cell::Sand {
+                            for dy in -1..=1 {
+                                for dx in -1..=1 {
+                                    let n = self.get(x + dx, y + dy);
+                                    if (n == Cell::Lava || n == Cell::Fire) && rng.gen::<f32>() < 0.02 {
+                                        self.set(x, y, Cell::Glass, 0);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if cell == Cell::Clay {
+                            for dy in -1..=1 {
+                                for dx in -1..=1 {
+                                    let n = self.get(x + dx, y + dy);
+                                    if n == Cell::Water && rng.gen::<f32>() < 0.01 {
+                                        self.set(x, y, Cell::Mud, 0);
+                                    }
+                                }
+                            }
+                        }
+                        if cell == Cell::Seed {
+                            let below_cell = self.get(x, y + 1);
+                            if (below_cell == Cell::Water || below_cell == Cell::Mud) && rng.gen::<f32>() < 0.005 {
+                                self.set(x, y, Cell::Plant, 0);
+                            }
+                        }
+
                         if below == Cell::Empty {
                             self.swap(x, y, x, y + 1);
                         } else if below.is_liquid() && cell.density() > below.density() {
@@ -176,7 +269,7 @@ impl World {
                             }
                         }
                     }
-                    Cell::Water | Cell::Oil | Cell::Acid => {
+                    Cell::Water | Cell::Oil | Cell::Acid | Cell::Mud => {
                         if below == Cell::Empty {
                             self.swap(x, y, x, y + 1);
                         } else if cell == Cell::Water && below == Cell::Fire {
@@ -199,11 +292,13 @@ impl World {
                             for dy in -1..=1 {
                                 for dx in -1..=1 {
                                     let n = self.get(x + dx, y + dy);
-                                    if n != Cell::Empty && n != Cell::Stone && n != Cell::Acid && n != Cell::Lava {
-                                        if rng.gen::<f32>() < 0.03 {
+                                    // Acid dissolves most things except Stone, Glass, and itself
+                                    if n != Cell::Empty && n != Cell::Stone && n != Cell::Acid && n != Cell::Lava && n != Cell::Glass {
+                                        let dissolve_rate = if n == Cell::Metal { 0.01 } else { 0.03 };
+                                        if rng.gen::<f32>() < dissolve_rate {
                                             self.set(x + dx, y + dy, Cell::Empty, 0);
-                                            if rng.gen::<f32>() < 0.2 {
-                                                self.set(x, y, Cell::Smoke, 40);
+                                            if rng.gen::<f32>() < 0.3 {
+                                                self.set(x, y, Cell::PoisonGas, 50);
                                             }
                                         }
                                     }
@@ -239,7 +334,7 @@ impl World {
                                 if (n == Cell::Wood || n == Cell::Plant || n == Cell::Oil) && rng.gen::<f32>() < 0.06 {
                                     self.set(x + dx, y + dy, Cell::Fire, 70);
                                 }
-                                if n == Cell::Ice {
+                                if n == Cell::Ice || n == Cell::Snow {
                                     self.set(x + dx, y + dy, Cell::Water, 0);
                                 }
                                 if n == Cell::Water {
@@ -247,6 +342,12 @@ impl World {
                                     if rng.gen::<f32>() < 0.15 {
                                         self.set(x, y, Cell::Stone, 0);
                                     }
+                                }
+                                if n == Cell::Sand && rng.gen::<f32>() < 0.05 {
+                                    self.set(x + dx, y + dy, Cell::Glass, 0);
+                                }
+                                if n == Cell::Metal && rng.gen::<f32>() < 0.002 {
+                                    self.set(x + dx, y + dy, Cell::Lava, 0);
                                 }
                                 if n == Cell::Gunpowder && rng.gen::<f32>() < 0.3 {
                                     self.explode(x + dx, y + dy, 5);
@@ -268,7 +369,14 @@ impl World {
                     Cell::Fire => {
                         let life = self.life[i].saturating_sub(1);
                         if life == 0 {
-                            self.set(x, y, if rng.gen::<f32>() < 0.2 { Cell::Smoke } else { Cell::Empty }, 40);
+                            let rand_val = rng.gen::<f32>();
+                            if rand_val < 0.15 {
+                                self.set(x, y, Cell::Smoke, 40);
+                            } else if rand_val < 0.25 {
+                                self.set(x, y, Cell::Ash, 0);
+                            } else {
+                                self.set(x, y, Cell::Empty, 0);
+                            }
                         } else {
                             self.life[i] = life;
                             for dx in -1..=1 {
@@ -285,8 +393,11 @@ impl World {
                                 if n == Cell::Gunpowder && rng.gen::<f32>() < 0.2 {
                                     self.explode(x + dx, y, 5);
                                 }
-                                if n == Cell::Ice {
+                                if n == Cell::Ice || n == Cell::Snow {
                                     self.set(x + dx, y, Cell::Water, 0);
+                                }
+                                if n == Cell::Gas && rng.gen::<f32>() < 0.3 {
+                                    self.explode(x + dx, y, 3);
                                 }
                             }
                             if self.get(x, y - 1) == Cell::Empty && rng.gen::<f32>() < 0.5 {
@@ -294,7 +405,7 @@ impl World {
                             }
                         }
                     }
-                    Cell::Steam | Cell::Smoke => {
+                    Cell::Steam | Cell::Smoke | Cell::Gas | Cell::PoisonGas => {
                         let life = self.life[i].saturating_sub(1);
                         if life == 0 {
                             let new_cell = if cell == Cell::Steam && rng.gen::<f32>() < 0.3 {
@@ -305,6 +416,14 @@ impl World {
                             self.set(x, y, new_cell, 0);
                         } else {
                             self.life[i] = life;
+                            if cell == Cell::PoisonGas {
+                                // Poison gas kills plants
+                                for dx in -1..=1 {
+                                    if self.get(x + dx, y) == Cell::Plant && rng.gen::<f32>() < 0.05 {
+                                        self.set(x + dx, y, Cell::Empty, 0);
+                                    }
+                                }
+                            }
                             if self.get(x, y - 1) == Cell::Empty && rng.gen::<f32>() < 0.6 {
                                 self.swap(x, y, x, y - 1);
                             } else {
@@ -334,8 +453,66 @@ impl World {
                                 self.set(x, y, Cell::Fire, if cell == Cell::Wood { 100 } else { 40 });
                                 break;
                             }
-                            if cell == Cell::Plant && n == Cell::Water && rng.gen::<f32>() < 0.01 {
-                                self.set(x + dx, y, Cell::Plant, 0);
+                            if cell == Cell::Plant {
+                                if n == Cell::Water && rng.gen::<f32>() < 0.008 {
+                                    self.set(x + dx, y, Cell::Plant, 0);
+                                }
+                                // Plants produce seeds occasionally
+                                if n == Cell::Empty && rng.gen::<f32>() < 0.001 {
+                                    self.set(x + dx, y, Cell::Seed, 0);
+                                }
+                            }
+                        }
+                    }
+                    Cell::Snow => {
+                        // Snow melts near heat
+                        for dx in -1..=1 {
+                            let n = self.get(x + dx, y);
+                            if (n == Cell::Fire || n == Cell::Lava) && rng.gen::<f32>() < 0.1 {
+                                self.set(x, y, Cell::Water, 0);
+                                break;
+                            }
+                        }
+                        // Snow falls like powder
+                        if below == Cell::Empty {
+                            self.swap(x, y, x, y + 1);
+                        } else if below.is_liquid() && Cell::Snow.density() < below.density() {
+                            if rng.gen::<f32>() < 0.3 {
+                                self.swap(x, y, x, y + 1);
+                            }
+                        } else {
+                            let lb = self.get(x - 1, y + 1);
+                            let rb = self.get(x + 1, y + 1);
+                            if lb == Cell::Empty && rb == Cell::Empty {
+                                self.swap(x, y, x + if rng.gen() { -1 } else { 1 }, y + 1);
+                            } else if lb == Cell::Empty {
+                                self.swap(x, y, x - 1, y + 1);
+                            } else if rb == Cell::Empty {
+                                self.swap(x, y, x + 1, y + 1);
+                            }
+                        }
+                    }
+                    Cell::Lightning => {
+                        let life = self.life[i].saturating_sub(1);
+                        if life == 0 {
+                            self.set(x, y, Cell::Empty, 0);
+                        } else {
+                            self.life[i] = life;
+                            // Lightning spreads rapidly downward and ignites things
+                            if self.get(x, y + 1) == Cell::Empty && rng.gen::<f32>() < 0.8 {
+                                self.set(x, y + 1, Cell::Lightning, life.saturating_sub(2));
+                            }
+                            for dx in -1..=1 {
+                                let n = self.get(x + dx, y);
+                                if (n == Cell::Wood || n == Cell::Plant || n == Cell::Oil || n == Cell::Gunpowder) && rng.gen::<f32>() < 0.4 {
+                                    self.set(x + dx, y, Cell::Fire, 80);
+                                }
+                                if n == Cell::Metal && rng.gen::<f32>() < 0.3 {
+                                    self.set(x + dx, y, Cell::Lightning, life.saturating_sub(1));
+                                }
+                                if n == Cell::Water && rng.gen::<f32>() < 0.2 {
+                                    self.set(x + dx, y, Cell::Steam, 40);
+                                }
                             }
                         }
                     }
@@ -378,7 +555,8 @@ impl World {
                         if cell == Cell::Empty || self.cells[i] == Cell::Empty {
                             let life = match cell {
                                 Cell::Fire => 60 + rng.gen::<u8>() % 30,
-                                Cell::Steam | Cell::Smoke => 50 + rng.gen::<u8>() % 30,
+                                Cell::Steam | Cell::Smoke | Cell::Gas | Cell::PoisonGas => 50 + rng.gen::<u8>() % 30,
+                                Cell::Lightning => 20 + rng.gen::<u8>() % 10,
                                 _ => 0,
                             };
                             self.cells[i] = cell;
@@ -438,21 +616,31 @@ fn main() -> Result<(), String> {
     let mut mouse_down = false;
 
     let cells = [
-        Cell::Sand,
-        Cell::Water,
-        Cell::Stone,
-        Cell::Fire,
-        Cell::Oil,
-        Cell::Lava,
-        Cell::Steam,
-        Cell::Wood,
-        Cell::Ice,
-        Cell::Acid,
-        Cell::Plant,
-        Cell::Gunpowder,
-        Cell::Salt,
-        Cell::Smoke,
-        Cell::Empty,
+        Cell::Sand,       // 1
+        Cell::Water,      // 2
+        Cell::Stone,      // 3
+        Cell::Fire,       // 4
+        Cell::Oil,        // 5
+        Cell::Lava,       // 6
+        Cell::Steam,      // 7
+        Cell::Wood,       // 8
+        Cell::Ice,        // 9
+        Cell::Acid,       // 0
+        Cell::Plant,      // -
+        Cell::Gunpowder,  // =
+        Cell::Salt,       // Q
+        Cell::Smoke,      // W
+        Cell::Snow,       // A
+        Cell::Ash,        // S
+        Cell::Metal,      // D
+        Cell::Glass,      // F
+        Cell::Gas,        // G
+        Cell::PoisonGas,  // H
+        Cell::Mud,        // J
+        Cell::Clay,       // K
+        Cell::Seed,       // L
+        Cell::Lightning,  // Z
+        Cell::Empty,      // E
     ];
 
     let target_fps = 60;
@@ -465,21 +653,42 @@ fn main() -> Result<(), String> {
             match event {
                 Event::Quit { .. } => break 'running,
                 Event::KeyDown { keycode: Some(k), .. } => match k {
-                    Keycode::Escape | Keycode::Q => break 'running,
+                    Keycode::Escape => break 'running,
                     Keycode::C => world.clear(),
-                    Keycode::Num1 => selected = cells[0],
-                    Keycode::Num2 => selected = cells[1],
-                    Keycode::Num3 => selected = cells[2],
-                    Keycode::Num4 => selected = cells[3],
-                    Keycode::Num5 => selected = cells[4],
-                    Keycode::Num6 => selected = cells[5],
-                    Keycode::Num7 => selected = cells[6],
-                    Keycode::Num8 => selected = cells[7],
-                    Keycode::Num9 => selected = cells[8],
-                    Keycode::Num0 => selected = cells[9],
-                    Keycode::Minus => selected = cells[10],
-                    Keycode::Equals => selected = cells[11],
-                    Keycode::E => selected = Cell::Empty,
+                    // Number keys
+                    Keycode::Num1 => selected = cells[0],   // Sand
+                    Keycode::Num2 => selected = cells[1],   // Water
+                    Keycode::Num3 => selected = cells[2],   // Stone
+                    Keycode::Num4 => selected = cells[3],   // Fire
+                    Keycode::Num5 => selected = cells[4],   // Oil
+                    Keycode::Num6 => selected = cells[5],   // Lava
+                    Keycode::Num7 => selected = cells[6],   // Steam
+                    Keycode::Num8 => selected = cells[7],   // Wood
+                    Keycode::Num9 => selected = cells[8],   // Ice
+                    Keycode::Num0 => selected = cells[9],   // Acid
+                    Keycode::Minus => selected = cells[10], // Plant
+                    Keycode::Equals => selected = cells[11], // Gunpowder
+                    // Top row letters
+                    Keycode::Q => selected = cells[12],     // Salt
+                    Keycode::W => selected = cells[13],     // Smoke
+                    Keycode::E => selected = Cell::Empty,   // Eraser
+                    Keycode::R => selected = cells[0],      // Repeat Sand (common)
+                    Keycode::T => selected = cells[3],      // Repeat Fire (common)
+                    // Middle row letters
+                    Keycode::A => selected = cells[14],     // Snow
+                    Keycode::S => selected = cells[15],     // Ash
+                    Keycode::D => selected = cells[16],     // Metal
+                    Keycode::F => selected = cells[17],     // Glass
+                    Keycode::G => selected = cells[18],     // Gas
+                    Keycode::H => selected = cells[19],     // PoisonGas
+                    Keycode::J => selected = cells[20],     // Mud
+                    Keycode::K => selected = cells[21],     // Clay
+                    Keycode::L => selected = cells[22],     // Seed
+                    // Bottom row letters
+                    Keycode::Z => selected = cells[23],     // Lightning
+                    Keycode::X => selected = cells[1],      // Repeat Water (common)
+                    Keycode::V => selected = cells[7],      // Repeat Wood (common)
+                    // Brush size
                     Keycode::Up => brush_size = (brush_size + 1).min(10),
                     Keycode::Down => brush_size = (brush_size - 1).max(1),
                     _ => {}

@@ -17,6 +17,7 @@ pub mod apps;
 pub mod icons;
 pub mod lock_screen;
 pub mod slint_ui;
+pub mod screen_saver;
 
 use smithay::utils::{Logical, Point, Size};
 use crate::input::{Edge, GestureEvent};
@@ -295,6 +296,8 @@ pub struct Shell {
     pub display_blanked: bool,
     /// Time of last tap on dimmed lock screen (for double-tap detection)
     pub lock_screen_last_tap: Option<std::time::Instant>,
+    /// Screen saver state
+    pub screen_saver: screen_saver::ScreenSaverState,
     /// Screen timeout in seconds (0 = never, from display settings)
     pub screen_timeout_secs: u64,
     /// Text scale factor (1.0 = normal, 2.0 = double size, etc.)
@@ -393,6 +396,7 @@ impl Shell {
             lock_screen_dimmed: false,
             display_blanked: false,
             lock_screen_last_tap: None,
+            screen_saver: screen_saver::ScreenSaverState::new(),
             screen_timeout_secs: Self::load_screen_timeout(),
             text_scale: Self::load_text_scale(),
             ui_icons_loaded: Cell::new(false),
@@ -658,6 +662,7 @@ impl Shell {
         self.lock_screen_active = false;
         self.lock_screen_dimmed = false;
         self.display_blanked = false;
+        self.screen_saver.on_unlock();
         self.last_unlock_time = Some(std::time::Instant::now());
         self.set_view(ShellView::Home);
         self.lock_state.reset_input();
@@ -686,6 +691,8 @@ impl Shell {
             // Reset activity time and dimmed state
             self.lock_screen_last_activity = std::time::Instant::now();
             self.lock_screen_dimmed = false;
+            // Notify screen saver that lock is active
+            self.screen_saver.on_lock_screen_active();
             // Lock screen is now QML-based
             // Clear any stale unlock signal
             let signal_path = unlock_signal_path();
@@ -727,6 +734,7 @@ impl Shell {
             self.lock_screen_dimmed = false;
             self.display_blanked = false;
             self.lock_screen_last_activity = std::time::Instant::now();
+            self.screen_saver.on_display_unblanked();
         }
     }
 
@@ -764,6 +772,7 @@ impl Shell {
         if self.lock_screen_last_activity.elapsed() > std::time::Duration::from_secs(BLANK_TIMEOUT_SECS) {
             tracing::info!("Display blanking after {}s inactivity", BLANK_TIMEOUT_SECS);
             self.display_blanked = true;
+            self.screen_saver.on_display_blanked();
             return true;
         }
         false
