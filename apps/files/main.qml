@@ -8,7 +8,7 @@ Window {
     visible: true
     width: 1080
     height: 2400
-    title: pickerMode ? "Select " + (pickerFilter === "images" ? "Image" : "File") : "Flick Files"
+    title: pickerMode ? "Select " + (pickerFilter === "images" ? "Image" : pickerFilter === "vcf" ? "Contact File" : "File") : "Flick Files"
     color: "#0a0a0f"
 
     // Use shell text scale
@@ -77,6 +77,8 @@ Window {
             return lower.endsWith(".mp4") || lower.endsWith(".mkv") ||
                    lower.endsWith(".webm") || lower.endsWith(".avi") ||
                    lower.endsWith(".mov")
+        } else if (pickerFilter === "vcf") {
+            return lower.endsWith(".vcf") || lower.endsWith(".vcard")
         }
         return true
     }
