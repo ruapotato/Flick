@@ -948,6 +948,8 @@ pub struct SystemStatus {
     pub volume_key_held_since: Option<std::time::Instant>,
     /// When we last triggered a volume repeat
     pub volume_key_last_repeat: Option<std::time::Instant>,
+    /// Sound configuration (notification/ringtone sounds)
+    pub sound_config: SoundConfig,
 }
 
 impl SystemStatus {
@@ -974,6 +976,7 @@ impl SystemStatus {
             volume_key_held: None,
             volume_key_held_since: None,
             volume_key_last_repeat: None,
+            sound_config: SoundConfig::load(),
         }
     }
 
@@ -1035,6 +1038,16 @@ impl SystemStatus {
         if let Some(ref vib) = self.vibrator {
             vib.heavy();
         }
+    }
+
+    /// Play notification sound
+    pub fn play_notification_sound(&self) {
+        self.sound_config.play_notification();
+    }
+
+    /// Play ringtone sound
+    pub fn play_ringtone(&self) {
+        self.sound_config.play_ringtone();
     }
 
     /// Refresh all status values
@@ -1181,5 +1194,182 @@ impl SystemStatus {
 impl Default for SystemStatus {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Sound configuration for notifications and ringtones
+#[derive(Clone)]
+pub struct SoundConfig {
+    pub notification_sound: String,
+    pub ringtone: String,
+    pub notification_enabled: bool,
+    pub ringtone_enabled: bool,
+}
+
+impl Default for SoundConfig {
+    fn default() -> Self {
+        Self {
+            notification_sound: "notification_ding.wav".to_string(),
+            ringtone: "ringtone_modern.wav".to_string(),
+            notification_enabled: true,
+            ringtone_enabled: true,
+        }
+    }
+}
+
+impl SoundConfig {
+    const CONFIG_FILE: &'static str = "sound_config.json";
+
+    pub fn load() -> Self {
+        let state_dir = dirs::state_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+            .join("flick");
+        let config_path = state_dir.join(Self::CONFIG_FILE);
+
+        if let Ok(content) = fs::read_to_string(&config_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                return Self {
+                    notification_sound: json.get("notification_sound")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("notification_ding.wav")
+                        .to_string(),
+                    ringtone: json.get("ringtone")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("ringtone_modern.wav")
+                        .to_string(),
+                    notification_enabled: json.get("notification_enabled")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true),
+                    ringtone_enabled: json.get("ringtone_enabled")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true),
+                };
+            }
+        }
+        Self::default()
+    }
+
+    pub fn save(&self) {
+        let state_dir = dirs::state_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+            .join("flick");
+        let _ = fs::create_dir_all(&state_dir);
+        let config_path = state_dir.join(Self::CONFIG_FILE);
+
+        let json = serde_json::json!({
+            "notification_sound": self.notification_sound,
+            "ringtone": self.ringtone,
+            "notification_enabled": self.notification_enabled,
+            "ringtone_enabled": self.ringtone_enabled,
+        });
+
+        let _ = fs::write(&config_path, serde_json::to_string_pretty(&json).unwrap());
+    }
+
+    /// Get the full path to a sound file
+    fn get_sound_path(sound_name: &str) -> Option<std::path::PathBuf> {
+        // Check user sounds directory first
+        if let Some(data_dir) = dirs::data_dir() {
+            let user_path = data_dir.join("flick").join("sounds").join(sound_name);
+            if user_path.exists() {
+                return Some(user_path);
+            }
+        }
+
+        // Check system sounds directory (relative to binary/Flick dir)
+        // Try common locations
+        let locations = [
+            std::path::PathBuf::from("/home/droidian/Flick/sounds"),
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or("/home/droidian".to_string()))
+                .join("Flick/sounds"),
+            std::path::PathBuf::from("/usr/share/flick/sounds"),
+        ];
+
+        for loc in &locations {
+            let path = loc.join(sound_name);
+            if path.exists() {
+                return Some(path);
+            }
+        }
+
+        None
+    }
+
+    /// Play a sound file using paplay (PulseAudio) or aplay (ALSA)
+    fn play_sound(sound_name: &str) {
+        if let Some(path) = Self::get_sound_path(sound_name) {
+            let path_str = path.to_string_lossy().to_string();
+            tracing::info!("Playing sound: {}", path_str);
+
+            // Try paplay first (PulseAudio), then aplay (ALSA)
+            std::thread::spawn(move || {
+                // Try paplay first
+                let result = std::process::Command::new("paplay")
+                    .arg(&path_str)
+                    .spawn();
+
+                if result.is_err() {
+                    // Fall back to aplay
+                    let _ = std::process::Command::new("aplay")
+                        .arg("-q")
+                        .arg(&path_str)
+                        .spawn();
+                }
+            });
+        } else {
+            tracing::warn!("Sound file not found: {}", sound_name);
+        }
+    }
+
+    /// Play notification sound
+    pub fn play_notification(&self) {
+        if self.notification_enabled {
+            Self::play_sound(&self.notification_sound);
+        }
+    }
+
+    /// Play ringtone (for incoming calls)
+    pub fn play_ringtone(&self) {
+        if self.ringtone_enabled {
+            Self::play_sound(&self.ringtone);
+        }
+    }
+
+    /// Get list of available notification sounds
+    pub fn list_notification_sounds() -> Vec<String> {
+        Self::list_sounds_matching("notification_")
+    }
+
+    /// Get list of available ringtones
+    pub fn list_ringtones() -> Vec<String> {
+        Self::list_sounds_matching("ringtone_")
+    }
+
+    fn list_sounds_matching(prefix: &str) -> Vec<String> {
+        let mut sounds = Vec::new();
+
+        let locations = [
+            std::path::PathBuf::from("/home/droidian/Flick/sounds"),
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or("/home/droidian".to_string()))
+                .join("Flick/sounds"),
+            std::path::PathBuf::from("/usr/share/flick/sounds"),
+        ];
+
+        for loc in &locations {
+            if let Ok(entries) = fs::read_dir(loc) {
+                for entry in entries.flatten() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if name.starts_with(prefix) && name.ends_with(".wav") {
+                            if !sounds.contains(&name.to_string()) {
+                                sounds.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        sounds.sort();
+        sounds
     }
 }

@@ -2126,6 +2126,17 @@ pub fn run() -> Result<()> {
 
             state.shell.unlock();
             info!("After unlock: view={:?}, lock_screen_active={}", state.shell.view, state.shell.lock_screen_active);
+
+            // Check if we need to launch an app after unlock (from notification tap)
+            if let Some(app_cmd) = state.shell.unlock_open_app.take() {
+                info!("Launching app after unlock: {}", app_cmd);
+                if let Some(socket) = state.socket_name.to_str() {
+                    let text_scale = state.shell.text_scale as f64;
+                    if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(&app_cmd, socket, text_scale) {
+                        error!("Failed to launch app after unlock: {}", e);
+                    }
+                }
+            }
         }
 
         // Auto-lock check - only when not already locked and timeout is set (0 = never)
@@ -2213,11 +2224,16 @@ pub fn run() -> Result<()> {
 
         // Check for app notifications BEFORE checking if blanked (so we can wake on new notifications)
         let new_notifications = crate::shell::quick_settings::check_app_notifications();
-        if new_notifications && state.shell.display_blanked {
-            info!("New notification received, waking screen");
-            state.shell.wake_lock_screen();
-            if let Err(e) = hwc_display.hwc_ctx.set_power(true) {
-                error!("Failed to wake display for notification: {}", e);
+        if new_notifications {
+            // Play notification sound
+            state.system.play_notification_sound();
+
+            if state.shell.display_blanked {
+                info!("New notification received, waking screen");
+                state.shell.wake_lock_screen();
+                if let Err(e) = hwc_display.hwc_ctx.set_power(true) {
+                    error!("Failed to wake display for notification: {}", e);
+                }
             }
         }
 
@@ -2247,7 +2263,8 @@ pub fn run() -> Result<()> {
                 state.shell.wake_lock_screen();
                 hwc_display.hwc_ctx.set_power(true);
             }
-            // Vibrate for incoming call (continuous pattern)
+            // Play ringtone and vibrate for incoming call
+            state.system.play_ringtone();
             state.system.haptic_heavy();
         }
 

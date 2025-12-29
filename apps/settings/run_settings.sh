@@ -525,6 +525,12 @@ stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" |
                 "$SOUND_HELPER" mic-unmute >> "$LOG_FILE" 2>&1
                 update_sound
                 ;;
+            play:*)
+                SOUND_FILE="${SOUND_CMD#play:}"
+                echo "Playing sound: $SOUND_FILE" >> "$LOG_FILE"
+                # Try paplay first (PulseAudio), fallback to aplay (ALSA)
+                (paplay "$SOUND_FILE" 2>/dev/null || aplay -q "$SOUND_FILE" 2>/dev/null) &
+                ;;
         esac
     fi
     # Check for wallpaper color analysis command

@@ -293,6 +293,12 @@ pub struct Shell {
     pub lock_screen_dimmed: bool,
     /// Whether display is blanked (powered off)
     pub display_blanked: bool,
+    /// View before locking (to restore after unlock)
+    pub pre_lock_view: ShellView,
+    /// Whether an app window was open before locking
+    pub pre_lock_had_app: bool,
+    /// App to open after unlock (from notification tap)
+    pub unlock_open_app: Option<String>,
     /// Time of last tap on dimmed lock screen (for double-tap detection)
     pub lock_screen_last_tap: Option<std::time::Instant>,
     /// Screen timeout in seconds (0 = never, from display settings)
@@ -392,6 +398,9 @@ impl Shell {
             lock_screen_last_activity: std::time::Instant::now(),
             lock_screen_dimmed: false,
             display_blanked: false,
+            pre_lock_view: ShellView::Home,
+            pre_lock_had_app: false,
+            unlock_open_app: None,
             lock_screen_last_tap: None,
             screen_timeout_secs: Self::load_screen_timeout(),
             text_scale: Self::load_text_scale(),
@@ -652,32 +661,79 @@ impl Shell {
         }
     }
 
-    /// Unlock and transition to home screen
+    /// Unlock and transition to appropriate view
     pub fn unlock(&mut self) {
         tracing::info!("Lock screen unlocked");
         self.lock_screen_active = false;
         self.lock_screen_dimmed = false;
         self.display_blanked = false;
         self.last_unlock_time = Some(std::time::Instant::now());
-        self.set_view(ShellView::Home);
+
+        // Check if we should open a specific app (from notification tap)
+        self.check_unlock_open_app();
+
+        // Determine what view to restore
+        let restore_view = if self.unlock_open_app.is_some() {
+            // App will be launched, go to App view (will be set when window opens)
+            tracing::info!("Unlock with pending app launch: {:?}", self.unlock_open_app);
+            ShellView::Home // Start at home, app will open on top
+        } else if self.pre_lock_had_app {
+            // Had an app open before locking, restore to App view
+            tracing::info!("Restoring to App view (had app before lock)");
+            ShellView::App
+        } else {
+            // Default to home
+            tracing::info!("Restoring to Home view");
+            ShellView::Home
+        };
+
+        self.set_view(restore_view);
         self.lock_state.reset_input();
         self.lock_state.failed_attempts = 0;
         self.lock_state.error_message = None;
+
         // Clear the unlock signal file if it exists
         let signal_path = unlock_signal_path();
         if signal_path.exists() {
             let _ = std::fs::remove_file(&signal_path);
         }
-        // Force Slint UI redraw to show home screen
+
+        // Force Slint UI redraw
         if let Some(ref slint_ui) = self.slint_ui {
             slint_ui.request_redraw();
             tracing::info!("Requested Slint UI redraw after unlock");
         }
     }
 
+    /// Check for app to open after unlock (from notification tap on lock screen)
+    fn check_unlock_open_app(&mut self) {
+        let state_dir = dirs::state_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+            .join("flick");
+        let open_app_path = state_dir.join("unlock_open_app.json");
+
+        if open_app_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&open_app_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(app) = json.get("app").and_then(|v| v.as_str()) {
+                        self.unlock_open_app = Some(app.to_string());
+                        tracing::info!("Found unlock open app request: {}", app);
+                    }
+                }
+            }
+            // Remove the file after reading
+            let _ = std::fs::remove_file(&open_app_path);
+        }
+    }
+
     /// Lock the screen - sets up state, compositor will launch Python app
     pub fn lock(&mut self) {
         tracing::info!("Locking screen");
+        // Save the current view before locking (so we can restore it after unlock)
+        self.pre_lock_view = self.view;
+        self.pre_lock_had_app = self.view == ShellView::App;
+        tracing::info!("Saving pre-lock view: {:?}, had_app: {}", self.pre_lock_view, self.pre_lock_had_app);
+
         self.lock_config = lock_screen::LockConfig::load(); // Reload latest config
         if self.lock_config.method != lock_screen::LockMethod::None {
             self.lock_screen_active = true;
@@ -687,11 +743,12 @@ impl Shell {
             self.lock_screen_last_activity = std::time::Instant::now();
             self.lock_screen_dimmed = false;
             // Lock screen is now QML-based
-            // Clear any stale unlock signal
+            // Clear any stale unlock signal and open app request
             let signal_path = unlock_signal_path();
             if signal_path.exists() {
                 let _ = std::fs::remove_file(&signal_path);
             }
+            self.unlock_open_app = None;
         }
     }
 

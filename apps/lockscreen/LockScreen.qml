@@ -364,9 +364,15 @@ Item {
         }
 
         onReleased: {
+            var dx = mouse.x - startX
+            var dy = startY - mouse.y
+
             if (isHorizontal && touchedNotifIndex >= 0) {
                 // Check if should dismiss
                 finishNotificationSwipe(touchedNotifIndex)
+            } else if (!gestureDecided && touchedNotifIndex >= 0 && Math.abs(dx) < 20 && Math.abs(dy) < 20) {
+                // Tap on notification (no significant movement) - open app after unlock
+                openNotificationApp(touchedNotifIndex)
             }
 
             isDragging = false
@@ -378,6 +384,57 @@ Item {
                 swipeProgress = 0
             }
         }
+    }
+
+    // Open app associated with notification and trigger unlock
+    function openNotificationApp(notifIndex) {
+        if (notifIndex < 0 || notifIndex >= notifications.length) return
+
+        var notif = notifications[notifIndex]
+        console.log("Notification tapped:", notif.app_name, notif.summary)
+
+        // Determine app command based on notification app_name
+        var appCmd = ""
+        if (notif.app_name === "Messages") {
+            // Open messages app to the specific conversation if we have phone number
+            var phone = notif.summary || ""
+            appCmd = stateDir + "/../../../Flick/apps/messages/run_messages.sh"
+            // Also write conversation hint for messages app
+            writeConversationHint(phone)
+        } else if (notif.app_name === "Phone") {
+            appCmd = stateDir + "/../../../Flick/apps/phone/run_phone.sh"
+        } else if (notif.app_name === "Email") {
+            appCmd = stateDir + "/../../../Flick/apps/email/run_email.sh"
+        }
+
+        if (appCmd !== "") {
+            // Write the app to open after unlock
+            writeUnlockOpenApp(appCmd)
+        }
+
+        // Show unlock screen (same as swipe up)
+        showingUnlock = true
+        swipeProgress = 0
+    }
+
+    // Write unlock_open_app.json for shell to read after unlock
+    function writeUnlockOpenApp(appCmd) {
+        var data = { app: appCmd }
+        var xhr = new XMLHttpRequest()
+        var url = "file://" + stateDir + "/unlock_open_app.json"
+        xhr.open("PUT", url)
+        xhr.send(JSON.stringify(data, null, 2))
+        console.log("Wrote unlock open app:", appCmd)
+    }
+
+    // Write conversation hint for messages app
+    function writeConversationHint(phoneNumber) {
+        var data = { open_conversation: phoneNumber }
+        var xhr = new XMLHttpRequest()
+        var url = "file://" + stateDir + "/messages_open_hint.json"
+        xhr.open("PUT", url)
+        xhr.send(JSON.stringify(data, null, 2))
+        console.log("Wrote messages hint for:", phoneNumber)
     }
 
     // Find which notification index was touched (if any)

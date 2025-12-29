@@ -2,6 +2,7 @@ import "../../shared"
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import Qt.labs.platform 1.1
 
 Page {
     id: soundPage
@@ -12,7 +13,19 @@ Page {
     property bool micMuted: false
     property bool silentMode: false
 
-    Component.onCompleted: loadSoundSettings()
+    // Sound config
+    property string notificationSound: "notification_ding.wav"
+    property string ringtone: "ringtone_modern.wav"
+    property bool notificationEnabled: true
+    property bool ringtoneEnabled: true
+    property var notificationSounds: []
+    property var ringtones: []
+
+    Component.onCompleted: {
+        loadSoundSettings()
+        loadSoundConfig()
+        listSounds()
+    }
 
     // Periodic refresh
     Timer {
@@ -74,6 +87,64 @@ Page {
         } else {
             console.warn("SOUND_CMD:mic-unmute")
         }
+    }
+
+    function loadSoundConfig() {
+        var stateDir = StandardPaths.writableLocation(StandardPaths.GenericStateLocation) + "/flick"
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + stateDir + "/sound_config.json", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200) {
+                var data = JSON.parse(xhr.responseText)
+                if (data.notification_sound) notificationSound = data.notification_sound
+                if (data.ringtone) ringtone = data.ringtone
+                if (data.notification_enabled !== undefined) notificationEnabled = data.notification_enabled
+                if (data.ringtone_enabled !== undefined) ringtoneEnabled = data.ringtone_enabled
+            }
+        } catch (e) {
+            console.log("Could not load sound config: " + e)
+        }
+    }
+
+    function saveSoundConfig() {
+        var stateDir = StandardPaths.writableLocation(StandardPaths.GenericStateLocation) + "/flick"
+        var data = {
+            notification_sound: notificationSound,
+            ringtone: ringtone,
+            notification_enabled: notificationEnabled,
+            ringtone_enabled: ringtoneEnabled
+        }
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file://" + stateDir + "/sound_config.json")
+        xhr.send(JSON.stringify(data, null, 2))
+    }
+
+    function listSounds() {
+        // List available sounds from ~/Flick/sounds
+        var soundsDir = StandardPaths.writableLocation(StandardPaths.HomeLocation) + "/Flick/sounds"
+        var notifList = []
+        var ringList = []
+
+        // Use XMLHttpRequest to read directory listing via a helper
+        // For now, use hardcoded list based on generated sounds
+        notifList = ["notification_ding.wav", "notification_soft.wav", "notification_bubble.wav", "notification_bell.wav"]
+        ringList = ["ringtone_modern.wav", "ringtone_classic.wav", "ringtone_gentle.wav", "ringtone_urgent.wav"]
+
+        notificationSounds = notifList
+        ringtones = ringList
+    }
+
+    function playSound(soundFile) {
+        // Play a preview of the sound
+        var soundsDir = StandardPaths.writableLocation(StandardPaths.HomeLocation) + "/Flick/sounds"
+        console.warn("SOUND_CMD:play:" + soundsDir + "/" + soundFile)
+    }
+
+    function formatSoundName(filename) {
+        // Convert "notification_ding.wav" to "Ding"
+        var name = filename.replace(/^(notification_|ringtone_)/, "").replace(".wav", "")
+        return name.charAt(0).toUpperCase() + name.slice(1)
     }
 
     background: Rectangle {
@@ -450,6 +521,352 @@ Page {
                     id: muteMouse
                     anchors.fill: parent
                     onClicked: toggleMute()
+                }
+            }
+
+            Item { height: 16 }
+
+            Text {
+                text: "NOTIFICATION SOUND"
+                font.pixelSize: 12
+                font.letterSpacing: 2
+                color: "#555566"
+                leftPadding: 8
+            }
+
+            // Notification sound toggle and selector
+            Rectangle {
+                width: controlsColumn.width
+                height: 90
+                radius: 24
+                color: "#14141e"
+                border.color: notificationEnabled ? "#1a1a2e" : Theme.accentColor
+                border.width: notificationEnabled ? 1 : 2
+                opacity: notificationEnabled ? 1 : 0.6
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    spacing: 16
+
+                    Rectangle {
+                        Layout.preferredWidth: 52
+                        Layout.preferredHeight: 52
+                        radius: 14
+                        color: notificationEnabled ? "#1a2a3a" : "#2a1a1a"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "🔔"
+                            font.pixelSize: 26
+                        }
+                    }
+
+                    Column {
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        Text {
+                            text: "Notification Sound"
+                            font.pixelSize: 20
+                            color: "#ffffff"
+                        }
+
+                        Text {
+                            text: notificationEnabled ? formatSoundName(notificationSound) : "Disabled"
+                            font.pixelSize: 13
+                            color: notificationEnabled ? "#4ade80" : "#666677"
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 64
+                        Layout.preferredHeight: 36
+                        radius: 18
+                        color: notificationEnabled ? "#4ade80" : "#2a2a3e"
+
+                        Behavior on color { ColorAnimation { duration: 200 } }
+
+                        Rectangle {
+                            x: notificationEnabled ? parent.width - width - 4 : 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 28
+                            height: 28
+                            radius: 14
+                            color: "#ffffff"
+
+                            Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
+                        }
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        notificationEnabled = !notificationEnabled
+                        saveSoundConfig()
+                    }
+                }
+            }
+
+            // Notification sound list
+            Rectangle {
+                width: controlsColumn.width
+                height: notifColumn.height + 32
+                radius: 24
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                border.width: 1
+                visible: notificationEnabled
+
+                Column {
+                    id: notifColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 4
+
+                    Repeater {
+                        model: notificationSounds
+                        Rectangle {
+                            width: notifColumn.width
+                            height: 56
+                            radius: 12
+                            color: notificationSound === modelData ? "#2a3a4a" : (notifItemMouse.pressed ? "#1e1e2e" : "transparent")
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 12
+
+                                Rectangle {
+                                    Layout.preferredWidth: 32
+                                    Layout.preferredHeight: 32
+                                    radius: 16
+                                    color: notificationSound === modelData ? "#4ade80" : "#2a2a3e"
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: notificationSound === modelData ? "✓" : ""
+                                        font.pixelSize: 16
+                                        color: "#ffffff"
+                                    }
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: formatSoundName(modelData)
+                                    font.pixelSize: 18
+                                    color: "#ffffff"
+                                }
+
+                                Rectangle {
+                                    Layout.preferredWidth: 44
+                                    Layout.preferredHeight: 44
+                                    radius: 22
+                                    color: playNotifMouse.pressed ? "#3a3a4a" : "#2a2a3e"
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "▶"
+                                        font.pixelSize: 16
+                                        color: "#4ade80"
+                                    }
+
+                                    MouseArea {
+                                        id: playNotifMouse
+                                        anchors.fill: parent
+                                        onClicked: playSound(modelData)
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: notifItemMouse
+                                anchors.fill: parent
+                                anchors.rightMargin: 56
+                                onClicked: {
+                                    notificationSound = modelData
+                                    saveSoundConfig()
+                                    playSound(modelData)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Item { height: 16 }
+
+            Text {
+                text: "RINGTONE"
+                font.pixelSize: 12
+                font.letterSpacing: 2
+                color: "#555566"
+                leftPadding: 8
+            }
+
+            // Ringtone toggle and selector
+            Rectangle {
+                width: controlsColumn.width
+                height: 90
+                radius: 24
+                color: "#14141e"
+                border.color: ringtoneEnabled ? "#1a1a2e" : Theme.accentColor
+                border.width: ringtoneEnabled ? 1 : 2
+                opacity: ringtoneEnabled ? 1 : 0.6
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    spacing: 16
+
+                    Rectangle {
+                        Layout.preferredWidth: 52
+                        Layout.preferredHeight: 52
+                        radius: 14
+                        color: ringtoneEnabled ? "#3a2a1a" : "#2a1a1a"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "📞"
+                            font.pixelSize: 26
+                        }
+                    }
+
+                    Column {
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        Text {
+                            text: "Ringtone"
+                            font.pixelSize: 20
+                            color: "#ffffff"
+                        }
+
+                        Text {
+                            text: ringtoneEnabled ? formatSoundName(ringtone) : "Disabled"
+                            font.pixelSize: 13
+                            color: ringtoneEnabled ? "#f59e0b" : "#666677"
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 64
+                        Layout.preferredHeight: 36
+                        radius: 18
+                        color: ringtoneEnabled ? "#f59e0b" : "#2a2a3e"
+
+                        Behavior on color { ColorAnimation { duration: 200 } }
+
+                        Rectangle {
+                            x: ringtoneEnabled ? parent.width - width - 4 : 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 28
+                            height: 28
+                            radius: 14
+                            color: "#ffffff"
+
+                            Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
+                        }
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        ringtoneEnabled = !ringtoneEnabled
+                        saveSoundConfig()
+                    }
+                }
+            }
+
+            // Ringtone list
+            Rectangle {
+                width: controlsColumn.width
+                height: ringColumn.height + 32
+                radius: 24
+                color: "#14141e"
+                border.color: "#1a1a2e"
+                border.width: 1
+                visible: ringtoneEnabled
+
+                Column {
+                    id: ringColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 4
+
+                    Repeater {
+                        model: ringtones
+                        Rectangle {
+                            width: ringColumn.width
+                            height: 56
+                            radius: 12
+                            color: ringtone === modelData ? "#3a3a2a" : (ringItemMouse.pressed ? "#1e1e2e" : "transparent")
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 12
+
+                                Rectangle {
+                                    Layout.preferredWidth: 32
+                                    Layout.preferredHeight: 32
+                                    radius: 16
+                                    color: ringtone === modelData ? "#f59e0b" : "#2a2a3e"
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: ringtone === modelData ? "✓" : ""
+                                        font.pixelSize: 16
+                                        color: "#ffffff"
+                                    }
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: formatSoundName(modelData)
+                                    font.pixelSize: 18
+                                    color: "#ffffff"
+                                }
+
+                                Rectangle {
+                                    Layout.preferredWidth: 44
+                                    Layout.preferredHeight: 44
+                                    radius: 22
+                                    color: playRingMouse.pressed ? "#3a3a4a" : "#2a2a3e"
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "▶"
+                                        font.pixelSize: 16
+                                        color: "#f59e0b"
+                                    }
+
+                                    MouseArea {
+                                        id: playRingMouse
+                                        anchors.fill: parent
+                                        onClicked: playSound(modelData)
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: ringItemMouse
+                                anchors.fill: parent
+                                anchors.rightMargin: 56
+                                onClicked: {
+                                    ringtone = modelData
+                                    saveSoundConfig()
+                                    playSound(modelData)
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
