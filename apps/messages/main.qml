@@ -77,9 +77,12 @@ Window {
                 if (config.text_scale !== undefined) {
                     textScale = config.text_scale
                 }
+                if (config.accent_color !== undefined) {
+                    accentColor = config.accent_color
+                }
             }
         } catch (e) {
-            console.log("Using default text scale: " + textScale)
+            console.log("Using default config")
         }
     }
 
