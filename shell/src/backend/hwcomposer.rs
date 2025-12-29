@@ -2337,21 +2337,21 @@ fn try_import_egl_buffer(
     let query_fn = match display.egl_query_wayland_buffer {
         Some(f) => f,
         None => {
-            info!("try_import_egl_buffer: no egl_query_wayland_buffer");
+            trace!("try_import_egl_buffer: no egl_query_wayland_buffer");
             return None;
         }
     };
     let create_image_fn = match display.egl_create_image {
         Some(f) => f,
         None => {
-            info!("try_import_egl_buffer: no egl_create_image");
+            trace!("try_import_egl_buffer: no egl_create_image");
             return None;
         }
     };
     let image_target_fn = match display.gl_egl_image_target_texture_2d {
         Some(f) => f,
         None => {
-            info!("try_import_egl_buffer: no gl_egl_image_target_texture_2d");
+            trace!("try_import_egl_buffer: no gl_egl_image_target_texture_2d");
             return None;
         }
     };
@@ -2365,7 +2365,7 @@ fn try_import_egl_buffer(
         if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
             let bd = buffer_data.borrow();
             if let Some(ptr) = bd.wl_buffer_ptr {
-                info!("try_import_egl_buffer: using stored buffer ptr {:?}", ptr);
+                trace!("try_import_egl_buffer: using stored buffer ptr {:?}", ptr);
                 return Some(ptr);
             }
         }
@@ -2379,16 +2379,16 @@ fn try_import_egl_buffer(
             match buffer_assignment {
                 BufferAssignment::NewBuffer(buffer) => {
                     use smithay::reexports::wayland_server::Resource;
-                    info!("try_import_egl_buffer: found NewBuffer {:?}", buffer.id());
+                    trace!("try_import_egl_buffer: found NewBuffer {:?}", buffer.id());
                     Some(buffer.id().as_ptr() as *mut std::ffi::c_void)
                 }
                 BufferAssignment::Removed => {
-                    info!("try_import_egl_buffer: buffer was Removed");
+                    trace!("try_import_egl_buffer: buffer was Removed");
                     None
                 }
             }
         } else {
-            info!("try_import_egl_buffer: no buffer assignment");
+            trace!("try_import_egl_buffer: no buffer assignment");
             None
         }
     });
@@ -2396,7 +2396,7 @@ fn try_import_egl_buffer(
     let buffer_ptr = match buffer_ptr {
         Some(p) => p,
         None => {
-            info!("try_import_egl_buffer: no buffer pointer available");
+            trace!("try_import_egl_buffer: no buffer pointer available");
             return None;
         }
     };
@@ -2431,7 +2431,7 @@ fn try_import_egl_buffer(
         }
     }
 
-    info!("EGL buffer query: {}x{}, format={}", width, height, texture_format);
+    trace!("EGL buffer query: {}x{}, format={}", width, height, texture_format);
 
     // Create EGL image from the wayland buffer
     let attribs: [i32; 1] = [egl::NONE as i32];
@@ -2451,12 +2451,12 @@ fn try_import_egl_buffer(
         return None;
     }
 
-    info!("Created EGL image: {:?}", egl_image);
+    trace!("Created EGL image: {:?}", egl_image);
 
     // Create GL texture and bind EGL image to it
     let texture_id = unsafe { gl::create_texture_from_egl_image(egl_image, image_target_fn) };
 
-    info!("Created GL texture {} from EGL image", texture_id);
+    trace!("Created GL texture {} from EGL image", texture_id);
 
     Some((texture_id, width as u32, height as u32, egl_image))
 }
@@ -3304,7 +3304,7 @@ fn render_frame(
                                     // Release the buffer so client can reuse it
                                     if let Some(buffer) = bd.pending_buffer.take() {
                                         buffer.release();
-                                        info!("Released wl_buffer after EGL import");
+                                        trace!("Released wl_buffer after EGL import");
                                     }
                                 }
                             });
@@ -3312,7 +3312,7 @@ fn render_frame(
                             // Render the newly imported texture
                             let window_pos = state.space.element_location(window).unwrap_or_default();
                             if log_frame {
-                                info!("EGL IMPORT+RENDER[{}] frame {}: texture_id={}, {}x{}", i, frame_num, imported.0, imported.1, imported.2);
+                                trace!("EGL IMPORT+RENDER[{}] frame {}: texture_id={}, {}x{}", i, frame_num, imported.0, imported.1, imported.2);
                             }
                             unsafe {
                                 gl::render_egl_texture_at(imported.0, imported.1, imported.2, display.width, display.height,
@@ -3347,7 +3347,7 @@ fn render_frame(
                         // Use existing cached EGL texture
                         let window_pos = state.space.element_location(window).unwrap_or_default();
                         if log_frame {
-                            info!("EGL RENDER[{}] frame {}: texture_id={}, {}x{}", i, frame_num, texture_id, width, height);
+                            trace!("EGL RENDER[{}] frame {}: texture_id={}, {}x{}", i, frame_num, texture_id, width, height);
                         }
                         unsafe {
                             gl::render_egl_texture_at(texture_id, width, height, display.width, display.height,

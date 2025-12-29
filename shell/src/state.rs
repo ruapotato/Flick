@@ -1375,7 +1375,7 @@ impl CompositorHandler for Flick {
                                 }
                                 bd.pending_buffer = Some(buffer.clone());
                             }
-                            tracing::info!("Surface {:?} needs EGL import (buffer ptr: {:?})", surface.id(), buffer_ptr);
+                            tracing::trace!("Surface {:?} needs EGL import (buffer ptr: {:?})", surface.id(), buffer_ptr);
                         }
                     }
                 }

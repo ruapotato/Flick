@@ -992,8 +992,8 @@ impl SystemStatus {
 
     /// Check if we should trigger a volume key repeat, returns true if repeat should happen
     pub fn check_volume_key_repeat(&mut self) -> bool {
-        const INITIAL_DELAY_MS: u64 = 400;  // Wait this long before starting repeat
-        const REPEAT_INTERVAL_MS: u64 = 80; // Repeat every N ms after initial delay
+        const INITIAL_DELAY_MS: u64 = 250;  // Wait this long before starting repeat
+        const REPEAT_INTERVAL_MS: u64 = 40; // Repeat every N ms after initial delay
 
         if let (Some(_keycode), Some(held_since)) = (self.volume_key_held, self.volume_key_held_since) {
             let elapsed = held_since.elapsed().as_millis() as u64;

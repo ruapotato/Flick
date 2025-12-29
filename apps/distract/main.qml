@@ -38,12 +38,12 @@ Window {
     ]
     property int currentSwipeEffect: 0
 
-    // Global time for animations
+    // Global time for animations (reduced frequency for lower CPU usage)
     Timer {
-        interval: 32
+        interval: 100
         running: true
         repeat: true
-        onTriggered: globalTime += 0.032
+        onTriggered: globalTime += 0.1
     }
 
     function getRandomEffect() {
@@ -513,14 +513,14 @@ Window {
             z: 20
 
             Timer {
-                interval: 16
+                interval: 33
                 running: true
                 repeat: true
                 onTriggered: {
-                    fp.x += fp.vx * 0.016
-                    fp.y += fp.vy * 0.016
-                    fp.vy += fp.gravity * 0.016
-                    fp.vx *= 0.98
+                    fp.x += fp.vx * 0.033
+                    fp.y += fp.vy * 0.033
+                    fp.vy += fp.gravity * 0.033
+                    fp.vx *= 0.96
                 }
             }
 
@@ -566,8 +566,8 @@ Window {
 
     function createFireworks(x, y) {
         var colors = ["#ff3355", "#ffaa33", "#33ff77", "#3388ff", "#ff33ff", "#ffff33"]
-        for (var i = 0; i < 25; i++) {
-            var angle = (Math.PI * 2 * i) / 25
+        for (var i = 0; i < 12; i++) {
+            var angle = (Math.PI * 2 * i) / 12
             var speed = 150 + Math.random() * 150
             particleComponent.createObject(root, {
                 x: x, y: y,
@@ -580,7 +580,7 @@ Window {
     }
 
     function createBubbles(x, y) {
-        for (var i = 0; i < 12; i++) {
+        for (var i = 0; i < 6; i++) {
             bubbleComponent.createObject(root, {
                 x: x + (Math.random() - 0.5) * 150,
                 y: y + (Math.random() - 0.5) * 150,
@@ -601,7 +601,7 @@ Window {
     }
 
     function createSparkles(x, y) {
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < 15; i++) {
             var angle = Math.random() * Math.PI * 2
             var dist = Math.random() * 250
             sparkleComponent.createObject(root, {
@@ -614,7 +614,7 @@ Window {
 
     function createPaint(x, y) {
         var colors = ["#ff3355", "#33ff88", "#3388ff", "#ffaa33", "#ff33ff"]
-        for (var i = 0; i < 15; i++) {
+        for (var i = 0; i < 8; i++) {
             var angle = Math.random() * Math.PI * 2
             var speed = 80 + Math.random() * 200
             splatComponent.createObject(root, {
@@ -642,7 +642,7 @@ Window {
 
     function createConfetti(x, y) {
         var colors = ["#ff3355", "#33ff88", "#3388ff", "#ffaa33", "#ff33ff", "#ffff33"]
-        for (var i = 0; i < 30; i++) {
+        for (var i = 0; i < 12; i++) {
             confettiComponent.createObject(root, {
                 x: x + (Math.random() - 0.5) * 80,
                 y: y - Math.random() * 80,
@@ -688,7 +688,7 @@ Window {
     }
 
     function createSnow(x, y) {
-        for (var i = 0; i < 25; i++) {
+        for (var i = 0; i < 10; i++) {
             snowComponent.createObject(root, {
                 x: x + (Math.random() - 0.5) * 300,
                 y: y - 150,
@@ -699,7 +699,7 @@ Window {
 
     function createNeon(x, y) {
         var colors = ["#ff00ff", "#00ffff", "#ff0088", "#00ff88"]
-        for (var i = 0; i < 15; i++) {
+        for (var i = 0; i < 8; i++) {
             var angle = Math.random() * Math.PI * 2
             var dist = Math.random() * 200
             neonComponent.createObject(root, {
@@ -801,8 +801,8 @@ Window {
             property real gravity: 350
             width: size; height: size; radius: size/2
             color: particleColor; z: 5
-            Timer { interval: 16; running: true; repeat: true
-                onTriggered: { p.x += p.vx * 0.016; p.y += p.vy * 0.016; p.vy += p.gravity * 0.016 }
+            Timer { interval: 33; running: true; repeat: true
+                onTriggered: { p.x += p.vx * 0.033; p.y += p.vy * 0.033; p.vy += p.gravity * 0.033 }
             }
             NumberAnimation on opacity { from: 1; to: 0; duration: 1200 }
             Timer { interval: 1200; running: true; onTriggered: p.destroy() }
@@ -819,8 +819,8 @@ Window {
             color: "transparent"
             border.color: Qt.rgba(Math.random(), Math.random(), Math.random(), 0.6)
             border.width: 2; z: 5; scale: 0.2
-            Timer { interval: 16; running: true; repeat: true
-                onTriggered: { b.y += b.vy * 0.016; b.x += Math.sin(b.y * 0.04) * 1.5 }
+            Timer { interval: 33; running: true; repeat: true
+                onTriggered: { b.y += b.vy * 0.033; b.x += Math.sin(b.y * 0.04) * 1.5 }
             }
             NumberAnimation on scale { to: 1; duration: 250; easing.type: Easing.OutBack }
             NumberAnimation on opacity { from: 0.7; to: 0; duration: 1800 }
@@ -879,8 +879,8 @@ Window {
             property string splatColor: "#ff3355"
             width: size; height: size; radius: size/2
             color: splatColor; z: 5; scale: 0.6
-            Timer { interval: 16; running: true; repeat: true
-                onTriggered: { sl.x += sl.vx * 0.016; sl.y += sl.vy * 0.016; sl.vx *= 0.96; sl.vy *= 0.96 }
+            Timer { interval: 33; running: true; repeat: true
+                onTriggered: { sl.x += sl.vx * 0.033; sl.y += sl.vy * 0.033; sl.vx *= 0.92; sl.vy *= 0.92 }
             }
             NumberAnimation on scale { to: 1; duration: 150; easing.type: Easing.OutBack }
             Timer { interval: 1500; running: true; onTriggered: sl.destroy() }
@@ -898,9 +898,9 @@ Window {
             property real gravity: 600
             width: size; height: size; radius: size/2
             color: ballColor; z: 5
-            Timer { interval: 16; running: true; repeat: true
+            Timer { interval: 33; running: true; repeat: true
                 onTriggered: {
-                    ball.x += ball.vx * 0.016; ball.y += ball.vy * 0.016; ball.vy += ball.gravity * 0.016
+                    ball.x += ball.vx * 0.033; ball.y += ball.vy * 0.033; ball.vy += ball.gravity * 0.033
                     if (ball.y > root.height - ball.size) { ball.y = root.height - ball.size; ball.vy *= -0.65 }
                     if (ball.x < 0) { ball.x = 0; ball.vx *= -0.65 }
                     if (ball.x > root.width - ball.size) { ball.x = root.width - ball.size; ball.vx *= -0.65 }
@@ -923,8 +923,8 @@ Window {
             width: 10; height: 16; radius: 2
             color: confettiColor; z: 5
             transform: Rotation { id: rot; angle: 0; origin.x: 5; origin.y: 8 }
-            Timer { interval: 16; running: true; repeat: true
-                onTriggered: { c.x += c.vx * 0.016; c.y += c.vy * 0.016; c.vy += c.gravity * 0.016; rot.angle += c.spin * 0.016 }
+            Timer { interval: 33; running: true; repeat: true
+                onTriggered: { c.x += c.vx * 0.033; c.y += c.vy * 0.033; c.vy += c.gravity * 0.033; rot.angle += c.spin * 0.033 }
             }
             Timer { interval: 2500; running: true; onTriggered: c.destroy() }
         }
@@ -1011,8 +1011,8 @@ Window {
             property real size: 10
             width: size; height: size; radius: size/2
             color: "#ffffff"; z: 5
-            Timer { interval: 16; running: true; repeat: true
-                onTriggered: { sn.y += (80 + Math.random() * 60) * 0.016; sn.x += Math.sin(sn.y * 0.015) * 0.8 }
+            Timer { interval: 33; running: true; repeat: true
+                onTriggered: { sn.y += (80 + Math.random() * 60) * 0.033; sn.x += Math.sin(sn.y * 0.015) * 0.8 }
             }
             Timer { interval: 2500; running: true; onTriggered: sn.destroy() }
         }
@@ -1072,7 +1072,7 @@ Window {
             color: starColor; z: 5
             x: centerX + Math.cos(curAngle) * dist - 2.5
             y: centerY + Math.sin(curAngle) * dist - 2.5
-            Timer { interval: 16; running: true; repeat: true; onTriggered: gs.curAngle += 0.04 }
+            Timer { interval: 33; running: true; repeat: true; onTriggered: gs.curAngle += 0.08 }
             NumberAnimation on dist { from: dist; to: 8; duration: 2000; easing.type: Easing.InQuad }
             Timer { interval: 2000; running: true; onTriggered: gs.destroy() }
         }
