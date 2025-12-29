@@ -336,6 +336,8 @@ Window {
         markConversationRead(phoneNumber)
         // Initial load always scrolls to bottom (use timer to ensure layout is ready)
         scrollToBottomTimer.restart()
+        // Focus input field after a short delay
+        focusInputTimer.restart()
     }
 
     function markConversationRead(phoneNumber) {
@@ -391,6 +393,17 @@ Window {
                 loadConversations()
             } else if (currentView === "conversation" && currentConversation.length > 0) {
                 loadMessages(currentConversation)
+            }
+        }
+    }
+
+    // Timer for focusing input after opening conversation
+    Timer {
+        id: focusInputTimer
+        interval: 300
+        onTriggered: {
+            if (currentView === "conversation") {
+                messageInputField.forceActiveFocus()
             }
         }
     }
@@ -778,6 +791,7 @@ Window {
                         font.pixelSize: 10 * textScale
                         verticalAlignment: TextInput.AlignVCenter
                         clip: true
+                        activeFocusOnPress: true
 
                         Keys.onReturnPressed: sendMessage()
 

@@ -64,6 +64,26 @@ def trigger_haptic():
         print(f"Failed to trigger haptic: {e}")
 
 
+def play_notification_sound():
+    """Play notification sound for new SMS"""
+    import subprocess
+    sound_file = os.path.expanduser("~/Flick/sounds/notification_ding.wav")
+    if os.path.exists(sound_file):
+        try:
+            # Try paplay first (PulseAudio), fall back to aplay
+            try:
+                subprocess.Popen(["paplay", sound_file],
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
+            except FileNotFoundError:
+                subprocess.Popen(["aplay", "-q", sound_file],
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
+            print("Playing notification sound")
+        except Exception as e:
+            print(f"Failed to play sound: {e}")
+
+
 def create_notification(phone_number, text, contact_name=None):
     """Create a notification for incoming SMS via shell's app notification system"""
     try:
@@ -86,6 +106,9 @@ def create_notification(phone_number, text, contact_name=None):
 
         # Trigger haptic feedback
         trigger_haptic()
+
+        # Play notification sound
+        play_notification_sound()
 
     except Exception as e:
         print(f"Failed to create notification: {e}")
