@@ -106,7 +106,7 @@ Window {
             FolderListModel {
                 showDirs: false
                 showFiles: true
-                nameFilters: ["*.txt", "*.epub", "*.TXT", "*.EPUB"]
+                nameFilters: ["*.txt", "*.TXT"]
             }
         ', root)
 
@@ -124,8 +124,8 @@ Window {
                     var fileName = scanModel.get(i, "fileName")
                     var filePath = scanModel.get(i, "filePath")
                     if (fileName) {
-                        // Remove file extension for display
-                        var displayName = fileName.replace(/\.(txt|epub|TXT|EPUB)$/, "")
+                        // Remove file extension for display, also clean up underscores
+                        var displayName = fileName.replace(/\.(txt|TXT)$/, "").replace(/_/g, " ")
                         booksList.push({
                             title: displayName,
                             path: filePath,
@@ -455,7 +455,7 @@ Window {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Place .txt or .epub files in:\n~/Books\n~/Documents\n~/Downloads"
+                text: "Place .txt or .epub files in:\n~/Books\n~/Documents\n~/Downloads\n\n(EPUB files are auto-converted on launch)"
                 font.pixelSize: 16 * textScale
                 color: "#888899"
                 horizontalAlignment: Text.AlignHCenter
