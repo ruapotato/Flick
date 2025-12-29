@@ -393,7 +393,8 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: {
-                                var name = model.contact_name || model.phone_number
+                                var contactName = getContactName(model.phone_number)
+                                var name = contactName || model.contact_name || model.phone_number
                                 return name.charAt(0).toUpperCase()
                             }
                             color: "white"
@@ -413,7 +414,10 @@ Window {
                             spacing: 4 * textScale
 
                             Text {
-                                text: model.contact_name || model.phone_number
+                                text: {
+                                    var contactName = getContactName(model.phone_number)
+                                    return contactName || model.contact_name || model.phone_number
+                                }
                                 color: "white"
                                 font.pixelSize: 10 * textScale
                                 font.weight: Font.Bold
