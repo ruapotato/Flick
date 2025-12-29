@@ -145,10 +145,18 @@ Window {
     function getReadingProgress(path) {
         if (positions[path]) {
             var page = positions[path].page || 0
-            var total = positions[path].totalPages || 1
-            return (page + 1) / total
+            var total = positions[path].totalPages || 0
+            if (total <= 0) return 0  // No valid data
+            var progress = (page + 1) / total
+            return Math.min(1, Math.max(0, progress))  // Clamp 0-1
         }
         return 0
+    }
+
+    function hasReadingProgress(path) {
+        return positions[path] !== undefined &&
+               positions[path].totalPages > 0 &&
+               positions[path].page > 0
     }
 
     ListModel {
@@ -471,7 +479,7 @@ Window {
                                 height: parent.height * (1 - bookCover.progress)
                                 color: "#000000"
                                 opacity: 0.3
-                                visible: bookCover.progress > 0 && bookCover.progress < 1
+                                visible: hasReadingProgress(model.path) && bookCover.progress < 1
 
                                 Rectangle {
                                     anchors.top: parent.top
@@ -502,7 +510,7 @@ Window {
 
                             Row {
                                 spacing: 12
-                                visible: positions[model.path] !== undefined
+                                visible: hasReadingProgress(model.path)
 
                                 Rectangle {
                                     width: 80
@@ -530,7 +538,7 @@ Window {
                             }
 
                             Text {
-                                visible: positions[model.path] === undefined
+                                visible: !hasReadingProgress(model.path)
                                 text: "New book"
                                 font.pixelSize: 13 * textScale
                                 font.weight: Font.Light
