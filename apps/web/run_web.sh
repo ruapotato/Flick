@@ -16,11 +16,11 @@ export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 
 # QtWebEngine settings for Droidian/hwcomposer
 export QTWEBENGINE_DISABLE_SANDBOX=1
-export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu --disable-software-rasterizer --disable-gpu-compositing --enable-features=OverlayScrollbar --force-dark-mode"
+# Enable GPU acceleration for web content
+export QTWEBENGINE_CHROMIUM_FLAGS="--enable-gpu-rasterization --enable-native-gpu-memory-buffers --enable-features=OverlayScrollbar --force-dark-mode --use-gl=egl"
 
-# Force software rendering for hwcomposer compatibility
-# Hardware acceleration enabled
-# export QT_QUICK_BACKEND=software  # Using hardware accel
+# Hardware acceleration enabled for both Qt Quick and WebEngine
+# export QT_QUICK_BACKEND=software  # Commented out = hardware accel
 
 # Allow XHR file reads for config loading
 export QML_XHR_ALLOW_FILE_READ=1
