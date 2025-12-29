@@ -7,8 +7,10 @@ if [ ! -f "$EPUB_FILE" ]; then
     exit 1
 fi
 
-TXT_FILE="${EPUB_FILE%.epub}.txt"
-TXT_FILE="${TXT_FILE%.EPUB}.txt"
+# Remove .epub or .EPUB extension and add .txt
+BASE="${EPUB_FILE%.epub}"
+BASE="${BASE%.EPUB}"
+TXT_FILE="${BASE}.txt"
 
 # Skip if txt exists and is newer than epub
 if [ -f "$TXT_FILE" ] && [ "$TXT_FILE" -nt "$EPUB_FILE" ]; then
