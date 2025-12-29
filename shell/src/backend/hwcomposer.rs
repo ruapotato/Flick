@@ -2130,10 +2130,12 @@ pub fn run() -> Result<()> {
             // Check if we need to launch an app after unlock (from notification tap)
             if let Some(app_cmd) = state.shell.unlock_open_app.take() {
                 info!("Launching app after unlock: {}", app_cmd);
+                state.shell.unlock_app_launched = true; // Allow new window to switch to App view
                 if let Some(socket) = state.socket_name.to_str() {
                     let text_scale = state.shell.text_scale as f64;
                     if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(&app_cmd, socket, text_scale) {
                         error!("Failed to launch app after unlock: {}", e);
+                        state.shell.unlock_app_launched = false; // Reset on failure
                     }
                 }
             }

@@ -299,6 +299,8 @@ pub struct Shell {
     pub pre_lock_had_app: bool,
     /// App to open after unlock (from notification tap)
     pub unlock_open_app: Option<String>,
+    /// App was launched after unlock (allows new window to switch to App view)
+    pub unlock_app_launched: bool,
     /// Time of last tap on dimmed lock screen (for double-tap detection)
     pub lock_screen_last_tap: Option<std::time::Instant>,
     /// Screen timeout in seconds (0 = never, from display settings)
@@ -401,6 +403,7 @@ impl Shell {
             pre_lock_view: ShellView::Home,
             pre_lock_had_app: false,
             unlock_open_app: None,
+            unlock_app_launched: false,
             lock_screen_last_tap: None,
             screen_timeout_secs: Self::load_screen_timeout(),
             text_scale: Self::load_text_scale(),
@@ -757,6 +760,7 @@ impl Shell {
                 let _ = std::fs::remove_file(&signal_path);
             }
             self.unlock_open_app = None;
+            self.unlock_app_launched = false;
         }
     }
 

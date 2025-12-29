@@ -1524,6 +1524,11 @@ impl XdgShellHandler for Flick {
         let current_view = self.shell.view;
         if current_view == crate::shell::ShellView::LockScreen {
             tracing::info!("New window on lock screen - staying in LockScreen view");
+        } else if self.shell.unlock_app_launched {
+            // App was launched from notification tap - switch to App view
+            tracing::info!("New window from notification app launch - switching to App view");
+            self.shell.unlock_app_launched = false; // Reset flag
+            self.shell.set_view(crate::shell::ShellView::App);
         } else if self.shell.is_recently_unlocked() {
             tracing::info!("New window right after unlock - ignoring (likely dying lock app)");
         } else {
