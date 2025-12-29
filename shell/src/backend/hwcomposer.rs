@@ -1499,10 +1499,11 @@ fn handle_input_event(
                                             info!("Bluetooth toggled: {}", if state.system.bluetooth_enabled { "ON" } else { "OFF" });
                                         }
                                         QuickSettingsAction::Voice2gToggle => {
-                                            // Toggle between LTE and GSM for voice calls
+                                            // Toggle between LTE (4G data) and GSM (2G voice)
+                                            // Shell runs as root, no sudo needed for D-Bus
                                             use std::process::Command;
-                                            let output = Command::new("sudo")
-                                                .args(["dbus-send", "--system", "--print-reply", "--dest=org.ofono",
+                                            let output = Command::new("dbus-send")
+                                                .args(["--system", "--print-reply", "--dest=org.ofono",
                                                        "/ril_0", "org.ofono.RadioSettings.GetProperties"])
                                                 .output();
 
@@ -1510,18 +1511,24 @@ fn handle_input_event(
                                             let new_mode = if is_lte { "gsm" } else { "lte" };
                                             let is_2g = new_mode == "gsm";
 
-                                            let _ = Command::new("sudo")
-                                                .args(["dbus-send", "--system", "--print-reply", "--dest=org.ofono",
+                                            let result = Command::new("dbus-send")
+                                                .args(["--system", "--print-reply", "--dest=org.ofono",
                                                        "/ril_0", "org.ofono.RadioSettings.SetProperty",
                                                        "string:TechnologyPreference", &format!("variant:string:{}", new_mode)])
                                                 .status();
 
-                                            // Update UI to reflect state
+                                            if let Err(e) = result {
+                                                tracing::error!("Failed to set radio mode: {}", e);
+                                            }
+
+                                            // Update UI to reflect state (voice2g_enabled=true means 2G/GSM mode)
                                             if let Some(ref slint_ui) = state.shell.slint_ui {
                                                 slint_ui.set_voice2g_enabled(is_2g);
                                             }
 
-                                            info!("Radio mode switched to {}", new_mode.to_uppercase());
+                                            info!("Radio mode switched to {} (4G toggle now {})",
+                                                  new_mode.to_uppercase(),
+                                                  if is_2g { "OFF" } else { "ON" });
                                         }
                                         QuickSettingsAction::DndToggle => {
                                             state.system.dnd.toggle();

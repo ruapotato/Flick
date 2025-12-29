@@ -3802,23 +3802,26 @@ fn handle_input_event(
                                     info!("All effects (FX): {}", if enabled { "ON" } else { "OFF" });
                                 }
                                 QuickSettingsAction::Voice2gToggle => {
-                                    // Toggle between LTE and GSM for voice calls
+                                    // Toggle between LTE (4G data) and GSM (2G voice)
+                                    // Shell runs as root, no sudo needed for D-Bus
                                     use std::process::Command;
-                                    let output = Command::new("sudo")
-                                        .args(["dbus-send", "--system", "--print-reply", "--dest=org.ofono",
+                                    let output = Command::new("dbus-send")
+                                        .args(["--system", "--print-reply", "--dest=org.ofono",
                                                "/ril_0", "org.ofono.RadioSettings.GetProperties"])
                                         .output();
 
                                     let is_lte = output.map(|o| String::from_utf8_lossy(&o.stdout).contains("\"lte\"")).unwrap_or(true);
                                     let new_mode = if is_lte { "gsm" } else { "lte" };
 
-                                    let _ = Command::new("sudo")
-                                        .args(["dbus-send", "--system", "--print-reply", "--dest=org.ofono",
+                                    let _ = Command::new("dbus-send")
+                                        .args(["--system", "--print-reply", "--dest=org.ofono",
                                                "/ril_0", "org.ofono.RadioSettings.SetProperty",
                                                "string:TechnologyPreference", &format!("variant:string:{}", new_mode)])
                                         .status();
 
-                                    info!("Radio mode switched to {}", new_mode.to_uppercase());
+                                    info!("Radio mode switched to {} (4G toggle now {})",
+                                          new_mode.to_uppercase(),
+                                          if new_mode == "gsm" { "OFF" } else { "ON" });
                                 }
                                 QuickSettingsAction::Lock => {
                                     info!("Lock button pressed - locking screen");

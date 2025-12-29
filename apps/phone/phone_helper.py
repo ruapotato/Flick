@@ -43,6 +43,65 @@ def trigger_haptic():
         pass
 
 
+def get_radio_mode():
+    """Get current radio technology preference (lte/gsm/umts)"""
+    try:
+        result = subprocess.run(
+            ["dbus-send", "--system", "--print-reply", "--dest=org.ofono",
+             "/ril_0", "org.ofono.RadioSettings.GetProperties"],
+            capture_output=True, timeout=5
+        )
+        output = result.stdout.decode()
+        if '"lte"' in output:
+            return "lte"
+        elif '"gsm"' in output:
+            return "gsm"
+        elif '"umts"' in output:
+            return "umts"
+    except Exception as e:
+        print(f"Failed to get radio mode: {e}")
+    return "unknown"
+
+
+def set_radio_mode(mode):
+    """Set radio technology preference (lte/gsm/umts)"""
+    try:
+        result = subprocess.run(
+            ["dbus-send", "--system", "--print-reply", "--dest=org.ofono",
+             "/ril_0", "org.ofono.RadioSettings.SetProperty",
+             "string:TechnologyPreference", f"variant:string:{mode}"],
+            capture_output=True, timeout=10
+        )
+        if result.returncode == 0:
+            print(f"Radio mode set to {mode.upper()}")
+            return True
+        else:
+            print(f"Failed to set radio mode: {result.stderr.decode()}")
+    except Exception as e:
+        print(f"Failed to set radio mode: {e}")
+    return False
+
+
+def switch_to_2g_for_call():
+    """Switch to 2G mode for voice calls (VoLTE not working)"""
+    current = get_radio_mode()
+    if current != "gsm":
+        print(f"Switching from {current.upper()} to GSM for voice call...")
+        set_radio_mode("gsm")
+        # Give modem time to switch
+        time.sleep(2)
+    else:
+        print("Already in GSM mode")
+
+
+def restore_lte_after_call():
+    """Restore LTE mode after call ends (for data)"""
+    current = get_radio_mode()
+    if current == "gsm":
+        print("Restoring LTE mode after call...")
+        set_radio_mode("lte")
+
+
 def play_ringtone():
     """Play ringtone for incoming call"""
     sound_file = os.path.expanduser("~/Flick/sounds/ringtone_gentle.wav")
@@ -377,6 +436,8 @@ def daemon_mode():
                     if action == "dial":
                         number = cmd.get("number", "")
                         if number:
+                            # Switch to 2G before dialing for voice calls
+                            switch_to_2g_for_call()
                             ofono.dial(number)
                             call_number = number
                             call_start = time.time()
@@ -411,12 +472,16 @@ def daemon_mode():
                 call_number = ""
                 stop_ringtone()
                 teardown_call_audio()
+                # Restore LTE after call for mobile data
+                restore_lte_after_call()
 
-            # Detect incoming call - play ringtone
+            # Detect incoming call - switch to 2G and play ringtone
             if current_state == "incoming" and last_state == "idle":
                 call_number = status.get("number", "Unknown")
                 print(f"Incoming call from {call_number}")
                 trigger_haptic()
+                # Switch to 2G for voice call (VoLTE not working on this device)
+                switch_to_2g_for_call()
                 play_ringtone()
 
             # Update status file
