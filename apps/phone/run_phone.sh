@@ -21,12 +21,19 @@ export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 
 # Kill any existing phone helper daemon
 sudo pkill -f "phone_helper.py daemon" 2>/dev/null
+sleep 0.5
+
+# Clear old status/cmd files
+rm -f /tmp/flick_phone_cmd /tmp/flick_phone_status 2>/dev/null
 
 # Start the helper daemon in background AS ROOT (needed for oFono D-Bus access)
 # The default oFono D-Bus policy denies access to non-root users
 sudo python3 "$SCRIPT_DIR/phone_helper.py" daemon >> "$LOG_FILE" 2>&1 &
 HELPER_PID=$!
 echo "Started phone helper daemon (PID: $HELPER_PID)" >> "$LOG_FILE"
+
+# Wait a moment for daemon to initialize
+sleep 1
 
 # Cleanup on exit
 cleanup() {
