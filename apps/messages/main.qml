@@ -221,8 +221,7 @@ Window {
 
                 // Only auto-scroll if user hasn't scrolled up and we have new messages
                 if (hasNewMessages && !userScrolledUp && messagesModel.count > 0) {
-                    // Use a small delay to ensure layout is complete
-                    scrollAfterLoadTimer.restart()
+                    scrollToBottomTimer.restart()
                 }
             }
         } catch (e) {
@@ -254,7 +253,7 @@ Window {
             lastMessageText = messageInput
             messageInput = ""
             userScrolledUp = false
-            messagesList.positionViewAtEnd()
+            scrollToBottomTimer.restart()
         }
     }
 
@@ -300,10 +299,8 @@ Window {
         loadMessages(phoneNumber)
         // Clear unread count for this conversation
         markConversationRead(phoneNumber)
-        // Initial load always scrolls to bottom
-        if (messagesModel.count > 0) {
-            messagesList.positionViewAtEnd()
-        }
+        // Initial load always scrolls to bottom (use timer to ensure layout is ready)
+        scrollToBottomTimer.restart()
     }
 
     function markConversationRead(phoneNumber) {
@@ -363,13 +360,14 @@ Window {
         }
     }
 
-    // Timer for scrolling after new messages load
+    // Timer for scrolling to bottom after model updates
     Timer {
-        id: scrollAfterLoadTimer
-        interval: 100
+        id: scrollToBottomTimer
+        interval: 150
         onTriggered: {
-            if (!userScrolledUp && messagesModel.count > 0) {
-                messagesList.positionViewAtEnd()
+            if (messagesModel.count > 0) {
+                // Use positionViewAtIndex for more reliable positioning
+                messagesList.positionViewAtIndex(messagesModel.count - 1, ListView.End)
             }
         }
     }
