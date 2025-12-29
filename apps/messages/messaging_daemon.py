@@ -26,7 +26,7 @@ except ImportError:
 # Paths
 STATE_DIR = os.path.expanduser("~/.local/state/flick")
 MESSAGES_FILE = os.path.join(STATE_DIR, "messages.json")
-NOTIFICATIONS_FILE = os.path.join(STATE_DIR, "notifications_display.json")
+APP_NOTIFICATIONS_FILE = os.path.join(STATE_DIR, "app_notifications.json")
 CMD_FILE = "/tmp/flick_messages_cmd"
 
 os.makedirs(STATE_DIR, exist_ok=True)
@@ -43,44 +43,21 @@ def trigger_haptic():
 
 
 def create_notification(phone_number, text, contact_name=None):
-    """Create a notification for incoming SMS"""
+    """Create a notification for incoming SMS via shell's app notification system"""
     try:
-        # Load existing notifications
-        notifications = []
-        if os.path.exists(NOTIFICATIONS_FILE):
-            try:
-                with open(NOTIFICATIONS_FILE, 'r') as f:
-                    data = json.load(f)
-                    notifications = data.get("notifications", [])
-            except:
-                pass
-
-        # Generate unique ID and timestamp
-        now = int(time.time())
-        notif_id = now % 1000000
-
-        # Create notification in format lockscreen expects
+        # Format for shell's app_notifications.json
+        # Shell reads this, adds to its store, then deletes the file
         notif = {
-            "id": notif_id,
             "app_name": "Messages",
             "summary": contact_name or phone_number,
             "body": text[:100] + ("..." if len(text) > 100 else ""),
-            "urgency": "normal",
-            "time_ago": "now",
-            "timestamp": now
+            "urgency": "normal"
         }
 
-        # Add to front of list
-        notifications.insert(0, notif)
-
-        # Keep only last 20 notifications
-        notifications = notifications[:20]
-
-        # Save
-        with open(NOTIFICATIONS_FILE, 'w') as f:
+        # Write notification request for shell to pick up
+        with open(APP_NOTIFICATIONS_FILE, 'w') as f:
             json.dump({
-                "notifications": notifications,
-                "count": len(notifications)
+                "notifications": [notif]
             }, f, indent=2)
 
         print(f"Created notification for SMS from {phone_number}")

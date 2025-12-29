@@ -156,8 +156,7 @@ impl Default for NotificationStore {
 
 lazy_static::lazy_static! {
     pub static ref NOTIFICATIONS: Arc<Mutex<NotificationStore>> = {
-        let mut store = NotificationStore::new();
-        store.add("Flick", "Welcome to Flick", "Swipe gestures are ready");
+        let store = NotificationStore::new();
         Arc::new(Mutex::new(store))
     };
 }
