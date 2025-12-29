@@ -47,13 +47,6 @@ Window {
         scanBooks()
     }
 
-    // Auto-refresh library every 3 seconds to pick up new books
-    Timer {
-        interval: 3000
-        running: currentView === "library"
-        repeat: true
-        onTriggered: scanBooks()
-    }
 
     function loadTextScale() {
         var xhr = new XMLHttpRequest()
@@ -350,6 +343,34 @@ Window {
                 radius: 150
                 color: accentColor
                 opacity: 0.08
+            }
+
+            // Refresh button
+            Rectangle {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.rightMargin: 24
+                anchors.topMargin: 60
+                width: 56
+                height: 56
+                radius: 28
+                color: refreshMouse.pressed ? "#333344" : "#222233"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "↻"
+                    font.pixelSize: 28
+                    color: "#ffffff"
+                }
+
+                MouseArea {
+                    id: refreshMouse
+                    anchors.fill: parent
+                    onClicked: {
+                        Haptic.tap()
+                        scanBooks()
+                    }
+                }
             }
 
             Column {

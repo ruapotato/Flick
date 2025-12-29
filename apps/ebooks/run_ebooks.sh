@@ -25,7 +25,7 @@ extract_epub() {
     fi
 }
 
-# Pre-extract all existing EPUBs
+# Extract all EPUBs on launch
 for dir in ~/Books ~/Documents ~/Downloads; do
     if [ -d "$dir" ]; then
         shopt -s nullglob
@@ -35,23 +35,5 @@ for dir in ~/Books ~/Documents ~/Downloads; do
         shopt -u nullglob
     fi
 done
-
-# Background watcher for new EPUBs (polls every 2 seconds)
-(
-    while true; do
-        sleep 2
-        for dir in ~/Books ~/Documents ~/Downloads; do
-            if [ -d "$dir" ]; then
-                shopt -s nullglob
-                for epub in "$dir"/*.epub "$dir"/*.EPUB; do
-                    extract_epub "$epub"
-                done
-                shopt -u nullglob
-            fi
-        done
-    done
-) &
-WATCHER_PID=$!
-trap "kill $WATCHER_PID 2>/dev/null" EXIT
 
 qmlscene "$SCRIPT_DIR/main.qml"
