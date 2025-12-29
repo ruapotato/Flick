@@ -15,9 +15,11 @@ Window {
     property color accentColor: Theme.accentColor
     property color accentPressed: Qt.darker(accentColor, 1.2)
     property string contactsFile: "/home/droidian/.local/state/flick/contacts.json"
-    property string currentView: "list"  // list, detail, edit, add
+    property string currentView: "list"  // list, detail, edit, add, menu
     property int selectedContactIndex: -1
     property string searchText: ""
+    property string exportPath: "/home/droidian/Documents/contacts.vcf"
+    property string importPath: "/home/droidian/Documents/contacts.vcf"
 
     ListModel { id: contactsModel }
 
@@ -152,6 +154,101 @@ Window {
         return result
     }
 
+    function exportContacts() {
+        var vcf = ""
+        for (var i = 0; i < contactsModel.count; i++) {
+            var c = contactsModel.get(i)
+            vcf += "BEGIN:VCARD\n"
+            vcf += "VERSION:3.0\n"
+            vcf += "FN:" + c.name + "\n"
+            // Split name into parts for N field
+            var parts = c.name.trim().split(" ")
+            if (parts.length >= 2) {
+                vcf += "N:" + parts.slice(1).join(" ") + ";" + parts[0] + ";;;\n"
+            } else {
+                vcf += "N:" + c.name + ";;;;\n"
+            }
+            if (c.phone) vcf += "TEL;TYPE=CELL:" + c.phone + "\n"
+            if (c.email) vcf += "EMAIL:" + c.email + "\n"
+            vcf += "END:VCARD\n"
+        }
+
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file://" + exportPath, false)
+        try {
+            xhr.send(vcf)
+            console.log("Exported " + contactsModel.count + " contacts to " + exportPath)
+            return true
+        } catch (e) {
+            console.log("Export error: " + e)
+            return false
+        }
+    }
+
+    function importContacts() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + importPath, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var vcf = xhr.responseText
+                var imported = 0
+                var cards = vcf.split("END:VCARD")
+
+                for (var i = 0; i < cards.length; i++) {
+                    var card = cards[i]
+                    if (card.indexOf("BEGIN:VCARD") < 0) continue
+
+                    var name = "", phone = "", email = ""
+                    var lines = card.split("\n")
+
+                    for (var j = 0; j < lines.length; j++) {
+                        var line = lines[j].trim()
+                        if (line.indexOf("FN:") === 0) {
+                            name = line.substring(3)
+                        } else if (line.indexOf("TEL") === 0) {
+                            var colonIdx = line.indexOf(":")
+                            if (colonIdx > 0) phone = line.substring(colonIdx + 1)
+                        } else if (line.indexOf("EMAIL") === 0) {
+                            var emailIdx = line.indexOf(":")
+                            if (emailIdx > 0) email = line.substring(emailIdx + 1)
+                        }
+                    }
+
+                    if (name) {
+                        // Check for duplicates by name
+                        var exists = false
+                        for (var k = 0; k < contactsModel.count; k++) {
+                            if (contactsModel.get(k).name === name) {
+                                exists = true
+                                break
+                            }
+                        }
+                        if (!exists) {
+                            contactsModel.append({
+                                name: name,
+                                phone: phone,
+                                email: email,
+                                initials: getInitials(name)
+                            })
+                            imported++
+                        }
+                    }
+                }
+
+                if (imported > 0) {
+                    sortContacts()
+                    saveContacts()
+                }
+                console.log("Imported " + imported + " contacts from " + importPath)
+                return imported
+            }
+        } catch (e) {
+            console.log("Import error: " + e)
+        }
+        return 0
+    }
+
     // Main list view
     Rectangle {
         anchors.fill: parent
@@ -187,6 +284,34 @@ Window {
                     font.weight: Font.Medium
                     font.letterSpacing: 3
                     color: "#555566"
+                }
+            }
+
+            // Menu button
+            Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.leftMargin: 20
+                anchors.topMargin: 60
+                width: 56
+                height: 56
+                radius: 28
+                color: menuMouse.pressed ? "#333344" : "#222233"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "⋮"
+                    font.pixelSize: 28
+                    color: "#ffffff"
+                }
+
+                MouseArea {
+                    id: menuMouse
+                    anchors.fill: parent
+                    onClicked: {
+                        Haptic.tap()
+                        currentView = "menu"
+                    }
                 }
             }
 
@@ -798,6 +923,203 @@ Window {
                         inputMethodHints: Qt.ImhEmailCharactersOnly
                     }
                 }
+            }
+        }
+    }
+
+    // Menu view
+    Rectangle {
+        anchors.fill: parent
+        color: "#0a0a0f"
+        visible: currentView === "menu"
+
+        property string statusMessage: ""
+
+        Column {
+            anchors.fill: parent
+            anchors.margins: 24
+            spacing: 24
+
+            // Header
+            Row {
+                width: parent.width
+                spacing: 16
+
+                Rectangle {
+                    width: 56
+                    height: 56
+                    radius: 28
+                    color: backMenuMouse.pressed ? "#333344" : "#222233"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "←"
+                        font.pixelSize: 28
+                        color: "#ffffff"
+                    }
+
+                    MouseArea {
+                        id: backMenuMouse
+                        anchors.fill: parent
+                        onClicked: {
+                            Haptic.tap()
+                            currentView = "list"
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Options"
+                    font.pixelSize: 24 * textScale
+                    font.weight: Font.Medium
+                    color: "#ffffff"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            // Import/Export buttons
+            Column {
+                width: parent.width
+                spacing: 16
+
+                // Import button
+                Rectangle {
+                    width: parent.width
+                    height: 80
+                    radius: 16
+                    color: importMouse.pressed ? "#2a2a3e" : "#1a1a2e"
+
+                    Row {
+                        anchors.fill: parent
+                        anchors.margins: 20
+                        spacing: 20
+
+                        Rectangle {
+                            width: 48
+                            height: 48
+                            radius: 24
+                            color: "#4a9eff"
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "↓"
+                                font.pixelSize: 24
+                                color: "#ffffff"
+                            }
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 4
+
+                            Text {
+                                text: "Import Contacts"
+                                font.pixelSize: 18 * textScale
+                                font.weight: Font.Medium
+                                color: "#ffffff"
+                            }
+
+                            Text {
+                                text: "From ~/Documents/contacts.vcf"
+                                font.pixelSize: 12 * textScale
+                                color: "#888899"
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        id: importMouse
+                        anchors.fill: parent
+                        onClicked: {
+                            Haptic.click()
+                            var count = importContacts()
+                            if (count > 0) {
+                                parent.parent.parent.statusMessage = "Imported " + count + " contacts"
+                            } else {
+                                parent.parent.parent.statusMessage = "No new contacts found"
+                            }
+                        }
+                    }
+                }
+
+                // Export button
+                Rectangle {
+                    width: parent.width
+                    height: 80
+                    radius: 16
+                    color: exportMouse.pressed ? "#2a2a3e" : "#1a1a2e"
+
+                    Row {
+                        anchors.fill: parent
+                        anchors.margins: 20
+                        spacing: 20
+
+                        Rectangle {
+                            width: 48
+                            height: 48
+                            radius: 24
+                            color: "#50c878"
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "↑"
+                                font.pixelSize: 24
+                                color: "#ffffff"
+                            }
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 4
+
+                            Text {
+                                text: "Export Contacts"
+                                font.pixelSize: 18 * textScale
+                                font.weight: Font.Medium
+                                color: "#ffffff"
+                            }
+
+                            Text {
+                                text: "To ~/Documents/contacts.vcf"
+                                font.pixelSize: 12 * textScale
+                                color: "#888899"
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        id: exportMouse
+                        anchors.fill: parent
+                        onClicked: {
+                            Haptic.click()
+                            if (exportContacts()) {
+                                parent.parent.parent.statusMessage = "Exported " + contactsModel.count + " contacts"
+                            } else {
+                                parent.parent.parent.statusMessage = "Export failed"
+                            }
+                        }
+                    }
+                }
+
+                // Status message
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: parent.parent.statusMessage
+                    font.pixelSize: 16 * textScale
+                    color: accentColor
+                    visible: parent.parent.statusMessage !== ""
+                }
+            }
+
+            // Info
+            Text {
+                width: parent.width
+                text: "vCard (.vcf) format is compatible with most contact apps including Google Contacts, iOS Contacts, and Outlook."
+                font.pixelSize: 14 * textScale
+                color: "#666677"
+                wrapMode: Text.WordWrap
             }
         }
     }
