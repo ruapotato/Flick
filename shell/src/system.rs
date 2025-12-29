@@ -448,14 +448,38 @@ impl VolumeManager {
         }
     }
 
-    /// Run amixer command (blocking) - unset XDG_RUNTIME_DIR to use ALSA directly
+    /// Run amixer command as audio user with proper environment
     fn run_amixer(args: &[&str]) -> Option<std::process::Output> {
-        // Remove XDG_RUNTIME_DIR so amixer uses ALSA directly instead of PulseAudio
-        Command::new("amixer")
-            .env_remove("XDG_RUNTIME_DIR")
-            .args(args)
-            .output()
-            .ok()
+        if let Some((uid, _username)) = Self::get_audio_user() {
+            let current_uid = unsafe { libc::getuid() };
+
+            if current_uid == uid {
+                // Already the right user
+                Command::new("amixer")
+                    .args(args)
+                    .output()
+                    .ok()
+            } else {
+                // Run as audio user with proper environment
+                let xdg_dir = format!("/run/user/{}", uid);
+                let dbus_addr = format!("unix:path=/run/user/{}/bus", uid);
+                let amixer_args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+                let shell_cmd = format!(
+                    "XDG_RUNTIME_DIR={} DBUS_SESSION_BUS_ADDRESS={} amixer {}",
+                    xdg_dir, dbus_addr, amixer_args.join(" ")
+                );
+                Command::new("sudo")
+                    .args(["-u", &format!("#{}", uid), "sh", "-c", &shell_cmd])
+                    .output()
+                    .ok()
+            }
+        } else {
+            // Fallback
+            Command::new("amixer")
+                .args(args)
+                .output()
+                .ok()
+        }
     }
 
     /// Get current volume (0-100) using amixer (works with droid audio)
