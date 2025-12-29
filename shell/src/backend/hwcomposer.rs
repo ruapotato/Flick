@@ -2211,6 +2211,16 @@ pub fn run() -> Result<()> {
         }
         was_blanked = state.shell.display_blanked;
 
+        // Check for app notifications BEFORE checking if blanked (so we can wake on new notifications)
+        let new_notifications = crate::shell::quick_settings::check_app_notifications();
+        if new_notifications && state.shell.display_blanked {
+            info!("New notification received, waking screen");
+            state.shell.wake_lock_screen();
+            if let Err(e) = hwc_display.hwc_ctx.set_power(true) {
+                error!("Failed to wake display for notification: {}", e);
+            }
+        }
+
         // Skip rendering if display is blanked
         if state.shell.display_blanked {
             // Still need to dispatch events but don't render
@@ -2255,15 +2265,6 @@ pub fn run() -> Result<()> {
         // Check for haptic requests from apps (via /tmp/flick_haptic)
         state.system.check_app_haptic();
 
-        // Check for app notifications (via ~/.local/state/flick/app_notifications.json)
-        let new_notifications = crate::shell::quick_settings::check_app_notifications();
-        if new_notifications && state.shell.display_blanked {
-            info!("New notification received, waking screen");
-            state.shell.wake_lock_screen();
-            if let Err(e) = hwc_display.hwc_ctx.set_power(true) {
-                error!("Failed to wake display for notification: {}", e);
-            }
-        }
         // Check for dismiss requests from lock screen
         crate::shell::quick_settings::check_dismiss_requests();
         // Export notifications for lock screen display
