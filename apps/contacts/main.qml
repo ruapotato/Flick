@@ -61,7 +61,14 @@ Window {
     function saveContacts() {
         var contacts = []
         for (var i = 0; i < contactsModel.count; i++) {
-            contacts.push(contactsModel.get(i))
+            var c = contactsModel.get(i)
+            // Explicitly copy properties to avoid Qt model serialization issues
+            contacts.push({
+                name: c.name || "",
+                phone: c.phone || "",
+                email: c.email || "",
+                initials: c.initials || ""
+            })
         }
         var data = JSON.stringify({contacts: contacts}, null, 2)
         var xhr = new XMLHttpRequest()
@@ -76,7 +83,15 @@ Window {
     function sortContacts() {
         var contacts = []
         for (var i = 0; i < contactsModel.count; i++) {
-            contacts.push(contactsModel.get(i))
+            var c = contactsModel.get(i)
+            // Skip invalid contacts (no name)
+            if (!c.name || c.name.trim() === "") continue
+            contacts.push({
+                name: c.name || "",
+                phone: c.phone || "",
+                email: c.email || "",
+                initials: c.initials || ""
+            })
         }
         contacts.sort(function(a, b) {
             return a.name.localeCompare(b.name)

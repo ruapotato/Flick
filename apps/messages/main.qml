@@ -569,7 +569,8 @@ Window {
                     }
                 }
 
-                Item { Layout.fillWidth: true; width: 1 }
+                // Spacer
+                Item { width: 8 * textScale; height: 1 }
 
                 // Save contact button (only for unknown numbers)
                 Rectangle {
