@@ -3801,6 +3801,25 @@ fn handle_input_event(
                                     state.set_living_pixels_enabled(enabled);
                                     info!("All effects (FX): {}", if enabled { "ON" } else { "OFF" });
                                 }
+                                QuickSettingsAction::Voice2gToggle => {
+                                    // Toggle between LTE and GSM for voice calls
+                                    use std::process::Command;
+                                    let output = Command::new("sudo")
+                                        .args(["dbus-send", "--system", "--print-reply", "--dest=org.ofono",
+                                               "/ril_0", "org.ofono.RadioSettings.GetProperties"])
+                                        .output();
+
+                                    let is_lte = output.map(|o| String::from_utf8_lossy(&o.stdout).contains("\"lte\"")).unwrap_or(true);
+                                    let new_mode = if is_lte { "gsm" } else { "lte" };
+
+                                    let _ = Command::new("sudo")
+                                        .args(["dbus-send", "--system", "--print-reply", "--dest=org.ofono",
+                                               "/ril_0", "org.ofono.RadioSettings.SetProperty",
+                                               "string:TechnologyPreference", &format!("variant:string:{}", new_mode)])
+                                        .status();
+
+                                    info!("Radio mode switched to {}", new_mode.to_uppercase());
+                                }
                                 QuickSettingsAction::Lock => {
                                     info!("Lock button pressed - locking screen");
                                     state.shell.lock();
@@ -3838,6 +3857,10 @@ fn handle_input_event(
                                 QuickSettingsAction::BrightnessChanged(value) => {
                                     state.system.set_brightness(value);
                                     info!("Brightness set to {:.0}%", value * 100.0);
+                                }
+                                QuickSettingsAction::VolumeChanged(value) => {
+                                    state.system.set_volume(value as i32);
+                                    info!("Volume set to {}%", value);
                                 }
                             }
                         }

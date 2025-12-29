@@ -1638,6 +1638,7 @@ component QuickSettingsPanel inherits Rectangle {
     in property <bool> flashlight-enabled: false;
     in property <bool> airplane-enabled: false;
     in property <bool> touch-effects-enabled: true;
+    in property <bool> voice2g-enabled: false;  // 2G mode for voice calls
     in property <string> wifi-ssid: "Home WiFi";
     in property <int> battery-percent: 85;
     in property <string> time: "12:00";
@@ -1653,6 +1654,7 @@ component QuickSettingsPanel inherits Rectangle {
     callback flashlight-toggled();
     callback airplane-toggled();
     callback touch-effects-toggled();
+    callback voice2g-toggled();
     callback lock-pressed();
     callback settings-pressed();
     callback notification-dismissed(int);
@@ -1801,7 +1803,7 @@ component QuickSettingsPanel inherits Rectangle {
                     }
                 }
 
-                // Row 2: Airplane, Lock, FX
+                // Row 2: Airplane, 2G, Lock, FX
                 HorizontalLayout {
                     spacing: 12px;
 
@@ -1811,6 +1813,14 @@ component QuickSettingsPanel inherits Rectangle {
                         enabled: airplane-enabled;
                         tile-color: #3a3a4a;
                         toggled => { airplane-toggled(); }
+                    }
+
+                    QuickToggle {
+                        label: "2G";
+                        icon: root.icons.volume;  // Signal-like icon
+                        enabled: voice2g-enabled;
+                        tile-color: #2a4a3a;
+                        toggled => { voice2g-toggled(); }
                     }
 
                     QuickToggle {
@@ -2580,6 +2590,7 @@ export component FlickShell inherits Window {
     in property <bool> flashlight-enabled: false;
     in property <bool> airplane-enabled: false;
     in property <bool> touch-effects-enabled: true;
+    in property <bool> voice2g-enabled: false;  // 2G mode for voice calls
     in property <string> wifi-ssid: "WiFi";
     in property <int> battery-percent: 85;
     in property <float> text-scale: 2.0;  // Text scale factor (1.0 = normal, 2.0 = double)
@@ -2639,6 +2650,7 @@ export component FlickShell inherits Window {
     callback flashlight-toggled();
     callback airplane-toggled();
     callback touch-effects-toggled();
+    callback voice2g-toggled();
     callback lock-pressed();
     callback settings-pressed();
     callback notification-dismissed(int);

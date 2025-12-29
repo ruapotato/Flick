@@ -1498,6 +1498,31 @@ fn handle_input_event(
                                             state.system.bluetooth_enabled = BluetoothManager::is_enabled();
                                             info!("Bluetooth toggled: {}", if state.system.bluetooth_enabled { "ON" } else { "OFF" });
                                         }
+                                        QuickSettingsAction::Voice2gToggle => {
+                                            // Toggle between LTE and GSM for voice calls
+                                            use std::process::Command;
+                                            let output = Command::new("sudo")
+                                                .args(["dbus-send", "--system", "--print-reply", "--dest=org.ofono",
+                                                       "/ril_0", "org.ofono.RadioSettings.GetProperties"])
+                                                .output();
+
+                                            let is_lte = output.map(|o| String::from_utf8_lossy(&o.stdout).contains("\"lte\"")).unwrap_or(true);
+                                            let new_mode = if is_lte { "gsm" } else { "lte" };
+                                            let is_2g = new_mode == "gsm";
+
+                                            let _ = Command::new("sudo")
+                                                .args(["dbus-send", "--system", "--print-reply", "--dest=org.ofono",
+                                                       "/ril_0", "org.ofono.RadioSettings.SetProperty",
+                                                       "string:TechnologyPreference", &format!("variant:string:{}", new_mode)])
+                                                .status();
+
+                                            // Update UI to reflect state
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                slint_ui.set_voice2g_enabled(is_2g);
+                                            }
+
+                                            info!("Radio mode switched to {}", new_mode.to_uppercase());
+                                        }
                                         QuickSettingsAction::DndToggle => {
                                             state.system.dnd.toggle();
                                             info!("Do Not Disturb: {}", if state.system.dnd.enabled { "ON" } else { "OFF" });

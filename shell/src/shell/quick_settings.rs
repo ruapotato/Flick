@@ -46,6 +46,7 @@ pub fn default_toggles() -> Vec<QuickToggle> {
     vec![
         QuickToggle::new("wifi", "WiFi", "W", true),
         QuickToggle::new("bluetooth", "BT", "B", false),
+        QuickToggle::new("voice2g", "2G", "2", false),  // Switch to 2G for voice calls
         QuickToggle::new("flashlight", "Light", "L", false),
         QuickToggle::new("effects", "FX", "E", false),
         QuickToggle::new("dnd", "DND", "D", false),

@@ -29,6 +29,7 @@ pub enum PopupAction {
 pub enum QuickSettingsAction {
     WifiToggle,
     BluetoothToggle,
+    Voice2gToggle,  // Switch to 2G for voice calls
     DndToggle,
     FlashlightToggle,
     AirplaneToggle,
@@ -222,6 +223,12 @@ impl SlintShell {
         shell.on_touch_effects_toggled(move || {
             info!("Slint Touch Effects toggle callback");
             qs_clone.borrow_mut().push(QuickSettingsAction::TouchEffectsToggle);
+        });
+
+        let qs_clone = pending_qs_actions.clone();
+        shell.on_voice2g_toggled(move || {
+            info!("Slint 2G Voice toggle callback");
+            qs_clone.borrow_mut().push(QuickSettingsAction::Voice2gToggle);
         });
 
         let qs_clone = pending_qs_actions.clone();
@@ -451,6 +458,11 @@ impl SlintShell {
     /// Set Touch Effects enabled state
     pub fn set_touch_effects_enabled(&self, enabled: bool) {
         self.shell.set_touch_effects_enabled(enabled);
+    }
+
+    /// Set Voice 2G mode enabled state
+    pub fn set_voice2g_enabled(&self, enabled: bool) {
+        self.shell.set_voice2g_enabled(enabled);
     }
 
     /// Set WiFi SSID
