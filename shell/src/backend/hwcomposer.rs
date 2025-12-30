@@ -3319,8 +3319,14 @@ fn render_frame(
                     slint_ui.set_switcher_windows(windows);
 
                     // Slide switcher cards in from right as home icons push left
-                    // home_push_offset: 0 → -3.5, so switcher_push: 3.5 → 0
-                    let switcher_push = (3.5 + state.shell.home_push_offset).max(0.0);
+                    // Only apply push when coming from Home view, not App view
+                    let switcher_push = if shell_view == ShellView::Home {
+                        // home_push_offset: 0 → -3.5, so switcher_push: 3.5 → 0
+                        (3.5 + state.shell.home_push_offset).max(0.0)
+                    } else {
+                        // From App view, no push - just show cards normally
+                        0.0
+                    };
                     slint_ui.set_switcher_push_offset(switcher_push as f32);
 
                     // Render the switcher preview
