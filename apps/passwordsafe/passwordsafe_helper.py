@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Flick Password Safe - KDBX database helper using pykeepass
-Runs as a background daemon, communicates via file IPC with QML UI
+Runs as a background daemon, communicates via HTTP with QML UI
 """
 
 import os
@@ -9,8 +9,10 @@ import sys
 import json
 import time
 import subprocess
+import threading
 from pathlib import Path
 from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 try:
     from pykeepass import PyKeePass
@@ -19,11 +21,12 @@ except ImportError:
     print("ERROR: pykeepass not installed. Run: pip install pykeepass")
     sys.exit(1)
 
-# IPC files
+# Config
 STATE_DIR = Path.home() / ".local/state/flick/passwordsafe"
-CMD_FILE = Path("/tmp/flick_vault_cmd")
 STATUS_FILE = Path("/tmp/flick_vault_status")
 VAULTS_FILE = STATE_DIR / "vaults.json"
+LAST_VAULT_FILE = STATE_DIR / "last_vault.json"
+HTTP_PORT = 18943
 
 # Global state
 current_db = None
@@ -71,6 +74,25 @@ def remove_known_vault(path):
         save_known_vaults(vaults)
 
 
+def get_last_vault():
+    """Get the last opened vault path"""
+    try:
+        if LAST_VAULT_FILE.exists():
+            data = json.loads(LAST_VAULT_FILE.read_text())
+            return data.get("path")
+    except:
+        pass
+    return None
+
+
+def save_last_vault(path):
+    """Save the last opened vault path for auto-open"""
+    try:
+        LAST_VAULT_FILE.write_text(json.dumps({"path": path}))
+    except Exception as e:
+        log(f"Error saving last vault: {e}")
+
+
 def write_status(status):
     """Write status JSON for QML to read"""
     try:
@@ -88,6 +110,7 @@ def unlock_vault(path, password):
         current_db = kp
         current_db_path = path
         add_known_vault(path)
+        save_last_vault(path)  # Remember for auto-open
         log(f"Unlocked vault: {path}")
         return True, None
     except CredentialsError:
@@ -122,6 +145,7 @@ def create_vault(path, password):
         current_db = kp
         current_db_path = path
         add_known_vault(path)
+        save_last_vault(path)  # Remember for auto-open
         log(f"Created vault: {path}")
         return True, None
     except Exception as e:
@@ -300,7 +324,16 @@ def process_command(cmd):
             "action": "list_vaults",
             "vaults": valid_vaults,
             "unlocked": current_db is not None,
-            "current_path": current_db_path
+            "current_path": current_db_path,
+            "last_vault": get_last_vault()
+        })
+
+    elif action == "get_last_vault":
+        last = get_last_vault()
+        write_status({
+            "action": "get_last_vault",
+            "path": last,
+            "exists": Path(last).exists() if last else False
         })
 
     elif action == "unlock":
@@ -454,52 +487,70 @@ def process_command(cmd):
         })
 
 
+class CommandHandler(BaseHTTPRequestHandler):
+    """HTTP request handler for receiving commands from QML"""
+
+    def log_message(self, format, *args):
+        """Suppress default HTTP logging"""
+        pass
+
+    def do_POST(self):
+        """Handle POST requests with commands"""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8')
+            cmd = json.loads(body)
+            log(f"HTTP command: {cmd.get('action')}")
+            process_command(cmd)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+        except Exception as e:
+            log(f"HTTP error: {e}")
+            self.send_response(500)
+            self.end_headers()
+
+    def do_OPTIONS(self):
+        """Handle CORS preflight"""
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+
+
 def daemon_loop():
-    """Main daemon loop - watch for commands from QML"""
+    """Main daemon loop - HTTP server for QML communication"""
     log("Password safe daemon started")
     init_state_dir()
 
-    # Clean up old IPC files
-    CMD_FILE.unlink(missing_ok=True)
+    # Clean up old status file
     STATUS_FILE.unlink(missing_ok=True)
 
-    # Initial status
+    # Initial status with last vault info
+    last_vault = get_last_vault()
     write_status({
         "action": "ready",
-        "unlocked": False
+        "unlocked": False,
+        "last_vault": last_vault,
+        "last_vault_exists": Path(last_vault).exists() if last_vault else False
     })
 
-    last_mtime = 0
-
-    while True:
-        try:
-            # Check for new command
-            if CMD_FILE.exists():
-                mtime = CMD_FILE.stat().st_mtime
-                if mtime != last_mtime:
-                    last_mtime = mtime
-                    try:
-                        cmd = json.loads(CMD_FILE.read_text())
-                        process_command(cmd)
-                    except json.JSONDecodeError as e:
-                        log(f"Invalid JSON in command: {e}")
-                    except Exception as e:
-                        log(f"Error processing command: {e}")
-
-            time.sleep(0.1)
-
-        except KeyboardInterrupt:
-            log("Daemon interrupted")
-            break
-        except Exception as e:
-            log(f"Daemon error: {e}")
-            time.sleep(1)
-
-    # Cleanup
-    lock_vault()
-    CMD_FILE.unlink(missing_ok=True)
-    STATUS_FILE.unlink(missing_ok=True)
-    log("Daemon stopped")
+    # Start HTTP server
+    try:
+        server = HTTPServer(('127.0.0.1', HTTP_PORT), CommandHandler)
+        log(f"HTTP server listening on port {HTTP_PORT}")
+        server.serve_forever()
+    except KeyboardInterrupt:
+        log("Daemon interrupted")
+    except Exception as e:
+        log(f"Server error: {e}")
+    finally:
+        lock_vault()
+        STATUS_FILE.unlink(missing_ok=True)
+        log("Daemon stopped")
 
 
 if __name__ == "__main__":

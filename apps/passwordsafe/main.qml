@@ -25,10 +25,16 @@ Window {
     // IPC
     property string statusPath: "/tmp/flick_vault_status"
     property int lastStatusMtime: 0
+    property string httpPort: "18943"
+    property string lastVaultPath: ""
+    property bool lastVaultExists: false
 
-    // Send command to daemon
+    // Send command to daemon via HTTP POST
     function sendCommand(cmd) {
-        console.log("CMD:" + JSON.stringify(cmd))
+        var xhr = new XMLHttpRequest()
+        xhr.open("POST", "http://127.0.0.1:" + httpPort + "/cmd", true)
+        xhr.setRequestHeader("Content-Type", "application/json")
+        xhr.send(JSON.stringify(cmd))
     }
 
     // Check for status updates
@@ -53,15 +59,24 @@ Window {
 
     function handleStatus(status) {
         if (status.action === "ready") {
+            // Store last vault info for auto-open prompt
+            lastVaultPath = status.last_vault || ""
+            lastVaultExists = status.last_vault_exists || false
             sendCommand({action: "list_vaults"})
         }
         else if (status.action === "list_vaults") {
             vaults = status.vaults || []
             isUnlocked = status.unlocked || false
+            lastVaultPath = status.last_vault || lastVaultPath
             if (isUnlocked) {
                 currentVaultPath = status.current_path || ""
                 currentView = "entries"
                 sendCommand({action: "get_entries"})
+            } else if (lastVaultPath && lastVaultExists && currentView === "vaults") {
+                // Auto-navigate to unlock last vault
+                currentVaultPath = lastVaultPath
+                currentVaultName = lastVaultPath.split("/").pop().replace(".kdbx", "")
+                currentView = "unlock"
             }
         }
         else if (status.action === "unlock") {
@@ -163,7 +178,7 @@ Window {
                     id: backMouse
                     anchors.fill: parent
                     onClicked: {
-                        if (currentView === "unlock" || currentView === "create") {
+                        if (currentView === "unlock" || currentView === "create" || currentView === "open_existing") {
                             currentView = "vaults"
                             errorMessage = ""
                         } else if (currentView === "detail" || currentView === "edit") {
@@ -184,6 +199,7 @@ Window {
                     if (currentView === "vaults") return "Password Safe"
                     if (currentView === "unlock") return "Unlock Vault"
                     if (currentView === "create") return "New Vault"
+                    if (currentView === "open_existing") return "Open Vault"
                     if (currentView === "entries") return currentVaultName || "Entries"
                     if (currentView === "detail") return currentEntry ? currentEntry.title : "Entry"
                     if (currentView === "edit") return isEditing ? "Edit Entry" : "New Entry"
@@ -195,13 +211,36 @@ Window {
                 elide: Text.ElideRight
             }
 
+            // Switch vault button (visible on entries view)
+            Rectangle {
+                width: 40
+                height: 40
+                radius: 20
+                color: switchMouse.pressed ? "#333" : "transparent"
+                visible: currentView === "entries"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "\u{1F4C1}"  // Folder emoji
+                    font.pixelSize: 20
+                }
+
+                MouseArea {
+                    id: switchMouse
+                    anchors.fill: parent
+                    onClicked: {
+                        sendCommand({action: "lock"})
+                    }
+                }
+            }
+
             // Lock button (visible when unlocked)
             Rectangle {
                 width: 40
                 height: 40
                 radius: 20
                 color: lockMouse.pressed ? "#333" : "transparent"
-                visible: isUnlocked
+                visible: isUnlocked && currentView !== "entries"
 
                 Text {
                     anchors.centerIn: parent
@@ -337,7 +376,7 @@ Window {
 
             footer: Column {
                 width: parent.width
-                spacing: 16
+                spacing: 12
                 topPadding: 24
 
                 Rectangle {
@@ -359,6 +398,30 @@ Window {
                         anchors.fill: parent
                         onClicked: {
                             currentView = "create"
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 56
+                    radius: 12
+                    color: openExistingMouse.pressed ? "#2a2a4e" : "#1a1a2e"
+                    border.color: "#333"
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Open Existing Vault"
+                        color: "white"
+                        font.pixelSize: 16
+                    }
+
+                    MouseArea {
+                        id: openExistingMouse
+                        anchors.fill: parent
+                        onClicked: {
+                            currentView = "open_existing"
                         }
                     }
                 }
@@ -580,6 +643,93 @@ Window {
                         })
                         currentVaultPath = vaultPath
                         currentVaultName = newVaultName.text
+                    }
+                }
+            }
+        }
+
+        // Open existing vault view
+        Column {
+            anchors.centerIn: parent
+            anchors.margins: 32
+            width: parent.width - 64
+            spacing: 24
+            visible: currentView === "open_existing"
+
+            Text {
+                text: "Open Existing Vault"
+                color: "white"
+                font.pixelSize: 24
+                font.bold: true
+                horizontalAlignment: Text.AlignHCenter
+                width: parent.width
+            }
+
+            Text {
+                text: "Enter the full path to a .kdbx file"
+                color: "#888"
+                font.pixelSize: 14
+                horizontalAlignment: Text.AlignHCenter
+                width: parent.width
+            }
+
+            TextField {
+                id: existingVaultPath
+                width: parent.width
+                height: 56
+                placeholderText: "/home/droidian/Documents/vault.kdbx"
+                text: "/home/droidian/Documents/"
+                color: "white"
+                font.pixelSize: 16
+
+                background: Rectangle {
+                    color: "#1a1a2e"
+                    radius: 12
+                    border.color: existingVaultPath.focus ? Shared.Theme.accentColor : "#333"
+                    border.width: 2
+                }
+            }
+
+            Text {
+                text: errorMessage
+                color: "#f44336"
+                font.pixelSize: 14
+                visible: errorMessage.length > 0
+                horizontalAlignment: Text.AlignHCenter
+                width: parent.width
+            }
+
+            Rectangle {
+                width: parent.width
+                height: 56
+                radius: 12
+                color: openExistingBtn.pressed ? Shared.Theme.accentPressed : Shared.Theme.accentColor
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Open Vault"
+                    color: "white"
+                    font.pixelSize: 18
+                    font.bold: true
+                }
+
+                MouseArea {
+                    id: openExistingBtn
+                    anchors.fill: parent
+                    onClicked: {
+                        var path = existingVaultPath.text.trim()
+                        if (path.length === 0) {
+                            errorMessage = "Enter a vault path"
+                            return
+                        }
+                        if (!path.endsWith(".kdbx")) {
+                            errorMessage = "File must be a .kdbx file"
+                            return
+                        }
+                        errorMessage = ""
+                        currentVaultPath = path
+                        currentVaultName = path.split("/").pop().replace(".kdbx", "")
+                        currentView = "unlock"
                     }
                 }
             }
