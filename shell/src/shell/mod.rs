@@ -1211,13 +1211,27 @@ impl Shell {
         if let Some(last_y) = self.scroll_touch_last_y {
             let delta = last_y - y; // Scroll down when finger moves up
 
-            // Calculate max scroll based on content height (must match AppGrid calculation)
+            // Calculate max scroll based on content height
+            // Must match Slint HomeScreen layout (4 columns, same tile sizing)
             let num_items = self.app_manager.config.grid_order.len();
-            let grid = app_grid::AppGridLayout::new(self.screen_size);
-            let rows = (num_items + grid.columns - 1) / grid.columns;
-            let cell_height = grid.cell_size * 1.2;
-            let content_height = rows as f64 * cell_height + 72.0; // top_offset = 72
-            let max_scroll = (content_height - self.screen_size.h as f64 + 100.0).max(0.0);
+            let columns = 4; // Slint hardcodes 4 columns
+            let rows = (num_items + columns - 1) / columns;
+
+            // Match Slint's tile height calculation
+            let height = self.screen_size.h as f64;
+            let status_bar_height = 48.0;
+            let home_indicator_height = 34.0;
+            let grid_padding = 12.0;
+            let grid_spacing = 8.0;
+            let grid_height = height - status_bar_height - home_indicator_height - grid_padding * 2.0;
+
+            // num_rows for tile height calculation (matches Slint's formula)
+            let num_rows_for_height = if num_items > 20 { 6 } else if num_items > 16 { 5 } else if num_items > 12 { 4 } else if num_items > 8 { 3 } else if num_items > 4 { 2 } else { 1 };
+            let tile_height = (grid_height - grid_spacing * (num_rows_for_height as f64 - 1.0)) / num_rows_for_height as f64;
+
+            // Total content height = all rows * (tile_height + spacing)
+            let content_height = rows as f64 * (tile_height + grid_spacing);
+            let max_scroll = (content_height - grid_height).max(0.0);
 
             self.home_scroll = (self.home_scroll + delta).clamp(0.0, max_scroll);
         }

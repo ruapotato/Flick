@@ -1576,9 +1576,67 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(23); }
     }
 
+    // Row 6
+    if categories.length > 24: AppTile {
+        x: grid-padding;
+        y: (tile-height + grid-spacing) * 6 - scroll-offset * 1px;
+        width: tile-width;
+        height: tile-height;
+        name: categories[24].name;
+        icon: categories[24].icon;
+        tile-color: categories[24].color;
+        wiggling: root.wiggle-mode;
+        wiggle-time: root.wiggle-time;
+        wiggle-phase: 24;
+        is-dragging: root.dragging-index == 24;
+        clicked => { app-tapped(24); }
+    }
+    if categories.length > 25: AppTile {
+        x: grid-padding + tile-width + grid-spacing;
+        y: (tile-height + grid-spacing) * 6 - scroll-offset * 1px;
+        width: tile-width;
+        height: tile-height;
+        name: categories[25].name;
+        icon: categories[25].icon;
+        tile-color: categories[25].color;
+        wiggling: root.wiggle-mode;
+        wiggle-time: root.wiggle-time;
+        wiggle-phase: 25;
+        is-dragging: root.dragging-index == 25;
+        clicked => { app-tapped(25); }
+    }
+    if categories.length > 26: AppTile {
+        x: grid-padding + (tile-width + grid-spacing) * 2;
+        y: (tile-height + grid-spacing) * 6 - scroll-offset * 1px;
+        width: tile-width;
+        height: tile-height;
+        name: categories[26].name;
+        icon: categories[26].icon;
+        tile-color: categories[26].color;
+        wiggling: root.wiggle-mode;
+        wiggle-time: root.wiggle-time;
+        wiggle-phase: 26;
+        is-dragging: root.dragging-index == 26;
+        clicked => { app-tapped(26); }
+    }
+    if categories.length > 27: AppTile {
+        x: grid-padding + (tile-width + grid-spacing) * 3;
+        y: (tile-height + grid-spacing) * 6 - scroll-offset * 1px;
+        width: tile-width;
+        height: tile-height;
+        name: categories[27].name;
+        icon: categories[27].icon;
+        tile-color: categories[27].color;
+        wiggling: root.wiggle-mode;
+        wiggle-time: root.wiggle-time;
+        wiggle-phase: 27;
+        is-dragging: root.dragging-index == 27;
+        clicked => { app-tapped(27); }
+    }
+
     // New category tile - appears in wiggle mode at the next available position
-    // Only show when less than 24 categories (max grid size) and in wiggle mode
-    if wiggle-mode && categories.length < 24: NewCategoryTile {
+    // Only show when less than 28 categories (max grid size) and in wiggle mode
+    if wiggle-mode && categories.length < 28: NewCategoryTile {
         // Position at index = categories.length (next available slot)
         // Column = index % 4, Row = index / 4
         x: grid-padding + (tile-width + grid-spacing) * mod(categories.length, 4);
