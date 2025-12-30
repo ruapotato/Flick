@@ -206,8 +206,6 @@ Documentation=https://github.com/anthropics/flick
 After=phosh.service
 After=lxc@android.service
 After=dbus.socket
-Wants=user-runtime-dir@$INSTALL_UID.service
-After=user-runtime-dir@$INSTALL_UID.service
 Conflicts=phosh.service
 
 [Service]
@@ -216,7 +214,10 @@ Type=simple
 User=root
 Group=root
 
-Environment=XDG_RUNTIME_DIR=/run/user/$INSTALL_UID
+# Use our own runtime dir (not /run/user/UID which gets cleaned up by logind)
+RuntimeDirectory=flick
+RuntimeDirectoryMode=0755
+Environment=XDG_RUNTIME_DIR=/run/flick
 Environment=XDG_SESSION_TYPE=wayland
 Environment=XDG_CURRENT_DESKTOP=Flick
 Environment=EGL_PLATFORM=hwcomposer

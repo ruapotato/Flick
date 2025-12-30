@@ -6,9 +6,6 @@ Documentation=https://github.com/anthropics/flick
 After=phosh.service
 After=lxc@android.service
 After=dbus.socket
-# Must start after user runtime dir is created (socket goes there)
-Wants=user-runtime-dir@32011.service
-After=user-runtime-dir@32011.service
 
 # We replace Phosh
 Conflicts=phosh.service
@@ -19,8 +16,10 @@ Type=simple
 User=root
 Group=root
 
-# Environment
-Environment=XDG_RUNTIME_DIR=/run/user/32011
+# Use our own runtime dir (not /run/user/UID which gets cleaned up by logind)
+RuntimeDirectory=flick
+RuntimeDirectoryMode=0755
+Environment=XDG_RUNTIME_DIR=/run/flick
 Environment=XDG_SESSION_TYPE=wayland
 Environment=XDG_CURRENT_DESKTOP=Flick
 Environment=EGL_PLATFORM=hwcomposer
