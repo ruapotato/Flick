@@ -2285,9 +2285,17 @@ pub fn run() -> Result<()> {
                 }
                 state.shell.display_blanked = false;
             }
-            // Show incoming call overlay immediately
-            if let Some(ref slint_ui) = state.shell.slint_ui {
-                slint_ui.set_incoming_call(true, state.system.incoming_call_number());
+            // If unlocked, launch phone app directly (lock screen has its own call UI)
+            if !state.shell.lock_screen_active {
+                tracing::info!("Incoming call while unlocked - launching phone app");
+                state.shell.set_view(crate::shell::ShellView::App);
+                let text_scale = state.shell.text_scale;
+                if let Some(socket) = state.socket_name.to_str() {
+                    let phone_exec = r#"sh -c "$HOME/Flick/apps/phone/run_phone.sh""#;
+                    if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(phone_exec, socket, text_scale as f64) {
+                        error!("Failed to launch phone app: {}", e);
+                    }
+                }
             }
             // Play ringtone and vibrate for incoming call
             state.system.play_ringtone();
@@ -2348,35 +2356,8 @@ pub fn run() -> Result<()> {
             }
         }
 
-        // Update Slint UI with phone status
-        if let Some(ref slint_ui) = state.shell.slint_ui {
-            let has_incoming = state.system.has_incoming_call();
-            slint_ui.set_incoming_call(has_incoming, state.system.incoming_call_number());
-
-            // Handle phone call actions from UI
-            use crate::shell::slint_ui::PhoneCallAction;
-            for action in slint_ui.take_pending_phone_actions() {
-                match action {
-                    PhoneCallAction::Answer => {
-                        tracing::info!("Phone: user answered call - launching phone app");
-                        state.system.answer_call();
-                        // Launch the phone app to show in-call UI
-                        state.shell.set_view(crate::shell::ShellView::App);
-                        let text_scale = state.shell.text_scale;
-                        if let Some(socket) = state.socket_name.to_str() {
-                            let phone_exec = r#"sh -c "$HOME/Flick/apps/phone/run_phone.sh""#;
-                            if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(phone_exec, socket, text_scale as f64) {
-                                error!("Failed to launch phone app: {}", e);
-                            }
-                        }
-                    }
-                    PhoneCallAction::Reject => {
-                        tracing::info!("Phone: user rejected call");
-                        state.system.reject_call();
-                    }
-                }
-            }
-        }
+        // Phone calls are now handled by the phone app (when unlocked) or lock screen QML (when locked)
+        // No Slint overlay needed
 
         // Clean up expired touch effects before rendering
         state.cleanup_touch_effects();
