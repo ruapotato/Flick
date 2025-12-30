@@ -2365,7 +2365,7 @@ pub fn run() -> Result<()> {
                         let text_scale = state.shell.text_scale;
                         if let Some(socket) = state.socket_name.to_str() {
                             let phone_exec = r#"sh -c "$HOME/Flick/apps/phone/run_phone.sh""#;
-                            if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(phone_exec, socket, text_scale) {
+                            if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(phone_exec, socket, text_scale as f64) {
                                 error!("Failed to launch phone app: {}", e);
                             }
                         }
