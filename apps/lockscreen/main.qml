@@ -16,9 +16,11 @@ Window {
     property string stateDir: "/home/droidian/.local/state/flick"
     property string wallpaperPath: ""
 
-    // Incoming call state
+    // Call state
     property bool hasIncomingCall: false
-    property string incomingCaller: ""
+    property bool hasActiveCall: false
+    property string callNumber: ""
+    property int callDuration: 0
 
     Component.onCompleted: {
         console.log("Lock screen started")
@@ -42,21 +44,51 @@ Window {
             xhr.send()
             if (xhr.status === 200 || xhr.status === 0) {
                 var status = JSON.parse(xhr.responseText)
+                callNumber = status.number || "Unknown"
+                callDuration = status.duration || 0
+
                 if (status.state === "incoming") {
                     if (!hasIncomingCall) {
                         console.log("Incoming call from:", status.number)
                         triggerHaptic()
                     }
                     hasIncomingCall = true
-                    incomingCaller = status.number || "Unknown"
+                    hasActiveCall = false
+                } else if (status.state === "active") {
+                    hasIncomingCall = false
+                    hasActiveCall = true
                 } else {
                     hasIncomingCall = false
-                    incomingCaller = ""
+                    hasActiveCall = false
+                    callNumber = ""
+                    callDuration = 0
                 }
             }
         } catch (e) {
             // No status file or parse error
         }
+    }
+
+    function formatDuration(seconds) {
+        var mins = Math.floor(seconds / 60)
+        var secs = seconds % 60
+        return mins + ":" + (secs < 10 ? "0" : "") + secs
+    }
+
+    function hangupCall() {
+        console.log("Hanging up call")
+        triggerHaptic()
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file:///tmp/flick_phone_cmd")
+        xhr.send(JSON.stringify({action: "hangup"}))
+    }
+
+    function toggleSpeaker() {
+        console.log("Toggling speaker")
+        triggerHaptic()
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file:///tmp/flick_phone_cmd")
+        xhr.send(JSON.stringify({action: "speaker", enabled: true}))
     }
 
     function answerCall() {
@@ -156,7 +188,7 @@ Window {
 
     // Incoming call overlay
     Rectangle {
-        id: callOverlay
+        id: incomingCallOverlay
         anchors.fill: parent
         color: "#ee1a1a2e"
         visible: hasIncomingCall
@@ -183,7 +215,7 @@ Window {
 
             // Caller number
             Text {
-                text: incomingCaller
+                text: callNumber
                 font.pixelSize: 32
                 font.bold: true
                 color: "#ffffff"
@@ -239,6 +271,86 @@ Window {
                         onClicked: answerCall()
                     }
                 }
+            }
+        }
+    }
+
+    // Active call overlay (in-call UI)
+    Rectangle {
+        id: activeCallOverlay
+        anchors.fill: parent
+        color: "#ee1a1a2e"
+        visible: hasActiveCall
+        z: 1000
+
+        Column {
+            anchors.centerIn: parent
+            spacing: 20
+
+            // Phone icon (green for active)
+            Text {
+                text: "📱"
+                font.pixelSize: 64
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            // "On call" label
+            Text {
+                text: "On Call"
+                font.pixelSize: 20
+                color: "#4ade80"
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            // Caller number
+            Text {
+                text: callNumber
+                font.pixelSize: 28
+                font.bold: true
+                color: "#ffffff"
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            // Call duration
+            Text {
+                text: formatDuration(callDuration)
+                font.pixelSize: 48
+                font.bold: true
+                color: "#ffffff"
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            // Spacer
+            Item { width: 1; height: 40 }
+
+            // Hang up button
+            Rectangle {
+                width: 80
+                height: 80
+                radius: 40
+                color: hangupMouse.pressed ? "#cc3333" : "#e94560"
+                anchors.horizontalCenter: parent.horizontalCenter
+
+                Text {
+                    text: "✕"
+                    font.pixelSize: 36
+                    color: "white"
+                    anchors.centerIn: parent
+                }
+
+                MouseArea {
+                    id: hangupMouse
+                    anchors.fill: parent
+                    onClicked: hangupCall()
+                }
+            }
+
+            // "End Call" label
+            Text {
+                text: "End Call"
+                font.pixelSize: 16
+                color: "#888888"
+                anchors.horizontalCenter: parent.horizontalCenter
             }
         }
     }

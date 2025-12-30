@@ -141,6 +141,36 @@ def stop_ringtone():
 ringtone_process = None
 
 
+def get_audio_user():
+    """Find the user who owns PulseAudio (for running pactl as user)"""
+    import pwd
+    for uid_dir in os.listdir("/run/user"):
+        try:
+            uid = int(uid_dir)
+            pulse_path = f"/run/user/{uid}/pulse"
+            if os.path.exists(pulse_path):
+                return uid
+        except (ValueError, OSError):
+            continue
+    return None
+
+
+def run_pactl(args):
+    """Run pactl command as audio user (daemon runs as root)"""
+    uid = get_audio_user()
+    if uid is None:
+        print("No audio user found")
+        return False
+
+    # Build command to run as user with proper environment
+    cmd_str = f"XDG_RUNTIME_DIR=/run/user/{uid} pactl " + " ".join(f"'{a}'" for a in args)
+    result = subprocess.run(
+        ["sudo", "-u", f"#{uid}", "sh", "-c", cmd_str],
+        capture_output=True, timeout=5
+    )
+    return result.returncode == 0
+
+
 def setup_call_audio():
     """Setup audio routing for voice call on Droidian/Android devices"""
     try:
@@ -150,24 +180,23 @@ def setup_call_audio():
         # This is CRITICAL for audio to work on Android-based devices
         cmds = [
             # Switch card to voicecall profile
-            ["pactl", "set-card-profile", "droid_card.primary", "voicecall"],
+            ["set-card-profile", "droid_card.primary", "voicecall"],
             # Set earpiece port for output (for non-speaker mode)
-            ["pactl", "set-sink-port", "sink.primary_output", "output-earpiece"],
+            ["set-sink-port", "sink.primary_output", "output-earpiece"],
             # Set voice call input
-            ["pactl", "set-source-port", "source.droid", "input-voice_call"],
+            ["set-source-port", "source.droid", "input-voice_call"],
             # Unmute and set volumes
-            ["pactl", "set-sink-mute", "sink.primary_output", "0"],
-            ["pactl", "set-sink-volume", "sink.primary_output", "80%"],
-            ["pactl", "set-source-mute", "source.droid", "0"],
-            ["pactl", "set-source-volume", "source.droid", "100%"],
+            ["set-sink-mute", "sink.primary_output", "0"],
+            ["set-sink-volume", "sink.primary_output", "80%"],
+            ["set-source-mute", "source.droid", "0"],
+            ["set-source-volume", "source.droid", "100%"],
         ]
 
         for cmd in cmds:
-            result = subprocess.run(cmd, capture_output=True, timeout=5)
-            if result.returncode != 0:
-                print(f"Audio cmd failed: {' '.join(cmd)} - {result.stderr.decode()}")
+            if run_pactl(cmd):
+                print(f"Audio cmd OK: pactl {' '.join(cmd)}")
             else:
-                print(f"Audio cmd OK: {' '.join(cmd)}")
+                print(f"Audio cmd failed: pactl {' '.join(cmd)}")
 
         print("Voice call audio configured")
     except Exception as e:
@@ -179,12 +208,10 @@ def set_speaker_mode(enabled):
     try:
         if enabled:
             print("Enabling speakerphone...")
-            subprocess.run(["pactl", "set-sink-port", "sink.primary_output", "output-speaker"],
-                          capture_output=True, timeout=5)
+            run_pactl(["set-sink-port", "sink.primary_output", "output-speaker"])
         else:
             print("Disabling speakerphone (earpiece)...")
-            subprocess.run(["pactl", "set-sink-port", "sink.primary_output", "output-earpiece"],
-                          capture_output=True, timeout=5)
+            run_pactl(["set-sink-port", "sink.primary_output", "output-earpiece"])
     except Exception as e:
         print(f"Speaker mode error: {e}")
 
@@ -196,19 +223,18 @@ def teardown_call_audio():
 
         # Switch back to default profile
         cmds = [
-            ["pactl", "set-card-profile", "droid_card.primary", "default"],
+            ["set-card-profile", "droid_card.primary", "default"],
             # Reset to speaker output for media
-            ["pactl", "set-sink-port", "sink.primary_output", "output-speaker"],
+            ["set-sink-port", "sink.primary_output", "output-speaker"],
             # Reset to builtin mic
-            ["pactl", "set-source-port", "source.droid", "input-builtin_mic"],
+            ["set-source-port", "source.droid", "input-builtin_mic"],
         ]
 
         for cmd in cmds:
-            result = subprocess.run(cmd, capture_output=True, timeout=5)
-            if result.returncode != 0:
-                print(f"Audio reset cmd failed: {' '.join(cmd)}")
+            if run_pactl(cmd):
+                print(f"Audio reset OK: pactl {' '.join(cmd)}")
             else:
-                print(f"Audio reset cmd OK: {' '.join(cmd)}")
+                print(f"Audio reset failed: pactl {' '.join(cmd)}")
 
         print("Audio routing reset to default")
     except Exception as e:
