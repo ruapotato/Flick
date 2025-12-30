@@ -994,12 +994,15 @@ fn handle_input_event(
                 // Handle edge swipe progress updates
                 if let crate::input::GestureEvent::EdgeSwipeUpdate { edge, progress, .. } = &gesture_event {
                     let shell_view = state.shell.view;
+                    info!("EdgeSwipeUpdate: edge={:?}, progress={:.3}, view={:?}, qs_return={}, switcher_return={}",
+                          edge, progress, shell_view, state.qs_return_active, state.switcher_return_active);
                     // Left edge gestures
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
                         if state.switcher_return_active {
                             // Capture start progress on first update (sentinel is -1.0)
                             if state.switcher_return_start_progress < 0.0 {
                                 state.switcher_return_start_progress = *progress;
+                                info!("Switcher return: captured start_progress={:.3}", *progress);
                             }
                             // Normalize progress: 0 at start, 1 at completion threshold
                             let start = state.switcher_return_start_progress;
@@ -1009,6 +1012,7 @@ fn handle_input_event(
                                 0.0
                             };
                             let normalized = normalized.clamp(0.0, 1.0);
+                            info!("Switcher return: start={:.3}, normalized={:.3}, offset={:.3}", start, normalized, -1.0 + normalized);
                             // Return from Switcher: icons slide in from left
                             state.switcher_return_progress = normalized;
                             state.shell.home_push_offset = -1.0 + normalized;
@@ -1028,6 +1032,7 @@ fn handle_input_event(
                             // Capture start progress on first update (sentinel is -1.0)
                             if state.qs_return_start_progress < 0.0 {
                                 state.qs_return_start_progress = *progress;
+                                info!("QS return: captured start_progress={:.3}", *progress);
                             }
                             // Normalize progress: 0 at start, 1 at completion threshold
                             let start = state.qs_return_start_progress;
@@ -1037,6 +1042,7 @@ fn handle_input_event(
                                 0.0
                             };
                             let normalized = normalized.clamp(0.0, 1.0);
+                            info!("QS return: start={:.3}, normalized={:.3}, offset={:.3}", start, normalized, 1.0 - normalized);
                             // Return from QS: icons slide in from right
                             state.qs_return_progress = normalized;
                             state.shell.home_push_offset = 1.0 - normalized;
