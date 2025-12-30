@@ -220,6 +220,9 @@ Environment=XDG_CURRENT_DESKTOP=Flick
 Environment=EGL_PLATFORM=hwcomposer
 Environment=HOME=$INSTALL_HOME
 
+# Wait for Android container to stabilize
+ExecStartPre=/bin/sleep 3
+
 # Ensure state directory exists and has correct permissions
 ExecStartPre=/bin/mkdir -p $INSTALL_HOME/.local/state/flick
 ExecStartPre=/bin/chown -R droidian:droidian $INSTALL_HOME/.local/state/flick
