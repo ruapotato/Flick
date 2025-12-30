@@ -1311,22 +1311,34 @@ impl SoundConfig {
     }
 
     /// Play a sound file using paplay (PulseAudio) or aplay (ALSA)
+    /// Runs as the audio user since shell runs as root
     fn play_sound(sound_name: &str) {
         if let Some(path) = Self::get_sound_path(sound_name) {
             let path_str = path.to_string_lossy().to_string();
             tracing::info!("Playing sound: {}", path_str);
 
-            // Try paplay first (PulseAudio), then aplay (ALSA)
+            // Need to run as audio user since shell runs as root
             std::thread::spawn(move || {
-                // Try paplay first
-                let result = std::process::Command::new("paplay")
-                    .arg(&path_str)
-                    .spawn();
+                // Find audio user
+                if let Some((uid, _)) = Self::get_audio_user() {
+                    let shell_cmd = format!(
+                        "XDG_RUNTIME_DIR=/run/user/{} paplay '{}'",
+                        uid, path_str
+                    );
+                    let result = std::process::Command::new("sudo")
+                        .args(["-u", &format!("#{}", uid), "sh", "-c", &shell_cmd])
+                        .spawn();
 
-                if result.is_err() {
-                    // Fall back to aplay
-                    let _ = std::process::Command::new("aplay")
-                        .arg("-q")
+                    if result.is_err() {
+                        // Fall back to aplay (doesn't need user session)
+                        let _ = std::process::Command::new("aplay")
+                            .arg("-q")
+                            .arg(&path_str)
+                            .spawn();
+                    }
+                } else {
+                    // No audio user found, try direct (may fail)
+                    let _ = std::process::Command::new("paplay")
                         .arg(&path_str)
                         .spawn();
                 }
@@ -1334,6 +1346,37 @@ impl SoundConfig {
         } else {
             tracing::warn!("Sound file not found: {}", sound_name);
         }
+    }
+
+    /// Find the audio user (same logic as VolumeManager)
+    fn get_audio_user() -> Option<(u32, String)> {
+        if let Ok(entries) = fs::read_dir("/run/user") {
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    if let Ok(uid) = name.parse::<u32>() {
+                        let pulse_path = format!("/run/user/{}/pulse", uid);
+                        let pipewire_path = format!("/run/user/{}/pipewire-0", uid);
+                        if std::path::Path::new(&pulse_path).exists()
+                            || std::path::Path::new(&pipewire_path).exists() {
+                            // Look up username
+                            if let Ok(contents) = fs::read_to_string("/etc/passwd") {
+                                for line in contents.lines() {
+                                    let parts: Vec<&str> = line.split(':').collect();
+                                    if parts.len() >= 3 {
+                                        if let Ok(file_uid) = parts[2].parse::<u32>() {
+                                            if file_uid == uid {
+                                                return Some((uid, parts[0].to_string()));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Play notification sound
