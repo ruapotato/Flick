@@ -1,0 +1,26 @@
+[Unit]
+Description=Flick Phone Helper Daemon
+Documentation=https://github.com/anthropics/flick
+After=ofono.service
+BindsTo=flick.service
+After=flick.service
+
+[Service]
+Type=simple
+# Needs root for oFono D-Bus access
+User=root
+
+# Clean up stale files before starting
+ExecStartPre=/bin/rm -f /tmp/flick_phone_status /tmp/flick_phone_cmd
+
+ExecStart=/usr/bin/python3 /home/droidian/Flick/apps/phone/phone_helper.py daemon
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=flick-phone
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=flick.service

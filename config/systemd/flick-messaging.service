@@ -1,0 +1,26 @@
+[Unit]
+Description=Flick Messaging Daemon
+Documentation=https://github.com/anthropics/flick
+After=dbus.socket
+BindsTo=flick.service
+After=flick.service
+
+[Service]
+Type=simple
+User=droidian
+Group=droidian
+
+Environment=XDG_RUNTIME_DIR=/run/user/32011
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/32011/bus
+
+ExecStart=/usr/bin/python3 /home/droidian/Flick/apps/messages/messaging_daemon.py daemon
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=flick-messaging
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=flick.service

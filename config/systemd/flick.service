@@ -1,0 +1,45 @@
+[Unit]
+Description=Flick Mobile Shell
+Documentation=https://github.com/anthropics/flick
+
+# Start after Phosh is ready (we'll replace it)
+After=phosh.service
+After=lxc@android.service
+After=dbus.socket
+
+# We replace Phosh
+Conflicts=phosh.service
+
+[Service]
+Type=simple
+User=droidian
+Group=droidian
+
+# Environment
+Environment=XDG_RUNTIME_DIR=/run/user/32011
+Environment=XDG_SESSION_TYPE=wayland
+Environment=XDG_CURRENT_DESKTOP=Flick
+Environment=EGL_PLATFORM=hwcomposer
+Environment=HOME=/home/droidian
+
+# Ensure state directory exists and has correct permissions
+ExecStartPre=/bin/mkdir -p /home/droidian/.local/state/flick
+ExecStartPre=/bin/chown -R droidian:droidian /home/droidian/.local/state/flick
+
+# Main compositor
+ExecStart=/home/droidian/Flick/shell/target/release/flick
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=flick
+
+# Restart on failure
+Restart=on-failure
+RestartSec=3
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=graphical.target
