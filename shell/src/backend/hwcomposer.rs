@@ -2285,6 +2285,10 @@ pub fn run() -> Result<()> {
                 }
                 state.shell.display_blanked = false;
             }
+            // Show incoming call overlay immediately
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                slint_ui.set_incoming_call(true, state.system.incoming_call_number());
+            }
             // Play ringtone and vibrate for incoming call
             state.system.play_ringtone();
             state.system.haptic_heavy();
