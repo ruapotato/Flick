@@ -3118,9 +3118,14 @@ fn render_frame(
                                 }
                                 slint_ui.set_switcher_windows(windows);
                                 // Sync push offsets for return gesture animation
-                                // When home slides in from left (-3.5→0), switcher pushes right (0→3.5)
+                                // Only push switcher cards during active return gesture
                                 slint_ui.set_home_push_offset(state.shell.home_push_offset as f32);
-                                let switcher_push = (3.5 + state.shell.home_push_offset).max(0.0);
+                                let switcher_push = if state.switcher_return_active {
+                                    // When home slides in from left (-3.5→0), switcher pushes right (0→3.5)
+                                    (3.5 + state.shell.home_push_offset).max(0.0)
+                                } else {
+                                    0.0
+                                };
                                 slint_ui.set_switcher_push_offset(switcher_push as f32);
                             }
                             ShellView::PickDefault => {
