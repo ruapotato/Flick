@@ -3318,6 +3318,11 @@ fn render_frame(
 
                     slint_ui.set_switcher_windows(windows);
 
+                    // Slide switcher cards in from right as home icons push left
+                    // home_push_offset: 0 → -3.5, so switcher_push: 3.5 → 0
+                    let switcher_push = (3.5 + state.shell.home_push_offset).max(0.0);
+                    slint_ui.set_switcher_push_offset(switcher_push as f32);
+
                     // Render the switcher preview
                     if let Some((width, height, pixels)) = slint_ui.render() {
                         unsafe {
