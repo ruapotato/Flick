@@ -206,6 +206,7 @@ Documentation=https://github.com/anthropics/flick
 After=phosh.service
 After=lxc@android.service
 After=dbus.socket
+Wants=user-runtime-dir@$INSTALL_UID.service
 After=user-runtime-dir@$INSTALL_UID.service
 Conflicts=phosh.service
 

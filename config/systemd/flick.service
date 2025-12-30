@@ -7,6 +7,7 @@ After=phosh.service
 After=lxc@android.service
 After=dbus.socket
 # Must start after user runtime dir is created (socket goes there)
+Wants=user-runtime-dir@32011.service
 After=user-runtime-dir@32011.service
 
 # We replace Phosh
