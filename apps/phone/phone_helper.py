@@ -216,6 +216,19 @@ def set_speaker_mode(enabled):
         print(f"Speaker mode error: {e}")
 
 
+def set_mute(enabled):
+    """Toggle microphone mute during call"""
+    try:
+        if enabled:
+            print("Muting microphone...")
+            run_pactl(["set-source-mute", "source.droid", "1"])
+        else:
+            print("Unmuting microphone...")
+            run_pactl(["set-source-mute", "source.droid", "0"])
+    except Exception as e:
+        print(f"Mute error: {e}")
+
+
 def teardown_call_audio():
     """Reset audio routing after call"""
     try:
@@ -484,6 +497,10 @@ def daemon_mode():
                         # Toggle speakerphone
                         speaker_on = cmd.get("enabled", False)
                         set_speaker_mode(speaker_on)
+                    elif action == "mute":
+                        # Toggle microphone mute
+                        mute_on = cmd.get("enabled", False)
+                        set_mute(mute_on)
                 except Exception as e:
                     print(f"Command error: {e}")
 

@@ -21,6 +21,7 @@ Window {
     property bool hasActiveCall: false
     property string callNumber: ""
     property int callDuration: 0
+    property bool isMuted: false
 
     Component.onCompleted: {
         console.log("Lock screen started")
@@ -89,6 +90,15 @@ Window {
         var xhr = new XMLHttpRequest()
         xhr.open("PUT", "file:///tmp/flick_phone_cmd")
         xhr.send(JSON.stringify({action: "speaker", enabled: true}))
+    }
+
+    function toggleMute() {
+        isMuted = !isMuted
+        console.log("Toggling mute:", isMuted)
+        triggerHaptic()
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file:///tmp/flick_phone_cmd")
+        xhr.send(JSON.stringify({action: "mute", enabled: isMuted}))
     }
 
     function answerCall() {
@@ -323,34 +333,73 @@ Window {
             // Spacer
             Item { width: 1; height: 40 }
 
-            // Hang up button
-            Rectangle {
-                width: 80
-                height: 80
-                radius: 40
-                color: hangupMouse.pressed ? "#cc3333" : "#e94560"
+            // Mute and Hang up buttons
+            Row {
                 anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 60
 
-                Text {
-                    text: "✕"
-                    font.pixelSize: 36
-                    color: "white"
-                    anchors.centerIn: parent
+                // Mute button
+                Column {
+                    spacing: 8
+
+                    Rectangle {
+                        width: 70
+                        height: 70
+                        radius: 35
+                        color: isMuted ? "#e94560" : (muteMouse.pressed ? "#444466" : "#333355")
+
+                        Text {
+                            text: isMuted ? "🔇" : "🎤"
+                            font.pixelSize: 28
+                            anchors.centerIn: parent
+                        }
+
+                        MouseArea {
+                            id: muteMouse
+                            anchors.fill: parent
+                            onClicked: toggleMute()
+                        }
+                    }
+
+                    Text {
+                        text: isMuted ? "Unmute" : "Mute"
+                        font.pixelSize: 14
+                        color: "#888888"
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
                 }
 
-                MouseArea {
-                    id: hangupMouse
-                    anchors.fill: parent
-                    onClicked: hangupCall()
-                }
-            }
+                // Hang up button
+                Column {
+                    spacing: 8
 
-            // "End Call" label
-            Text {
-                text: "End Call"
-                font.pixelSize: 16
-                color: "#888888"
-                anchors.horizontalCenter: parent.horizontalCenter
+                    Rectangle {
+                        width: 70
+                        height: 70
+                        radius: 35
+                        color: hangupMouse.pressed ? "#cc3333" : "#e94560"
+
+                        Text {
+                            text: "✕"
+                            font.pixelSize: 32
+                            color: "white"
+                            anchors.centerIn: parent
+                        }
+
+                        MouseArea {
+                            id: hangupMouse
+                            anchors.fill: parent
+                            onClicked: hangupCall()
+                        }
+                    }
+
+                    Text {
+                        text: "End Call"
+                        font.pixelSize: 14
+                        color: "#888888"
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                }
             }
         }
     }
