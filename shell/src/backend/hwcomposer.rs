@@ -1012,10 +1012,12 @@ fn handle_input_event(
                                 0.0
                             };
                             let normalized = normalized.clamp(0.0, 1.0);
-                            info!("Switcher return: start={:.3}, normalized={:.3}, offset={:.3}", start, normalized, -1.0 + normalized);
+                            // Use same 3.5 scale as outward gestures (3.5 * 0.3 = 105% of screen)
+                            let offset = -3.5 * (1.0 - normalized);
+                            info!("Switcher return: start={:.3}, normalized={:.3}, offset={:.3}", start, normalized, offset);
                             // Return from Switcher: icons slide in from left
                             state.switcher_return_progress = normalized;
-                            state.shell.home_push_offset = -1.0 + normalized;
+                            state.shell.home_push_offset = offset;
                         } else {
                             // Going to QS: push icons right
                             state.qs_gesture_active = true;
@@ -1042,10 +1044,12 @@ fn handle_input_event(
                                 0.0
                             };
                             let normalized = normalized.clamp(0.0, 1.0);
-                            info!("QS return: start={:.3}, normalized={:.3}, offset={:.3}", start, normalized, 1.0 - normalized);
+                            // Use same 3.5 scale as outward gestures (3.5 * 0.3 = 105% of screen)
+                            let offset = 3.5 * (1.0 - normalized);
+                            info!("QS return: start={:.3}, normalized={:.3}, offset={:.3}", start, normalized, offset);
                             // Return from QS: icons slide in from right
                             state.qs_return_progress = normalized;
-                            state.shell.home_push_offset = 1.0 - normalized;
+                            state.shell.home_push_offset = offset;
                         } else {
                             // Going to Switcher: push icons left
                             state.switcher_gesture_active = true;
