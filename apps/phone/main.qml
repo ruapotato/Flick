@@ -165,6 +165,9 @@ Window {
 
     function toggleSpeaker() {
         speakerOn = !speakerOn
+        if (speakerOn) {
+            muteOn = false  // Speaker enables unmutes for compatibility
+        }
         var cmd = JSON.stringify({action: "speaker", enabled: speakerOn})
         console.log("CMD:" + cmd)
     }

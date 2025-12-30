@@ -87,6 +87,9 @@ Window {
 
     function toggleSpeaker() {
         isSpeaker = !isSpeaker
+        if (isSpeaker) {
+            isMuted = false  // Speaker enables unmutes for compatibility
+        }
         console.log("Toggling speaker:", isSpeaker)
         triggerHaptic()
         var xhr = new XMLHttpRequest()

@@ -207,7 +207,9 @@ def set_speaker_mode(enabled):
     """Toggle speakerphone during call"""
     try:
         if enabled:
-            print("Enabling speakerphone...")
+            print("Enabling speakerphone (and unmuting)...")
+            # Unmute when enabling speaker for compatibility
+            run_pactl(["set-source-mute", "source.droid", "0"])
             run_pactl(["set-sink-port", "sink.primary_output", "output-speaker"])
             # Use builtin mic for speaker mode (farther from mouth)
             run_pactl(["set-source-port", "source.droid", "input-builtin_mic"])
