@@ -1316,38 +1316,35 @@ impl Shell {
 
         let now = std::time::Instant::now();
         let dt = if let Some(last) = self.home_scroll_last_update {
-            now.duration_since(last).as_secs_f64()
+            let elapsed = now.duration_since(last).as_secs_f64();
+            // Clamp dt to avoid instability from frame drops
+            elapsed.min(0.05)
         } else {
             0.016 // ~60fps default
         };
         self.home_scroll_last_update = Some(now);
 
+        // Simple exponential decay friction (0.95 per frame at 60fps)
+        // This gives smooth deceleration without oscillation
+        let decay_per_second = 0.05_f64.powf(1.0 / 0.016); // ~0.95 at 60fps
+        let decay = decay_per_second.powf(dt);
+        self.home_scroll_velocity *= decay;
+
         // Apply velocity
         self.home_scroll += self.home_scroll_velocity * dt;
 
-        // Apply friction (deceleration)
-        let friction = 5.0;
-        let decel = -self.home_scroll_velocity.signum() * friction * self.home_scroll_velocity.abs().sqrt() * 100.0;
-        self.home_scroll_velocity += decel * dt;
-
-        // Clamp to bounds with bounce
+        // Hard clamp to bounds (no bounce - simpler and more stable)
         let max_scroll = self.get_home_max_scroll();
         if self.home_scroll < 0.0 {
             self.home_scroll = 0.0;
-            self.home_scroll_velocity = -self.home_scroll_velocity * 0.3; // Bounce
-            if self.home_scroll_velocity.abs() < 50.0 {
-                self.home_scroll_velocity = 0.0;
-            }
+            self.home_scroll_velocity = 0.0;
         } else if self.home_scroll > max_scroll {
             self.home_scroll = max_scroll;
-            self.home_scroll_velocity = -self.home_scroll_velocity * 0.3;
-            if self.home_scroll_velocity.abs() < 50.0 {
-                self.home_scroll_velocity = 0.0;
-            }
+            self.home_scroll_velocity = 0.0;
         }
 
         // Stop animation when velocity is very small
-        if self.home_scroll_velocity.abs() < 20.0 {
+        if self.home_scroll_velocity.abs() < 50.0 {
             self.home_scroll_animating = false;
             self.home_scroll_velocity = 0.0;
         }
