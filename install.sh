@@ -241,7 +241,7 @@ RestartSec=3
 LimitNOFILE=65536
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
 EOF
 
     # Create flick-phone-helper.service
