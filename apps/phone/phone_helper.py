@@ -223,15 +223,14 @@ def set_speaker_mode(enabled):
 def set_mute(enabled):
     """Toggle microphone mute during call"""
     try:
-        mute_val = "1" if enabled else "0"
-        print(f"Setting microphone mute to {mute_val}...")
-        # Mute the main droid source
-        if run_pactl(["set-source-mute", "source.droid", mute_val]):
-            print(f"Mute {'enabled' if enabled else 'disabled'}")
+        if enabled:
+            print("Muting microphone (disabling speaker for compatibility)...")
+            # Disable speaker mode first - mute doesn't work reliably with speaker
+            set_speaker_mode(False)
+            run_pactl(["set-source-mute", "source.droid", "1"])
         else:
-            print("Mute command may have failed")
-        # Also try muting by index in case name doesn't work
-        run_pactl(["set-source-mute", "2", mute_val])
+            print("Unmuting microphone...")
+            run_pactl(["set-source-mute", "source.droid", "0"])
     except Exception as e:
         print(f"Mute error: {e}")
 

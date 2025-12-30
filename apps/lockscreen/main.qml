@@ -96,6 +96,9 @@ Window {
 
     function toggleMute() {
         isMuted = !isMuted
+        if (isMuted) {
+            isSpeaker = false  // Mute disables speaker for compatibility
+        }
         console.log("Toggling mute:", isMuted)
         triggerHaptic()
         var xhr = new XMLHttpRequest()

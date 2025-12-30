@@ -171,6 +171,9 @@ Window {
 
     function toggleMute() {
         muteOn = !muteOn
+        if (muteOn) {
+            speakerOn = false  // Mute disables speaker for compatibility
+        }
         var cmd = JSON.stringify({action: "mute", enabled: muteOn})
         console.log("CMD:" + cmd)
     }
