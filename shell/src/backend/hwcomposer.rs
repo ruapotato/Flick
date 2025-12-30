@@ -2271,6 +2271,25 @@ pub fn run() -> Result<()> {
             }
         }
 
+        // Check for phone status (incoming calls) BEFORE blanked skip - must always run
+        // Rate limited internally to 500ms
+        let new_incoming = state.system.check_phone();
+        if new_incoming {
+            // New incoming call - wake screen and show overlay
+            tracing::info!("Incoming call from: {}", state.system.phone.number);
+            // Wake screen if blanked
+            if state.shell.display_blanked {
+                state.shell.wake_lock_screen();
+                if let Err(e) = hwc_display.hwc_ctx.set_power(true) {
+                    error!("Failed to wake display for call: {}", e);
+                }
+                state.shell.display_blanked = false;
+            }
+            // Play ringtone and vibrate for incoming call
+            state.system.play_ringtone();
+            state.system.haptic_heavy();
+        }
+
         // Skip rendering if display is blanked
         if state.shell.display_blanked {
             // Still need to dispatch events but don't render
@@ -2285,21 +2304,6 @@ pub fn run() -> Result<()> {
             // Reload text scale from settings (allows live changes)
             state.shell.reload_text_scale();
             state.system_last_refresh = std::time::Instant::now();
-        }
-
-        // Check for phone status (incoming calls) - rate limited internally to 500ms
-        let new_incoming = state.system.check_phone();
-        if new_incoming {
-            // New incoming call - wake screen and show overlay
-            tracing::info!("Incoming call from: {}", state.system.phone.number);
-            // Wake screen if blanked
-            if state.shell.display_blanked {
-                state.shell.wake_lock_screen();
-                hwc_display.hwc_ctx.set_power(true);
-            }
-            // Play ringtone and vibrate for incoming call
-            state.system.play_ringtone();
-            state.system.haptic_heavy();
         }
 
         // Check for volume key repeat (held down)
