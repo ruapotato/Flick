@@ -150,7 +150,7 @@ Window {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 56
+        height: 68
         color: "#1a1a2e"
 
         RowLayout {
@@ -161,17 +161,17 @@ Window {
 
             // Back button
             Rectangle {
-                width: 40
-                height: 40
-                radius: 20
-                color: backMouse.pressed ? "#333" : "transparent"
+                width: 52
+                height: 52
+                radius: 26
+                color: backMouse.pressed ? "#444" : "#2a2a4e"
                 visible: currentView !== "vaults"
 
                 Text {
                     anchors.centerIn: parent
                     text: "<"
                     color: "white"
-                    font.pixelSize: 24
+                    font.pixelSize: 28
                 }
 
                 MouseArea {
@@ -213,16 +213,16 @@ Window {
 
             // Switch vault button (visible on entries view)
             Rectangle {
-                width: 40
-                height: 40
-                radius: 20
-                color: switchMouse.pressed ? "#333" : "transparent"
+                width: 52
+                height: 52
+                radius: 26
+                color: switchMouse.pressed ? "#444" : "#2a2a4e"
                 visible: currentView === "entries"
 
                 Text {
                     anchors.centerIn: parent
                     text: "\u{1F4C1}"  // Folder emoji
-                    font.pixelSize: 20
+                    font.pixelSize: 26
                 }
 
                 MouseArea {
@@ -236,16 +236,16 @@ Window {
 
             // Lock button (visible when unlocked)
             Rectangle {
-                width: 40
-                height: 40
-                radius: 20
-                color: lockMouse.pressed ? "#333" : "transparent"
+                width: 52
+                height: 52
+                radius: 26
+                color: lockMouse.pressed ? "#444" : "#2a2a4e"
                 visible: isUnlocked && currentView !== "entries"
 
                 Text {
                     anchors.centerIn: parent
                     text: "\u{1F512}"  // Lock emoji
-                    font.pixelSize: 20
+                    font.pixelSize: 26
                 }
 
                 MouseArea {
@@ -257,9 +257,9 @@ Window {
 
             // Add button (visible on entries view)
             Rectangle {
-                width: 40
-                height: 40
-                radius: 20
+                width: 52
+                height: 52
+                radius: 26
                 color: addMouse.pressed ? Shared.Theme.accentPressed : Shared.Theme.accentColor
                 visible: currentView === "entries"
 
@@ -267,7 +267,7 @@ Window {
                     anchors.centerIn: parent
                     text: "+"
                     color: "white"
-                    font.pixelSize: 24
+                    font.pixelSize: 28
                     font.bold: true
                 }
 
