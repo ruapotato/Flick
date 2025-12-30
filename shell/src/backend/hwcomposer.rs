@@ -1407,11 +1407,17 @@ fn handle_input_event(
                                 });
 
                                 slint_ui.set_switcher_windows(windows);
+                                // Immediately hide HomeScreen to prevent 1-frame overlap
+                                slint_ui.set_forward_gesture_active(false);
                             }
                             state.shell.home_push_offset = 0.0;
                         } else if !state.qs_return_active {
                             // Gesture cancelled, reset push offset
                             state.shell.home_push_offset = 0.0;
+                            // Also reset forward gesture when cancelled
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.set_forward_gesture_active(false);
+                            }
                         }
                         state.switcher_gesture_active = false;
                         state.switcher_gesture_progress = 0.0;
