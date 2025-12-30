@@ -78,18 +78,21 @@ Window {
                 var status = JSON.parse(xhr.responseText)
                 var newState = status.state || "idle"
 
-                // Handle state transitions
-                if (newState === "incoming" && !inCall) {
-                    inCall = true
-                    callState = "incoming"
-                    callerNumber = status.number || "Unknown"
-                    callDuration = 0
-                } else if (newState === "active") {
-                    // Always show in-call UI for active calls (may have been answered from lock screen)
-                    if (!inCall) {
+                // Handle state transitions - sync with daemon state
+                if (newState === "incoming") {
+                    // Always sync incoming state
+                    if (!inCall || callState !== "incoming") {
                         inCall = true
+                        callState = "incoming"
+                        callerNumber = status.number || "Unknown"
+                        callDuration = 0
+                    }
+                } else if (newState === "active") {
+                    // Always show in-call UI for active calls
+                    if (!inCall) {
                         callerNumber = status.number || "Unknown"
                     }
+                    inCall = true
                     callState = "active"
                     callDuration = status.duration || 0
                 } else if (newState === "idle" && inCall) {
