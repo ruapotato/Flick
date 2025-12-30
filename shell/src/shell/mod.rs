@@ -230,6 +230,14 @@ pub struct Shell {
     pub switcher_enter_start: Option<std::time::Instant>,
     /// Scroll offset for app grid (home screen)
     pub home_scroll: f64,
+    /// Home scroll momentum velocity (pixels per second)
+    pub home_scroll_velocity: f64,
+    /// Home scroll is animating (momentum)
+    pub home_scroll_animating: bool,
+    /// Last time home scroll was updated (for delta time)
+    pub home_scroll_last_update: Option<std::time::Instant>,
+    /// Touch times for velocity calculation (y position, time)
+    pub home_scroll_touch_times: Vec<(f64, std::time::Instant)>,
     /// Touch tracking for scrolling (home screen - vertical)
     pub scroll_touch_start_y: Option<f64>,
     pub scroll_touch_last_y: Option<f64>,
@@ -365,6 +373,10 @@ impl Shell {
             switcher_enter_anim: false,
             switcher_enter_start: None,
             home_scroll: 0.0,
+            home_scroll_velocity: 0.0,
+            home_scroll_animating: false,
+            home_scroll_last_update: None,
+            home_scroll_touch_times: Vec::new(),
             scroll_touch_start_y: None,
             scroll_touch_last_y: None,
             switcher_touch_start_x: None,
@@ -996,6 +1008,11 @@ impl Shell {
         self.pending_app_launch = pending_app;
         self.is_scrolling = false;
         self.long_press_start = Some(std::time::Instant::now());
+        // Stop any ongoing momentum animation when user touches
+        self.home_scroll_animating = false;
+        self.home_scroll_velocity = 0.0;
+        self.home_scroll_touch_times.clear();
+        self.home_scroll_touch_times.push((y, std::time::Instant::now()));
     }
 
     /// Start tracking a touch on a specific category (for long press detection)
@@ -1008,6 +1025,11 @@ impl Shell {
         self.long_press_start = Some(std::time::Instant::now());
         self.long_press_category_id = Some(category_id.to_string());
         self.long_press_position = Some(pos);
+        // Stop any ongoing momentum animation when user touches
+        self.home_scroll_animating = false;
+        self.home_scroll_velocity = 0.0;
+        self.home_scroll_touch_times.clear();
+        self.home_scroll_touch_times.push((pos.y, std::time::Instant::now()));
     }
 
     /// Check if a long press has occurred (300ms threshold)
@@ -1208,35 +1230,42 @@ impl Shell {
             }
         }
 
+        // Track touch position for velocity calculation
+        let now = std::time::Instant::now();
+        self.home_scroll_touch_times.push((y, now));
+        // Only keep touches from last 100ms for velocity calculation
+        self.home_scroll_touch_times.retain(|(_, t)| now.duration_since(*t).as_millis() < 100);
+
         if let Some(last_y) = self.scroll_touch_last_y {
             let delta = last_y - y; // Scroll down when finger moves up
-
-            // Calculate max scroll based on content height
-            // Must match Slint HomeScreen layout (4 columns, same tile sizing)
-            let num_items = self.app_manager.config.grid_order.len();
-            let columns = 4; // Slint hardcodes 4 columns
-            let rows = (num_items + columns - 1) / columns;
-
-            // Match Slint's tile height calculation
-            let height = self.screen_size.h as f64;
-            let status_bar_height = 48.0;
-            let home_indicator_height = 34.0;
-            let grid_padding = 12.0;
-            let grid_spacing = 8.0;
-            let grid_height = height - status_bar_height - home_indicator_height - grid_padding * 2.0;
-
-            // num_rows for tile height calculation (matches Slint's formula)
-            let num_rows_for_height = if num_items > 20 { 6 } else if num_items > 16 { 5 } else if num_items > 12 { 4 } else if num_items > 8 { 3 } else if num_items > 4 { 2 } else { 1 };
-            let tile_height = (grid_height - grid_spacing * (num_rows_for_height as f64 - 1.0)) / num_rows_for_height as f64;
-
-            // Total content height = all rows * (tile_height + spacing)
-            let content_height = rows as f64 * (tile_height + grid_spacing);
-            let max_scroll = (content_height - grid_height).max(0.0);
-
+            let max_scroll = self.get_home_max_scroll();
             self.home_scroll = (self.home_scroll + delta).clamp(0.0, max_scroll);
         }
         self.scroll_touch_last_y = Some(y);
         self.is_scrolling
+    }
+
+    /// Calculate max scroll for home screen based on content
+    pub fn get_home_max_scroll(&self) -> f64 {
+        let num_items = self.app_manager.config.grid_order.len();
+        let columns = 4; // Slint hardcodes 4 columns
+        let rows = (num_items + columns - 1) / columns;
+
+        // Match Slint's tile height calculation with text_scale
+        let height = self.screen_size.h as f64;
+        let status_bar_height = 54.0 * self.text_scale as f64;
+        let home_indicator_height = 34.0;
+        let grid_padding = 12.0;
+        let grid_spacing = 8.0;
+        let grid_height = height - status_bar_height - home_indicator_height - grid_padding * 2.0;
+
+        // num_rows for tile height calculation (matches Slint's formula)
+        let num_rows_for_height = if num_items > 20 { 6 } else if num_items > 16 { 5 } else if num_items > 12 { 4 } else if num_items > 8 { 3 } else if num_items > 4 { 2 } else { 1 };
+        let tile_height = (grid_height - grid_spacing * (num_rows_for_height as f64 - 1.0)) / num_rows_for_height as f64;
+
+        // Total content height = all rows * (tile_height + spacing)
+        let content_height = rows as f64 * (tile_height + grid_spacing);
+        (content_height - grid_height).max(0.0)
     }
 
     /// End touch gesture - returns app exec string if this was a tap (not scroll)
@@ -1246,6 +1275,27 @@ impl Shell {
         } else {
             None
         };
+
+        // Calculate velocity from touch history and start momentum if scrolling
+        if self.is_scrolling && self.home_scroll_touch_times.len() >= 2 {
+            let first = self.home_scroll_touch_times.first().unwrap();
+            let last = self.home_scroll_touch_times.last().unwrap();
+            let dt = last.1.duration_since(first.1).as_secs_f64();
+            if dt > 0.001 {
+                // Velocity in pixels per second (negative because scroll direction is inverted)
+                self.home_scroll_velocity = -(last.0 - first.0) / dt;
+                // Clamp velocity to reasonable range
+                let max_velocity = 6000.0;
+                self.home_scroll_velocity = self.home_scroll_velocity.clamp(-max_velocity, max_velocity);
+
+                // Start momentum animation if velocity is significant
+                if self.home_scroll_velocity.abs() > 100.0 {
+                    self.home_scroll_animating = true;
+                    self.home_scroll_last_update = Some(std::time::Instant::now());
+                }
+            }
+        }
+
         self.scroll_touch_start_y = None;
         self.scroll_touch_last_y = None;
         self.pending_app_launch = None;
@@ -1254,7 +1304,55 @@ impl Shell {
         self.long_press_start = None;
         self.long_press_category_id = None;
         self.long_press_position = None;
+        self.home_scroll_touch_times.clear();
         app
+    }
+
+    /// Update home scroll physics (momentum) - returns true if still animating
+    pub fn update_home_scroll_physics(&mut self) -> bool {
+        if !self.home_scroll_animating {
+            return false;
+        }
+
+        let now = std::time::Instant::now();
+        let dt = if let Some(last) = self.home_scroll_last_update {
+            now.duration_since(last).as_secs_f64()
+        } else {
+            0.016 // ~60fps default
+        };
+        self.home_scroll_last_update = Some(now);
+
+        // Apply velocity
+        self.home_scroll += self.home_scroll_velocity * dt;
+
+        // Apply friction (deceleration)
+        let friction = 5.0;
+        let decel = -self.home_scroll_velocity.signum() * friction * self.home_scroll_velocity.abs().sqrt() * 100.0;
+        self.home_scroll_velocity += decel * dt;
+
+        // Clamp to bounds with bounce
+        let max_scroll = self.get_home_max_scroll();
+        if self.home_scroll < 0.0 {
+            self.home_scroll = 0.0;
+            self.home_scroll_velocity = -self.home_scroll_velocity * 0.3; // Bounce
+            if self.home_scroll_velocity.abs() < 50.0 {
+                self.home_scroll_velocity = 0.0;
+            }
+        } else if self.home_scroll > max_scroll {
+            self.home_scroll = max_scroll;
+            self.home_scroll_velocity = -self.home_scroll_velocity * 0.3;
+            if self.home_scroll_velocity.abs() < 50.0 {
+                self.home_scroll_velocity = 0.0;
+            }
+        }
+
+        // Stop animation when velocity is very small
+        if self.home_scroll_velocity.abs() < 20.0 {
+            self.home_scroll_animating = false;
+            self.home_scroll_velocity = 0.0;
+        }
+
+        self.home_scroll_animating
     }
 
     /// Start tracking a touch on app switcher (potential horizontal scroll or tap)
@@ -1702,7 +1800,8 @@ impl Shell {
         let height = self.screen_size.h as f64;
 
         // Match Slint HomeScreen absolute positioning layout exactly
-        let status_bar_height = 48.0;
+        // Status bar height scales with text_scale (54px * text_scale)
+        let status_bar_height = 54.0 * self.text_scale as f64;
         let home_indicator_height = 34.0;
         let grid_padding = 12.0;
         let grid_spacing = 8.0;

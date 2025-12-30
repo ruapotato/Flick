@@ -2361,6 +2361,11 @@ pub fn run() -> Result<()> {
         // Clean up expired touch effects before rendering
         state.cleanup_touch_effects();
 
+        // Update home screen scroll momentum physics
+        if state.shell.view == crate::shell::ShellView::Home {
+            state.shell.update_home_scroll_physics();
+        }
+
         debug!("Loop {}: calling render_frame", loop_count);
         // Render frame
         if let Err(e) = render_frame(&mut hwc_display, &state, &output) {
@@ -2824,7 +2829,7 @@ fn render_frame(
                                 slint_ui.set_categories(slint_categories);
                                 slint_ui.set_show_popup(state.shell.popup_showing);
                                 slint_ui.set_wiggle_mode(state.shell.wiggle_mode);
-                                // Sync home screen scroll offset
+                                // Sync home screen scroll offset (physics updated in main loop)
                                 slint_ui.set_home_scroll(state.shell.home_scroll as f32);
 
                                 // Update wiggle mode animation and state

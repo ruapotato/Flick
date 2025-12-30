@@ -1196,7 +1196,8 @@ component HomeScreen inherits Rectangle {
     background: has-wallpaper ? transparent : Theme.background;
 
     // Calculate grid dimensions
-    property <length> status-bar-height: 48px;
+    // Status bar height must match StatusBar component: 54px * text-scale
+    property <length> status-bar-height: 54px * text-scale;
     property <length> home-indicator-height: 34px;
     property <length> grid-padding: 12px;
     property <length> grid-spacing: 8px;
