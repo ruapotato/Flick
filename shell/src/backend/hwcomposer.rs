@@ -945,6 +945,10 @@ fn handle_input_event(
                         }
                     }
 
+                    // Cancel long press detection when edge swipe starts
+                    // This prevents edge swipes from triggering wiggle mode
+                    state.shell.long_press_start = None;
+
                     // Left edge gestures
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
                         if shell_view == crate::shell::ShellView::Switcher {
@@ -989,7 +993,8 @@ fn handle_input_event(
                             state.qs_gesture_active = true;
                             state.qs_gesture_progress = progress.clamp(0.0, 1.5);
                             if shell_view == crate::shell::ShellView::Home {
-                                state.shell.home_push_offset = progress.clamp(0.0, 1.0);
+                                // Allow icons to move up to ~100% of screen (0.3 * 3.3 ≈ 1.0)
+                                state.shell.home_push_offset = progress.clamp(0.0, 3.5);
                             }
                         }
                     }
@@ -1004,7 +1009,8 @@ fn handle_input_event(
                             state.switcher_gesture_active = true;
                             state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
                             if shell_view == crate::shell::ShellView::Home {
-                                state.shell.home_push_offset = -progress.clamp(0.0, 1.0);
+                                // Allow icons to move up to ~100% of screen (0.3 * 3.3 ≈ 1.0)
+                                state.shell.home_push_offset = -progress.clamp(0.0, 3.5);
                             }
                         }
                     }
@@ -1083,7 +1089,10 @@ fn handle_input_event(
                 match shell_view {
                     crate::shell::ShellView::Home => {
                         // Check for long press to enter wiggle mode
-                        if !state.shell.wiggle_mode && !state.shell.is_scrolling {
+                        // Exclude edge swipes from triggering wiggle mode
+                        let any_edge_gesture = gesture_active || potential_gesture ||
+                            state.switcher_return_active || state.qs_return_active;
+                        if !state.shell.wiggle_mode && !state.shell.is_scrolling && !any_edge_gesture {
                             if let Some(_category) = state.shell.check_long_press() {
                                 info!("Long press detected - entering wiggle mode");
                                 state.shell.enter_wiggle_mode();
@@ -2268,9 +2277,14 @@ pub fn run() -> Result<()> {
         debug!("Loop {}: after calloop dispatch", loop_count);
 
         // Check for long press to enter wiggle mode (runs every frame)
+        // Exclude edge swipes from triggering wiggle mode
+        let edge_gesture_active = state.switcher_gesture_active || state.qs_gesture_active ||
+            state.switcher_return_active || state.qs_return_active ||
+            state.gesture_recognizer.has_potential_edge_swipe();
         if state.shell.view == crate::shell::ShellView::Home
             && !state.shell.wiggle_mode
             && !state.shell.is_scrolling
+            && !edge_gesture_active
             && state.shell.long_press_start.is_some()
         {
             if let Some(_category) = state.shell.check_long_press() {
@@ -2941,6 +2955,8 @@ fn render_frame(
                                 slint_ui.set_wifi_enabled(state.system.wifi_enabled);
                                 slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
                                 // UI icons are loaded when QuickSettings is first opened (see edge gesture handler)
+                                // Sync push offset for return gesture animation
+                                slint_ui.set_home_push_offset(state.shell.home_push_offset as f32);
                             }
                             ShellView::Switcher => {
                                 slint_ui.set_view("switcher");
@@ -3061,6 +3077,8 @@ fn render_frame(
                                     info!("Switcher: {} windows in space", windows.len());
                                 }
                                 slint_ui.set_switcher_windows(windows);
+                                // Sync push offset for return gesture animation
+                                slint_ui.set_home_push_offset(state.shell.home_push_offset as f32);
                             }
                             ShellView::PickDefault => {
                                 slint_ui.set_view("pick-default");
