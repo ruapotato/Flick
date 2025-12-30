@@ -410,6 +410,14 @@ def write_status(status_dict):
     try:
         with open(STATUS_FILE, 'w') as f:
             json.dump(status_dict, f)
+    except PermissionError:
+        # File may exist with wrong permissions - remove and recreate
+        try:
+            os.remove(STATUS_FILE)
+            with open(STATUS_FILE, 'w') as f:
+                json.dump(status_dict, f)
+        except Exception as e:
+            print(f"Failed to write status after cleanup: {e}")
     except Exception as e:
         print(f"Failed to write status: {e}")
 
