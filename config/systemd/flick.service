@@ -12,8 +12,9 @@ Conflicts=phosh.service
 
 [Service]
 Type=simple
-User=droidian
-Group=droidian
+# Run as root - compositor needs root for hwcomposer, drops privileges for spawned apps
+User=root
+Group=root
 
 # Environment
 Environment=XDG_RUNTIME_DIR=/run/user/32011
@@ -25,6 +26,12 @@ Environment=HOME=/home/droidian
 # Ensure state directory exists and has correct permissions
 ExecStartPre=/bin/mkdir -p /home/droidian/.local/state/flick
 ExecStartPre=/bin/chown -R droidian:droidian /home/droidian/.local/state/flick
+
+# Restart hwcomposer (required after Phosh releases it)
+ExecStartPre=/bin/sh -c 'ANDROID_SERVICE="(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)" /usr/lib/halium-wrappers/android-service.sh hwcomposer stop || true'
+ExecStartPre=/bin/sleep 2
+ExecStartPre=/bin/sh -c 'ANDROID_SERVICE="(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)" /usr/lib/halium-wrappers/android-service.sh hwcomposer start'
+ExecStartPre=/bin/sleep 1
 
 # Main compositor
 ExecStart=/home/droidian/Flick/shell/target/release/flick
