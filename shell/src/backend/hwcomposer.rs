@@ -2944,6 +2944,10 @@ fn render_frame(
 
                     // Set up Slint UI state based on current view
                     if let Some(ref slint_ui) = state.shell.slint_ui {
+                        // Always sync return gesture state (prevents stale state when view changes)
+                        let in_return_gesture = state.qs_return_active || state.switcher_return_active;
+                        slint_ui.set_return_gesture_active(in_return_gesture);
+
                         match shell_view {
                             ShellView::Home => {
                                 slint_ui.set_view("home");
@@ -2991,9 +2995,8 @@ fn render_frame(
                                 slint_ui.set_wifi_enabled(state.system.wifi_enabled);
                                 slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
                                 // UI icons are loaded when QuickSettings is first opened (see edge gesture handler)
-                                // Sync push offset and return gesture state for animation
+                                // Sync push offset for return gesture animation
                                 slint_ui.set_home_push_offset(state.shell.home_push_offset as f32);
-                                slint_ui.set_return_gesture_active(state.qs_return_active);
                             }
                             ShellView::Switcher => {
                                 slint_ui.set_view("switcher");
@@ -3116,7 +3119,6 @@ fn render_frame(
                                 slint_ui.set_switcher_windows(windows);
                                 // Sync push offset for return gesture animation
                                 slint_ui.set_home_push_offset(state.shell.home_push_offset as f32);
-                                slint_ui.set_return_gesture_active(state.switcher_return_active);
                             }
                             ShellView::PickDefault => {
                                 slint_ui.set_view("pick-default");
@@ -3179,6 +3181,9 @@ fn render_frame(
                 slint_ui.set_show_volume_overlay(state.system.should_show_volume_overlay());
                 slint_ui.set_volume(state.system.volume as i32);
                 slint_ui.set_muted(state.system.muted);
+                // Reset return gesture state (prevents HomeScreen from appearing in App view)
+                let in_return_gesture = state.qs_return_active || state.switcher_return_active;
+                slint_ui.set_return_gesture_active(in_return_gesture);
             }
 
             // Render switcher preview during edge gesture (while still in App view)
