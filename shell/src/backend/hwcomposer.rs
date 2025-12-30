@@ -3192,9 +3192,12 @@ fn render_frame(
                 slint_ui.set_show_volume_overlay(state.system.should_show_volume_overlay());
                 slint_ui.set_volume(state.system.volume as i32);
                 slint_ui.set_muted(state.system.muted);
-                // Reset return gesture state (prevents HomeScreen from appearing in App view)
+                // Reset gesture states (prevents HomeScreen from appearing incorrectly)
                 let in_return_gesture = state.qs_return_active || state.switcher_return_active;
                 slint_ui.set_return_gesture_active(in_return_gesture);
+                // Forward gesture only when swiping from Home to Switcher
+                let in_forward_gesture = state.switcher_gesture_active && shell_view == ShellView::Home;
+                slint_ui.set_forward_gesture_active(in_forward_gesture);
             }
 
             // Render switcher preview during edge gesture
@@ -3203,6 +3206,15 @@ fn render_frame(
 
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     slint_ui.set_view("switcher");
+
+                    // From Home: keep HomeScreen visible with push offset
+                    if shell_view == ShellView::Home {
+                        slint_ui.set_forward_gesture_active(true);
+                        slint_ui.set_home_push_offset(state.shell.home_push_offset as f32);
+                    } else {
+                        slint_ui.set_forward_gesture_active(false);
+                    }
+
                     // From App: use gesture progress for shrink animation (full screen → card)
                     // From Home: skip shrink (already card size), only slide-in effect
                     let enter_progress = if shell_view == ShellView::App {
