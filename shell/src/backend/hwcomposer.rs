@@ -688,6 +688,8 @@ fn handle_input_event(
                             // Return from Switcher to Home
                             state.switcher_return_active = true;
                             state.switcher_return_progress = 0.0;
+                            // Initialize icons fully pushed left (off-screen)
+                            state.shell.home_push_offset = -1.0;
                             info!("Switcher return gesture STARTED");
                         } else {
                             // Quick Settings from Home/App
@@ -702,6 +704,8 @@ fn handle_input_event(
                             // Return from QuickSettings to Home
                             state.qs_return_active = true;
                             state.qs_return_progress = 0.0;
+                            // Initialize icons fully pushed right (off-screen)
+                            state.shell.home_push_offset = 1.0;
                             info!("QS return gesture STARTED");
                         } else {
                             // Switcher from Home/App
@@ -954,6 +958,8 @@ fn handle_input_event(
                         if shell_view == crate::shell::ShellView::Switcher {
                             state.switcher_return_active = true;
                             state.switcher_return_progress = 0.0;
+                            // Initialize icons fully pushed left (off-screen)
+                            state.shell.home_push_offset = -1.0;
                         } else {
                             state.qs_gesture_active = true;
                             state.qs_gesture_progress = 0.0;
@@ -964,6 +970,8 @@ fn handle_input_event(
                         if shell_view == crate::shell::ShellView::QuickSettings {
                             state.qs_return_active = true;
                             state.qs_return_progress = 0.0;
+                            // Initialize icons fully pushed right (off-screen)
+                            state.shell.home_push_offset = 1.0;
                         } else {
                             state.switcher_gesture_active = true;
                             state.switcher_gesture_progress = 0.0;
