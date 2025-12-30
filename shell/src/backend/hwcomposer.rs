@@ -3117,8 +3117,11 @@ fn render_frame(
                                     info!("Switcher: {} windows in space", windows.len());
                                 }
                                 slint_ui.set_switcher_windows(windows);
-                                // Sync push offset for return gesture animation
+                                // Sync push offsets for return gesture animation
+                                // When home slides in from left (-3.5→0), switcher pushes right (0→3.5)
                                 slint_ui.set_home_push_offset(state.shell.home_push_offset as f32);
+                                let switcher_push = (3.5 + state.shell.home_push_offset).max(0.0);
+                                slint_ui.set_switcher_push_offset(switcher_push as f32);
                             }
                             ShellView::PickDefault => {
                                 slint_ui.set_view("pick-default");

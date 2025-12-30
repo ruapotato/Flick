@@ -644,6 +644,11 @@ impl SlintShell {
         self.shell.set_switcher_scroll(offset);
     }
 
+    /// Set switcher horizontal push offset for edge swipe gestures
+    pub fn set_switcher_push_offset(&self, offset: f32) {
+        self.shell.set_switcher_push_offset(offset);
+    }
+
     /// Set home screen vertical scroll offset
     pub fn set_home_scroll(&self, offset: f32) {
         self.shell.set_home_scroll(offset);

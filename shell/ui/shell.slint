@@ -2346,6 +2346,7 @@ component AppSwitcherPanel inherits Rectangle {
     in property <[WindowCard]> windows: [];
     in property <float> scroll-offset: 0;  // Horizontal scroll position
     in property <float> enter-progress: 1.0;  // 0.0 = full screen (animating), 1.0 = card size (complete)
+    in property <float> push-offset: 0;  // Horizontal push offset for edge swipe gestures (-1 to 1)
     in property <bool> has-wallpaper: false;
 
     callback window-tapped(int);  // Window ID
@@ -2402,9 +2403,10 @@ component AppSwitcherPanel inherits Rectangle {
         // so that the center card renders on top
         for window[idx] in windows: Rectangle {
             // Calculate position based on scroll offset using original-index
-            // Each card is at: original-index * card-spacing - scroll-offset + center
+            // Each card is at: original-index * card-spacing - scroll-offset + center + push
             property <int> pos-idx: window.original-index;
-            property <length> base-x: pos-idx * card-spacing - scroll-offset * 1px + (parent.width - card-width) / 2;
+            property <length> push-x: push-offset * root.width * 0.3;  // Same scale as home screen icons
+            property <length> base-x: pos-idx * card-spacing - scroll-offset * 1px + (parent.width - card-width) / 2 + push-x;
             property <float> normalized-pos: (pos-idx * card-spacing / 1px - scroll-offset) / (card-spacing / 1px);
             property <float> distance: abs(normalized-pos);
             property <float> base-scale: max(0.75, 1.0 - distance * 0.1);
@@ -2697,6 +2699,7 @@ export component FlickShell inherits Window {
     in property <[WindowCard]> switcher-windows: [];
     in property <float> switcher-scroll: 0;
     in property <float> switcher-enter-progress: 1.0;  // 0.0 = full screen, 1.0 = card size (animation complete)
+    in property <float> switcher-push-offset: 0;  // Horizontal push for edge swipe gestures
 
     // Home screen scroll state
     in property <float> home-scroll: 0;  // Vertical scroll offset in pixels
@@ -2835,6 +2838,7 @@ export component FlickShell inherits Window {
         windows: switcher-windows;
         scroll-offset: switcher-scroll;
         enter-progress: switcher-enter-progress;
+        push-offset: switcher-push-offset;
         has-wallpaper: root.has-wallpaper;
         window-tapped(id) => { switcher-window-tapped(id); }
     }
