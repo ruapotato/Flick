@@ -688,6 +688,7 @@ fn handle_input_event(
                             // Return from Switcher to Home
                             state.switcher_return_active = true;
                             state.switcher_return_progress = 0.0;
+                            state.switcher_return_start_progress = -1.0;  // Sentinel: capture on first update
                             // Initialize icons fully pushed left (off-screen)
                             state.shell.home_push_offset = -1.0;
                             info!("Switcher return gesture STARTED");
@@ -704,6 +705,7 @@ fn handle_input_event(
                             // Return from QuickSettings to Home
                             state.qs_return_active = true;
                             state.qs_return_progress = 0.0;
+                            state.qs_return_start_progress = -1.0;  // Sentinel: capture on first update
                             // Initialize icons fully pushed right (off-screen)
                             state.shell.home_push_offset = 1.0;
                             info!("QS return gesture STARTED");
@@ -958,6 +960,7 @@ fn handle_input_event(
                         if shell_view == crate::shell::ShellView::Switcher {
                             state.switcher_return_active = true;
                             state.switcher_return_progress = 0.0;
+                            state.switcher_return_start_progress = -1.0;  // Sentinel: capture on first update
                             // Initialize icons fully pushed left (off-screen)
                             state.shell.home_push_offset = -1.0;
                         } else {
@@ -970,6 +973,7 @@ fn handle_input_event(
                         if shell_view == crate::shell::ShellView::QuickSettings {
                             state.qs_return_active = true;
                             state.qs_return_progress = 0.0;
+                            state.qs_return_start_progress = -1.0;  // Sentinel: capture on first update
                             // Initialize icons fully pushed right (off-screen)
                             state.shell.home_push_offset = 1.0;
                         } else {
@@ -993,9 +997,21 @@ fn handle_input_event(
                     // Left edge gestures
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
                         if state.switcher_return_active {
+                            // Capture start progress on first update (sentinel is -1.0)
+                            if state.switcher_return_start_progress < 0.0 {
+                                state.switcher_return_start_progress = *progress;
+                            }
+                            // Normalize progress: 0 at start, 1 at completion threshold
+                            let start = state.switcher_return_start_progress;
+                            let normalized = if start < 1.0 {
+                                (progress - start) / (1.0 - start)
+                            } else {
+                                0.0
+                            };
+                            let normalized = normalized.clamp(0.0, 1.0);
                             // Return from Switcher: icons slide in from left
-                            state.switcher_return_progress = progress.clamp(0.0, 1.0);
-                            state.shell.home_push_offset = -1.0 + progress.clamp(0.0, 1.0);
+                            state.switcher_return_progress = normalized;
+                            state.shell.home_push_offset = -1.0 + normalized;
                         } else {
                             // Going to QS: push icons right
                             state.qs_gesture_active = true;
@@ -1009,9 +1025,21 @@ fn handle_input_event(
                     // Right edge gestures
                     if *edge == crate::input::Edge::Right && shell_view != crate::shell::ShellView::LockScreen {
                         if state.qs_return_active {
+                            // Capture start progress on first update (sentinel is -1.0)
+                            if state.qs_return_start_progress < 0.0 {
+                                state.qs_return_start_progress = *progress;
+                            }
+                            // Normalize progress: 0 at start, 1 at completion threshold
+                            let start = state.qs_return_start_progress;
+                            let normalized = if start < 1.0 {
+                                (progress - start) / (1.0 - start)
+                            } else {
+                                0.0
+                            };
+                            let normalized = normalized.clamp(0.0, 1.0);
                             // Return from QS: icons slide in from right
-                            state.qs_return_progress = progress.clamp(0.0, 1.0);
-                            state.shell.home_push_offset = 1.0 - progress.clamp(0.0, 1.0);
+                            state.qs_return_progress = normalized;
+                            state.shell.home_push_offset = 1.0 - normalized;
                         } else {
                             // Going to Switcher: push icons left
                             state.switcher_gesture_active = true;

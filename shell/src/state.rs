@@ -176,10 +176,12 @@ pub struct Flick {
     /// Return gesture from Switcher to Home (swipe from left edge)
     pub switcher_return_active: bool,
     pub switcher_return_progress: f64,
+    pub switcher_return_start_progress: f64,  // Initial progress when gesture started
 
     /// Return gesture from QuickSettings to Home (swipe from right edge)
     pub qs_return_active: bool,
     pub qs_return_progress: f64,
+    pub qs_return_start_progress: f64,  // Initial progress when gesture started
 
     /// Per-slot keyboard touch tracking for multi-touch support
     /// Maps touch slot ID -> initial touch position
@@ -346,8 +348,10 @@ impl Flick {
             qs_gesture_progress: 0.0,
             switcher_return_active: false,
             switcher_return_progress: 0.0,
+            switcher_return_start_progress: 0.0,
             qs_return_active: false,
             qs_return_progress: 0.0,
+            qs_return_start_progress: 0.0,
             keyboard_touch_initial: HashMap::new(),
             keyboard_touch_last: HashMap::new(),
             keyboard_dismiss_slot: None,
