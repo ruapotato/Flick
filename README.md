@@ -19,7 +19,7 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 
 Droidian and similar Android-based Linux distributions require **HWComposer** integration to access the GPU.
 
-**Current status (Dec 2025):** Early prototype. HWComposer backend works, core shell functional, but missing telephony/SMS integration.
+**Current status (Dec 2025):** Early prototype. HWComposer backend works, core shell functional, with working voice calls and SMS.
 
 ✅ **Working:**
 - Display output via hwcomposer (tested on Pixel 3a)
@@ -38,6 +38,8 @@ Droidian and similar Android-based Linux distributions require **HWComposer** in
 - SHM buffer rendering for external Wayland clients
 - EGL buffer import for hardware-accelerated apps (camera preview, etc.)
 - Camera with live video preview (via droidian-camera + AAL backend)
+- **Voice calls** with incoming/outgoing call UI, mute, speaker, call history (via oFono, 2G mode)
+- **SMS messaging** send/receive with notifications (via ModemManager)
 
 ⚠️ **Known Issues:**
 - X11/XWayland apps do not work (Firefox, etc.) - native Wayland apps only
@@ -90,7 +92,7 @@ Flick comes with a set of QML apps. Status of each:
 | **Contacts** | ✅ Working | Contact management |
 | **Lock Screen** | ✅ Working | Pattern/PIN entry, swipe to unlock, hardware accelerated |
 | **Distract** | ✅ Working | Toddler distraction app with interactive animations |
-| **Phone** | ⚠️ Partial | Dialer UI works, audio controls work, modem integration in progress |
+| **Phone** | ✅ Working | Voice calls via oFono (2G mode), incoming/outgoing UI, mute, speaker, call history |
 | **Messages** | ✅ Working | SMS send/receive via ModemManager, notifications, haptic feedback |
 | **Email** | 🚧 TODO | Email client (UI only, needs backend) |
 | **Web** | ✅ Working | Web browser with tabs, bookmarks, and history |
@@ -254,8 +256,9 @@ Press `Ctrl+Alt+F1` through `Ctrl+Alt+F12` to switch between virtual terminals.
 - [x] Sound controls (hardware volume buttons)
 
 ### Phase 3: Phone Features
-- [ ] Telephony (ModemManager integration)
-- [ ] SMS/MMS
+- [x] Telephony (oFono integration, 2G mode for voice)
+- [x] SMS (ModemManager integration)
+- [ ] MMS
 - [ ] Contacts app
 - [ ] Cellular signal indicators
 - [ ] Power management (suspend/resume)
