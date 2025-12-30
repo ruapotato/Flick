@@ -209,9 +209,13 @@ def set_speaker_mode(enabled):
         if enabled:
             print("Enabling speakerphone...")
             run_pactl(["set-sink-port", "sink.primary_output", "output-speaker"])
+            # Use builtin mic for speaker mode (farther from mouth)
+            run_pactl(["set-source-port", "source.droid", "input-builtin_mic"])
         else:
             print("Disabling speakerphone (earpiece)...")
             run_pactl(["set-sink-port", "sink.primary_output", "output-earpiece"])
+            # Use voice_call input for earpiece mode
+            run_pactl(["set-source-port", "source.droid", "input-voice_call"])
     except Exception as e:
         print(f"Speaker mode error: {e}")
 
@@ -219,12 +223,15 @@ def set_speaker_mode(enabled):
 def set_mute(enabled):
     """Toggle microphone mute during call"""
     try:
-        if enabled:
-            print("Muting microphone...")
-            run_pactl(["set-source-mute", "source.droid", "1"])
+        mute_val = "1" if enabled else "0"
+        print(f"Setting microphone mute to {mute_val}...")
+        # Mute the main droid source
+        if run_pactl(["set-source-mute", "source.droid", mute_val]):
+            print(f"Mute {'enabled' if enabled else 'disabled'}")
         else:
-            print("Unmuting microphone...")
-            run_pactl(["set-source-mute", "source.droid", "0"])
+            print("Mute command may have failed")
+        # Also try muting by index in case name doesn't work
+        run_pactl(["set-source-mute", "2", mute_val])
     except Exception as e:
         print(f"Mute error: {e}")
 
