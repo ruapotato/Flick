@@ -6,6 +6,8 @@ Documentation=https://github.com/anthropics/flick
 After=phosh.service
 After=lxc@android.service
 After=dbus.socket
+# Must start after user runtime dir is created (socket goes there)
+After=user-runtime-dir@32011.service
 
 # We replace Phosh
 Conflicts=phosh.service
