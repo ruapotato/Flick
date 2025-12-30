@@ -921,9 +921,12 @@ fn render_surface(
 
                     // Sync popup state
                     slint_ui.set_show_popup(state.shell.popup_showing);
-                    if let Some(category) = state.shell.popup_category {
-                        slint_ui.set_popup_category_name(category.display_name());
-                        slint_ui.set_popup_can_pick_default(category.is_customizable());
+                    if let Some(ref category_id) = state.shell.popup_category_id {
+                        let display_name = state.shell.app_manager.get_category_def(category_id)
+                            .map(|c| c.name.clone())
+                            .unwrap_or_else(|| category_id.clone());
+                        slint_ui.set_popup_category_name(&display_name);
+                        slint_ui.set_popup_can_pick_default(state.shell.app_manager.is_customizable(category_id));
                     }
 
                     // Sync wiggle mode
@@ -939,17 +942,20 @@ fn render_surface(
                 }
                 ShellView::PickDefault => {
                     slint_ui.set_view("pick-default");
-                    if let Some(category) = state.shell.popup_category {
-                        slint_ui.set_pick_default_category(category.display_name());
+                    if let Some(ref category_id) = state.shell.popup_category_id {
+                        let display_name = state.shell.app_manager.get_category_def(category_id)
+                            .map(|c| c.name.clone())
+                            .unwrap_or_else(|| category_id.clone());
+                        slint_ui.set_pick_default_category(&display_name);
                         // Get available apps for this category
-                        let apps = state.shell.app_manager.apps_for_category(category);
+                        let apps = state.shell.app_manager.apps_for_category(category_id);
                         let available_apps: Vec<(String, String)> = apps
                             .iter()
                             .map(|app| (app.name.clone(), app.exec.clone()))
                             .collect();
                         slint_ui.set_available_apps(available_apps);
                         // Set current selection
-                        if let Some(exec) = state.shell.app_manager.get_exec(category) {
+                        if let Some(exec) = state.shell.app_manager.get_exec(category_id) {
                             slint_ui.set_current_app_selection(&exec);
                         }
                     }
@@ -3667,8 +3673,8 @@ fn handle_input_event(
                                     match action {
                                         PopupAction::PickDefault => {
                                             // Get the category and enter pick default view
-                                            if let Some(category) = state.shell.popup_category {
-                                                state.shell.enter_pick_default(category);
+                                            if let Some(ref category_id) = state.shell.popup_category_id.clone() {
+                                                state.shell.enter_pick_default(&category_id);
                                             }
                                         }
                                         PopupAction::Move => {
@@ -3833,8 +3839,7 @@ fn handle_input_event(
                                 QuickSettingsAction::Settings => {
                                     info!("Settings button pressed - launching settings app");
                                     // Get the settings app exec command
-                                    use crate::shell::apps::AppCategory;
-                                    if let Some(exec) = state.shell.app_manager.get_exec(AppCategory::Settings) {
+                                    if let Some(exec) = state.shell.app_manager.get_exec("settings") {
                                         // First, try to focus an existing settings window
                                         if state.try_focus_existing_app(&exec) {
                                             info!("Focused existing settings window");
@@ -3887,9 +3892,9 @@ fn handle_input_event(
                         if slint_ui.hit_test_pick_default_back(pos.x as f32, pos.y as f32) {
                             info!("PickDefault: back button pressed");
                             state.shell.exit_pick_default();
-                        } else if let Some(category) = state.shell.popup_category {
+                        } else if let Some(ref category_id) = state.shell.popup_category_id.clone() {
                             // Check app list
-                            let apps = state.shell.app_manager.apps_for_category(category);
+                            let apps = state.shell.app_manager.apps_for_category(&category_id);
                             if let Some(index) = slint_ui.hit_test_pick_default_app(pos.x as f32, pos.y as f32, apps.len()) {
                                 if let Some(app) = apps.get(index) {
                                     info!("PickDefault: selected app '{}' with exec '{}'", app.name, app.exec);

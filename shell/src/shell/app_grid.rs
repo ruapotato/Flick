@@ -393,9 +393,10 @@ pub fn render_long_press_menu(
     // Header text depends on level
     let header_text_y = menu_y + 18.0;
     let header_text_x = menu_x + menu_width / 2.0;
+    // Use the category_id as the display name (it's already a readable string)
     let header_label = match menu.level {
-        MenuLevel::Main => menu.category.display_name().to_string(),
-        MenuLevel::SelectApp => format!("Select {} App", menu.category.display_name()),
+        MenuLevel::Main => menu.category_id.clone(),
+        MenuLevel::SelectApp => format!("Select {} App", menu.category_id),
     };
     let header_text = text::render_text_centered(
         &header_label,

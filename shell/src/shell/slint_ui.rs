@@ -644,6 +644,11 @@ impl SlintShell {
         self.shell.set_switcher_scroll(offset);
     }
 
+    /// Set home screen vertical scroll offset
+    pub fn set_home_scroll(&self, offset: f32) {
+        self.shell.set_home_scroll(offset);
+    }
+
     /// Set switcher enter animation progress (0.0 = full screen, 1.0 = card size)
     pub fn set_switcher_enter_progress(&self, progress: f32) {
         self.shell.set_switcher_enter_progress(progress);

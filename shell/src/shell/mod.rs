@@ -184,8 +184,8 @@ pub enum MenuAction {
 /// Long press menu for app categories
 #[derive(Debug, Clone)]
 pub struct LongPressMenu {
-    /// The category being configured
-    pub category: apps::AppCategory,
+    /// The category ID being configured
+    pub category_id: String,
     /// Position of the menu (where long press occurred)
     pub position: Point<f64, Logical>,
     /// Available apps for this category
@@ -238,15 +238,15 @@ pub struct Shell {
     pub switcher_touch_last_x: Option<f64>,
     /// Pending app launch (exec command) - waits for touch up to confirm tap vs scroll
     pub pending_app_launch: Option<String>,
-    /// Pending category for long press menu
-    pub pending_category: Option<apps::AppCategory>,
+    /// Pending category ID for long press menu
+    pub pending_category_id: Option<String>,
     /// Pending switcher window index - waits for touch up to confirm tap vs scroll
     pub pending_switcher_index: Option<usize>,
     /// Whether current touch is scrolling (moved significantly)
     pub is_scrolling: bool,
     /// Long press tracking
     pub long_press_start: Option<std::time::Instant>,
-    pub long_press_category: Option<apps::AppCategory>,
+    pub long_press_category_id: Option<String>,
     pub long_press_position: Option<Point<f64, Logical>>,
     /// Quick Settings panel state
     pub quick_settings: quick_settings::QuickSettingsPanel,
@@ -271,8 +271,8 @@ pub struct Shell {
     pub drag_position: Option<Point<f64, Logical>>,
     /// Whether popup menu is showing (for Slint state sync)
     pub popup_showing: bool,
-    /// Category for popup menu / pick default view
-    pub popup_category: Option<apps::AppCategory>,
+    /// Category ID for popup menu / pick default view
+    pub popup_category_id: Option<String>,
     /// Flag to prevent processing touch on same event that opened pick default view
     pub pick_default_just_opened: bool,
     /// Icon cache for app icons
@@ -370,11 +370,11 @@ impl Shell {
             switcher_touch_start_x: None,
             switcher_touch_last_x: None,
             pending_app_launch: None,
-            pending_category: None,
+            pending_category_id: None,
             pending_switcher_index: None,
             is_scrolling: false,
             long_press_start: None,
-            long_press_category: None,
+            long_press_category_id: None,
             long_press_position: None,
             quick_settings: quick_settings::QuickSettingsPanel::new(screen_size),
             qs_touch_start_y: None,
@@ -388,7 +388,7 @@ impl Shell {
             drag_start_position: None,
             drag_position: None,
             popup_showing: false,
-            popup_category: None,
+            popup_category_id: None,
             pick_default_just_opened: false,
             icon_cache: icons::IconCache::new(128), // 128px icons for larger tiles
             lock_config: lock_config.clone(),
@@ -999,27 +999,27 @@ impl Shell {
     }
 
     /// Start tracking a touch on a specific category (for long press detection)
-    pub fn start_category_touch(&mut self, pos: Point<f64, Logical>, category: apps::AppCategory) {
+    pub fn start_category_touch(&mut self, pos: Point<f64, Logical>, category_id: &str) {
         self.scroll_touch_start_y = Some(pos.y);
         self.scroll_touch_last_y = Some(pos.y);
-        self.pending_category = Some(category);
-        self.pending_app_launch = self.app_manager.get_exec(category);
+        self.pending_category_id = Some(category_id.to_string());
+        self.pending_app_launch = self.app_manager.get_exec(category_id);
         self.is_scrolling = false;
         self.long_press_start = Some(std::time::Instant::now());
-        self.long_press_category = Some(category);
+        self.long_press_category_id = Some(category_id.to_string());
         self.long_press_position = Some(pos);
     }
 
     /// Check if a long press has occurred (300ms threshold)
-    pub fn check_long_press(&mut self) -> Option<apps::AppCategory> {
+    pub fn check_long_press(&mut self) -> Option<String> {
         if self.is_scrolling {
             return None;
         }
-        if let (Some(start), Some(category)) = (self.long_press_start, self.long_press_category) {
+        if let (Some(start), Some(ref category_id)) = (self.long_press_start, &self.long_press_category_id) {
             if start.elapsed() >= std::time::Duration::from_millis(300) {
                 // Clear the pending app launch since this is a long press
                 self.pending_app_launch = None;
-                return Some(category);
+                return Some(category_id.clone());
             }
         }
         None
@@ -1031,20 +1031,20 @@ impl Shell {
         if self.long_press_menu.is_some() {
             return false; // Menu already open
         }
-        if let Some(category) = self.check_long_press() {
+        if let Some(category_id) = self.check_long_press() {
             // Skip long press menu for non-customizable categories (like Settings)
-            if !category.is_customizable() {
-                tracing::debug!("Long press on non-customizable category {:?}, ignoring", category);
+            if !self.app_manager.is_customizable(&category_id) {
+                tracing::debug!("Long press on non-customizable category {}, ignoring", category_id);
                 self.long_press_start = None;
-                self.long_press_category = None;
+                self.long_press_category_id = None;
                 return false;
             }
             if let Some(pos) = self.long_press_position {
-                tracing::info!("Long press triggered for {:?} at ({:.0}, {:.0})", category, pos.x, pos.y);
-                self.show_long_press_menu(category, pos);
+                tracing::info!("Long press triggered for {} at ({:.0}, {:.0})", category_id, pos.x, pos.y);
+                self.show_long_press_menu(&category_id, pos);
                 // Clear long press tracking so it doesn't trigger again
                 self.long_press_start = None;
-                self.long_press_category = None;
+                self.long_press_category_id = None;
                 return true;
             }
         }
@@ -1052,13 +1052,13 @@ impl Shell {
     }
 
     /// Show long press menu for a category
-    pub fn show_long_press_menu(&mut self, category: apps::AppCategory, position: Point<f64, Logical>) {
-        let available_apps = self.app_manager.apps_for_category(category)
+    pub fn show_long_press_menu(&mut self, category_id: &str, position: Point<f64, Logical>) {
+        let available_apps = self.app_manager.apps_for_category(category_id)
             .into_iter()
             .cloned()
             .collect();
         self.long_press_menu = Some(LongPressMenu {
-            category,
+            category_id: category_id.to_string(),
             position,
             available_apps,
             highlighted: None,
@@ -1069,7 +1069,7 @@ impl Shell {
 
         // Also set Slint popup state
         self.popup_showing = true;
-        self.popup_category = Some(category);
+        self.popup_category_id = Some(category_id.to_string());
     }
 
     /// Close long press menu
@@ -1108,8 +1108,8 @@ impl Shell {
                 // Select an app from the list
                 if let Some(entry) = menu.available_apps.get(index) {
                     let exec = entry.exec.clone();
-                    let category = menu.category;
-                    self.app_manager.set_category_app(category, exec);
+                    let category_id = menu.category_id.clone();
+                    self.app_manager.set_category_app(&category_id, exec);
                     self.preload_icons(); // Reload icons after changing selection
                     self.long_press_menu = None;
                     self.popup_showing = false;  // Must also reset popup_showing
@@ -1135,12 +1135,12 @@ impl Shell {
         self.drag_position = None;
         // Clear long press state to prevent immediate re-entry
         self.long_press_start = None;
-        self.long_press_category = None;
+        self.long_press_category_id = None;
         // Ensure all popup/menu state is cleared for clean long press detection
         self.long_press_menu = None;
         self.menu_just_opened = false;
         self.popup_showing = false;
-        self.popup_category = None;
+        self.popup_category_id = None;
     }
 
     /// Start dragging a category in wiggle mode
@@ -1201,9 +1201,9 @@ impl Shell {
             if total_delta > 40.0 {
                 self.is_scrolling = true;
                 self.pending_app_launch = None; // Cancel pending app launch
-                self.pending_category = None;
+                self.pending_category_id = None;
                 self.long_press_start = None;
-                self.long_press_category = None;
+                self.long_press_category_id = None;
                 self.long_press_position = None;
             }
         }
@@ -1235,10 +1235,10 @@ impl Shell {
         self.scroll_touch_start_y = None;
         self.scroll_touch_last_y = None;
         self.pending_app_launch = None;
-        self.pending_category = None;
+        self.pending_category_id = None;
         self.is_scrolling = false;
         self.long_press_start = None;
-        self.long_press_category = None;
+        self.long_press_category_id = None;
         self.long_press_position = None;
         app
     }
@@ -1606,9 +1606,9 @@ impl Shell {
     }
 
     /// Show popup menu for a category (after long press)
-    pub fn show_popup(&mut self, category: apps::AppCategory) {
+    pub fn show_popup(&mut self, category_id: &str) {
         self.popup_showing = true;
-        self.popup_category = Some(category);
+        self.popup_category_id = Some(category_id.to_string());
     }
 
     /// Hide popup menu
@@ -1621,42 +1621,41 @@ impl Shell {
         self.long_press_menu = None;
         self.menu_just_opened = false;
         self.popup_showing = false;
-        self.popup_category = None;
+        self.popup_category_id = None;
         self.wiggle_mode = true;
         self.wiggle_start_time = Some(std::time::Instant::now());
     }
 
     /// Enter pick default view for a category
-    pub fn enter_pick_default(&mut self, category: apps::AppCategory) {
+    pub fn enter_pick_default(&mut self, category_id: &str) {
         // Clear the long press menu state (like enter_wiggle_mode does)
         self.long_press_menu = None;
         self.menu_just_opened = false;
         self.popup_showing = false;
-        self.popup_category = Some(category);
+        self.popup_category_id = Some(category_id.to_string());
         self.set_view(ShellView::PickDefault);
         self.pick_default_just_opened = true;  // Don't process touch on same event
     }
 
     /// Exit pick default view (go back to home)
     pub fn exit_pick_default(&mut self) {
-        self.popup_category = None;
+        self.popup_category_id = None;
         self.set_view(ShellView::Home);
         self.pick_default_just_opened = false;
     }
 
     /// Select a new default app for the current pick default category
     pub fn select_default_app(&mut self, exec: &str) {
-        if let Some(category) = self.popup_category {
+        if let Some(ref category_id) = self.popup_category_id.clone() {
             if exec == "flick-default" {
-                // Set to the Flick native app path
+                // Set to the Flick native app path using the category ID
                 let flick_exec = format!(
                     r#"sh -c "$HOME/Flick/apps/{}/run_{}.sh""#,
-                    category.display_name().to_lowercase(),
-                    category.display_name().to_lowercase()
+                    category_id, category_id
                 );
-                self.app_manager.set_category_app(category, flick_exec);
+                self.app_manager.set_category_app(category_id, flick_exec);
             } else {
-                self.app_manager.set_category_app(category, exec.to_string());
+                self.app_manager.set_category_app(category_id, exec.to_string());
             }
             self.exit_pick_default();
         }
@@ -1669,18 +1668,18 @@ impl Shell {
         }
 
         // Check if touch is on a category tile
-        if let Some(category) = self.hit_test_category(pos) {
-            return self.app_manager.get_exec(category);
+        if let Some(category_id) = self.hit_test_category(pos) {
+            return self.app_manager.get_exec(&category_id);
         }
 
         None
     }
 
-    /// Hit test for app grid - returns category if hit
+    /// Hit test for app grid - returns category ID if hit
     /// Uses Slint's absolute positioning layout constants to match visual display
-    pub fn hit_test_category(&self, pos: Point<f64, Logical>) -> Option<apps::AppCategory> {
-        let categories = &self.app_manager.config.grid_order;
-        let num_categories = categories.len();
+    pub fn hit_test_category(&self, pos: Point<f64, Logical>) -> Option<String> {
+        let grid_order = &self.app_manager.config.grid_order;
+        let num_categories = grid_order.len();
         if num_categories == 0 {
             return None;
         }
@@ -1714,24 +1713,31 @@ impl Shell {
         }
 
         // Calculate which tile was hit by checking each tile's bounds
+        // Account for scroll offset - tiles scroll up as home_scroll increases
         for i in 0..num_categories {
             let row = i / columns;
             let col = i % columns;
 
             let tile_x = grid_padding + (tile_width + grid_spacing) * col as f64;
-            let tile_y = grid_top + (tile_height + grid_spacing) * row as f64;
+            // Apply scroll offset to visual tile position
+            let tile_y = grid_top + (tile_height + grid_spacing) * row as f64 - self.home_scroll;
+
+            // Skip tiles that have scrolled completely above or below the visible grid area
+            if tile_y + tile_height < grid_top || tile_y > grid_top + grid_height {
+                continue;
+            }
 
             if pos.x >= tile_x && pos.x < tile_x + tile_width &&
                pos.y >= tile_y && pos.y < tile_y + tile_height {
-                tracing::debug!("Hit test: pos({:.0},{:.0}) -> tile row={}, col={}, index={}",
-                    pos.x, pos.y, row, col, i);
-                let category = categories[i];
-                tracing::info!("Hit category {} '{}'", i, category.display_name());
-                return Some(category);
+                tracing::debug!("Hit test: pos({:.0},{:.0}) -> tile row={}, col={}, index={}, scroll={:.0}",
+                    pos.x, pos.y, row, col, i, self.home_scroll);
+                let category_id = &grid_order[i];
+                tracing::info!("Hit category {} '{}'", i, category_id);
+                return Some(category_id.clone());
             }
         }
 
-        tracing::debug!("Hit test: pos({:.0},{:.0}) -> no tile hit", pos.x, pos.y);
+        tracing::debug!("Hit test: pos({:.0},{:.0}) -> no tile hit, scroll={:.0}", pos.x, pos.y, self.home_scroll);
         None
     }
 
@@ -1767,18 +1773,24 @@ impl Shell {
         let tile_width = (grid_width - grid_spacing * 3.0) / 4.0;
         let tile_height = (grid_height - grid_spacing * (num_rows as f64 - 1.0)) / num_rows as f64;
 
-        // Helper to get rect for an index
+        // Helper to get rect for an index (with scroll offset applied)
+        let home_scroll = self.home_scroll;
         let get_rect = |index: usize| -> (f64, f64, f64, f64) {
             let row = index / columns;
             let col = index % columns;
             let x = grid_padding + (tile_width + grid_spacing) * col as f64;
-            let y = grid_top + (tile_height + grid_spacing) * row as f64;
+            // Apply scroll offset - tiles scroll up as home_scroll increases
+            let y = grid_top + (tile_height + grid_spacing) * row as f64 - home_scroll;
             (x, y, tile_width, tile_height)
         };
 
-        // First check for exact hit on a tile
+        // First check for exact hit on a tile (accounting for scroll)
         for i in 0..num_categories {
             let (x, y, w, h) = get_rect(i);
+            // Skip tiles that have scrolled completely above or below the visible grid area
+            if y + h < grid_top || y > grid_top + grid_height {
+                continue;
+            }
             if pos.x >= x && pos.x < x + w && pos.y >= y && pos.y < y + h {
                 return Some(i);
             }

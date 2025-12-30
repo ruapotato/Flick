@@ -842,9 +842,9 @@ fn handle_input_event(
                             }
                         } else {
                             // Normal mode - track for app launching
-                            if let Some(category) = touched_category {
-                                info!("Touch down on category {:?}", category);
-                                state.shell.start_category_touch(touch_pos, category);
+                            if let Some(ref category_id) = touched_category {
+                                info!("Touch down on category {:?}", category_id);
+                                state.shell.start_category_touch(touch_pos, category_id);
                             } else {
                                 // Not on a category - just track for scrolling
                                 state.shell.start_home_touch(touch_pos.y, None);
@@ -1421,10 +1421,10 @@ fn handle_input_event(
                                         info!("Wiggle mode: tap in Done button zone (y={:.0} > {:.0})", end_pos.y, done_zone_top);
                                     } else {
                                         // Show pick app popup
-                                        let category = state.shell.app_manager.config.grid_order.get(from_index).copied();
-                                        if let Some(cat) = category {
-                                            info!("Wiggle mode: tap on {} - showing app picker", cat.display_name());
-                                            state.shell.enter_pick_default(cat);
+                                        let category_id = state.shell.app_manager.config.grid_order.get(from_index).cloned();
+                                        if let Some(cat_id) = category_id {
+                                            info!("Wiggle mode: tap on {} - showing app picker", cat_id);
+                                            state.shell.enter_pick_default(&cat_id);
                                         }
                                     }
                                 }
@@ -1565,8 +1565,7 @@ fn handle_input_event(
                                         }
                                         QuickSettingsAction::Settings => {
                                             info!("Settings button pressed - launching settings app");
-                                            use crate::shell::apps::AppCategory;
-                                            if let Some(exec) = state.shell.app_manager.get_exec(AppCategory::Settings) {
+                                            if let Some(exec) = state.shell.app_manager.get_exec("settings") {
                                                 state.shell.set_view(crate::shell::ShellView::App);
                                                 let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
                                                 let text_scale = state.shell.text_scale as f64;
@@ -2825,6 +2824,8 @@ fn render_frame(
                                 slint_ui.set_categories(slint_categories);
                                 slint_ui.set_show_popup(state.shell.popup_showing);
                                 slint_ui.set_wiggle_mode(state.shell.wiggle_mode);
+                                // Sync home screen scroll offset
+                                slint_ui.set_home_scroll(state.shell.home_scroll as f32);
 
                                 // Update wiggle mode animation and state
                                 if state.shell.wiggle_mode {
@@ -2984,10 +2985,14 @@ fn render_frame(
                             }
                             ShellView::PickDefault => {
                                 slint_ui.set_view("pick-default");
-                                if let Some(category) = state.shell.popup_category {
-                                    slint_ui.set_pick_default_category(category.display_name());
+                                if let Some(ref category_id) = state.shell.popup_category_id {
+                                    // Get display name from category definition
+                                    let display_name = state.shell.app_manager.get_category_def(category_id)
+                                        .map(|c| c.name.clone())
+                                        .unwrap_or_else(|| category_id.clone());
+                                    slint_ui.set_pick_default_category(&display_name);
                                     // Get available apps for this category (includes discovered + Flick apps)
-                                    let apps = state.shell.app_manager.apps_for_category(category);
+                                    let apps = state.shell.app_manager.apps_for_category(category_id);
                                     let mut available_apps: Vec<(String, String)> = apps
                                         .iter()
                                         .map(|app| (app.name.clone(), app.exec.clone()))
@@ -2995,16 +3000,15 @@ fn render_frame(
 
                                     // Always add Flick native app if it exists and not already in list
                                     let flick_exec = format!(r#"sh -c "$HOME/Flick/apps/{}/run_{}.sh""#,
-                                        category.display_name().to_lowercase(),
-                                        category.display_name().to_lowercase());
-                                    let flick_name = format!("Flick {}", category.display_name());
+                                        category_id, category_id);
+                                    let flick_name = format!("Flick {}", display_name);
                                     if !available_apps.iter().any(|(_, exec)| exec.contains("/Flick/apps/")) {
                                         available_apps.insert(0, (flick_name, flick_exec));
                                     }
 
                                     slint_ui.set_available_apps(available_apps);
                                     // Set current selection and check if it's a Flick default
-                                    if let Some(exec) = state.shell.app_manager.get_exec(category) {
+                                    if let Some(exec) = state.shell.app_manager.get_exec(category_id) {
                                         slint_ui.set_current_app_selection(&exec);
                                         // Check if using Flick default by looking at the exec path
                                         let is_flick_default = exec.contains("/Flick/apps/");

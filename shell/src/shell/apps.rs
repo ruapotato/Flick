@@ -1,7 +1,7 @@
 //! App category management and desktop file parsing
 //!
-//! Manages app categories (Web, Email, Files, etc.) that open system default apps.
-//! Users can long-press to select which installed app to use for each category.
+//! Categories are loaded from config/apps.json - no hardcoded apps!
+//! Users can add new app categories by editing the config file.
 
 use std::collections::HashMap;
 use std::fs;
@@ -42,184 +42,117 @@ fn get_real_user_home() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("/root"))
 }
 
-/// Get the path to Flick's built-in Settings app (QML)
-/// Searches in common locations based on the running user
-pub fn get_flick_settings_exec() -> String {
-    // Try to find the settings app in common locations
-    let possible_paths = [
-        // Check relative to user's home
-        format!("{}/Flick/apps/settings/run_settings.sh", std::env::var("HOME").unwrap_or_default()),
-        // Droidian phone
-        "/home/droidian/Flick/apps/settings/run_settings.sh".to_string(),
-        // Development machine
-        "/home/david/Flick/apps/settings/run_settings.sh".to_string(),
+/// Get the Flick shell directory (where config/apps.json lives)
+fn get_flick_shell_dir() -> PathBuf {
+    // Try common locations
+    let home = get_real_user_home();
+    let candidates = [
+        home.join("Flick/shell"),
+        PathBuf::from("/home/droidian/Flick/shell"),
+        PathBuf::from("/home/david/Flick/shell"),
     ];
 
-    for path in &possible_paths {
-        if std::path::Path::new(path).exists() {
+    for path in &candidates {
+        if path.join("config/apps.json").exists() {
             return path.clone();
         }
     }
 
-    // Fallback - try GNOME Settings as last resort
-    "gnome-control-center".to_string()
+    // Fallback
+    home.join("Flick/shell")
 }
 
-/// Predefined app categories that appear on the home screen
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum AppCategory {
-    Web,
-    Email,
-    Messages,
-    Phone,
-    Camera,
-    Photos,
-    Music,
-    Audiobooks,
-    Ebooks,
-    Video,
-    Files,
-    Terminal,
-    Calculator,
-    Calendar,
-    Notes,
-    Recorder,
-    Contacts,
-    Clock,
-    Weather,
-    Podcast,
-    Maps,
-    Distract,
-    Settings,
-    Sandbox,
+/// Category definition loaded from config/apps.json
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CategoryDef {
+    /// Unique identifier (e.g., "phone", "messages", "passwordsafe")
+    pub id: String,
+    /// Display name (e.g., "Phone", "Messages", "Passwords")
+    pub name: String,
+    /// Icon name (matches icons in shell/icons/)
+    pub icon: String,
+    /// Default color [r, g, b, a] in 0.0-1.0 range
+    pub color: [f32; 4],
+    /// Default exec command for Flick's built-in app
+    pub default_exec: String,
+    /// Desktop categories to match (e.g., ["Telephony"], ["WebBrowser", "Network"])
+    pub desktop_categories: Vec<String>,
+    /// Whether users can change which app is used (false for Settings)
+    #[serde(default = "default_true")]
+    pub customizable: bool,
 }
 
-impl AppCategory {
-    /// Get all categories in display order
-    pub fn all() -> Vec<Self> {
-        vec![
-            Self::Phone,
-            Self::Messages,
-            Self::Contacts,
-            Self::Web,
-            Self::Email,
-            Self::Camera,
-            Self::Photos,
-            Self::Video,
-            Self::Music,
-            Self::Audiobooks,
-            Self::Ebooks,
-            Self::Podcast,
-            Self::Recorder,
-            Self::Files,
-            Self::Calendar,
-            Self::Clock,
-            Self::Weather,
-            Self::Maps,
-            Self::Notes,
-            Self::Calculator,
-            Self::Terminal,
-            Self::Distract,
-            Self::Sandbox,
-            Self::Settings,
-        ]
-    }
+fn default_true() -> bool { true }
 
-    /// Get the display name for this category
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            Self::Web => "Web",
-            Self::Email => "Email",
-            Self::Messages => "Messages",
-            Self::Phone => "Phone",
-            Self::Camera => "Camera",
-            Self::Photos => "Photos",
-            Self::Music => "Music",
-            Self::Audiobooks => "Audiobooks",
-            Self::Ebooks => "Ebooks",
-            Self::Video => "Video",
-            Self::Files => "Files",
-            Self::Terminal => "Terminal",
-            Self::Calculator => "Calculator",
-            Self::Calendar => "Calendar",
-            Self::Notes => "Notes",
-            Self::Recorder => "Recorder",
-            Self::Contacts => "Contacts",
-            Self::Clock => "Clock",
-            Self::Weather => "Weather",
-            Self::Podcast => "Podcast",
-            Self::Maps => "Maps",
-            Self::Distract => "Distract",
-            Self::Settings => "Settings",
-            Self::Sandbox => "Sandbox",
+impl CategoryDef {
+    /// Check if a desktop entry matches this category
+    pub fn matches_entry(&self, entry: &DesktopEntry) -> u32 {
+        let mut score = 0u32;
+
+        for cat in &entry.categories {
+            if self.desktop_categories.contains(cat) {
+                score += 10;
+            }
         }
-    }
 
-    /// Get the desktop category strings that match this category
-    /// Returns (primary categories, secondary categories) - primary matches are ranked higher
-    pub fn desktop_categories(&self) -> (Vec<&'static str>, Vec<&'static str>) {
-        match self {
-            Self::Web => (vec!["WebBrowser"], vec!["Network"]),
-            Self::Email => (vec!["Email"], vec!["ContactManagement"]),
-            Self::Messages => (vec!["InstantMessaging", "Chat"], vec!["IRCClient"]),
-            Self::Phone => (vec!["Telephony"], vec![]),
-            Self::Camera => (vec!["Camera"], vec!["Photography"]),
-            Self::Photos => (vec!["Photography", "Viewer"], vec!["Graphics", "2DGraphics"]),
-            Self::Music => (vec!["Music", "Audio"], vec!["Player"]),
-            Self::Audiobooks => (vec!["AudioBook"], vec!["Audio", "AudioVideo"]),
-            Self::Ebooks => (vec!["EBook"], vec!["Office", "Viewer"]),
-            Self::Video => (vec!["Video"], vec!["AudioVideo"]),
-            Self::Files => (vec!["FileManager"], vec!["FileTools", "Filesystem"]),
-            Self::Terminal => (vec!["TerminalEmulator"], vec![]), // Only exact terminal matches
-            Self::Calculator => (vec!["Calculator"], vec!["Math"]),
-            Self::Calendar => (vec!["Calendar"], vec!["ProjectManagement"]),
-            Self::Notes => (vec!["TextEditor"], vec!["WordProcessor"]),
-            Self::Recorder => (vec!["Recorder"], vec![]),  // No fallback categories - use Flick recorder
-            Self::Contacts => (vec!["ContactManagement"], vec!["Office"]),
-            Self::Clock => (vec!["Clock"], vec!["Utility"]),
-            Self::Weather => (vec!["Weather"], vec!["Network"]),
-            Self::Podcast => (vec!["Podcast"], vec!["Audio", "AudioVideo"]),
-            Self::Maps => (vec!["Maps"], vec!["Navigation", "Network"]),
-            Self::Distract => (vec!["Game"], vec![]),
-            Self::Settings => (vec!["Settings", "DesktopSettings"], vec![]),
-            Self::Sandbox => (vec!["Game"], vec!["Simulation"]),
+        // Boost terminal apps
+        if self.id == "terminal" && entry.terminal {
+            score += 5;
         }
-    }
 
-    /// Check if users can customize which app is used for this category
-    /// Settings is always Flick Settings and cannot be changed
-    pub fn is_customizable(&self) -> bool {
-        !matches!(self, Self::Settings)
-    }
-
-    /// Get a default color for this category (used as fallback if no icon)
-    pub fn default_color(&self) -> [f32; 4] {
-        match self {
-            Self::Web => [0.2, 0.5, 0.9, 1.0],       // Blue
-            Self::Email => [0.9, 0.3, 0.3, 1.0],     // Red
-            Self::Messages => [0.2, 0.8, 0.4, 1.0],  // Green
-            Self::Phone => [0.2, 0.8, 0.2, 1.0],     // Bright Green
-            Self::Camera => [0.5, 0.5, 0.5, 1.0],    // Gray
-            Self::Photos => [0.8, 0.4, 0.8, 1.0],    // Purple
-            Self::Music => [0.9, 0.4, 0.2, 1.0],     // Orange
-            Self::Audiobooks => [0.6, 0.4, 0.2, 1.0], // Brown
-            Self::Ebooks => [0.4, 0.6, 0.8, 1.0],    // Light Blue
-            Self::Video => [0.8, 0.2, 0.2, 1.0],     // Dark Red
-            Self::Files => [0.8, 0.7, 0.3, 1.0],     // Yellow
-            Self::Terminal => [0.2, 0.2, 0.2, 1.0],  // Dark Gray
-            Self::Calculator => [0.3, 0.3, 0.7, 1.0], // Indigo
-            Self::Calendar => [0.2, 0.6, 0.9, 1.0],  // Light Blue
-            Self::Notes => [0.9, 0.9, 0.3, 1.0],     // Yellow
-            Self::Recorder => [0.9, 0.27, 0.38, 1.0], // Accent red (matches Flick theme)
-            Self::Contacts => [0.3, 0.6, 0.9, 1.0],  // Light Blue
-            Self::Clock => [0.4, 0.4, 0.5, 1.0],     // Gray
-            Self::Weather => [0.3, 0.7, 0.9, 1.0],   // Sky Blue
-            Self::Podcast => [0.7, 0.3, 0.8, 1.0],   // Purple
-            Self::Maps => [0.2, 0.7, 0.5, 1.0],      // Teal
-            Self::Distract => [0.9, 0.2, 0.8, 1.0],  // Bright Magenta
-            Self::Settings => [0.5, 0.5, 0.6, 1.0],  // Gray-Blue
-            Self::Sandbox => [0.83, 0.65, 0.45, 1.0], // Sandy tan
+        // Boost Flick native apps
+        if entry.is_flick_native_app() {
+            score += 50;
         }
+
+        score
+    }
+}
+
+/// Categories configuration loaded from JSON
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CategoriesConfig {
+    pub categories: Vec<CategoryDef>,
+}
+
+impl CategoriesConfig {
+    /// Load categories from config/apps.json
+    pub fn load() -> Self {
+        let shell_dir = get_flick_shell_dir();
+        let config_path = shell_dir.join("config/apps.json");
+
+        tracing::info!("Loading app categories from {:?}", config_path);
+
+        match fs::read_to_string(&config_path) {
+            Ok(contents) => {
+                match serde_json::from_str::<Self>(&contents) {
+                    Ok(config) => {
+                        tracing::info!("Loaded {} categories from config", config.categories.len());
+                        return config;
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to parse apps.json: {:?}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to read apps.json: {:?}", e);
+            }
+        }
+
+        // Return empty config on error - this is a critical failure
+        tracing::error!("Using empty categories - apps.json not found!");
+        Self { categories: Vec::new() }
+    }
+
+    /// Get a category by ID
+    pub fn get(&self, id: &str) -> Option<&CategoryDef> {
+        self.categories.iter().find(|c| c.id == id)
+    }
+
+    /// Get all category IDs in order
+    pub fn ids(&self) -> Vec<String> {
+        self.categories.iter().map(|c| c.id.clone()).collect()
     }
 }
 
@@ -302,174 +235,68 @@ impl DesktopEntry {
         })
     }
 
-    /// Check if this entry matches a category, returning a score (0 = no match, higher = better)
-    pub fn match_score(&self, category: AppCategory) -> u32 {
-        let (primary, secondary) = category.desktop_categories();
-        let mut score = 0u32;
-
-        for cat in &self.categories {
-            if primary.contains(&cat.as_str()) {
-                score += 10; // Primary category match
-            } else if secondary.contains(&cat.as_str()) {
-                score += 1; // Secondary category match
-            }
-        }
-
-        // Boost terminal apps that have Terminal=true in their .desktop file
-        if category == AppCategory::Terminal && self.terminal {
-            score += 5;
-        }
-
-        // Boost Flick native apps so they're preferred over system apps
-        if self.is_flick_native_app() {
-            score += 50;
-        }
-
-        score
-    }
-
     /// Check if this is a Flick native app (lives in ~/Flick/apps/)
     pub fn is_flick_native_app(&self) -> bool {
         self.path.to_string_lossy().contains("Flick/apps/")
     }
-
-    /// Check if this entry matches a category
-    pub fn matches_category(&self, category: AppCategory) -> bool {
-        self.match_score(category) > 0
-    }
 }
 
-/// App configuration - stores user preferences for which apps to use
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+/// User's app configuration - stores selected apps and grid order
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
-    /// Selected app exec command per category
+    /// Selected app exec command per category ID
     #[serde(default)]
-    pub selections: HashMap<AppCategory, String>,
-    /// Grid positions for categories (index -> category)
-    #[serde(default = "AppCategory::all")]
-    pub grid_order: Vec<AppCategory>,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        // Default to Flick native apps
-        let mut selections = HashMap::new();
-        selections.insert(AppCategory::Phone, r#"sh -c "$HOME/Flick/apps/phone/run_phone.sh""#.to_string());
-        selections.insert(AppCategory::Messages, r#"sh -c "$HOME/Flick/apps/messages/run_messages.sh""#.to_string());
-        selections.insert(AppCategory::Web, r#"sh -c "$HOME/Flick/apps/web/run_web.sh""#.to_string());
-        selections.insert(AppCategory::Email, r#"sh -c "$HOME/Flick/apps/email/run_email.sh""#.to_string());
-        selections.insert(AppCategory::Camera, "/usr/bin/droidian-camera".to_string());
-        selections.insert(AppCategory::Photos, r#"sh -c "$HOME/Flick/apps/photos/run_photos.sh""#.to_string());
-        selections.insert(AppCategory::Music, r#"sh -c "$HOME/Flick/apps/music/run_music.sh""#.to_string());
-        selections.insert(AppCategory::Audiobooks, r#"sh -c "$HOME/Flick/apps/audiobooks/run_audiobooks.sh""#.to_string());
-        selections.insert(AppCategory::Ebooks, r#"sh -c "$HOME/Flick/apps/ebooks/run_ebooks.sh""#.to_string());
-        selections.insert(AppCategory::Video, r#"sh -c "$HOME/Flick/apps/video/run_video.sh""#.to_string());
-        selections.insert(AppCategory::Files, r#"sh -c "$HOME/Flick/apps/files/run_files.sh""#.to_string());
-        selections.insert(AppCategory::Calendar, r#"sh -c "$HOME/Flick/apps/calendar/run_calendar.sh""#.to_string());
-        selections.insert(AppCategory::Notes, r#"sh -c "$HOME/Flick/apps/notes/run_notes.sh""#.to_string());
-        selections.insert(AppCategory::Calculator, r#"sh -c "$HOME/Flick/apps/calculator/run_calculator.sh""#.to_string());
-        selections.insert(AppCategory::Recorder, r#"sh -c "$HOME/Flick/apps/recorder/run_recorder.sh""#.to_string());
-        selections.insert(AppCategory::Terminal, r#"sh -c "$HOME/Flick/apps/terminal/run_terminal.sh""#.to_string());
-        selections.insert(AppCategory::Contacts, r#"sh -c "$HOME/Flick/apps/contacts/run_contacts.sh""#.to_string());
-        selections.insert(AppCategory::Clock, r#"sh -c "$HOME/Flick/apps/clock/run_clock.sh""#.to_string());
-        selections.insert(AppCategory::Weather, r#"sh -c "$HOME/Flick/apps/weather/run_weather.sh""#.to_string());
-        selections.insert(AppCategory::Podcast, r#"sh -c "$HOME/Flick/apps/podcast/run_podcast.sh""#.to_string());
-        selections.insert(AppCategory::Maps, r#"sh -c "$HOME/Flick/apps/maps/run_maps.sh""#.to_string());
-        selections.insert(AppCategory::Distract, r#"sh -c "$HOME/Flick/apps/distract/run_distract.sh""#.to_string());
-        selections.insert(AppCategory::Sandbox, r#"sh -c "$HOME/Flick/apps/sandbox/run_sandbox.sh""#.to_string());
-
-        Self {
-            selections,
-            grid_order: AppCategory::all(),
-        }
-    }
+    pub selections: HashMap<String, String>,
+    /// Grid order (category IDs)
+    #[serde(default)]
+    pub grid_order: Vec<String>,
 }
 
 impl AppConfig {
-    /// Get the config file path (uses real user's home, not root)
+    /// Get the config file path
     fn config_path() -> Option<PathBuf> {
         let home = get_real_user_home();
         Some(home.join(".local/state/flick/app_config.json"))
     }
 
-    /// Load config from file, or return default if not found
+    /// Load config from file
     pub fn load() -> Self {
         if let Some(path) = Self::config_path() {
-            tracing::info!("Looking for app config at {:?}", path);
-            match fs::read_to_string(&path) {
-                Ok(contents) => {
-                    tracing::info!("Read app config file: {}", contents);
-                    match serde_json::from_str::<Self>(&contents) {
-                        Ok(mut config) => {
-                            tracing::info!("Loaded app config from {:?}", path);
-                            // Ensure all current categories are in the grid
-                            // This handles new categories added after config was saved
-                            let all_categories = AppCategory::all();
-                            let defaults = Self::default();
-                            for cat in &all_categories {
-                                if !config.grid_order.contains(cat) {
-                                    tracing::info!("Adding missing category to grid: {:?}", cat);
-                                    config.grid_order.push(*cat);
-                                }
-                                // Also add default selection if missing
-                                if !config.selections.contains_key(cat) {
-                                    if let Some(default_exec) = defaults.selections.get(cat) {
-                                        config.selections.insert(*cat, default_exec.clone());
-                                    }
-                                }
-                            }
-                            return config;
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to parse app config: {:?}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::info!("No app config file found: {:?}", e);
+            if let Ok(contents) = fs::read_to_string(&path) {
+                if let Ok(config) = serde_json::from_str::<Self>(&contents) {
+                    tracing::info!("Loaded app config from {:?}", path);
+                    return config;
                 }
             }
-        } else {
-            tracing::warn!("Could not determine app config path (HOME not set?)");
         }
-        tracing::info!("Using default app config");
         Self::default()
     }
 
     /// Save config to file
     pub fn save(&self) {
         if let Some(path) = Self::config_path() {
-            // Ensure parent directory exists
             if let Some(parent) = path.parent() {
                 let _ = fs::create_dir_all(parent);
             }
             if let Ok(json) = serde_json::to_string_pretty(self) {
                 if let Err(e) = fs::write(&path, json) {
                     tracing::warn!("Failed to save app config: {:?}", e);
-                } else {
-                    tracing::info!("Saved app config to {:?}", path);
                 }
             }
         }
     }
 
-    /// Get the selected exec command for a category, or None if not set
-    pub fn get_selected(&self, category: AppCategory) -> Option<&str> {
-        self.selections.get(&category).map(|s| s.as_str())
+    /// Get selected exec for a category
+    pub fn get_selected(&self, category_id: &str) -> Option<&str> {
+        self.selections.get(category_id).map(|s| s.as_str())
     }
 
-    /// Set the selected app for a category
-    pub fn set_selected(&mut self, category: AppCategory, exec: String) {
-        self.selections.insert(category, exec);
+    /// Set selected app for a category
+    pub fn set_selected(&mut self, category_id: &str, exec: String) {
+        self.selections.insert(category_id.to_string(), exec);
     }
 
-    /// Clear the selected app for a category (reverts to default/Flick app)
-    pub fn clear_selected(&mut self, category: AppCategory) {
-        self.selections.remove(&category);
-    }
-
-    /// Move a category to a new position in the grid
+    /// Move a category in the grid
     pub fn move_category(&mut self, from: usize, to: usize) {
         if from < self.grid_order.len() && to < self.grid_order.len() {
             let cat = self.grid_order.remove(from);
@@ -478,8 +305,27 @@ impl AppConfig {
     }
 }
 
+/// Information about a category for rendering
+#[derive(Debug, Clone)]
+pub struct CategoryInfo {
+    /// Category ID
+    pub id: String,
+    /// Display name
+    pub name: String,
+    /// Selected exec command
+    pub selected_exec: Option<String>,
+    /// Number of available apps
+    pub available_count: usize,
+    /// Icon name
+    pub icon: Option<String>,
+    /// Display color
+    pub color: [f32; 4],
+}
+
 /// Manager for discovering and categorizing installed apps
 pub struct AppManager {
+    /// Category definitions from config
+    pub categories: CategoriesConfig,
     /// All discovered desktop entries
     pub entries: Vec<DesktopEntry>,
     /// User configuration
@@ -489,41 +335,54 @@ pub struct AppManager {
 }
 
 impl AppManager {
-    /// Create a new app manager and scan for installed apps
+    /// Create a new app manager
     pub fn new() -> Self {
+        let categories = CategoriesConfig::load();
+        let mut config = AppConfig::load();
+
+        // Ensure grid_order has all categories
+        let all_ids = categories.ids();
+        for id in &all_ids {
+            if !config.grid_order.contains(id) {
+                config.grid_order.push(id.clone());
+            }
+        }
+        // Remove any categories that no longer exist
+        config.grid_order.retain(|id| all_ids.contains(id));
+
         let mut manager = Self {
+            categories,
             entries: Vec::new(),
-            config: AppConfig::load(), // Load saved config or use default
+            config,
             cached_category_info: Vec::new(),
         };
+
         manager.scan_apps();
         manager.set_defaults();
-        manager.config.save(); // Save defaults so they persist
+        manager.config.save();
         manager.rebuild_cache();
         manager
     }
 
-    /// Rebuild the cached category info (call after any changes)
+    /// Rebuild the cached category info
     fn rebuild_cache(&mut self) {
-        self.cached_category_info = self.config.grid_order.iter().map(|&cat| {
-            let selected_exec = self.config.get_selected(cat).map(|s| s.to_string());
-            let available_apps = self.apps_for_category(cat);
-            // Use category name as icon (matches our Papirus icons like "phone.svg", "camera.svg")
-            // This is more reliable than .desktop icons which have inconsistent naming
-            let icon = Some(cat.display_name().to_string());
+        self.cached_category_info = self.config.grid_order.iter().filter_map(|id| {
+            let cat_def = self.categories.get(id)?;
+            let selected_exec = self.config.get_selected(id).map(|s| s.to_string());
+            let available_apps = self.apps_for_category(id);
 
-            CategoryInfo {
-                category: cat,
-                name: cat.display_name().to_string(),
+            Some(CategoryInfo {
+                id: id.clone(),
+                name: cat_def.name.clone(),
                 selected_exec,
                 available_count: available_apps.len(),
-                icon,
-                color: cat.default_color(),
-            }
+                icon: Some(cat_def.icon.clone()),
+                color: cat_def.color,
+            })
         }).collect();
     }
 
-    /// Scan standard locations for .desktop files
+    /// Scan for .desktop files
     pub fn scan_apps(&mut self) {
         use std::collections::HashSet;
 
@@ -533,31 +392,20 @@ impl AppManager {
         paths.push(PathBuf::from("/usr/share/applications"));
         paths.push(PathBuf::from("/usr/local/share/applications"));
 
-        // User applications (use real user's home, not root)
+        // User applications
         let home = get_real_user_home();
         paths.push(home.join(".local/share/applications"));
 
-        // Flick's native apps - scan each app subdirectory
+        // Flick's native apps
         let flick_apps = home.join("Flick/apps");
-        tracing::info!("Scanning for Flick apps in: {:?}", flick_apps);
         if flick_apps.exists() {
             if let Ok(entries) = fs::read_dir(&flick_apps) {
                 for entry in entries.filter_map(|e| e.ok()) {
                     let path = entry.path();
                     if path.is_dir() {
-                        tracing::info!("  Found app dir: {:?}", path);
                         paths.push(path);
                     }
                 }
-            }
-        } else {
-            tracing::warn!("Flick apps directory not found: {:?}", flick_apps);
-        }
-
-        // XDG data dirs
-        if let Ok(xdg_dirs) = std::env::var("XDG_DATA_DIRS") {
-            for dir in xdg_dirs.split(':') {
-                paths.push(PathBuf::from(dir).join("applications"));
             }
         }
 
@@ -571,9 +419,7 @@ impl AppManager {
                     let path = entry.path();
                     if path.extension().map(|e| e == "desktop").unwrap_or(false) {
                         if let Some(desktop) = DesktopEntry::parse(&path) {
-                            // Skip entries with no exec or hidden entries
                             if !desktop.exec.is_empty() {
-                                // Deduplicate by name and exec command
                                 let name_key = desktop.name.to_lowercase();
                                 let exec_key = desktop.exec.split_whitespace().next()
                                     .unwrap_or(&desktop.exec).to_string();
@@ -590,20 +436,24 @@ impl AppManager {
             }
         }
 
-        tracing::info!("Scanned {} desktop entries (deduplicated)", self.entries.len());
+        tracing::info!("Scanned {} desktop entries", self.entries.len());
     }
 
-    /// Get all apps that match a category, sorted by match quality (best first)
-    pub fn apps_for_category(&self, category: AppCategory) -> Vec<&DesktopEntry> {
+    /// Get apps matching a category ID
+    pub fn apps_for_category(&self, category_id: &str) -> Vec<&DesktopEntry> {
+        let cat_def = match self.categories.get(category_id) {
+            Some(c) => c,
+            None => return Vec::new(),
+        };
+
         let mut matches: Vec<_> = self.entries
             .iter()
             .filter_map(|e| {
-                let score = e.match_score(category);
+                let score = cat_def.matches_entry(e);
                 if score > 0 { Some((e, score)) } else { None }
             })
             .collect();
 
-        // Sort by score descending, then by name alphabetically
         matches.sort_by(|a, b| {
             b.1.cmp(&a.1).then_with(|| a.0.name.cmp(&b.0.name))
         });
@@ -611,101 +461,87 @@ impl AppManager {
         matches.into_iter().map(|(e, _)| e).collect()
     }
 
-    /// Set default apps for each category (only if no selection exists)
+    /// Set default apps for each category
     fn set_defaults(&mut self) {
-        for category in AppCategory::all() {
-            // Skip Settings - it's always Flick's built-in settings
-            if category == AppCategory::Settings {
+        for cat_def in &self.categories.categories {
+            // Skip if user already has a selection
+            if self.config.get_selected(&cat_def.id).is_some() {
                 continue;
             }
 
-            // Only set default if user hasn't selected anything
-            if self.config.get_selected(category).is_some() {
-                tracing::debug!("{} already has selection, skipping", category.display_name());
-                continue;
-            }
-
-            let apps = self.apps_for_category(category);
-            if apps.is_empty() {
-                tracing::debug!("No apps found for {}", category.display_name());
-                continue;
-            }
-
-            // Log all candidates for debugging
-            for (i, app) in apps.iter().take(3).enumerate() {
-                let score = app.match_score(category);
-                tracing::info!("  {} candidate {}: {} (score={}, flick={})",
-                    category.display_name(), i, app.name, score, app.is_flick_native_app());
-            }
-
-            // Use the highest scoring app (first in sorted list)
-            if let Some(entry) = apps.first() {
-                tracing::info!("Setting default {} to: {} ({})",
-                    category.display_name(), entry.name, entry.exec);
-                self.config.set_selected(category, entry.exec.clone());
+            // Use the default_exec from config
+            if !cat_def.default_exec.is_empty() {
+                // Expand $HOME in the exec string
+                let home = get_real_user_home();
+                let exec = cat_def.default_exec.replace("$HOME", &home.to_string_lossy());
+                self.config.set_selected(&cat_def.id, exec);
             }
         }
     }
 
-    /// Get the exec command for a category (selected or default)
-    pub fn get_exec(&self, category: AppCategory) -> Option<String> {
-        // Settings always uses Flick's built-in Settings app
-        if category == AppCategory::Settings {
-            return Some(get_flick_settings_exec());
-        }
+    /// Get exec command for a category
+    pub fn get_exec(&self, category_id: &str) -> Option<String> {
         // First try user selection
-        if let Some(exec) = self.config.get_selected(category) {
+        if let Some(exec) = self.config.get_selected(category_id) {
             return Some(exec.to_string());
         }
-        // Fall back to first matching app
-        self.apps_for_category(category)
-            .first()
-            .map(|e| e.exec.clone())
+
+        // Fall back to default from config
+        if let Some(cat_def) = self.categories.get(category_id) {
+            if !cat_def.default_exec.is_empty() {
+                let home = get_real_user_home();
+                return Some(cat_def.default_exec.replace("$HOME", &home.to_string_lossy()));
+            }
+        }
+
+        None
     }
 
-    /// Get the icon name for a category's selected app
-    pub fn get_icon(&self, category: AppCategory) -> Option<String> {
-        let exec = self.config.get_selected(category)?;
-        self.entries
-            .iter()
-            .find(|e| &e.exec == exec)
-            .and_then(|e| e.icon.clone())
-    }
-
-    /// Get all categories with their current selection info (cached for performance)
+    /// Get category info (cached)
     pub fn get_category_info(&self) -> &[CategoryInfo] {
         &self.cached_category_info
     }
 
-    /// Update the selected app for a category and rebuild cache
-    pub fn set_category_app(&mut self, category: AppCategory, exec: String) {
-        self.config.set_selected(category, exec);
-        self.rebuild_cache();
-        self.config.save(); // Persist changes
+    /// Get a category definition by ID
+    pub fn get_category_def(&self, id: &str) -> Option<&CategoryDef> {
+        self.categories.get(id)
     }
 
-    /// Clear the selected app for a category (reverts to Flick default)
-    pub fn clear_category_app(&mut self, category: AppCategory) {
-        self.config.clear_selected(category);
-        self.rebuild_cache();
-        self.config.save(); // Persist changes
+    /// Get category ID by index in grid
+    pub fn get_category_id(&self, index: usize) -> Option<&str> {
+        self.config.grid_order.get(index).map(|s| s.as_str())
     }
 
-    /// Move a category and rebuild cache
+    /// Get category info by ID
+    pub fn get_category_info_by_id(&self, id: &str) -> Option<&CategoryInfo> {
+        self.cached_category_info.iter().find(|c| c.id == id)
+    }
+
+    /// Update selected app for a category
+    pub fn set_category_app(&mut self, category_id: &str, exec: String) {
+        self.config.set_selected(category_id, exec);
+        self.rebuild_cache();
+        self.config.save();
+    }
+
+    /// Clear selected app (reverts to default)
+    pub fn clear_category_app(&mut self, category_id: &str) {
+        self.config.selections.remove(category_id);
+        self.rebuild_cache();
+        self.config.save();
+    }
+
+    /// Move a category in the grid
     pub fn move_category(&mut self, from: usize, to: usize) {
         self.config.move_category(from, to);
         self.rebuild_cache();
-        self.config.save(); // Persist changes
+        self.config.save();
     }
-}
 
-/// Information about a category for rendering
-#[derive(Debug, Clone)]
-pub struct CategoryInfo {
-    pub category: AppCategory,
-    pub name: String,
-    pub selected_exec: Option<String>,
-    pub available_count: usize,
-    pub icon: Option<String>,
-    pub color: [f32; 4],
+    /// Check if a category is customizable
+    pub fn is_customizable(&self, category_id: &str) -> bool {
+        self.categories.get(category_id)
+            .map(|c| c.customizable)
+            .unwrap_or(true)
+    }
 }
