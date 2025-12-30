@@ -122,6 +122,11 @@ pub fn spawn_as_user(cmd: &str, socket_name: &str, text_scale: f64) -> Result<()
                 command.env("XDG_CACHE_HOME", format!("{}/.cache", home));
                 command.env("XDG_STATE_HOME", format!("{}/.local/state", home));
 
+                // Set PulseAudio and D-Bus to user's runtime dir (not our custom one)
+                let user_runtime = format!("/run/user/{}", uid);
+                command.env("PULSE_SERVER", format!("unix:{}/pulse/native", user_runtime));
+                command.env("DBUS_SESSION_BUS_ADDRESS", format!("unix:path={}/bus", user_runtime));
+
                 // Use pre_exec to drop privileges in the child before exec
                 // This is unsafe because we're modifying process state
                 unsafe {
@@ -234,6 +239,11 @@ pub fn spawn_as_user_hwcomposer(cmd: &str, socket_name: &str, text_scale: f64) -
                 command.env("XDG_DATA_HOME", format!("{}/.local/share", home));
                 command.env("XDG_CACHE_HOME", format!("{}/.cache", home));
                 command.env("XDG_STATE_HOME", format!("{}/.local/state", home));
+
+                // Set PulseAudio and D-Bus to user's runtime dir (not our custom one)
+                let user_runtime = format!("/run/user/{}", uid);
+                command.env("PULSE_SERVER", format!("unix:{}/pulse/native", user_runtime));
+                command.env("DBUS_SESSION_BUS_ADDRESS", format!("unix:path={}/bus", user_runtime));
 
                 // Use pre_exec to drop privileges in the child before exec
                 unsafe {
