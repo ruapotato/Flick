@@ -25,8 +25,8 @@ except ImportError:
     HAS_DBUS = False
     print("Warning: gi.repository not available, using mock mode")
 
-# Paths
-STATE_DIR = os.path.expanduser("~/.local/state/flick")
+# Paths - use droidian user's state dir (daemon runs as root but data belongs to user)
+STATE_DIR = "/home/droidian/.local/state/flick"
 HISTORY_FILE = os.path.join(STATE_DIR, "call_history.json")
 STATUS_FILE = "/tmp/flick_phone_status"
 CMD_FILE = "/tmp/flick_phone_cmd"
