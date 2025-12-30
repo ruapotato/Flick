@@ -85,9 +85,12 @@ Window {
                     callerNumber = status.number || "Unknown"
                     callDuration = 0
                 } else if (newState === "active") {
-                    if (callState === "dialing" || callState === "incoming") {
-                        callState = "active"
+                    // Always show in-call UI for active calls (may have been answered from lock screen)
+                    if (!inCall) {
+                        inCall = true
+                        callerNumber = status.number || "Unknown"
                     }
+                    callState = "active"
                     callDuration = status.duration || 0
                 } else if (newState === "idle" && inCall) {
                     // Call ended - add to history
