@@ -1004,19 +1004,14 @@ fn handle_input_event(
                                 state.switcher_return_start_progress = *progress;
                                 info!("Switcher return: captured start_progress={:.3}", *progress);
                             }
-                            // Normalize progress: 0 at start, 1 at completion threshold
-                            let start = state.switcher_return_start_progress;
-                            let normalized = if start < 1.0 {
-                                (progress - start) / (1.0 - start)
-                            } else {
-                                0.0
-                            };
-                            let normalized = normalized.clamp(0.0, 1.0);
-                            // Use same 3.5 scale as outward gestures (3.5 * 0.3 = 105% of screen)
-                            let offset = -3.5 * (1.0 - normalized);
-                            info!("Switcher return: start={:.3}, normalized={:.3}, offset={:.3}", start, normalized, offset);
+                            // Use 1:1 finger tracking like outward gestures
+                            // Start at -3.5 (off-screen left), move toward 0 as finger moves
+                            let progress_delta = progress - state.switcher_return_start_progress;
+                            let offset = (-3.5 + progress_delta).min(0.0);
+                            info!("Switcher return: start={:.3}, delta={:.3}, offset={:.3}",
+                                  state.switcher_return_start_progress, progress_delta, offset);
                             // Return from Switcher: icons slide in from left
-                            state.switcher_return_progress = normalized;
+                            state.switcher_return_progress = progress_delta.clamp(0.0, 1.0);
                             state.shell.home_push_offset = offset;
                         } else {
                             // Going to QS: push icons right
@@ -1036,19 +1031,14 @@ fn handle_input_event(
                                 state.qs_return_start_progress = *progress;
                                 info!("QS return: captured start_progress={:.3}", *progress);
                             }
-                            // Normalize progress: 0 at start, 1 at completion threshold
-                            let start = state.qs_return_start_progress;
-                            let normalized = if start < 1.0 {
-                                (progress - start) / (1.0 - start)
-                            } else {
-                                0.0
-                            };
-                            let normalized = normalized.clamp(0.0, 1.0);
-                            // Use same 3.5 scale as outward gestures (3.5 * 0.3 = 105% of screen)
-                            let offset = 3.5 * (1.0 - normalized);
-                            info!("QS return: start={:.3}, normalized={:.3}, offset={:.3}", start, normalized, offset);
+                            // Use 1:1 finger tracking like outward gestures
+                            // Start at 3.5 (off-screen right), move toward 0 as finger moves
+                            let progress_delta = progress - state.qs_return_start_progress;
+                            let offset = (3.5 - progress_delta).max(0.0);
+                            info!("QS return: start={:.3}, delta={:.3}, offset={:.3}",
+                                  state.qs_return_start_progress, progress_delta, offset);
                             // Return from QS: icons slide in from right
-                            state.qs_return_progress = normalized;
+                            state.qs_return_progress = progress_delta.clamp(0.0, 1.0);
                             state.shell.home_push_offset = offset;
                         } else {
                             // Going to Switcher: push icons left
