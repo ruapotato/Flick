@@ -16,11 +16,69 @@ Window {
     property string stateDir: "/home/droidian/.local/state/flick"
     property string wallpaperPath: ""
 
+    // Incoming call state
+    property bool hasIncomingCall: false
+    property string incomingCaller: ""
+
     Component.onCompleted: {
         console.log("Lock screen started")
         console.log("stateDir:", stateDir)
         loadConfig()
         loadDisplayConfig()
+    }
+
+    // Poll for incoming calls
+    Timer {
+        interval: 500
+        running: true
+        repeat: true
+        onTriggered: checkPhoneStatus()
+    }
+
+    function checkPhoneStatus() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///tmp/flick_phone_status", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var status = JSON.parse(xhr.responseText)
+                if (status.state === "incoming") {
+                    if (!hasIncomingCall) {
+                        console.log("Incoming call from:", status.number)
+                        triggerHaptic()
+                    }
+                    hasIncomingCall = true
+                    incomingCaller = status.number || "Unknown"
+                } else {
+                    hasIncomingCall = false
+                    incomingCaller = ""
+                }
+            }
+        } catch (e) {
+            // No status file or parse error
+        }
+    }
+
+    function answerCall() {
+        console.log("Answering call")
+        triggerHaptic()
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file:///tmp/flick_phone_cmd")
+        xhr.send(JSON.stringify({action: "answer"}))
+    }
+
+    function rejectCall() {
+        console.log("Rejecting call")
+        triggerHaptic()
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file:///tmp/flick_phone_cmd")
+        xhr.send(JSON.stringify({action: "hangup"}))
+    }
+
+    function triggerHaptic() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file:///tmp/flick_haptic")
+        xhr.send("click")
     }
 
     function loadDisplayConfig() {
@@ -93,6 +151,95 @@ Window {
         onUnlocked: {
             console.log("Unlocked! Quitting...")
             Qt.quit()
+        }
+    }
+
+    // Incoming call overlay
+    Rectangle {
+        id: callOverlay
+        anchors.fill: parent
+        color: "#ee1a1a2e"
+        visible: hasIncomingCall
+        z: 1000
+
+        Column {
+            anchors.centerIn: parent
+            spacing: 30
+
+            // Phone icon
+            Text {
+                text: "📞"
+                font.pixelSize: 72
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            // "Incoming call" label
+            Text {
+                text: "Incoming Call"
+                font.pixelSize: 24
+                color: "#888888"
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            // Caller number
+            Text {
+                text: incomingCaller
+                font.pixelSize: 32
+                font.bold: true
+                color: "#ffffff"
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            // Spacer
+            Item { width: 1; height: 60 }
+
+            // Answer/Reject buttons
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 80
+
+                // Reject button (red)
+                Rectangle {
+                    width: 80
+                    height: 80
+                    radius: 40
+                    color: rejectMouse.pressed ? "#cc3333" : "#e94560"
+
+                    Text {
+                        text: "✕"
+                        font.pixelSize: 36
+                        color: "white"
+                        anchors.centerIn: parent
+                    }
+
+                    MouseArea {
+                        id: rejectMouse
+                        anchors.fill: parent
+                        onClicked: rejectCall()
+                    }
+                }
+
+                // Answer button (green)
+                Rectangle {
+                    width: 80
+                    height: 80
+                    radius: 40
+                    color: answerMouse.pressed ? "#33cc33" : "#4ade80"
+
+                    Text {
+                        text: "✓"
+                        font.pixelSize: 36
+                        color: "white"
+                        anchors.centerIn: parent
+                    }
+
+                    MouseArea {
+                        id: answerMouse
+                        anchors.fill: parent
+                        onClicked: answerCall()
+                    }
+                }
+            }
         }
     }
 }
