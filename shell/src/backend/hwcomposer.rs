@@ -2358,8 +2358,17 @@ pub fn run() -> Result<()> {
             for action in slint_ui.take_pending_phone_actions() {
                 match action {
                     PhoneCallAction::Answer => {
-                        tracing::info!("Phone: user answered call");
+                        tracing::info!("Phone: user answered call - launching phone app");
                         state.system.answer_call();
+                        // Launch the phone app to show in-call UI
+                        state.shell.set_view(crate::shell::ShellView::App);
+                        let text_scale = state.shell.text_scale;
+                        if let Some(socket) = state.socket_name.to_str() {
+                            let phone_exec = r#"sh -c "$HOME/Flick/apps/phone/run_phone.sh""#;
+                            if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(phone_exec, socket, text_scale) {
+                                error!("Failed to launch phone app: {}", e);
+                            }
+                        }
                     }
                     PhoneCallAction::Reject => {
                         tracing::info!("Phone: user rejected call");
