@@ -3197,15 +3197,19 @@ fn render_frame(
                 slint_ui.set_return_gesture_active(in_return_gesture);
             }
 
-            // Render switcher preview during edge gesture (while still in App view)
+            // Render switcher preview during edge gesture
             if switcher_gesture_preview {
                 slint::platform::update_timers_and_animations();
 
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     slint_ui.set_view("switcher");
-                    // Use gesture progress to drive the shrink animation
-                    // gesture_progress goes 0.0 -> 1.0 as you drag
-                    let enter_progress = state.switcher_gesture_progress as f32;
+                    // From App: use gesture progress for shrink animation (full screen → card)
+                    // From Home: skip shrink (already card size), only slide-in effect
+                    let enter_progress = if shell_view == ShellView::App {
+                        state.switcher_gesture_progress as f32
+                    } else {
+                        1.0  // Cards already at card size
+                    };
                     slint_ui.set_switcher_enter_progress(enter_progress);
 
                     // Update window list for preview
