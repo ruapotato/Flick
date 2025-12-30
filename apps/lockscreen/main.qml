@@ -22,6 +22,7 @@ Window {
     property string callNumber: ""
     property int callDuration: 0
     property bool isMuted: false
+    property bool isSpeaker: false
 
     Component.onCompleted: {
         console.log("Lock screen started")
@@ -85,11 +86,12 @@ Window {
     }
 
     function toggleSpeaker() {
-        console.log("Toggling speaker")
+        isSpeaker = !isSpeaker
+        console.log("Toggling speaker:", isSpeaker)
         triggerHaptic()
         var xhr = new XMLHttpRequest()
         xhr.open("PUT", "file:///tmp/flick_phone_cmd")
-        xhr.send(JSON.stringify({action: "speaker", enabled: true}))
+        xhr.send(JSON.stringify({action: "speaker", enabled: isSpeaker}))
     }
 
     function toggleMute() {
@@ -333,24 +335,24 @@ Window {
             // Spacer
             Item { width: 1; height: 40 }
 
-            // Mute and Hang up buttons
+            // Mute, Speaker and Hang up buttons
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 60
+                spacing: 40
 
                 // Mute button
                 Column {
                     spacing: 8
 
                     Rectangle {
-                        width: 70
-                        height: 70
-                        radius: 35
+                        width: 64
+                        height: 64
+                        radius: 32
                         color: isMuted ? "#e94560" : (muteMouse.pressed ? "#444466" : "#333355")
 
                         Text {
                             text: isMuted ? "🔇" : "🎤"
-                            font.pixelSize: 28
+                            font.pixelSize: 24
                             anchors.centerIn: parent
                         }
 
@@ -363,7 +365,38 @@ Window {
 
                     Text {
                         text: isMuted ? "Unmute" : "Mute"
-                        font.pixelSize: 14
+                        font.pixelSize: 12
+                        color: "#888888"
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                }
+
+                // Speaker button
+                Column {
+                    spacing: 8
+
+                    Rectangle {
+                        width: 64
+                        height: 64
+                        radius: 32
+                        color: isSpeaker ? "#4ade80" : (speakerMouse.pressed ? "#444466" : "#333355")
+
+                        Text {
+                            text: "🔊"
+                            font.pixelSize: 24
+                            anchors.centerIn: parent
+                        }
+
+                        MouseArea {
+                            id: speakerMouse
+                            anchors.fill: parent
+                            onClicked: toggleSpeaker()
+                        }
+                    }
+
+                    Text {
+                        text: isSpeaker ? "Earpiece" : "Speaker"
+                        font.pixelSize: 12
                         color: "#888888"
                         anchors.horizontalCenter: parent.horizontalCenter
                     }
@@ -374,14 +407,14 @@ Window {
                     spacing: 8
 
                     Rectangle {
-                        width: 70
-                        height: 70
-                        radius: 35
+                        width: 64
+                        height: 64
+                        radius: 32
                         color: hangupMouse.pressed ? "#cc3333" : "#e94560"
 
                         Text {
                             text: "✕"
-                            font.pixelSize: 32
+                            font.pixelSize: 28
                             color: "white"
                             anchors.centerIn: parent
                         }
@@ -394,8 +427,8 @@ Window {
                     }
 
                     Text {
-                        text: "End Call"
-                        font.pixelSize: 14
+                        text: "End"
+                        font.pixelSize: 12
                         color: "#888888"
                         anchors.horizontalCenter: parent.horizontalCenter
                     }

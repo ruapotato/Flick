@@ -22,6 +22,7 @@ Window {
     property int callDuration: 0
     property int currentTab: 0  // 0 = dialpad, 1 = history
     property bool speakerOn: false
+    property bool muteOn: false
 
     // Call history model
     ListModel {
@@ -153,6 +154,7 @@ Window {
         inCall = false
         callState = "idle"
         speakerOn = false
+        muteOn = false
     }
 
     function answer() {
@@ -164,6 +166,12 @@ Window {
     function toggleSpeaker() {
         speakerOn = !speakerOn
         var cmd = JSON.stringify({action: "speaker", enabled: speakerOn})
+        console.log("CMD:" + cmd)
+    }
+
+    function toggleMute() {
+        muteOn = !muteOn
+        var cmd = JSON.stringify({action: "mute", enabled: muteOn})
         console.log("CMD:" + cmd)
     }
 
@@ -596,11 +604,45 @@ Window {
                     }
                 }
 
+                // Mute toggle (visible during active call)
+                Rectangle {
+                    width: 80 * textScale
+                    height: 80 * textScale
+                    radius: 40 * textScale
+                    color: muteOn ? "#e94560" : (muteArea.pressed ? "#3a3a4e" : "#2a2a3e")
+                    visible: callState === "active" || callState === "dialing"
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 4
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: muteOn ? "🔇" : "🎤"
+                            font.pixelSize: 24
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: muteOn ? "Muted" : "Mute"
+                            color: muteOn ? "white" : "#888"
+                            font.pixelSize: 10 * textScale
+                            font.weight: Font.Bold
+                        }
+                    }
+
+                    MouseArea {
+                        id: muteArea
+                        anchors.fill: parent
+                        onClicked: toggleMute()
+                    }
+                }
+
                 // Speaker toggle (visible during active call)
                 Rectangle {
-                    width: 90 * textScale
-                    height: 90 * textScale
-                    radius: 45 * textScale
+                    width: 80 * textScale
+                    height: 80 * textScale
+                    radius: 40 * textScale
                     color: speakerOn ? "#3498db" : (speakerArea.pressed ? "#3a3a4e" : "#2a2a3e")
                     visible: callState === "active" || callState === "dialing"
 
@@ -611,14 +653,14 @@ Window {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "🔊"
-                            font.pixelSize: 28
+                            font.pixelSize: 24
                         }
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: speakerOn ? "ON" : "OFF"
                             color: speakerOn ? "white" : "#888"
-                            font.pixelSize: 12 * textScale
+                            font.pixelSize: 10 * textScale
                             font.weight: Font.Bold
                         }
                     }
