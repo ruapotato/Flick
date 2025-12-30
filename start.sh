@@ -39,10 +39,10 @@ start_daemons() {
     # Start phone helper daemon as root (needed for oFono D-Bus access)
     if [ -f "$FLICK_DIR/apps/phone/phone_helper.py" ]; then
         echo "  Starting phone daemon..."
-        # Clean up old status files to avoid permission issues
-        sudo rm -f /tmp/flick_phone_status /tmp/flick_phone_cmd 2>/dev/null
-        sudo python3 "$FLICK_DIR/apps/phone/phone_helper.py" daemon \
-            > /tmp/flick_phone.log 2>&1 &
+        # Clean up old status files and start daemon as root
+        sudo sh -c "rm -f /tmp/flick_phone_status /tmp/flick_phone_cmd; \
+            nohup python3 '$FLICK_DIR/apps/phone/phone_helper.py' daemon \
+            > /tmp/flick_phone.log 2>&1 &"
     fi
 }
 
