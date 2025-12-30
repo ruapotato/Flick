@@ -2701,6 +2701,7 @@ export component FlickShell inherits Window {
     // Home screen scroll state
     in property <float> home-scroll: 0;  // Vertical scroll offset in pixels
     in property <float> home-push-offset: 0;  // Horizontal push offset (-1.0 to 1.0)
+    in property <bool> return-gesture-active: false;  // True when swiping back to home from switcher/qs
 
     // Keyboard state
     in property <bool> keyboard-visible: false;
@@ -2770,8 +2771,8 @@ export component FlickShell inherits Window {
         image-fit: cover;
     }
 
-    // Home screen - only visible in home view
-    if current-view == "home": HomeScreen {
+    // Home screen - visible in home view OR during return gestures (to animate icons sliding back)
+    if current-view == "home" || return-gesture-active: HomeScreen {
         width: 100%;
         height: 100%;
         categories: categories;

@@ -654,6 +654,11 @@ impl SlintShell {
         self.shell.set_home_push_offset(offset);
     }
 
+    /// Set return gesture active state (shows HomeScreen during return gestures)
+    pub fn set_return_gesture_active(&self, active: bool) {
+        self.shell.set_return_gesture_active(active);
+    }
+
     /// Set switcher enter animation progress (0.0 = full screen, 1.0 = card size)
     pub fn set_switcher_enter_progress(&self, progress: f32) {
         self.shell.set_switcher_enter_progress(progress);

@@ -2955,8 +2955,9 @@ fn render_frame(
                                 slint_ui.set_wifi_enabled(state.system.wifi_enabled);
                                 slint_ui.set_bluetooth_enabled(state.system.bluetooth_enabled);
                                 // UI icons are loaded when QuickSettings is first opened (see edge gesture handler)
-                                // Sync push offset for return gesture animation
+                                // Sync push offset and return gesture state for animation
                                 slint_ui.set_home_push_offset(state.shell.home_push_offset as f32);
+                                slint_ui.set_return_gesture_active(state.qs_return_active);
                             }
                             ShellView::Switcher => {
                                 slint_ui.set_view("switcher");
@@ -3079,6 +3080,7 @@ fn render_frame(
                                 slint_ui.set_switcher_windows(windows);
                                 // Sync push offset for return gesture animation
                                 slint_ui.set_home_push_offset(state.shell.home_push_offset as f32);
+                                slint_ui.set_return_gesture_active(state.switcher_return_active);
                             }
                             ShellView::PickDefault => {
                                 slint_ui.set_view("pick-default");
