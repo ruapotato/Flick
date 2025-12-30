@@ -1184,6 +1184,7 @@ component HomeScreen inherits Rectangle {
     in property <float> text-scale: 2.0;
     in property <bool> has-wallpaper: false;
     in property <float> scroll-offset: 0;  // Vertical scroll in pixels
+    in property <float> push-offset: 0;    // Horizontal push offset (-1.0 to 1.0)
 
     callback app-tapped(int);
     callback drag-started(int, float, float);
@@ -1207,6 +1208,7 @@ component HomeScreen inherits Rectangle {
     property <int> num-rows: categories.length > 20 ? 6 : (categories.length > 16 ? 5 : (categories.length > 12 ? 4 : (categories.length > 8 ? 3 : (categories.length > 4 ? 2 : 1))));
     property <length> tile-width: (grid-width - grid-spacing * 3) / 4;
     property <length> tile-height: (grid-height - grid-spacing * (num-rows - 1)) / num-rows;
+    property <length> push-amount: push-offset * root.width * 0.3;  // Icons move 30% of screen width
 
     // Status bar
     StatusBar {
@@ -1231,7 +1233,7 @@ component HomeScreen inherits Rectangle {
     // App tiles with absolute positioning (inside clipping container)
     // Row 0
     if categories.length > 0: AppTile {
-        x: grid-padding;
+        x: grid-padding + push-amount;
         y: 0px - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1245,7 +1247,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(0); }
     }
     if categories.length > 1: AppTile {
-        x: grid-padding + tile-width + grid-spacing;
+        x: grid-padding + tile-width + grid-spacing + push-amount;
         y: 0px - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1259,7 +1261,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(1); }
     }
     if categories.length > 2: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 2;
+        x: grid-padding + (tile-width + grid-spacing) * 2 + push-amount;
         y: 0px - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1273,7 +1275,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(2); }
     }
     if categories.length > 3: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 3;
+        x: grid-padding + (tile-width + grid-spacing) * 3 + push-amount;
         y: 0px - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1289,7 +1291,7 @@ component HomeScreen inherits Rectangle {
 
     // Row 1
     if categories.length > 4: AppTile {
-        x: grid-padding;
+        x: grid-padding + push-amount;
         y: tile-height + grid-spacing - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1303,7 +1305,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(4); }
     }
     if categories.length > 5: AppTile {
-        x: grid-padding + tile-width + grid-spacing;
+        x: grid-padding + tile-width + grid-spacing + push-amount;
         y: tile-height + grid-spacing - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1317,7 +1319,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(5); }
     }
     if categories.length > 6: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 2;
+        x: grid-padding + (tile-width + grid-spacing) * 2 + push-amount;
         y: tile-height + grid-spacing - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1331,7 +1333,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(6); }
     }
     if categories.length > 7: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 3;
+        x: grid-padding + (tile-width + grid-spacing) * 3 + push-amount;
         y: tile-height + grid-spacing - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1347,7 +1349,7 @@ component HomeScreen inherits Rectangle {
 
     // Row 2
     if categories.length > 8: AppTile {
-        x: grid-padding;
+        x: grid-padding + push-amount;
         y: (tile-height + grid-spacing) * 2 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1361,7 +1363,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(8); }
     }
     if categories.length > 9: AppTile {
-        x: grid-padding + tile-width + grid-spacing;
+        x: grid-padding + tile-width + grid-spacing + push-amount;
         y: (tile-height + grid-spacing) * 2 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1375,7 +1377,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(9); }
     }
     if categories.length > 10: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 2;
+        x: grid-padding + (tile-width + grid-spacing) * 2 + push-amount;
         y: (tile-height + grid-spacing) * 2 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1389,7 +1391,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(10); }
     }
     if categories.length > 11: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 3;
+        x: grid-padding + (tile-width + grid-spacing) * 3 + push-amount;
         y: (tile-height + grid-spacing) * 2 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1405,7 +1407,7 @@ component HomeScreen inherits Rectangle {
 
     // Row 3
     if categories.length > 12: AppTile {
-        x: grid-padding;
+        x: grid-padding + push-amount;
         y: (tile-height + grid-spacing) * 3 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1419,7 +1421,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(12); }
     }
     if categories.length > 13: AppTile {
-        x: grid-padding + tile-width + grid-spacing;
+        x: grid-padding + tile-width + grid-spacing + push-amount;
         y: (tile-height + grid-spacing) * 3 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1433,7 +1435,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(13); }
     }
     if categories.length > 14: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 2;
+        x: grid-padding + (tile-width + grid-spacing) * 2 + push-amount;
         y: (tile-height + grid-spacing) * 3 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1447,7 +1449,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(14); }
     }
     if categories.length > 15: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 3;
+        x: grid-padding + (tile-width + grid-spacing) * 3 + push-amount;
         y: (tile-height + grid-spacing) * 3 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1463,7 +1465,7 @@ component HomeScreen inherits Rectangle {
 
     // Row 4
     if categories.length > 16: AppTile {
-        x: grid-padding;
+        x: grid-padding + push-amount;
         y: (tile-height + grid-spacing) * 4 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1477,7 +1479,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(16); }
     }
     if categories.length > 17: AppTile {
-        x: grid-padding + tile-width + grid-spacing;
+        x: grid-padding + tile-width + grid-spacing + push-amount;
         y: (tile-height + grid-spacing) * 4 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1491,7 +1493,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(17); }
     }
     if categories.length > 18: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 2;
+        x: grid-padding + (tile-width + grid-spacing) * 2 + push-amount;
         y: (tile-height + grid-spacing) * 4 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1505,7 +1507,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(18); }
     }
     if categories.length > 19: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 3;
+        x: grid-padding + (tile-width + grid-spacing) * 3 + push-amount;
         y: (tile-height + grid-spacing) * 4 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1521,7 +1523,7 @@ component HomeScreen inherits Rectangle {
 
     // Row 5
     if categories.length > 20: AppTile {
-        x: grid-padding;
+        x: grid-padding + push-amount;
         y: (tile-height + grid-spacing) * 5 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1535,7 +1537,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(20); }
     }
     if categories.length > 21: AppTile {
-        x: grid-padding + tile-width + grid-spacing;
+        x: grid-padding + tile-width + grid-spacing + push-amount;
         y: (tile-height + grid-spacing) * 5 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1549,7 +1551,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(21); }
     }
     if categories.length > 22: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 2;
+        x: grid-padding + (tile-width + grid-spacing) * 2 + push-amount;
         y: (tile-height + grid-spacing) * 5 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1563,7 +1565,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(22); }
     }
     if categories.length > 23: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 3;
+        x: grid-padding + (tile-width + grid-spacing) * 3 + push-amount;
         y: (tile-height + grid-spacing) * 5 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1579,7 +1581,7 @@ component HomeScreen inherits Rectangle {
 
     // Row 6
     if categories.length > 24: AppTile {
-        x: grid-padding;
+        x: grid-padding + push-amount;
         y: (tile-height + grid-spacing) * 6 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1593,7 +1595,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(24); }
     }
     if categories.length > 25: AppTile {
-        x: grid-padding + tile-width + grid-spacing;
+        x: grid-padding + tile-width + grid-spacing + push-amount;
         y: (tile-height + grid-spacing) * 6 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1607,7 +1609,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(25); }
     }
     if categories.length > 26: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 2;
+        x: grid-padding + (tile-width + grid-spacing) * 2 + push-amount;
         y: (tile-height + grid-spacing) * 6 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1621,7 +1623,7 @@ component HomeScreen inherits Rectangle {
         clicked => { app-tapped(26); }
     }
     if categories.length > 27: AppTile {
-        x: grid-padding + (tile-width + grid-spacing) * 3;
+        x: grid-padding + (tile-width + grid-spacing) * 3 + push-amount;
         y: (tile-height + grid-spacing) * 6 - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -1640,7 +1642,7 @@ component HomeScreen inherits Rectangle {
     if wiggle-mode && categories.length < 28: NewCategoryTile {
         // Position at index = categories.length (next available slot)
         // Column = index % 4, Row = index / 4
-        x: grid-padding + (tile-width + grid-spacing) * mod(categories.length, 4);
+        x: grid-padding + (tile-width + grid-spacing) * mod(categories.length, 4) + push-amount;
         y: (tile-height + grid-spacing) * floor(categories.length / 4) - scroll-offset * 1px;
         width: tile-width;
         height: tile-height;
@@ -2698,6 +2700,7 @@ export component FlickShell inherits Window {
 
     // Home screen scroll state
     in property <float> home-scroll: 0;  // Vertical scroll offset in pixels
+    in property <float> home-push-offset: 0;  // Horizontal push offset (-1.0 to 1.0)
 
     // Keyboard state
     in property <bool> keyboard-visible: false;
@@ -2782,6 +2785,7 @@ export component FlickShell inherits Window {
         text-scale: root.text-scale;
         has-wallpaper: root.has-wallpaper;
         scroll-offset: root.home-scroll;
+        push-offset: root.home-push-offset;
         app-tapped(i) => { app-tapped(i); }
         new-category-clicked => { new-category-clicked(); }
     }

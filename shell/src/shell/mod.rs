@@ -230,6 +230,8 @@ pub struct Shell {
     pub switcher_enter_start: Option<std::time::Instant>,
     /// Scroll offset for app grid (home screen)
     pub home_scroll: f64,
+    /// Horizontal push offset for edge swipe gestures (-1.0 to 1.0)
+    pub home_push_offset: f64,
     /// Home scroll momentum velocity (pixels per second)
     pub home_scroll_velocity: f64,
     /// Home scroll is animating (momentum)
@@ -373,6 +375,7 @@ impl Shell {
             switcher_enter_anim: false,
             switcher_enter_start: None,
             home_scroll: 0.0,
+            home_push_offset: 0.0,
             home_scroll_velocity: 0.0,
             home_scroll_animating: false,
             home_scroll_last_update: None,

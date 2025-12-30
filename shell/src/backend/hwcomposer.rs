@@ -682,17 +682,33 @@ fn handle_input_event(
                         }
                     }
 
-                    // Left edge = Quick Settings (blocked on lock screen)
+                    // Left edge gestures (blocked on lock screen)
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
-                        state.qs_gesture_active = true;
-                        state.qs_gesture_progress = 0.0;
-                        info!("QS gesture STARTED");
+                        if shell_view == crate::shell::ShellView::Switcher {
+                            // Return from Switcher to Home
+                            state.switcher_return_active = true;
+                            state.switcher_return_progress = 0.0;
+                            info!("Switcher return gesture STARTED");
+                        } else {
+                            // Quick Settings from Home/App
+                            state.qs_gesture_active = true;
+                            state.qs_gesture_progress = 0.0;
+                            info!("QS gesture STARTED");
+                        }
                     }
-                    // Right edge = App Switcher (blocked on lock screen)
+                    // Right edge gestures (blocked on lock screen)
                     if *edge == crate::input::Edge::Right && shell_view != crate::shell::ShellView::LockScreen {
-                        state.switcher_gesture_active = true;
-                        state.switcher_gesture_progress = 0.0;
-                        info!("Switcher gesture STARTED");
+                        if shell_view == crate::shell::ShellView::QuickSettings {
+                            // Return from QuickSettings to Home
+                            state.qs_return_active = true;
+                            state.qs_return_progress = 0.0;
+                            info!("QS return gesture STARTED");
+                        } else {
+                            // Switcher from Home/App
+                            state.switcher_gesture_active = true;
+                            state.switcher_gesture_progress = 0.0;
+                            info!("Switcher gesture STARTED");
+                        }
                     }
                     // Bottom edge = Home gesture (swipe up from bottom)
                     if *edge == crate::input::Edge::Bottom && shell_view != crate::shell::ShellView::LockScreen {
@@ -929,15 +945,25 @@ fn handle_input_event(
                         }
                     }
 
-                    // Left edge = Quick Settings
+                    // Left edge gestures
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
-                        state.qs_gesture_active = true;
-                        state.qs_gesture_progress = 0.0;
+                        if shell_view == crate::shell::ShellView::Switcher {
+                            state.switcher_return_active = true;
+                            state.switcher_return_progress = 0.0;
+                        } else {
+                            state.qs_gesture_active = true;
+                            state.qs_gesture_progress = 0.0;
+                        }
                     }
-                    // Right edge = App Switcher
+                    // Right edge gestures
                     if *edge == crate::input::Edge::Right && shell_view != crate::shell::ShellView::LockScreen {
-                        state.switcher_gesture_active = true;
-                        state.switcher_gesture_progress = 0.0;
+                        if shell_view == crate::shell::ShellView::QuickSettings {
+                            state.qs_return_active = true;
+                            state.qs_return_progress = 0.0;
+                        } else {
+                            state.switcher_gesture_active = true;
+                            state.switcher_gesture_progress = 0.0;
+                        }
                     }
                     // Bottom edge = Home gesture (swipe up)
                     if *edge == crate::input::Edge::Bottom && shell_view != crate::shell::ShellView::LockScreen {
@@ -952,15 +978,35 @@ fn handle_input_event(
                 // Handle edge swipe progress updates
                 if let crate::input::GestureEvent::EdgeSwipeUpdate { edge, progress, .. } = &gesture_event {
                     let shell_view = state.shell.view;
-                    // Left edge = Quick Settings
+                    // Left edge gestures
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
-                        state.qs_gesture_active = true;
-                        state.qs_gesture_progress = progress.clamp(0.0, 1.5);
+                        if state.switcher_return_active {
+                            // Return from Switcher: icons slide in from left
+                            state.switcher_return_progress = progress.clamp(0.0, 1.0);
+                            state.shell.home_push_offset = -1.0 + progress.clamp(0.0, 1.0);
+                        } else {
+                            // Going to QS: push icons right
+                            state.qs_gesture_active = true;
+                            state.qs_gesture_progress = progress.clamp(0.0, 1.5);
+                            if shell_view == crate::shell::ShellView::Home {
+                                state.shell.home_push_offset = progress.clamp(0.0, 1.0);
+                            }
+                        }
                     }
-                    // Right edge = App Switcher
+                    // Right edge gestures
                     if *edge == crate::input::Edge::Right && shell_view != crate::shell::ShellView::LockScreen {
-                        state.switcher_gesture_active = true;
-                        state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
+                        if state.qs_return_active {
+                            // Return from QS: icons slide in from right
+                            state.qs_return_progress = progress.clamp(0.0, 1.0);
+                            state.shell.home_push_offset = 1.0 - progress.clamp(0.0, 1.0);
+                        } else {
+                            // Going to Switcher: push icons left
+                            state.switcher_gesture_active = true;
+                            state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
+                            if shell_view == crate::shell::ShellView::Home {
+                                state.shell.home_push_offset = -progress.clamp(0.0, 1.0);
+                            }
+                        }
                     }
                     // Bottom edge = Home gesture (swipe up)
                     if *edge == crate::input::Edge::Bottom && shell_view != crate::shell::ShellView::LockScreen {
@@ -1141,9 +1187,18 @@ fn handle_input_event(
 
                 // Handle edge swipe completion
                 if let crate::input::GestureEvent::EdgeSwipeEnd { edge, completed, .. } = &gesture_event {
-                    // Left edge = Quick Settings
+                    // Left edge gestures
                     if *edge == crate::input::Edge::Left {
-                        if *completed && state.qs_gesture_active {
+                        if state.switcher_return_active {
+                            // Return from Switcher to Home
+                            if *completed {
+                                state.shell.set_view(crate::shell::ShellView::Home);
+                                info!("Returned to Home from Switcher via gesture");
+                            }
+                            state.switcher_return_active = false;
+                            state.switcher_return_progress = 0.0;
+                            state.shell.home_push_offset = 0.0;
+                        } else if *completed && state.qs_gesture_active {
                             // Cancel touch sequences before leaving App view
                             if let Some(touch) = state.seat.get_touch() {
                                 touch.cancel(state);
@@ -1162,14 +1217,27 @@ fn handle_input_event(
                                     info!("UI icons loaded and set to Slint");
                                 }
                             }
+                            state.shell.home_push_offset = 0.0;
                             info!("Quick Settings OPENED via gesture");
+                        } else {
+                            // Gesture cancelled
+                            state.shell.home_push_offset = 0.0;
                         }
                         state.qs_gesture_active = false;
                         state.qs_gesture_progress = 0.0;
                     }
-                    // Right edge = App Switcher
+                    // Right edge gestures
                     if *edge == crate::input::Edge::Right {
-                        if *completed && state.switcher_gesture_active {
+                        if state.qs_return_active {
+                            // Return from QuickSettings to Home
+                            if *completed {
+                                state.shell.set_view(crate::shell::ShellView::Home);
+                                info!("Returned to Home from QuickSettings via gesture");
+                            }
+                            state.qs_return_active = false;
+                            state.qs_return_progress = 0.0;
+                            state.shell.home_push_offset = 0.0;
+                        } else if *completed && state.switcher_gesture_active {
                             // Cancel touch sequences before leaving App view
                             if let Some(touch) = state.seat.get_touch() {
                                 touch.cancel(state);
@@ -1295,6 +1363,10 @@ fn handle_input_event(
 
                                 slint_ui.set_switcher_windows(windows);
                             }
+                            state.shell.home_push_offset = 0.0;
+                        } else if !state.qs_return_active {
+                            // Gesture cancelled, reset push offset
+                            state.shell.home_push_offset = 0.0;
                         }
                         state.switcher_gesture_active = false;
                         state.switcher_gesture_progress = 0.0;
@@ -2831,6 +2903,8 @@ fn render_frame(
                                 slint_ui.set_wiggle_mode(state.shell.wiggle_mode);
                                 // Sync home screen scroll offset (physics updated in main loop)
                                 slint_ui.set_home_scroll(state.shell.home_scroll as f32);
+                                // Sync home screen push offset for edge swipe gestures
+                                slint_ui.set_home_push_offset(state.shell.home_push_offset as f32);
 
                                 // Update wiggle mode animation and state
                                 if state.shell.wiggle_mode {
