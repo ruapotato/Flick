@@ -19,7 +19,7 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 
 Droidian and similar Android-based Linux distributions require **HWComposer** integration to access the GPU.
 
-**Current status (Dec 2025):** Early prototype. HWComposer backend works, core shell functional, with working voice calls and SMS.
+**Current status (Dec 2025):** Early prototype. HWComposer backend works, core shell functional, with working voice calls, SMS, and **auto-boot via systemd**.
 
 ✅ **Working:**
 - Display output via hwcomposer (tested on Pixel 3a)
@@ -40,6 +40,7 @@ Droidian and similar Android-based Linux distributions require **HWComposer** in
 - Camera with live video preview (via droidian-camera + AAL backend)
 - **Voice calls** with incoming/outgoing call UI, mute, speaker, call history (via oFono, 2G mode)
 - **SMS messaging** send/receive with notifications (via ModemManager)
+- **Auto-boot via systemd** - starts on boot, replaces Phosh
 
 ⚠️ **Known Issues:**
 - X11/XWayland apps do not work (Firefox, etc.) - native Wayland apps only
@@ -186,7 +187,63 @@ Apps communicate with the shell via:
 
 All gestures track 1:1 with your finger for responsive, natural feel.
 
-## Building
+## Installation
+
+### Quick Install (Droidian)
+
+The install script handles everything: dependencies, Rust toolchain, building, and systemd service setup.
+
+```bash
+# Clone and install
+git clone https://github.com/ruapotato/Flick.git
+cd Flick
+sudo ./install.sh
+```
+
+This will:
+- Install build dependencies
+- Install Rust (if needed)
+- Build Flick from source
+- Create and enable systemd services
+- Mask Phosh to prevent conflicts
+- Configure audio fixes for Droidian
+
+After installation, reboot and Flick will start automatically.
+
+### What Gets Installed
+
+| Service | Description |
+|---------|-------------|
+| `flick.service` | Main compositor (runs as root, drops privileges for apps) |
+| `flick-phone-helper.service` | Phone/oFono daemon for voice calls |
+| `flick-messaging.service` | SMS daemon (ModemManager) |
+| `flick-audio-keepalive.service` | Audio fix for Android HAL |
+
+### Manual Start/Stop
+
+```bash
+# Start Flick (stops Phosh first)
+sudo systemctl stop phosh
+sudo systemctl start flick flick-phone-helper flick-messaging
+
+# Stop Flick
+sudo systemctl stop flick flick-phone-helper flick-messaging
+
+# Switch back to Phosh
+sudo systemctl unmask phosh
+sudo systemctl enable phosh
+sudo systemctl start phosh
+```
+
+### View Logs
+
+```bash
+journalctl -u flick -f           # Compositor logs
+journalctl -u flick-phone-helper -f  # Phone daemon
+journalctl -u flick-messaging -f     # SMS daemon
+```
+
+## Building from Source
 
 ### Dependencies (Debian/Ubuntu/Mobian/Droidian)
 
@@ -194,7 +251,7 @@ All gestures track 1:1 with your finger for responsive, natural feel.
 # Compositor dependencies
 sudo apt install libseat-dev libinput-dev libudev-dev libgbm-dev \
                  libegl-dev libdrm-dev libxkbcommon-dev pkg-config \
-                 libpam0g-dev
+                 libpam0g-dev libpixman-1-dev
 
 # QML app dependencies
 sudo apt install qmlscene qml-module-qtquick2 qml-module-qtquick-window2 \
@@ -206,7 +263,7 @@ sudo apt install qmlscene qml-module-qtquick2 qml-module-qtquick-window2 \
 
 **On Droidian (Android phones):**
 ```bash
-# Start Flick (compositor + background services)
+# Quick start (for development/testing)
 ./start.sh
 
 # Or run in background
