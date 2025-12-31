@@ -145,6 +145,8 @@ pub struct SlintShell {
     pending_lock_actions: Rc<RefCell<Vec<LockScreenAction>>>,
     /// Pending phone call actions (set by callbacks, polled by compositor)
     pending_phone_actions: Rc<RefCell<Vec<PhoneCallAction>>>,
+    /// Pending system menu action (lock, reboot, shutdown)
+    pending_system_action: Rc<RefCell<Option<String>>>,
 }
 
 impl SlintShell {
@@ -337,6 +339,14 @@ impl SlintShell {
             *wiggle_done_clone.borrow_mut() = true;
         });
 
+        // System menu callback
+        let pending_system_action = Rc::new(RefCell::new(None::<String>));
+        let system_clone = pending_system_action.clone();
+        shell.on_system_menu_action(move |action| {
+            info!("System menu action: {}", action);
+            *system_clone.borrow_mut() = Some(action.to_string());
+        });
+
         // New category clicked callback
         let pending_new_category = Rc::new(RefCell::new(false));
         let new_cat_clone = pending_new_category.clone();
@@ -379,6 +389,7 @@ impl SlintShell {
             pending_keyboard_actions,
             pending_lock_actions,
             pending_phone_actions,
+            pending_system_action,
         }
     }
 
@@ -520,9 +531,35 @@ impl SlintShell {
         self.shell.set_context_menu_y(y);
     }
 
-    /// Set context menu highlight (0=none, 1=copy, 2=paste)
+    /// Set context menu highlight (0=none, 1=copy, 2=paste, 3=system)
     pub fn set_context_menu_highlight(&self, highlight: i32) {
         self.shell.set_context_menu_highlight(highlight);
+    }
+
+    /// Set clipboard preview text
+    pub fn set_clipboard_preview(&self, text: &str) {
+        self.shell.set_clipboard_preview(slint::SharedString::from(text));
+    }
+
+    /// Show/hide copied popup notification
+    pub fn set_show_copied_popup(&self, show: bool) {
+        self.shell.set_show_copied_popup(show);
+    }
+
+    /// Set copied popup text
+    pub fn set_copied_popup_text(&self, text: &str) {
+        self.shell.set_copied_popup_text(slint::SharedString::from(text));
+    }
+
+    /// Set copied popup position
+    pub fn set_copied_popup_position(&self, x: f32, y: f32) {
+        self.shell.set_copied_popup_x(x);
+        self.shell.set_copied_popup_y(y);
+    }
+
+    /// Show/hide system menu
+    pub fn set_show_system_menu(&self, show: bool) {
+        self.shell.set_show_system_menu(show);
     }
 
     /// Set wiggle mode state
@@ -725,6 +762,11 @@ impl SlintShell {
     /// Poll for pending phone call actions (answer/reject)
     pub fn take_pending_phone_actions(&self) -> Vec<PhoneCallAction> {
         std::mem::take(&mut *self.pending_phone_actions.borrow_mut())
+    }
+
+    /// Take any pending system menu action
+    pub fn take_pending_system_action(&self) -> Option<String> {
+        self.pending_system_action.borrow_mut().take()
     }
 
     /// Poll for pending switcher window tap (from Slint callback)

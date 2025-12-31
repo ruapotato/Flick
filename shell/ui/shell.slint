@@ -430,11 +430,14 @@ component LongPressPopup inherits Rectangle {
 component CircularContextMenu inherits Rectangle {
     in property <float> center-x: 200;
     in property <float> center-y: 400;
-    in property <int> highlighted-option: 0;  // 0=none, 1=copy, 2=paste
+    in property <int> highlighted-option: 0;  // 0=none, 1=clipboard, 2=paste, 3=system
+    in property <string> clipboard-text: "";  // Current clipboard preview
 
     // Menu dimensions - extra large buttons for easy touch
     property <length> button-size: 180px;
     property <length> button-distance: 200px;  // Distance from center
+    property <length> system-bar-width: 200px;
+    property <length> system-bar-height: 60px;
 
     width: 100%;
     height: 100%;
@@ -442,17 +445,19 @@ component CircularContextMenu inherits Rectangle {
 
     // Hint text at TOP (above finger)
     Text {
-        x: center-x * 1px - 250px;
-        y: center-y * 1px - button-size / 2 - 80px;
-        width: 500px;
-        text: highlighted-option == 0 ? "← Copy    Paste →" :
-              highlighted-option == 1 ? "Release to copy" : "Release to paste";
+        x: center-x * 1px - 300px;
+        y: center-y * 1px - button-size / 2 - 100px;
+        width: 600px;
+        text: highlighted-option == 0 ? "← Clipboard    Paste →" :
+              highlighted-option == 1 ? "Release to view clipboard" :
+              highlighted-option == 2 ? "Release to paste" :
+              "Release for system menu";
         color: #ffffff;
         font-size: 28px;
         horizontal-alignment: center;
     }
 
-    // Copy button (left side)
+    // Clipboard preview button (left side) - shows what's copied
     Rectangle {
         x: center-x * 1px - button-distance - button-size / 2;
         y: center-y * 1px - button-size / 2;
@@ -465,17 +470,19 @@ component CircularContextMenu inherits Rectangle {
 
         VerticalLayout {
             alignment: center;
-            spacing: 12px;
+            spacing: 8px;
+            padding: 10px;
             Text {
                 text: "📋";
-                font-size: 64px;
+                font-size: 48px;
                 horizontal-alignment: center;
             }
             Text {
-                text: "Copy";
+                text: clipboard-text == "" ? "Empty" : clipboard-text;
                 color: #ffffff;
-                font-size: 26px;
+                font-size: 16px;
                 horizontal-alignment: center;
+                overflow: elide;
             }
         }
     }
@@ -496,7 +503,7 @@ component CircularContextMenu inherits Rectangle {
             spacing: 12px;
             Text {
                 text: "📄";
-                font-size: 64px;
+                font-size: 48px;
                 horizontal-alignment: center;
             }
             Text {
@@ -504,6 +511,214 @@ component CircularContextMenu inherits Rectangle {
                 color: #ffffff;
                 font-size: 26px;
                 horizontal-alignment: center;
+            }
+        }
+    }
+
+    // System menu bar (bottom) - horizontal pill shape
+    Rectangle {
+        x: center-x * 1px - system-bar-width / 2;
+        y: center-y * 1px + button-size / 2 + 40px;
+        width: system-bar-width;
+        height: system-bar-height;
+        border-radius: system-bar-height / 2;
+        background: highlighted-option == 3 ? #e94560 : #1a1a24;
+        border-width: 3px;
+        border-color: highlighted-option == 3 ? #e94560 : #333344;
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: 12px;
+            Text {
+                text: "⚙";
+                font-size: 28px;
+                vertical-alignment: center;
+            }
+            Text {
+                text: "System";
+                color: #ffffff;
+                font-size: 22px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// Copied popup notification - appears briefly when something is copied
+component CopiedPopup inherits Rectangle {
+    in property <float> pos-x: 200;
+    in property <float> pos-y: 400;
+    in property <string> copied-text: "";
+
+    x: pos-x * 1px - 150px;
+    y: pos-y * 1px - 80px;
+    width: 300px;
+    height: 70px;
+    border-radius: 20px;
+    background: #1a1a24ee;
+    border-width: 2px;
+    border-color: #4ade80;
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: 12px;
+        padding: 12px;
+
+        Text {
+            text: "✓";
+            color: #4ade80;
+            font-size: 28px;
+            vertical-alignment: center;
+        }
+
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: "Copied!";
+                color: #4ade80;
+                font-size: 18px;
+            }
+            Text {
+                text: copied-text;
+                color: #cccccc;
+                font-size: 14px;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+// System menu - power options (lock, reboot, shutdown)
+component SystemMenu inherits Rectangle {
+    callback action(string);
+
+    width: 100%;
+    height: 100%;
+    background: #000000cc;
+
+    // Center card
+    Rectangle {
+        x: (parent.width - 350px) / 2;
+        y: (parent.height - 400px) / 2;
+        width: 350px;
+        height: 400px;
+        border-radius: 24px;
+        background: #1a1a24;
+        border-width: 2px;
+        border-color: #333344;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 20px;
+            padding: 30px;
+
+            Text {
+                text: "System";
+                color: #ffffff;
+                font-size: 28px;
+                horizontal-alignment: center;
+            }
+
+            // Lock button
+            Rectangle {
+                height: 70px;
+                border-radius: 16px;
+                background: lock-touch.pressed ? #4a9eff : #2a2a34;
+
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 16px;
+                    Text {
+                        text: "🔒";
+                        font-size: 32px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: "Lock Screen";
+                        color: #ffffff;
+                        font-size: 22px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                lock-touch := TouchArea {
+                    clicked => { action("lock"); }
+                }
+            }
+
+            // Reboot button
+            Rectangle {
+                height: 70px;
+                border-radius: 16px;
+                background: reboot-touch.pressed ? #ffaa00 : #2a2a34;
+
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 16px;
+                    Text {
+                        text: "🔄";
+                        font-size: 32px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: "Reboot";
+                        color: #ffffff;
+                        font-size: 22px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                reboot-touch := TouchArea {
+                    clicked => { action("reboot"); }
+                }
+            }
+
+            // Shutdown button
+            Rectangle {
+                height: 70px;
+                border-radius: 16px;
+                background: shutdown-touch.pressed ? #e94560 : #2a2a34;
+
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 16px;
+                    Text {
+                        text: "⏻";
+                        font-size: 32px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: "Power Off";
+                        color: #ffffff;
+                        font-size: 22px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                shutdown-touch := TouchArea {
+                    clicked => { action("shutdown"); }
+                }
+            }
+
+            // Cancel button
+            Rectangle {
+                height: 50px;
+                border-radius: 12px;
+                background: cancel-touch.pressed ? #333344 : transparent;
+                border-width: 1px;
+                border-color: #444455;
+
+                Text {
+                    text: "Cancel";
+                    color: #888899;
+                    font-size: 18px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                cancel-touch := TouchArea {
+                    clicked => { action("cancel"); }
+                }
             }
         }
     }
@@ -2766,7 +2981,18 @@ export component FlickShell inherits Window {
     in property <bool> show-context-menu: false;
     in property <float> context-menu-x: 200;
     in property <float> context-menu-y: 400;
-    in property <int> context-menu-highlight: 0;  // 0=none, 1=copy, 2=paste
+    in property <int> context-menu-highlight: 0;  // 0=none, 1=copy, 2=paste, 3=system
+    in property <string> clipboard-preview: "";  // Current clipboard content preview
+
+    // Copied popup notification
+    in property <bool> show-copied-popup: false;
+    in property <string> copied-popup-text: "";
+    in property <float> copied-popup-x: 200;
+    in property <float> copied-popup-y: 400;
+
+    // System menu state
+    in property <bool> show-system-menu: false;
+    callback system-menu-action(string);  // lock, reboot, shutdown
 
     // Volume overlay state (shown when hardware volume buttons pressed)
     in property <bool> show-volume-overlay: false;
@@ -2974,6 +3200,19 @@ export component FlickShell inherits Window {
         center-x: context-menu-x;
         center-y: context-menu-y;
         highlighted-option: context-menu-highlight;
+        clipboard-text: clipboard-preview;
+    }
+
+    // Copied popup notification
+    if show-copied-popup: CopiedPopup {
+        pos-x: copied-popup-x;
+        pos-y: copied-popup-y;
+        copied-text: copied-popup-text;
+    }
+
+    // System menu (power options)
+    if show-system-menu: SystemMenu {
+        action(a) => { system-menu-action(a); }
     }
 
     // Popup menu overlay (shown on top of home when long press)

@@ -295,6 +295,18 @@ pub struct Shell {
     pub context_menu_slot: Option<i32>,
     /// Context menu timer start (for 500ms long press detection)
     pub context_menu_start: Option<std::time::Instant>,
+    /// Current clipboard content (for display in context menu)
+    pub clipboard_content: Option<String>,
+    /// Last time we checked the clipboard
+    pub clipboard_last_check: std::time::Instant,
+    /// Show "Copied!" popup notification
+    pub show_copied_popup: bool,
+    /// Text shown in copied popup
+    pub copied_popup_text: String,
+    /// When the copied popup was shown (for auto-hide)
+    pub copied_popup_start: Option<std::time::Instant>,
+    /// Position for copied popup (where finger was)
+    pub copied_popup_position: Option<Point<f64, Logical>>,
     /// Icon cache for app icons
     pub icon_cache: icons::IconCache,
     /// Lock screen configuration
@@ -420,6 +432,12 @@ impl Shell {
             context_menu_highlight: 0,
             context_menu_slot: None,
             context_menu_start: None,
+            clipboard_content: None,
+            clipboard_last_check: std::time::Instant::now(),
+            show_copied_popup: false,
+            copied_popup_text: String::new(),
+            copied_popup_start: None,
+            copied_popup_position: None,
             icon_cache: icons::IconCache::new(128), // 128px icons for larger tiles
             lock_config: lock_config.clone(),
             lock_state,
@@ -1460,7 +1478,7 @@ impl Shell {
     }
 
     /// Update context menu highlight based on finger position
-    /// Returns the current highlight (0=none, 1=copy, 2=paste)
+    /// Returns the current highlight (0=none, 1=clipboard, 2=paste, 3=system)
     pub fn update_context_menu_highlight(&mut self, current_pos: Point<f64, Logical>) -> i32 {
         if !self.context_menu_active {
             return 0;
@@ -1476,8 +1494,10 @@ impl Shell {
 
             let highlight = if distance < min_distance {
                 0  // Too close to center - no selection
+            } else if dy > 100.0 && dx.abs() < 150.0 {
+                3  // Below center = System menu
             } else if dx < 0.0 {
-                1  // Left side = Copy
+                1  // Left side = Clipboard
             } else {
                 2  // Right side = Paste
             };
@@ -1496,7 +1516,7 @@ impl Shell {
     }
 
     /// Complete context menu interaction (finger released)
-    /// Returns the action to perform (0=cancel, 1=copy, 2=paste)
+    /// Returns the action to perform (0=cancel, 1=clipboard, 2=paste, 3=system)
     pub fn complete_context_menu(&mut self) -> i32 {
         let action = self.context_menu_highlight;
 
@@ -1532,6 +1552,165 @@ impl Shell {
     /// Check if context menu is active for a specific touch slot
     pub fn is_context_menu_slot(&self, slot: i32) -> bool {
         self.context_menu_slot == Some(slot)
+    }
+
+    // ========== Clipboard Methods ==========
+
+    /// Check clipboard content using wl-paste (called periodically)
+    pub fn check_clipboard(&mut self) {
+        // Only check every 500ms to avoid spam
+        if self.clipboard_last_check.elapsed() < std::time::Duration::from_millis(500) {
+            return;
+        }
+        self.clipboard_last_check = std::time::Instant::now();
+
+        // Run wl-paste to get clipboard content
+        match std::process::Command::new("wl-paste")
+            .arg("--no-newline")
+            .output()
+        {
+            Ok(output) => {
+                if output.status.success() {
+                    let content = String::from_utf8_lossy(&output.stdout).to_string();
+                    let new_content = if content.is_empty() { None } else { Some(content) };
+
+                    // Check if clipboard changed
+                    if new_content != self.clipboard_content {
+                        if let Some(ref text) = new_content {
+                            // Clipboard has new content - show popup
+                            self.show_copied_notification(text.clone(), None);
+                        }
+                        self.clipboard_content = new_content;
+
+                        // Update Slint UI with clipboard preview
+                        self.update_clipboard_preview();
+                    }
+                }
+            }
+            Err(_) => {
+                // wl-paste not available, ignore
+            }
+        }
+    }
+
+    /// Show "Copied!" popup notification
+    pub fn show_copied_notification(&mut self, text: String, position: Option<Point<f64, Logical>>) {
+        // Truncate text for display
+        let display_text = if text.len() > 30 {
+            format!("{}...", &text[..30])
+        } else {
+            text
+        };
+
+        self.show_copied_popup = true;
+        self.copied_popup_text = display_text.clone();
+        self.copied_popup_start = Some(std::time::Instant::now());
+        self.copied_popup_position = position;
+
+        // Update Slint UI
+        if let Some(ref slint_ui) = self.slint_ui {
+            slint_ui.set_show_copied_popup(true);
+            slint_ui.set_copied_popup_text(&display_text);
+            if let Some(pos) = position {
+                slint_ui.set_copied_popup_position(pos.x as f32, pos.y as f32);
+            }
+        }
+
+        tracing::info!("Showing copied popup: {}", display_text);
+    }
+
+    /// Update the copied popup (hide after 2 seconds)
+    pub fn update_copied_popup(&mut self) {
+        if !self.show_copied_popup {
+            return;
+        }
+
+        if let Some(start) = self.copied_popup_start {
+            if start.elapsed() >= std::time::Duration::from_secs(2) {
+                self.show_copied_popup = false;
+                self.copied_popup_start = None;
+
+                if let Some(ref slint_ui) = self.slint_ui {
+                    slint_ui.set_show_copied_popup(false);
+                }
+            }
+        }
+    }
+
+    /// Update clipboard preview in Slint UI
+    fn update_clipboard_preview(&self) {
+        if let Some(ref slint_ui) = self.slint_ui {
+            let preview = match &self.clipboard_content {
+                Some(text) => {
+                    if text.len() > 20 {
+                        format!("{}...", &text[..20])
+                    } else {
+                        text.clone()
+                    }
+                }
+                None => String::new(),
+            };
+            slint_ui.set_clipboard_preview(&preview);
+        }
+    }
+
+    /// Get clipboard content for display
+    pub fn get_clipboard_preview(&self) -> String {
+        match &self.clipboard_content {
+            Some(text) => {
+                if text.len() > 20 {
+                    format!("{}...", &text[..20])
+                } else {
+                    text.clone()
+                }
+            }
+            None => "Empty".to_string(),
+        }
+    }
+
+    // ========== System Menu Methods ==========
+
+    /// Show system menu (reboot/shutdown/lock options)
+    pub fn show_system_menu(&mut self) {
+        // For now, show the system menu in Slint UI
+        if let Some(ref slint_ui) = self.slint_ui {
+            slint_ui.set_show_system_menu(true);
+        }
+        tracing::info!("System menu opened");
+    }
+
+    /// Hide system menu
+    pub fn hide_system_menu(&mut self) {
+        if let Some(ref slint_ui) = self.slint_ui {
+            slint_ui.set_show_system_menu(false);
+        }
+    }
+
+    /// Execute system action
+    pub fn execute_system_action(&mut self, action: &str) {
+        tracing::info!("System action: {}", action);
+        match action {
+            "lock" => {
+                self.lock_screen_active = true;
+                self.set_view(ShellView::LockScreen);
+                // Launch the QML lock screen app
+                self.launch_qml_lock_screen();
+            }
+            "reboot" => {
+                // Use systemctl to reboot
+                let _ = std::process::Command::new("systemctl")
+                    .arg("reboot")
+                    .spawn();
+            }
+            "shutdown" => {
+                // Use systemctl to power off
+                let _ = std::process::Command::new("systemctl")
+                    .arg("poweroff")
+                    .spawn();
+            }
+            _ => {}
+        }
+        self.hide_system_menu();
     }
 
     /// Update home scroll physics (momentum) - returns true if still animating

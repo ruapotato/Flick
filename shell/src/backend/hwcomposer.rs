@@ -1240,14 +1240,23 @@ fn handle_input_event(
                     let action = state.shell.complete_context_menu();
                     match action {
                         1 => {
-                            // Copy action
-                            info!("Context menu: COPY selected");
-                            state.do_clipboard_copy();
+                            // Clipboard view - show what's in clipboard
+                            info!("Context menu: CLIPBOARD selected");
+                            if let Some(ref text) = state.shell.clipboard_content.clone() {
+                                state.shell.show_copied_notification(text.clone(), state.shell.context_menu_position);
+                            }
+                            state.system.haptic_tap();
                         }
                         2 => {
                             // Paste action
                             info!("Context menu: PASTE selected");
                             state.do_clipboard_paste();
+                        }
+                        3 => {
+                            // System menu - show power options
+                            info!("Context menu: SYSTEM selected");
+                            state.shell.show_system_menu();
+                            state.system.haptic_click();
                         }
                         _ => {
                             // Cancelled (released without selecting)
@@ -2410,6 +2419,19 @@ pub fn run() -> Result<()> {
             if let Some(_category) = state.shell.check_long_press() {
                 info!("Long press detected - entering wiggle mode");
                 state.shell.enter_wiggle_mode();
+            }
+        }
+
+        // Check clipboard for changes (runs periodically - method throttles itself)
+        state.shell.check_clipboard();
+
+        // Update copied popup (auto-hide after 2 seconds)
+        state.shell.update_copied_popup();
+
+        // Handle system menu actions from Slint
+        if let Some(ref slint_ui) = state.shell.slint_ui {
+            if let Some(action) = slint_ui.take_pending_system_action() {
+                state.shell.execute_system_action(&action);
             }
         }
 
