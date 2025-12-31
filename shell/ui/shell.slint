@@ -431,38 +431,30 @@ component CircularContextMenu inherits Rectangle {
     in property <float> center-x: 200;
     in property <float> center-y: 400;
     in property <int> highlighted-option: 0;  // 0=none, 1=copy, 2=paste
-    in property <bool> has-selection: false;  // Whether there's text to copy
 
-    // Menu dimensions
-    property <length> button-size: 80px;
-    property <length> button-distance: 100px;  // Distance from center
+    // Menu dimensions - large buttons for easy touch
+    property <length> button-size: 140px;
+    property <length> button-distance: 160px;  // Distance from center
 
     width: 100%;
     height: 100%;
-    background: transparent;
-
-    // Semi-transparent backdrop
-    Rectangle {
-        width: 100%;
-        height: 100%;
-        background: #00000066;
-    }
+    background: #000000aa;  // Dark semi-transparent overlay
 
     // Center indicator (where finger started)
     Rectangle {
-        x: center-x * 1px - 30px;
-        y: center-y * 1px - 30px;
-        width: 60px;
-        height: 60px;
-        border-radius: 30px;
+        x: center-x * 1px - 40px;
+        y: center-y * 1px - 40px;
+        width: 80px;
+        height: 80px;
+        border-radius: 40px;
         background: Theme.surface;
-        border-width: 2px;
+        border-width: 3px;
         border-color: Theme.primary;
 
         Text {
-            text: "•••";
+            text: "⋯";
             color: Theme.on-surface;
-            font-size: 20px;
+            font-size: 32px;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
@@ -476,20 +468,21 @@ component CircularContextMenu inherits Rectangle {
         height: button-size;
         border-radius: button-size / 2;
         background: highlighted-option == 1 ? Theme.primary : Theme.surface;
-        border-width: 2px;
+        border-width: 3px;
         border-color: highlighted-option == 1 ? Theme.primary : Theme.surface-variant;
 
         VerticalLayout {
             alignment: center;
+            spacing: 8px;
             Text {
                 text: "📋";
-                font-size: 28px;
+                font-size: 48px;
                 horizontal-alignment: center;
             }
             Text {
                 text: "Copy";
                 color: highlighted-option == 1 ? Theme.background : Theme.on-surface;
-                font-size: 12px;
+                font-size: 20px;
                 horizontal-alignment: center;
             }
         }
@@ -503,40 +496,36 @@ component CircularContextMenu inherits Rectangle {
         height: button-size;
         border-radius: button-size / 2;
         background: highlighted-option == 2 ? Theme.primary : Theme.surface;
-        border-width: 2px;
+        border-width: 3px;
         border-color: highlighted-option == 2 ? Theme.primary : Theme.surface-variant;
 
         VerticalLayout {
             alignment: center;
+            spacing: 8px;
             Text {
                 text: "📄";
-                font-size: 28px;
+                font-size: 48px;
                 horizontal-alignment: center;
             }
             Text {
                 text: "Paste";
                 color: highlighted-option == 2 ? Theme.background : Theme.on-surface;
-                font-size: 12px;
+                font-size: 20px;
                 horizontal-alignment: center;
             }
         }
     }
 
     // Hint text at bottom
-    Rectangle {
-        x: center-x * 1px - 150px;
-        y: center-y * 1px + 80px;
-        width: 300px;
-        height: 40px;
-
-        Text {
-            text: highlighted-option == 0 ? "Drag to select, release to cancel" :
-                  highlighted-option == 1 ? "Release to copy" : "Release to paste";
-            color: Theme.on-surface;
-            font-size: 14px;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-        }
+    Text {
+        x: center-x * 1px - 200px;
+        y: center-y * 1px + button-size / 2 + 30px;
+        width: 400px;
+        text: highlighted-option == 0 ? "← Copy    Paste →" :
+              highlighted-option == 1 ? "Release to copy" : "Release to paste";
+        color: Theme.on-surface;
+        font-size: 24px;
+        horizontal-alignment: center;
     }
 }
 
