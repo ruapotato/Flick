@@ -1,6 +1,6 @@
 [Unit]
 Description=Flick Phone Helper Daemon
-Documentation=https://github.com/anthropics/flick
+Documentation=https://github.com/user/flick
 After=ofono.service
 BindsTo=flick.service
 After=flick.service

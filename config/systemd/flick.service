@@ -1,6 +1,6 @@
 [Unit]
 Description=Flick Mobile Shell
-Documentation=https://github.com/anthropics/flick
+Documentation=https://github.com/user/flick
 
 # Start after Phosh is ready (we'll replace it)
 After=phosh.service

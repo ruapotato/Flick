@@ -1,6 +1,6 @@
 [Unit]
 Description=Flick Messaging Daemon
-Documentation=https://github.com/anthropics/flick
+Documentation=https://github.com/user/flick
 After=dbus.socket
 BindsTo=flick.service
 After=flick.service

@@ -202,7 +202,7 @@ if [ "$PLATFORM" = "droidian" ]; then
     cat > /etc/systemd/system/flick.service << EOF
 [Unit]
 Description=Flick Mobile Shell
-Documentation=https://github.com/anthropics/flick
+Documentation=https://github.com/user/flick
 After=phosh.service
 After=lxc@android.service
 After=dbus.socket
@@ -254,7 +254,7 @@ EOF
     cat > /etc/systemd/system/flick-phone-helper.service << EOF
 [Unit]
 Description=Flick Phone Helper Daemon
-Documentation=https://github.com/anthropics/flick
+Documentation=https://github.com/user/flick
 After=ofono.service
 BindsTo=flick.service
 After=flick.service
@@ -281,7 +281,7 @@ EOF
     cat > /etc/systemd/system/flick-messaging.service << EOF
 [Unit]
 Description=Flick Messaging Daemon
-Documentation=https://github.com/anthropics/flick
+Documentation=https://github.com/user/flick
 After=dbus.socket
 BindsTo=flick.service
 After=flick.service
