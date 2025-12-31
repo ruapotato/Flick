@@ -1645,7 +1645,8 @@ fn handle_input_event(
                                             }).unwrap_or(false);
 
                                             // Toggle: if currently 2G, switch to 4G; if 4G, switch to 2G
-                                            let new_mode = if is_2g { "4g|3g|2g" } else { "2g" };
+                                            // Note: "4g" enables all modes with 4g preferred, "2g" forces 2g only
+                                            let new_mode = if is_2g { "4g" } else { "2g" };
                                             let will_be_2g = !is_2g;
 
                                             let result = Command::new("mmcli")
