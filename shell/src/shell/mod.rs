@@ -293,6 +293,8 @@ pub struct Shell {
     pub context_menu_highlight: i32,
     /// Touch slot for context menu (to track the finger)
     pub context_menu_slot: Option<i32>,
+    /// Context menu timer start (for 500ms long press detection)
+    pub context_menu_start: Option<std::time::Instant>,
     /// Icon cache for app icons
     pub icon_cache: icons::IconCache,
     /// Lock screen configuration
@@ -417,6 +419,7 @@ impl Shell {
             context_menu_position: None,
             context_menu_highlight: 0,
             context_menu_slot: None,
+            context_menu_start: None,
             icon_cache: icons::IconCache::new(128), // 128px icons for larger tiles
             lock_config: lock_config.clone(),
             lock_state,
@@ -1413,6 +1416,7 @@ impl Shell {
         if !self.context_menu_active {
             self.context_menu_position = Some(pos);
             self.context_menu_slot = Some(slot);
+            self.context_menu_start = Some(std::time::Instant::now());
         }
     }
 
@@ -1429,8 +1433,8 @@ impl Shell {
             return false;
         }
 
-        // Check if long press duration has passed
-        if let Some(start) = self.long_press_start {
+        // Check if long press duration has passed (using context menu's own timer)
+        if let Some(start) = self.context_menu_start {
             if start.elapsed() >= std::time::Duration::from_millis(500) {
                 return true;
             }
@@ -1501,6 +1505,7 @@ impl Shell {
         self.context_menu_position = None;
         self.context_menu_highlight = 0;
         self.context_menu_slot = None;
+        self.context_menu_start = None;
 
         if let Some(ref slint_ui) = self.slint_ui {
             slint_ui.set_show_context_menu(false);
@@ -1521,6 +1526,7 @@ impl Shell {
         self.context_menu_position = None;
         self.context_menu_highlight = 0;
         self.context_menu_slot = None;
+        self.context_menu_start = None;
     }
 
     /// Check if context menu is active for a specific touch slot
