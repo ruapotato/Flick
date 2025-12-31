@@ -230,14 +230,7 @@ ExecStartPre=/bin/sh -c 'for i in \$(seq 1 30); do if [ "\$(getprop sys.boot_com
 ExecStartPre=/bin/mkdir -p $INSTALL_HOME/.local/state/flick
 ExecStartPre=/bin/chown -R droidian:droidian $INSTALL_HOME/.local/state/flick
 
-# Kill any stuck hwcomposer processes
-ExecStartPre=-/usr/bin/killall -9 android.hardware.graphics.composer
-ExecStartPre=-/usr/bin/killall -9 composer
-ExecStartPre=/bin/sleep 1
-
-# Restart hwcomposer (required after Phosh releases it)
-ExecStartPre=/bin/sh -c 'ANDROID_SERVICE="(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)" /usr/lib/halium-wrappers/android-service.sh hwcomposer stop || true'
-ExecStartPre=/bin/sleep 2
+# Start hwcomposer (don't stop first - stopping causes it to become unstable)
 ExecStartPre=/bin/sh -c 'ANDROID_SERVICE="(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)" /usr/lib/halium-wrappers/android-service.sh hwcomposer start'
 ExecStartPre=/bin/sleep 2
 
