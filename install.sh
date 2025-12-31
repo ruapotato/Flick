@@ -223,8 +223,8 @@ Environment=XDG_CURRENT_DESKTOP=Flick
 Environment=EGL_PLATFORM=hwcomposer
 Environment=HOME=$INSTALL_HOME
 
-# Wait for Android container to stabilize
-ExecStartPre=/bin/sleep 3
+# Wait for Android container to be fully ready
+ExecStartPre=/bin/sh -c 'for i in \$(seq 1 30); do if [ "\$(getprop sys.boot_completed)" = "1" ]; then exit 0; fi; sleep 1; done; echo "Android container not ready, continuing anyway"'
 
 # Ensure state directory exists and has correct permissions
 ExecStartPre=/bin/mkdir -p $INSTALL_HOME/.local/state/flick
