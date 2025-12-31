@@ -262,6 +262,8 @@ Type=simple
 User=root
 
 ExecStartPre=/bin/rm -f /tmp/flick_phone_status /tmp/flick_phone_cmd
+# Force 2G mode for voice calls (VoLTE not supported on most Droidian devices)
+ExecStartPre=-/bin/sh -c 'sleep 5 && mmcli -m 0 --set-allowed-modes="2g" || true'
 ExecStart=/usr/bin/python3 $SCRIPT_DIR/apps/phone/phone_helper.py daemon
 
 StandardOutput=journal
