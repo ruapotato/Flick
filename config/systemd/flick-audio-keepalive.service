@@ -1,6 +1,7 @@
 [Unit]
 Description=Flick Audio Keepalive
-After=pulseaudio.service
+After=pulseaudio.service user@32011.service
+Wants=user@32011.service
 BindsTo=flick.service
 After=flick.service
 
@@ -9,7 +10,8 @@ Type=simple
 User=droidian
 Group=droidian
 Environment=XDG_RUNTIME_DIR=/run/user/32011
-ExecStartPre=/bin/sleep 5
+# Wait for PulseAudio socket to exist (up to 60 seconds)
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do [ -S /run/user/32011/pulse/native ] && exit 0; sleep 1; done; echo "PulseAudio not ready"; exit 1'
 ExecStart=/usr/bin/pacat --playback /dev/zero --rate=44100 --channels=2 --format=s16le --latency-msec=1000
 Restart=on-failure
 RestartSec=5
