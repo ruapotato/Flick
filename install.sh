@@ -226,6 +226,11 @@ Environment=HOME=$INSTALL_HOME
 # Wait for Android container to be fully ready
 ExecStartPre=/bin/sh -c 'for i in \$(seq 1 30); do if [ "\$(getprop sys.boot_completed)" = "1" ]; then exit 0; fi; sleep 1; done; echo "Android container not ready, continuing anyway"'
 
+# Kill any lingering Wayland clients from previous session
+ExecStartPre=-/usr/bin/pkill -9 qmlscene
+ExecStartPre=-/usr/bin/pkill -9 Xwayland
+ExecStartPre=/bin/sleep 1
+
 # Ensure state directory exists and has correct permissions
 ExecStartPre=/bin/mkdir -p $INSTALL_HOME/.local/state/flick
 ExecStartPre=/bin/chown -R droidian:droidian $INSTALL_HOME/.local/state/flick

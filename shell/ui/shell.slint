@@ -2810,6 +2810,7 @@ export component FlickShell inherits Window {
         flashlight-enabled: flashlight-enabled;
         airplane-enabled: airplane-enabled;
         touch-effects-enabled: touch-effects-enabled;
+        voice2g-enabled: voice2g-enabled;
         wifi-ssid: wifi-ssid;
         battery-percent: battery-percent;
         notifications: notifications;
@@ -2824,6 +2825,7 @@ export component FlickShell inherits Window {
         flashlight-toggled => { flashlight-toggled(); }
         airplane-toggled => { airplane-toggled(); }
         touch-effects-toggled => { touch-effects-toggled(); }
+        voice2g-toggled => { voice2g-toggled(); }
         lock-pressed => { lock-pressed(); }
         settings-pressed => { settings-pressed(); }
         notification-dismissed(id) => { notification-dismissed(id); }

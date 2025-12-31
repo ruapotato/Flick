@@ -28,6 +28,14 @@ Environment=HOME=/home/droidian
 # Wait for Android container to be fully ready
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do if [ "$(getprop sys.boot_completed)" = "1" ]; then exit 0; fi; sleep 1; done; echo "Android container not ready, continuing anyway"'
 
+# Kill any lingering Wayland clients from previous session
+ExecStartPre=-/usr/bin/pkill -9 qmlscene
+ExecStartPre=-/usr/bin/pkill -9 Xwayland
+
+# Restart hwcomposer to clear stale frame buffers
+ExecStartPre=/bin/sh -c 'ANDROID_SERVICE="(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)" /usr/lib/halium-wrappers/android-service.sh hwcomposer stop || true'
+ExecStartPre=/bin/sleep 1
+
 # Ensure state directory exists and has correct permissions
 ExecStartPre=/bin/mkdir -p /home/droidian/.local/state/flick
 ExecStartPre=/bin/chown -R droidian:droidian /home/droidian/.local/state/flick

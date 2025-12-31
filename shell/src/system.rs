@@ -332,6 +332,27 @@ impl AirplaneMode {
     }
 }
 
+/// Check if device is in 2G voice mode (uses mmcli)
+pub fn check_voice_2g_mode() -> bool {
+    Command::new("mmcli")
+        .args(["-m", "0"])
+        .output()
+        .map(|o| {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            // Look for the current mode line: "current: allowed: 2g; preferred: none"
+            // 2G-only mode has "allowed: 2g;" (just 2g, not "2g, 3g, 4g")
+            for line in stdout.lines() {
+                if line.contains("current:") && line.contains("allowed:") {
+                    // Check if it's 2G only (not "2g, 3g" or "2g, 3g, 4g")
+                    return line.contains("allowed: 2g;") ||
+                           (line.contains("allowed: 2g") && !line.contains("3g") && !line.contains("4g"));
+                }
+            }
+            false
+        })
+        .unwrap_or(false)
+}
+
 /// Volume/Audio manager using pactl (PulseAudio/PipeWire)
 /// Runs commands as the user who owns the audio session (not root)
 pub struct VolumeManager;
@@ -950,6 +971,8 @@ pub struct SystemStatus {
     pub volume_key_last_repeat: Option<std::time::Instant>,
     /// Sound configuration (notification/ringtone sounds)
     pub sound_config: SoundConfig,
+    /// Whether device is in 2G mode for voice calls (no LTE data)
+    pub voice_2g_enabled: bool,
 }
 
 impl SystemStatus {
@@ -977,6 +1000,7 @@ impl SystemStatus {
             volume_key_held_since: None,
             volume_key_last_repeat: None,
             sound_config: SoundConfig::load(),
+            voice_2g_enabled: check_voice_2g_mode(),
         }
     }
 
