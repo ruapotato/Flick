@@ -1,0 +1,4 @@
+# Disable suspend-on-idle for Droidian audio stability
+# The Android audio HAL suspends audio when idle, causing audio to cut out.
+.nofail
+unload-module module-suspend-on-idle

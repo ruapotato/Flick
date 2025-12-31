@@ -329,6 +329,14 @@ RestartSec=5
 WantedBy=flick.service
 EOF
 
+    # Disable PulseAudio suspend-on-idle (causes audio to cut out on Droidian)
+    mkdir -p /etc/pulse/default.pa.d
+    cat > /etc/pulse/default.pa.d/no-suspend.pa << EOF
+# Disable suspend-on-idle for Droidian audio stability
+.nofail
+unload-module module-suspend-on-idle
+EOF
+
     systemctl daemon-reload
 
     if [ "$NO_ENABLE" = false ]; then
