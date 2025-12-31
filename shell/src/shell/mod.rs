@@ -1564,9 +1564,10 @@ impl Shell {
         }
         self.clipboard_last_check = std::time::Instant::now();
 
-        // Run wl-paste to get clipboard content
-        match std::process::Command::new("wl-paste")
-            .arg("--no-newline")
+        // Use timeout to prevent wl-paste from blocking indefinitely
+        // wl-paste blocks when no clipboard content exists
+        match std::process::Command::new("timeout")
+            .args(["0.1", "wl-paste", "--no-newline"])
             .output()
         {
             Ok(output) => {
