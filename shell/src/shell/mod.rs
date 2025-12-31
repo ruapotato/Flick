@@ -1694,7 +1694,7 @@ impl Shell {
                 self.lock_screen_active = true;
                 self.set_view(ShellView::LockScreen);
                 // Launch the QML lock screen app
-                self.launch_qml_lock_screen();
+                self.launch_lock_screen_app("wayland-1");
             }
             "reboot" => {
                 // Use systemctl to reboot
