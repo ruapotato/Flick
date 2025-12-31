@@ -665,6 +665,12 @@ fn handle_input_event(
             // Create touch effect (ripple) at touch position
             state.add_touch_effect(touch_pos.x, touch_pos.y, slot_id as u64);
 
+            // Start tracking for context menu (copy/paste)
+            // Only track if not on lock screen
+            if !state.shell.lock_screen_active {
+                state.shell.start_context_menu_tracking(touch_pos, slot_id);
+            }
+
             // Forward to gesture recognizer
             if let Some(gesture_event) = state.gesture_recognizer.touch_down(slot_id, touch_pos) {
                 debug!("Gesture touch_down: {:?}", gesture_event);
@@ -933,6 +939,11 @@ fn handle_input_event(
 
             // Update touch effect (adds ripples along swipe path)
             state.update_touch_effect(touch_pos.x, touch_pos.y, slot_id as u64);
+
+            // Update context menu highlight if active and this is the right touch slot
+            if state.shell.context_menu_active && state.shell.is_context_menu_slot(slot_id) {
+                state.shell.update_context_menu_highlight(touch_pos);
+            }
 
             // Forward to gesture recognizer
             if let Some(gesture_event) = state.gesture_recognizer.touch_motion(slot_id, touch_pos) {
@@ -1222,6 +1233,32 @@ fn handle_input_event(
 
             // Get last touch position
             let last_pos = state.last_touch_pos.remove(&slot_id);
+
+            // Handle context menu release if this is the context menu touch
+            if state.shell.is_context_menu_slot(slot_id) {
+                if state.shell.context_menu_active {
+                    let action = state.shell.complete_context_menu();
+                    match action {
+                        1 => {
+                            // Copy action
+                            info!("Context menu: COPY selected");
+                            state.do_clipboard_copy();
+                        }
+                        2 => {
+                            // Paste action
+                            info!("Context menu: PASTE selected");
+                            state.do_clipboard_paste();
+                        }
+                        _ => {
+                            // Cancelled (released without selecting)
+                            info!("Context menu: cancelled");
+                        }
+                    }
+                } else {
+                    // Touch ended before menu was shown - cancel tracking
+                    state.shell.cancel_context_menu();
+                }
+            }
 
             // Track if switcher was just opened by gesture (to skip tap detection)
             let mut switcher_opened_by_gesture = false;
@@ -2345,13 +2382,27 @@ pub fn run() -> Result<()> {
 
         debug!("Loop {}: after calloop dispatch", loop_count);
 
-        // Check for long press to enter wiggle mode (runs every frame)
-        // Exclude edge swipes from triggering wiggle mode
+        // Check for long press to show context menu (copy/paste) - runs every frame
+        // This takes priority over wiggle mode
         let edge_gesture_active = state.switcher_gesture_active || state.qs_gesture_active ||
             state.switcher_return_active || state.qs_return_active ||
             state.gesture_recognizer.has_potential_edge_swipe();
+        if !state.shell.context_menu_active
+            && !state.shell.is_scrolling
+            && !edge_gesture_active
+            && !state.shell.lock_screen_active
+        {
+            if state.shell.check_context_menu() {
+                info!("Long press detected - showing context menu");
+                state.shell.show_context_menu();
+            }
+        }
+
+        // Check for long press to enter wiggle mode (runs every frame)
+        // Only on home screen, and only if context menu is not active
         if state.shell.view == crate::shell::ShellView::Home
             && !state.shell.wiggle_mode
+            && !state.shell.context_menu_active
             && !state.shell.is_scrolling
             && !edge_gesture_active
             && state.shell.long_press_start.is_some()

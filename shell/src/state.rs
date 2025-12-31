@@ -1181,6 +1181,80 @@ impl Flick {
         tracing::info!("Living pixels {}", if enabled { "enabled" } else { "disabled" });
     }
 
+    /// Send Ctrl+C to the focused application for copy
+    pub fn do_clipboard_copy(&mut self) {
+        use smithay::backend::input::KeyState;
+        use smithay::input::keyboard::{FilterResult, Keycode};
+
+        tracing::info!("Clipboard: sending Ctrl+C");
+
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+            let time = self.clock.now().as_millis() as u32;
+
+            // Linux keycodes + 8 for XKB
+            let ctrl_keycode = Keycode::new(29 + 8);  // Left Ctrl
+            let c_keycode = Keycode::new(46 + 8);     // C
+
+            // Press Ctrl
+            keyboard.input::<(), _>(self, ctrl_keycode, KeyState::Pressed, serial, time, |_, _, _| {
+                FilterResult::Forward::<()>
+            });
+            // Press C
+            keyboard.input::<(), _>(self, c_keycode, KeyState::Pressed, serial, time, |_, _, _| {
+                FilterResult::Forward::<()>
+            });
+            // Release C
+            keyboard.input::<(), _>(self, c_keycode, KeyState::Released, serial, time, |_, _, _| {
+                FilterResult::Forward::<()>
+            });
+            // Release Ctrl
+            keyboard.input::<(), _>(self, ctrl_keycode, KeyState::Released, serial, time, |_, _, _| {
+                FilterResult::Forward::<()>
+            });
+
+            // Haptic feedback
+            self.system.haptic_tap();
+        }
+    }
+
+    /// Send Ctrl+V to the focused application for paste
+    pub fn do_clipboard_paste(&mut self) {
+        use smithay::backend::input::KeyState;
+        use smithay::input::keyboard::{FilterResult, Keycode};
+
+        tracing::info!("Clipboard: sending Ctrl+V");
+
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+            let time = self.clock.now().as_millis() as u32;
+
+            // Linux keycodes + 8 for XKB
+            let ctrl_keycode = Keycode::new(29 + 8);  // Left Ctrl
+            let v_keycode = Keycode::new(47 + 8);     // V
+
+            // Press Ctrl
+            keyboard.input::<(), _>(self, ctrl_keycode, KeyState::Pressed, serial, time, |_, _, _| {
+                FilterResult::Forward::<()>
+            });
+            // Press V
+            keyboard.input::<(), _>(self, v_keycode, KeyState::Pressed, serial, time, |_, _, _| {
+                FilterResult::Forward::<()>
+            });
+            // Release V
+            keyboard.input::<(), _>(self, v_keycode, KeyState::Released, serial, time, |_, _, _| {
+                FilterResult::Forward::<()>
+            });
+            // Release Ctrl
+            keyboard.input::<(), _>(self, ctrl_keycode, KeyState::Released, serial, time, |_, _, _| {
+                FilterResult::Forward::<()>
+            });
+
+            // Haptic feedback
+            self.system.haptic_tap();
+        }
+    }
+
     /// Reload settings from config file if enough time has passed
     /// This allows the Settings app to change settings without restart
     pub fn reload_settings_if_needed(&mut self) {

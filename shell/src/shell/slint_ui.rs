@@ -509,6 +509,22 @@ impl SlintShell {
         self.shell.set_popup_can_pick_default(can_pick);
     }
 
+    /// Show/hide the context menu (copy/paste circular menu)
+    pub fn set_show_context_menu(&self, show: bool) {
+        self.shell.set_show_context_menu(show);
+    }
+
+    /// Set context menu position
+    pub fn set_context_menu_position(&self, x: f32, y: f32) {
+        self.shell.set_context_menu_x(x);
+        self.shell.set_context_menu_y(y);
+    }
+
+    /// Set context menu highlight (0=none, 1=copy, 2=paste)
+    pub fn set_context_menu_highlight(&self, highlight: i32) {
+        self.shell.set_context_menu_highlight(highlight);
+    }
+
     /// Set wiggle mode state
     pub fn set_wiggle_mode(&self, wiggle: bool) {
         *self.wiggle_mode.borrow_mut() = wiggle;

@@ -285,6 +285,14 @@ pub struct Shell {
     pub popup_category_id: Option<String>,
     /// Flag to prevent processing touch on same event that opened pick default view
     pub pick_default_just_opened: bool,
+    /// Context menu state (copy/paste circular menu)
+    pub context_menu_active: bool,
+    /// Context menu center position
+    pub context_menu_position: Option<Point<f64, Logical>>,
+    /// Context menu highlighted option (0=none, 1=copy, 2=paste)
+    pub context_menu_highlight: i32,
+    /// Touch slot for context menu (to track the finger)
+    pub context_menu_slot: Option<i32>,
     /// Icon cache for app icons
     pub icon_cache: icons::IconCache,
     /// Lock screen configuration
@@ -405,6 +413,10 @@ impl Shell {
             popup_showing: false,
             popup_category_id: None,
             pick_default_just_opened: false,
+            context_menu_active: false,
+            context_menu_position: None,
+            context_menu_highlight: 0,
+            context_menu_slot: None,
             icon_cache: icons::IconCache::new(128), // 128px icons for larger tiles
             lock_config: lock_config.clone(),
             lock_state,
@@ -1391,6 +1403,129 @@ impl Shell {
         self.long_press_position = None;
         self.home_scroll_touch_times.clear();
         app
+    }
+
+    // ========== Context Menu (Copy/Paste) Methods ==========
+
+    /// Start tracking for context menu (called on any touch down)
+    pub fn start_context_menu_tracking(&mut self, pos: Point<f64, Logical>, slot: i32) {
+        // Only start tracking if no context menu is already active
+        if !self.context_menu_active {
+            self.context_menu_position = Some(pos);
+            self.context_menu_slot = Some(slot);
+        }
+    }
+
+    /// Check if context menu should be shown (500ms threshold)
+    /// Called from main loop
+    pub fn check_context_menu(&mut self) -> bool {
+        // Only check if we're tracking a touch and menu not already shown
+        if self.context_menu_active || self.context_menu_position.is_none() {
+            return false;
+        }
+
+        // Don't show context menu if user is scrolling
+        if self.is_scrolling {
+            return false;
+        }
+
+        // Check if long press duration has passed
+        if let Some(start) = self.long_press_start {
+            if start.elapsed() >= std::time::Duration::from_millis(500) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Show the context menu at the current position
+    pub fn show_context_menu(&mut self) {
+        if let Some(pos) = self.context_menu_position {
+            self.context_menu_active = true;
+            self.context_menu_highlight = 0;  // No option highlighted initially
+
+            // Update Slint UI
+            if let Some(ref slint_ui) = self.slint_ui {
+                slint_ui.set_context_menu_position(pos.x as f32, pos.y as f32);
+                slint_ui.set_context_menu_highlight(0);
+                slint_ui.set_show_context_menu(true);
+            }
+
+            tracing::info!("Context menu shown at ({}, {})", pos.x, pos.y);
+        }
+    }
+
+    /// Update context menu highlight based on finger position
+    /// Returns the current highlight (0=none, 1=copy, 2=paste)
+    pub fn update_context_menu_highlight(&mut self, current_pos: Point<f64, Logical>) -> i32 {
+        if !self.context_menu_active {
+            return 0;
+        }
+
+        if let Some(center) = self.context_menu_position {
+            let dx = current_pos.x - center.x;
+            let dy = current_pos.y - center.y;
+            let distance = (dx * dx + dy * dy).sqrt();
+
+            // Require minimum distance from center to select an option
+            let min_distance = 50.0;
+
+            let highlight = if distance < min_distance {
+                0  // Too close to center - no selection
+            } else if dx < 0.0 {
+                1  // Left side = Copy
+            } else {
+                2  // Right side = Paste
+            };
+
+            if highlight != self.context_menu_highlight {
+                self.context_menu_highlight = highlight;
+                if let Some(ref slint_ui) = self.slint_ui {
+                    slint_ui.set_context_menu_highlight(highlight);
+                }
+            }
+
+            highlight
+        } else {
+            0
+        }
+    }
+
+    /// Complete context menu interaction (finger released)
+    /// Returns the action to perform (0=cancel, 1=copy, 2=paste)
+    pub fn complete_context_menu(&mut self) -> i32 {
+        let action = self.context_menu_highlight;
+
+        // Hide the menu
+        self.context_menu_active = false;
+        self.context_menu_position = None;
+        self.context_menu_highlight = 0;
+        self.context_menu_slot = None;
+
+        if let Some(ref slint_ui) = self.slint_ui {
+            slint_ui.set_show_context_menu(false);
+        }
+
+        tracing::info!("Context menu completed with action: {}", action);
+        action
+    }
+
+    /// Cancel context menu tracking (without completing)
+    pub fn cancel_context_menu(&mut self) {
+        if self.context_menu_active {
+            if let Some(ref slint_ui) = self.slint_ui {
+                slint_ui.set_show_context_menu(false);
+            }
+        }
+        self.context_menu_active = false;
+        self.context_menu_position = None;
+        self.context_menu_highlight = 0;
+        self.context_menu_slot = None;
+    }
+
+    /// Check if context menu is active for a specific touch slot
+    pub fn is_context_menu_slot(&self, slot: i32) -> bool {
+        self.context_menu_slot == Some(slot)
     }
 
     /// Update home scroll physics (momentum) - returns true if still animating
