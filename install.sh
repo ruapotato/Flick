@@ -305,12 +305,35 @@ RestartSec=5
 WantedBy=flick.service
 EOF
 
+    # Create flick-audio-keepalive.service
+    cat > /etc/systemd/system/flick-audio-keepalive.service << EOF
+[Unit]
+Description=Flick Audio Keepalive
+After=pulseaudio.service
+BindsTo=flick.service
+After=flick.service
+
+[Service]
+Type=simple
+User=droidian
+Group=droidian
+Environment=XDG_RUNTIME_DIR=/run/user/$INSTALL_UID
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/bin/pacat --playback /dev/zero --rate=44100 --channels=2 --format=s16le --latency-msec=1000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=flick.service
+EOF
+
     systemctl daemon-reload
 
     if [ "$NO_ENABLE" = false ]; then
         echo "Enabling Flick services..."
         systemctl disable phosh 2>/dev/null || true
-        systemctl enable flick flick-phone-helper flick-messaging
+        systemctl mask phosh 2>/dev/null || true
+        systemctl enable flick flick-phone-helper flick-messaging flick-audio-keepalive
     fi
 
     echo ""
@@ -322,6 +345,7 @@ EOF
     echo "  - flick.service (main compositor)"
     echo "  - flick-phone-helper.service (phone daemon)"
     echo "  - flick-messaging.service (SMS daemon)"
+    echo "  - flick-audio-keepalive.service (audio fix)"
     echo ""
     if [ "$NO_ENABLE" = false ]; then
         echo "Flick is enabled and will start on next boot."
