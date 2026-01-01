@@ -2310,6 +2310,12 @@ fn handle_input_event(
                                                 slint_ui.set_keyboard_shifted(false);
                                             }
                                         }
+                                        KeyboardAction::LayoutChanged(new_layout) => {
+                                            info!("Layout changed to: {}", new_layout);
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                slint_ui.set_keyboard_layout(new_layout);
+                                            }
+                                        }
                                         KeyboardAction::SpecialKey(key) => {
                                             info!("Special key: {}", key);
                                             if let Some(keyboard) = state.seat.get_keyboard() {

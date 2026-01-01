@@ -2558,6 +2558,7 @@ component OnScreenKeyboard inherits Rectangle {
     callback enter-pressed();
     callback space-pressed();
     callback layout-toggled();
+    callback layout-changed(int);  // For direct layout changes (emoji, terminal)
     callback hide-keyboard();
     callback prediction-selected(string);
     callback special-key-pressed(string);  // For Tab, Esc, Ctrl+C, arrows, etc.
@@ -2575,10 +2576,10 @@ component OnScreenKeyboard inherits Rectangle {
         padding: 0px;
         spacing: 0px;
 
-        // Row 0: Word predictions
+        // Row 0: Word predictions - taller for better touch targets
         HorizontalLayout {
-            height: 48px;
-            spacing: 0px;
+            height: 56px;
+            spacing: 4px;
             padding-left: 4px;
             padding-right: 4px;
 
@@ -2810,7 +2811,10 @@ component OnScreenKeyboard inherits Rectangle {
                 width-factor: 1.0;
                 is-special: true;
                 is-active: layout == 2;
-                pressed => { layout = layout == 2 ? 0 : 2; }
+                pressed => {
+                    layout = layout == 2 ? 0 : 2;
+                    layout-changed(layout);
+                }
             }
 
             KeyboardKey {
@@ -2818,7 +2822,10 @@ component OnScreenKeyboard inherits Rectangle {
                 width-factor: 1.0;
                 is-special: true;
                 is-active: layout == 3;
-                pressed => { layout = layout == 3 ? 0 : 3; }
+                pressed => {
+                    layout = layout == 3 ? 0 : 3;
+                    layout-changed(layout);
+                }
             }
 
             KeyboardKey {
@@ -3285,6 +3292,7 @@ export component FlickShell inherits Window {
     callback keyboard-hide();
     callback keyboard-prediction-selected(string);  // Word prediction selected
     callback keyboard-special-key-pressed(string);  // Tab, Esc, Ctrl+key, arrows, F-keys
+    callback keyboard-layout-changed(int);  // Direct layout changes (emoji=2, terminal=3)
 
     // Phone call callbacks
     callback call-answered();
@@ -3484,6 +3492,7 @@ export component FlickShell inherits Window {
         hide-keyboard => { keyboard-hide(); }
         prediction-selected(word) => { keyboard-prediction-selected(word); }
         special-key-pressed(key) => { keyboard-special-key-pressed(key); }
+        layout-changed(new-layout) => { keyboard-layout-changed(new-layout); }
     }
 
     // Volume overlay - shown briefly when hardware volume buttons pressed

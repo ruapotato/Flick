@@ -61,6 +61,8 @@ pub enum KeyboardAction {
     PredictionSelected(String),
     /// Special key pressed (Tab, Esc, arrows, F-keys, Ctrl+key)
     SpecialKey(String),
+    /// Layout changed directly (0=letters, 1=symbols, 2=emoji, 3=terminal)
+    LayoutChanged(i32),
 }
 
 /// Actions that can be triggered from phone call UI
@@ -327,6 +329,12 @@ impl SlintShell {
         shell.on_keyboard_special_key_pressed(move |key| {
             info!("Slint keyboard special key: {}", key);
             kb_clone.borrow_mut().push(KeyboardAction::SpecialKey(key.to_string()));
+        });
+
+        let kb_clone = pending_keyboard_actions.clone();
+        shell.on_keyboard_layout_changed(move |new_layout| {
+            info!("Slint keyboard layout changed: {}", new_layout);
+            kb_clone.borrow_mut().push(KeyboardAction::LayoutChanged(new_layout));
         });
 
         // Lock screen callbacks removed - lock screen is now QML-based

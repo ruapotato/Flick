@@ -113,14 +113,6 @@ Window {
             }
         }
 
-        Text {
-            anchors.centerIn: parent
-            text: "Flick Terminal"
-            color: "#aaaacc"
-            font.pixelSize: 14 * textScale
-            font.weight: Font.Medium
-        }
-
         MouseArea {
             anchors.fill: parent
             anchors.leftMargin: 130 * textScale  // Don't overlap buttons
