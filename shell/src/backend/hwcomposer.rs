@@ -762,11 +762,13 @@ fn handle_input_event(
             // Forward touch to Wayland client if connected (but not if touching keyboard)
             // Forward to QML lock screen when on lock screen, or to apps when not locked
             // Don't forward while an edge gesture is active or potentially starting
+            // Don't forward when system menu is showing (touch goes to Slint overlay)
             let gesture_active = state.switcher_gesture_active || state.qs_gesture_active ||
                                  state.home_gesture_window.is_some() || state.close_gesture_window.is_some();
             let potential_gesture = state.gesture_recognizer.has_potential_edge_swipe();
+            let system_menu_showing = state.shell.system_menu_active;
             let forward_to_wayland = has_wayland_window && !touch_on_keyboard &&
-                !gesture_active && !potential_gesture &&
+                !gesture_active && !potential_gesture && !system_menu_showing &&
                 (shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active ||
                  shell_view == crate::shell::ShellView::LockScreen);
             if forward_to_wayland {
@@ -913,8 +915,14 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::App => {
-                        // Touch on keyboard overlay - track for swipe-down dismiss
-                        if touch_on_keyboard {
+                        // Forward to Slint when system menu is showing
+                        if system_menu_showing {
+                            info!("System menu TouchDown at ({}, {})", touch_pos.x, touch_pos.y);
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                            }
+                        } else if touch_on_keyboard {
+                            // Touch on keyboard overlay - track for swipe-down dismiss
                             info!("Keyboard TouchDown at ({}, {})", touch_pos.x, touch_pos.y);
                             // Start tracking for potential swipe-down to dismiss
                             state.keyboard_swipe_start_y = Some(touch_pos.y);
@@ -1107,11 +1115,13 @@ fn handle_input_event(
             // Forward touch to Wayland client if connected (but not if touching keyboard)
             // Forward to QML lock screen when on lock screen, or to apps when not locked
             // Don't forward while an edge gesture is active or potentially starting
+            // Don't forward when system menu is showing (touch goes to Slint overlay)
             let gesture_active = state.switcher_gesture_active || state.qs_gesture_active ||
                                  state.home_gesture_window.is_some() || state.close_gesture_window.is_some();
             let potential_gesture = state.gesture_recognizer.has_potential_edge_swipe();
+            let system_menu_showing = state.shell.system_menu_active;
             let forward_to_wayland = has_wayland_window && !touch_on_keyboard &&
-                !gesture_active && !potential_gesture &&
+                !gesture_active && !potential_gesture && !system_menu_showing &&
                 (shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active ||
                  shell_view == crate::shell::ShellView::LockScreen);
             if forward_to_wayland {
@@ -1245,8 +1255,13 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::App => {
-                        // Touch motion on keyboard overlay - check for swipe down
-                        if touch_on_keyboard {
+                        // Forward to Slint when system menu is showing
+                        if system_menu_showing {
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.dispatch_pointer_moved(touch_pos.x as f32, touch_pos.y as f32);
+                            }
+                        } else if touch_on_keyboard {
+                            // Touch motion on keyboard overlay - check for swipe down
                             // Check for swipe-down gesture to dismiss keyboard
                             if let Some(start_y) = state.keyboard_swipe_start_y {
                                 let delta_y = touch_pos.y - start_y;
@@ -1289,33 +1304,57 @@ fn handle_input_event(
                     let action = state.shell.complete_context_menu();
                     match action {
                         1 => {
-                            // Copy action - copy primary selection (highlighted text) to clipboard
-                            info!("Context menu: COPY selected");
-                            // Get primary selection (text that was highlighted before long press)
-                            match std::process::Command::new("timeout")
-                                .args(["0.5", "wl-paste", "--primary", "--no-newline"])
-                                .output()
-                            {
-                                Ok(output) if output.status.success() => {
-                                    let text = String::from_utf8_lossy(&output.stdout).to_string();
-                                    if !text.is_empty() {
-                                        // Copy to regular clipboard using wl-copy
-                                        let _ = std::process::Command::new("wl-copy")
-                                            .arg(&text)
-                                            .spawn();
-                                        info!("Copied primary selection to clipboard: {:?}", text);
-                                        state.shell.show_copied_notification(text.clone(), state.shell.context_menu_position);
-                                        state.shell.clipboard_content = Some(text);
-                                    } else {
-                                        info!("Primary selection is empty");
-                                    }
-                                }
-                                Ok(_) => {
-                                    info!("No primary selection available");
-                                }
-                                Err(e) => {
-                                    error!("Failed to get primary selection: {}", e);
-                                }
+                            // Copy action - send Ctrl+C to copy highlighted text
+                            info!("Context menu: COPY selected - sending Ctrl+C");
+                            if let Some(keyboard) = state.seat.get_keyboard() {
+                                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                let time = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis() as u32;
+
+                                // evdev keycodes: Ctrl=29, C=46
+                                // XKB keycodes are evdev + 8
+                                let ctrl_keycode = 29 + 8;
+                                let c_keycode = 46 + 8;
+
+                                // Press Ctrl
+                                keyboard.input::<(), _>(
+                                    state,
+                                    smithay::input::keyboard::Keycode::new(ctrl_keycode),
+                                    smithay::backend::input::KeyState::Pressed,
+                                    serial,
+                                    time,
+                                    |_, _, _| smithay::input::keyboard::FilterResult::Forward::<()>,
+                                );
+                                // Press C
+                                keyboard.input::<(), _>(
+                                    state,
+                                    smithay::input::keyboard::Keycode::new(c_keycode),
+                                    smithay::backend::input::KeyState::Pressed,
+                                    serial,
+                                    time + 1,
+                                    |_, _, _| smithay::input::keyboard::FilterResult::Forward::<()>,
+                                );
+                                // Release C
+                                keyboard.input::<(), _>(
+                                    state,
+                                    smithay::input::keyboard::Keycode::new(c_keycode),
+                                    smithay::backend::input::KeyState::Released,
+                                    serial,
+                                    time + 2,
+                                    |_, _, _| smithay::input::keyboard::FilterResult::Forward::<()>,
+                                );
+                                // Release Ctrl
+                                keyboard.input::<(), _>(
+                                    state,
+                                    smithay::input::keyboard::Keycode::new(ctrl_keycode),
+                                    smithay::backend::input::KeyState::Released,
+                                    serial,
+                                    time + 3,
+                                    |_, _, _| smithay::input::keyboard::FilterResult::Forward::<()>,
+                                );
+                                info!("Ctrl+C sent to app");
                             }
                             state.system.haptic_tap();
                         }
@@ -1593,11 +1632,13 @@ fn handle_input_event(
             // Forward touch to Wayland client if connected (but not if touching keyboard)
             // Forward to QML lock screen when on lock screen, or to apps when not locked
             // Don't forward while an edge gesture is active or potentially starting
+            // Don't forward when system menu is showing (touch goes to Slint overlay)
             let gesture_active = state.switcher_gesture_active || state.qs_gesture_active ||
                                  state.home_gesture_window.is_some() || state.close_gesture_window.is_some();
             let potential_gesture = state.gesture_recognizer.has_potential_edge_swipe();
+            let system_menu_showing = state.shell.system_menu_active;
             let forward_to_wayland = has_wayland_window && !touch_on_keyboard &&
-                !gesture_active && !potential_gesture &&
+                !gesture_active && !potential_gesture && !system_menu_showing &&
                 (shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active ||
                  shell_view == crate::shell::ShellView::LockScreen);
             if forward_to_wayland {
@@ -2015,8 +2056,15 @@ fn handle_input_event(
                         }
                     }
                     crate::shell::ShellView::App => {
+                        // Forward to Slint when system menu is showing
+                        if system_menu_showing {
+                            if let Some(pos) = last_pos {
+                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
+                                }
+                            }
+                        } else if touch_on_keyboard {
                         // Touch up on keyboard overlay
-                        if touch_on_keyboard {
                             // Check if this was a swipe-down to dismiss
                             if state.keyboard_swipe_active {
                                 info!("Keyboard swipe-down complete - dismissing keyboard");
