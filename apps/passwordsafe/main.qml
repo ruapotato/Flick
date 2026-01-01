@@ -10,183 +10,267 @@ Window {
     visibility: Window.FullScreen
     color: "#0a0a0f"
 
+    // Auto-lock when window loses focus
+    onActiveChanged: {
+        if (!active && isUnlocked) {
+            console.log("Window lost focus - locking vault")
+            lockVault()
+        }
+    }
+
     // State
-    property string currentView: "vaults"  // vaults, unlock, entries, detail, edit
+    property string currentView: "loading"  // loading, vaults, unlock, entries, detail, edit, create, open_existing
     property var vaults: []
     property var entries: []
     property var currentEntry: null
     property string currentVaultPath: ""
     property string currentVaultName: ""
+    property string masterPassword: ""
     property bool isUnlocked: false
     property string searchQuery: ""
     property bool isEditing: false
     property string errorMessage: ""
+    property string currentGroup: "/"
+    property var groupStack: []
 
-    // IPC
-    property string statusPath: "/tmp/flick_vault_status"
-    property int lastStatusMtime: 0
-    property string httpPort: "18943"
-    property string lastVaultPath: ""
-    property bool lastVaultExists: false
+    // Paths
+    property string stateDir: ""
+    property string cmdDir: "/tmp/flick_vault_cmds"
 
-    // Send command to daemon via HTTP POST
-    function sendCommand(cmd) {
+    Component.onCompleted: {
+        // Read state dir from temp file
         var xhr = new XMLHttpRequest()
-        xhr.open("POST", "http://127.0.0.1:" + httpPort + "/cmd", true)
-        xhr.setRequestHeader("Content-Type", "application/json")
-        xhr.send(JSON.stringify(cmd))
+        xhr.open("GET", "file:///tmp/flick_vault_state_dir", false)
+        try {
+            xhr.send()
+            stateDir = xhr.responseText.trim()
+        } catch(e) {
+            stateDir = "/home/droidian/.local/state/flick/passwordsafe"
+        }
+        loadVaultList()
     }
 
-    // Check for status updates
-    Timer {
-        interval: 100
-        running: true
-        repeat: true
-        onTriggered: {
-            var xhr = new XMLHttpRequest()
-            xhr.open("GET", "file://" + statusPath + "?" + Date.now(), false)
-            try {
-                xhr.send()
-                if (xhr.status === 200 || xhr.status === 0) {
-                    var status = JSON.parse(xhr.responseText)
-                    handleStatus(status)
+    // Load saved vault list
+    function loadVaultList() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + stateDir + "/vaults.json?" + Date.now(), false)
+        try {
+            xhr.send()
+            if (xhr.responseText) {
+                var data = JSON.parse(xhr.responseText)
+                vaults = data.map(function(path) {
+                    return {
+                        path: path,
+                        name: path.split("/").pop().replace(".kdbx", ""),
+                        exists: true  // Assume exists
+                    }
+                })
+            }
+        } catch(e) {
+            vaults = []
+        }
+
+        // Check for last vault
+        xhr.open("GET", "file://" + stateDir + "/last_vault.json?" + Date.now(), false)
+        try {
+            xhr.send()
+            if (xhr.responseText) {
+                var data = JSON.parse(xhr.responseText)
+                if (data.path) {
+                    currentVaultPath = data.path
+                    currentVaultName = data.path.split("/").pop().replace(".kdbx", "")
+                    currentView = "unlock"
+                    return
                 }
-            } catch (e) {
-                // Status file not ready yet
             }
-        }
+        } catch(e) {}
+
+        currentView = "vaults"
     }
 
-    function handleStatus(status) {
-        if (status.action === "ready") {
-            // Store last vault info for auto-open prompt
-            lastVaultPath = status.last_vault || ""
-            lastVaultExists = status.last_vault_exists || false
-            sendCommand({action: "list_vaults"})
-        }
-        else if (status.action === "list_vaults") {
-            vaults = status.vaults || []
-            isUnlocked = status.unlocked || false
-            lastVaultPath = status.last_vault || lastVaultPath
-            if (isUnlocked) {
-                currentVaultPath = status.current_path || ""
-                currentView = "entries"
-                sendCommand({action: "get_entries"})
-            } else if (lastVaultPath && lastVaultExists && currentView === "vaults") {
-                // Auto-navigate to unlock last vault
-                currentVaultPath = lastVaultPath
-                currentVaultName = lastVaultPath.split("/").pop().replace(".kdbx", "")
-                currentView = "unlock"
-            }
-        }
-        else if (status.action === "unlock") {
-            if (status.success) {
-                isUnlocked = true
-                entries = status.entries || []
-                currentView = "entries"
-                errorMessage = ""
-            } else {
-                errorMessage = status.error || "Failed to unlock"
-            }
-        }
-        else if (status.action === "lock") {
-            isUnlocked = false
-            entries = []
-            currentEntry = null
-            currentView = "vaults"
-            sendCommand({action: "list_vaults"})
-        }
-        else if (status.action === "create") {
-            if (status.success) {
-                isUnlocked = true
-                entries = []
-                currentView = "entries"
-                errorMessage = ""
-                sendCommand({action: "list_vaults"})
-            } else {
-                errorMessage = status.error || "Failed to create vault"
-            }
-        }
-        else if (status.action === "get_entries") {
-            entries = status.entries || []
-            isUnlocked = status.unlocked || false
-        }
-        else if (status.action === "get_entry") {
-            currentEntry = status.entry
-            if (currentEntry) {
-                currentView = "detail"
-            }
-        }
-        else if (status.action === "add_entry" || status.action === "update_entry") {
-            if (status.success) {
-                entries = status.entries || []
-                currentView = "entries"
-                isEditing = false
-                currentEntry = null
-            } else {
-                errorMessage = status.error || "Failed to save"
-            }
-        }
-        else if (status.action === "delete_entry") {
-            if (status.success) {
-                entries = status.entries || []
-                currentView = "entries"
-                currentEntry = null
-            }
-        }
-        else if (status.action === "search") {
-            entries = status.results || []
-        }
-        else if (status.action === "copy_password" || status.action === "copy_username") {
-            if (status.success) {
-                copiedLabel.show()
-            }
-        }
+    // Save vault list
+    function saveVaultList() {
+        var paths = vaults.map(function(v) { return v.path })
+        runHelper("writefile", [stateDir + "/vaults.json", JSON.stringify(paths)], function(){})
     }
 
-    // Header component
+    // Save last vault
+    function saveLastVault(path) {
+        runHelper("writefile", [stateDir + "/last_vault.json", '{"path":"' + path + '"}'], function(){})
+    }
+
+    // Add vault to list
+    function addVault(path) {
+        for (var i = 0; i < vaults.length; i++) {
+            if (vaults[i].path === path) return
+        }
+        var newVaults = vaults.slice()
+        newVaults.push({
+            path: path,
+            name: path.split("/").pop().replace(".kdbx", ""),
+            exists: true
+        })
+        vaults = newVaults
+        saveVaultList()
+    }
+
+    // Remove vault from list
+    function removeVault(path) {
+        vaults = vaults.filter(function(v) { return v.path !== path })
+        saveVaultList()
+    }
+
+    // Lock vault
+    function lockVault() {
+        isUnlocked = false
+        masterPassword = ""
+        entries = []
+        currentEntry = null
+        currentGroup = "/"
+        groupStack = []
+        currentView = "vaults"
+        loadVaultList()
+    }
+
+    // Run helper command via VAULTCMD protocol
+    function runHelper(action, args, callback) {
+        var cmdId = Date.now() + "_" + Math.floor(Math.random() * 10000)
+        var resultFile = cmdDir + "/result_" + cmdId
+
+        // Build command string
+        var cmdContent = action
+        for (var i = 0; i < args.length; i++) {
+            cmdContent += "|" + String(args[i])
+        }
+
+        console.log("VAULTCMD:" + cmdId + ":" + cmdContent)
+
+        // Poll for result
+        var poller = Qt.createQmlObject('
+            import QtQuick 2.15
+            Timer {
+                property string resultFile: ""
+                property var callback: null
+                property int attempts: 0
+                interval: 50
+                repeat: true
+                running: true
+
+                onTriggered: {
+                    attempts++
+                    if (attempts > 200) {
+                        running = false
+                        if (callback) callback(false, "Timeout")
+                        destroy()
+                        return
+                    }
+
+                    var xhr = new XMLHttpRequest()
+                    xhr.open("GET", "file://" + resultFile + "?" + Date.now(), false)
+                    try {
+                        xhr.send()
+                        if (xhr.responseText && xhr.responseText.length > 0) {
+                            running = false
+                            var result = xhr.responseText.trim()
+                            var success = result.indexOf("ERROR:") !== 0
+                            if (callback) callback(success, result)
+                            destroy()
+                        }
+                    } catch(e) {}
+                }
+            }
+        ', root, "poller" + cmdId)
+
+        poller.resultFile = resultFile
+        poller.callback = callback
+    }
+
+    // Unlock vault
+    function doUnlock() {
+        if (unlockPassword.text.length === 0) return
+        unlockBusy.running = true
+        errorMessage = ""
+
+        runHelper("unlock", [currentVaultPath, unlockPassword.text], function(success, result) {
+            unlockBusy.running = false
+            if (success) {
+                masterPassword = unlockPassword.text
+                unlockPassword.text = ""
+                isUnlocked = true
+                addVault(currentVaultPath)
+                saveLastVault(currentVaultPath)
+                currentGroup = "/"
+                loadEntries()
+                currentView = "entries"
+            } else {
+                errorMessage = result.replace("ERROR:", "")
+            }
+        })
+    }
+
+    // Generate random password
+    function generatePassword(length) {
+        if (!length) length = 20
+        var chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
+        var password = ""
+        for (var i = 0; i < length; i++) {
+            password += chars.charAt(Math.floor(Math.random() * chars.length))
+        }
+        return password
+    }
+
+    // Header
     Rectangle {
         id: header
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 68
+        height: 88
         color: "#1a1a2e"
+        z: 10
 
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 16
-            anchors.rightMargin: 16
+            anchors.rightMargin: 88
             spacing: 12
 
             // Back button
             Rectangle {
-                width: 52
-                height: 52
-                radius: 26
+                width: 64
+                height: 64
+                radius: 32
                 color: backMouse.pressed ? "#444" : "#2a2a4e"
-                visible: currentView !== "vaults"
+                visible: currentView !== "vaults" && currentView !== "loading"
 
                 Text {
                     anchors.centerIn: parent
                     text: "<"
                     color: "white"
-                    font.pixelSize: 28
+                    font.pixelSize: 32
                 }
 
                 MouseArea {
                     id: backMouse
                     anchors.fill: parent
                     onClicked: {
+                        errorMessage = ""
                         if (currentView === "unlock" || currentView === "create" || currentView === "open_existing") {
                             currentView = "vaults"
-                            errorMessage = ""
                         } else if (currentView === "detail" || currentView === "edit") {
                             currentView = "entries"
                             currentEntry = null
                             isEditing = false
                         } else if (currentView === "entries") {
-                            sendCommand({action: "lock"})
+                            if (currentGroup !== "/" && groupStack.length > 0) {
+                                currentGroup = groupStack.pop()
+                                loadEntries()
+                            } else if (currentGroup !== "/") {
+                                currentGroup = "/"
+                                loadEntries()
+                            } else {
+                                lockVault()
+                            }
                         }
                     }
                 }
@@ -196,11 +280,15 @@ Window {
             Text {
                 Layout.fillWidth: true
                 text: {
+                    if (currentView === "loading") return "Password Safe"
                     if (currentView === "vaults") return "Password Safe"
                     if (currentView === "unlock") return "Unlock Vault"
                     if (currentView === "create") return "New Vault"
                     if (currentView === "open_existing") return "Open Vault"
-                    if (currentView === "entries") return currentVaultName || "Entries"
+                    if (currentView === "entries") {
+                        if (currentGroup !== "/") return currentGroup.split("/").pop()
+                        return currentVaultName || "Entries"
+                    }
                     if (currentView === "detail") return currentEntry ? currentEntry.title : "Entry"
                     if (currentView === "edit") return isEditing ? "Edit Entry" : "New Entry"
                     return "Password Safe"
@@ -211,74 +299,59 @@ Window {
                 elide: Text.ElideRight
             }
 
-            // Switch vault button (visible on entries view)
+            // Lock button
             Rectangle {
-                width: 52
-                height: 52
-                radius: 26
-                color: switchMouse.pressed ? "#444" : "#2a2a4e"
-                visible: currentView === "entries"
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "\u{1F4C1}"  // Folder emoji
-                    font.pixelSize: 26
-                }
-
-                MouseArea {
-                    id: switchMouse
-                    anchors.fill: parent
-                    onClicked: {
-                        sendCommand({action: "lock"})
-                    }
-                }
-            }
-
-            // Lock button (visible when unlocked)
-            Rectangle {
-                width: 52
-                height: 52
-                radius: 26
+                width: 64
+                height: 64
+                radius: 32
                 color: lockMouse.pressed ? "#444" : "#2a2a4e"
-                visible: isUnlocked && currentView !== "entries"
+                visible: isUnlocked && currentView === "entries"
 
                 Text {
                     anchors.centerIn: parent
-                    text: "\u{1F512}"  // Lock emoji
-                    font.pixelSize: 26
+                    text: "\u{1F513}"
+                    font.pixelSize: 30
                 }
 
                 MouseArea {
                     id: lockMouse
                     anchors.fill: parent
-                    onClicked: sendCommand({action: "lock"})
+                    onClicked: lockVault()
                 }
             }
+        }
 
-            // Add button (visible on entries view)
+        // Add button
+        Item {
+            width: 80
+            height: 88
+            anchors.right: parent.right
+            anchors.top: parent.top
+            visible: currentView === "entries"
+
             Rectangle {
-                width: 52
-                height: 52
-                radius: 26
+                width: 64
+                height: 64
+                radius: 32
+                anchors.centerIn: parent
                 color: addMouse.pressed ? Shared.Theme.accentPressed : Shared.Theme.accentColor
-                visible: currentView === "entries"
 
                 Text {
                     anchors.centerIn: parent
                     text: "+"
                     color: "white"
-                    font.pixelSize: 28
+                    font.pixelSize: 32
                     font.bold: true
                 }
+            }
 
-                MouseArea {
-                    id: addMouse
-                    anchors.fill: parent
-                    onClicked: {
-                        currentEntry = null
-                        isEditing = false
-                        currentView = "edit"
-                    }
+            MouseArea {
+                id: addMouse
+                anchors.fill: parent
+                onClicked: {
+                    currentEntry = null
+                    isEditing = false
+                    currentView = "edit"
                 }
             }
         }
@@ -291,6 +364,24 @@ Window {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
 
+        // Loading view
+        Column {
+            anchors.centerIn: parent
+            spacing: 16
+            visible: currentView === "loading"
+
+            BusyIndicator {
+                anchors.horizontalCenter: parent.horizontalCenter
+                running: currentView === "loading"
+            }
+
+            Text {
+                text: "Loading..."
+                color: "#888"
+                font.pixelSize: 16
+            }
+        }
+
         // Vault list view
         ListView {
             id: vaultList
@@ -299,7 +390,6 @@ Window {
             visible: currentView === "vaults"
             spacing: 8
             clip: true
-
             model: vaults
 
             header: Column {
@@ -315,18 +405,18 @@ Window {
 
             delegate: Rectangle {
                 width: vaultList.width
-                height: 64
+                height: 80
                 radius: 12
                 color: vaultMouse.pressed ? "#2a2a4e" : "#1a1a2e"
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 12
+                    anchors.margins: 16
                     spacing: 12
 
                     Text {
                         text: "\u{1F512}"
-                        font.pixelSize: 24
+                        font.pixelSize: 28
                     }
 
                     Column {
@@ -336,23 +426,16 @@ Window {
                         Text {
                             text: modelData.name
                             color: "white"
-                            font.pixelSize: 16
+                            font.pixelSize: 18
                             font.bold: true
                         }
                         Text {
                             text: modelData.path
                             color: "#888"
-                            font.pixelSize: 12
+                            font.pixelSize: 14
                             elide: Text.ElideMiddle
                             width: parent.width
                         }
-                    }
-
-                    Rectangle {
-                        width: 8
-                        height: 8
-                        radius: 4
-                        color: modelData.exists ? "#4caf50" : "#f44336"
                     }
                 }
 
@@ -360,11 +443,10 @@ Window {
                     id: vaultMouse
                     anchors.fill: parent
                     onClicked: {
-                        if (modelData.exists) {
-                            currentVaultPath = modelData.path
-                            currentVaultName = modelData.name
-                            currentView = "unlock"
-                        }
+                        currentVaultPath = modelData.path
+                        currentVaultName = modelData.name
+                        currentView = "unlock"
+                        errorMessage = ""
                     }
                     onPressAndHold: {
                         removeConfirm.vaultPath = modelData.path
@@ -396,9 +478,7 @@ Window {
                     MouseArea {
                         id: createMouse
                         anchors.fill: parent
-                        onClicked: {
-                            currentView = "create"
-                        }
+                        onClicked: currentView = "create"
                     }
                 }
 
@@ -406,7 +486,7 @@ Window {
                     width: parent.width
                     height: 56
                     radius: 12
-                    color: openExistingMouse.pressed ? "#2a2a4e" : "#1a1a2e"
+                    color: openMouse.pressed ? "#2a2a4e" : "#1a1a2e"
                     border.color: "#333"
                     border.width: 1
 
@@ -418,11 +498,9 @@ Window {
                     }
 
                     MouseArea {
-                        id: openExistingMouse
+                        id: openMouse
                         anchors.fill: parent
-                        onClicked: {
-                            currentView = "open_existing"
-                        }
+                        onClicked: currentView = "open_existing"
                     }
                 }
 
@@ -439,7 +517,6 @@ Window {
         // Unlock view
         Column {
             anchors.centerIn: parent
-            anchors.margins: 32
             width: parent.width - 64
             spacing: 24
             visible: currentView === "unlock"
@@ -476,15 +553,7 @@ Window {
                     border.width: 2
                 }
 
-                Keys.onReturnPressed: {
-                    if (unlockPassword.text.length > 0) {
-                        sendCommand({
-                            action: "unlock",
-                            path: currentVaultPath,
-                            password: unlockPassword.text
-                        })
-                    }
-                }
+                Keys.onReturnPressed: root.doUnlock()
             }
 
             Text {
@@ -500,7 +569,7 @@ Window {
                 width: parent.width
                 height: 56
                 radius: 12
-                color: unlockBtn.pressed ? Shared.Theme.accentPressed : Shared.Theme.accentColor
+                color: unlockBusy.running ? "#444" : (unlockBtn.pressed ? Shared.Theme.accentPressed : Shared.Theme.accentColor)
 
                 Text {
                     anchors.centerIn: parent
@@ -508,20 +577,22 @@ Window {
                     color: "white"
                     font.pixelSize: 18
                     font.bold: true
+                    visible: !unlockBusy.running
+                }
+
+                BusyIndicator {
+                    id: unlockBusy
+                    anchors.centerIn: parent
+                    running: false
+                    width: 32
+                    height: 32
                 }
 
                 MouseArea {
                     id: unlockBtn
                     anchors.fill: parent
-                    onClicked: {
-                        if (unlockPassword.text.length > 0) {
-                            sendCommand({
-                                action: "unlock",
-                                path: currentVaultPath,
-                                password: unlockPassword.text
-                            })
-                        }
-                    }
+                    enabled: !unlockBusy.running
+                    onClicked: root.doUnlock()
                 }
             }
         }
@@ -529,7 +600,6 @@ Window {
         // Create vault view
         Column {
             anchors.centerIn: parent
-            anchors.margins: 32
             width: parent.width - 64
             spacing: 24
             visible: currentView === "create"
@@ -606,7 +676,7 @@ Window {
                 width: parent.width
                 height: 56
                 radius: 12
-                color: createBtn.pressed ? Shared.Theme.accentPressed : Shared.Theme.accentColor
+                color: createBusy.running ? "#444" : (createBtn.pressed ? Shared.Theme.accentPressed : Shared.Theme.accentColor)
 
                 Text {
                     anchors.centerIn: parent
@@ -614,11 +684,21 @@ Window {
                     color: "white"
                     font.pixelSize: 18
                     font.bold: true
+                    visible: !createBusy.running
+                }
+
+                BusyIndicator {
+                    id: createBusy
+                    anchors.centerIn: parent
+                    running: false
+                    width: 32
+                    height: 32
                 }
 
                 MouseArea {
                     id: createBtn
                     anchors.fill: parent
+                    enabled: !createBusy.running
                     onClicked: {
                         if (newVaultName.text.length === 0) {
                             errorMessage = "Enter a vault name"
@@ -632,17 +712,30 @@ Window {
                             errorMessage = "Passwords don't match"
                             return
                         }
-                        var path = Qt.resolvedUrl("").toString().replace("file://", "")
-                            .replace(/\/apps\/passwordsafe\/?$/, "")
-                        // Store in Documents
+
+                        createBusy.running = true
+                        errorMessage = ""
                         var vaultPath = "/home/droidian/Documents/" + newVaultName.text + ".kdbx"
-                        sendCommand({
-                            action: "create",
-                            path: vaultPath,
-                            password: newVaultPassword.text
+
+                        runHelper("create", [vaultPath, newVaultPassword.text], function(success, result) {
+                            createBusy.running = false
+                            if (success) {
+                                currentVaultPath = vaultPath
+                                currentVaultName = newVaultName.text
+                                masterPassword = newVaultPassword.text
+                                isUnlocked = true
+                                addVault(vaultPath)
+                                saveLastVault(vaultPath)
+                                entries = []
+                                currentGroup = "/"
+                                currentView = "entries"
+                                newVaultName.text = ""
+                                newVaultPassword.text = ""
+                                confirmPassword.text = ""
+                            } else {
+                                errorMessage = result.replace("ERROR:", "")
+                            }
                         })
-                        currentVaultPath = vaultPath
-                        currentVaultName = newVaultName.text
                     }
                 }
             }
@@ -651,7 +744,6 @@ Window {
         // Open existing vault view
         Column {
             anchors.centerIn: parent
-            anchors.margins: 32
             width: parent.width - 64
             spacing: 24
             visible: currentView === "open_existing"
@@ -742,6 +834,27 @@ Window {
             spacing: 12
             visible: currentView === "entries"
 
+            // Folder path indicator
+            Rectangle {
+                width: parent.width
+                height: currentGroup !== "/" ? 44 : 0
+                visible: currentGroup !== "/"
+                color: "transparent"
+
+                Row {
+                    anchors.fill: parent
+                    spacing: 8
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "\u{1F4C1} " + currentGroup
+                        color: "white"
+                        font.pixelSize: 16
+                        font.bold: true
+                    }
+                }
+            }
+
             // Search field
             TextField {
                 id: searchField
@@ -762,9 +875,9 @@ Window {
 
                 onTextChanged: {
                     if (text.length > 0) {
-                        sendCommand({action: "search", query: text})
+                        searchEntries(text)
                     } else {
-                        sendCommand({action: "get_entries"})
+                        loadEntries()
                     }
                 }
             }
@@ -778,16 +891,16 @@ Window {
 
             // Entries list
             ListView {
-                id: entryList
+                id: entriesList
                 width: parent.width
-                height: parent.height - searchField.height - 40
+                height: parent.height - 120 - (currentGroup !== "/" ? 56 : 0)
                 spacing: 8
                 clip: true
                 model: entries
 
                 delegate: Rectangle {
-                    width: entryList.width
-                    height: 72
+                    width: entriesList.width
+                    height: 80
                     radius: 12
                     color: entryMouse.pressed ? "#2a2a4e" : "#1a1a2e"
 
@@ -797,16 +910,16 @@ Window {
                         spacing: 12
 
                         Rectangle {
-                            width: 48
-                            height: 48
-                            radius: 24
-                            color: Shared.Theme.accentColor
+                            width: 52
+                            height: 52
+                            radius: 26
+                            color: modelData.type === "group" ? "#ffa500" : Shared.Theme.accentColor
 
                             Text {
                                 anchors.centerIn: parent
-                                text: modelData.title.charAt(0).toUpperCase()
+                                text: modelData.type === "group" ? "\u{1F4C1}" : (modelData.title ? modelData.title.charAt(0).toUpperCase() : "?")
                                 color: "white"
-                                font.pixelSize: 20
+                                font.pixelSize: modelData.type === "group" ? 24 : 22
                                 font.bold: true
                             }
                         }
@@ -816,42 +929,42 @@ Window {
                             spacing: 4
 
                             Text {
-                                text: modelData.title
+                                text: modelData.title || modelData.name || ""
                                 color: "white"
-                                font.pixelSize: 16
+                                font.pixelSize: 18
                                 font.bold: true
                                 elide: Text.ElideRight
                                 width: parent.width
                             }
                             Text {
-                                text: modelData.username || modelData.url || ""
+                                text: modelData.type === "group" ? "Folder" : (modelData.username || "")
                                 color: "#888"
-                                font.pixelSize: 14
+                                font.pixelSize: 15
                                 elide: Text.ElideRight
                                 width: parent.width
                             }
                         }
 
-                        // Copy password button
+                        // Copy button (for entries only)
                         Rectangle {
-                            width: 44
-                            height: 44
-                            radius: 22
+                            width: 56
+                            height: 56
+                            radius: 28
                             color: copyMouse.pressed ? "#333" : "transparent"
+                            visible: modelData.type !== "group"
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "\u{1F4CB}"  // Clipboard
-                                font.pixelSize: 20
+                                text: "\u{1F4CB}"
+                                font.pixelSize: 24
                             }
 
                             MouseArea {
                                 id: copyMouse
                                 anchors.fill: parent
                                 onClicked: {
-                                    sendCommand({
-                                        action: "copy_password",
-                                        uuid: modelData.uuid
+                                    runHelper("copy", [currentVaultPath, masterPassword, modelData.title, "password"], function(success) {
+                                        if (success) copiedLabel.show()
                                     })
                                 }
                             }
@@ -861,24 +974,32 @@ Window {
                     MouseArea {
                         id: entryMouse
                         anchors.fill: parent
-                        anchors.rightMargin: 56
+                        anchors.rightMargin: modelData.type !== "group" ? 68 : 0
                         onClicked: {
-                            sendCommand({
-                                action: "get_entry",
-                                uuid: modelData.uuid
-                            })
+                            if (modelData.type === "group") {
+                                groupStack.push(currentGroup)
+                                currentGroup = currentGroup === "/" ? "/" + modelData.name : currentGroup + "/" + modelData.name
+                                loadEntries()
+                            } else {
+                                showEntry(modelData.title)
+                            }
                         }
                     }
                 }
 
-                // Empty state
                 Text {
                     anchors.centerIn: parent
-                    text: entries.length === 0 ? "No entries yet\nTap + to add one" : ""
+                    text: entriesBusy.running ? "" : "No entries yet\nTap + to add one"
                     color: "#666"
                     font.pixelSize: 16
                     horizontalAlignment: Text.AlignHCenter
-                    visible: entries.length === 0
+                    visible: entries.length === 0 && !entriesBusy.running
+                }
+
+                BusyIndicator {
+                    id: entriesBusy
+                    anchors.centerIn: parent
+                    running: false
                 }
             }
         }
@@ -906,71 +1027,158 @@ Window {
                     wrapMode: Text.Wrap
                 }
 
-                // Fields
-                Repeater {
-                    model: currentEntry ? [
-                        {label: "Username", value: currentEntry.username, action: "copy_username"},
-                        {label: "Password", value: "********", action: "copy_password", masked: true},
-                        {label: "URL", value: currentEntry.url, action: null},
-                        {label: "Notes", value: currentEntry.notes, action: null}
-                    ] : []
+                // Username field
+                Rectangle {
+                    width: parent.width
+                    height: currentEntry && currentEntry.username ? 72 : 0
+                    radius: 12
+                    color: "#1a1a2e"
+                    visible: currentEntry && currentEntry.username
 
-                    delegate: Rectangle {
-                        width: parent.width
-                        height: modelData.value ? (modelData.label === "Notes" ? Math.max(80, notesText.contentHeight + 40) : 72) : 0
-                        radius: 12
-                        color: "#1a1a2e"
-                        visible: modelData.value && modelData.value.length > 0
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 4
 
-                        Column {
+                        Text { text: "Username"; color: "#888"; font.pixelSize: 12 }
+                        Text {
+                            text: currentEntry ? currentEntry.username : ""
+                            color: "white"
+                            font.pixelSize: 16
+                            width: parent.width - 60
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.rightMargin: 12
+                        width: 56; height: 56; radius: 28
+                        color: copyUserMouse.pressed ? "#333" : "transparent"
+
+                        Text { anchors.centerIn: parent; text: "\u{1F4CB}"; font.pixelSize: 24 }
+
+                        MouseArea {
+                            id: copyUserMouse
                             anchors.fill: parent
-                            anchors.margins: 12
-                            spacing: 4
-
-                            Text {
-                                text: modelData.label
-                                color: "#888"
-                                font.pixelSize: 12
+                            onClicked: {
+                                runHelper("copy", [currentVaultPath, masterPassword, currentEntry.title, "username"], function(success) {
+                                    if (success) copiedLabel.show()
+                                })
                             }
+                        }
+                    }
+                }
 
-                            Text {
-                                id: notesText
-                                text: modelData.value
-                                color: "white"
-                                font.pixelSize: 16
-                                width: parent.width - 60
-                                wrapMode: modelData.label === "Notes" ? Text.Wrap : Text.NoWrap
-                                elide: modelData.label === "Notes" ? Text.ElideNone : Text.ElideRight
+                // Password field
+                Rectangle {
+                    width: parent.width
+                    height: 72
+                    radius: 12
+                    color: "#1a1a2e"
+
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 4
+
+                        Text { text: "Password"; color: "#888"; font.pixelSize: 12 }
+                        Text {
+                            id: passwordText
+                            property bool revealed: false
+                            text: revealed ? (currentEntry ? currentEntry.password : "") : "********"
+                            color: "white"
+                            font.pixelSize: 16
+                            font.family: revealed ? "monospace" : ""
+                            width: parent.width - 120
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    Row {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.rightMargin: 12
+                        spacing: 4
+
+                        Rectangle {
+                            width: 48; height: 48; radius: 24
+                            color: revealMouse.pressed ? "#333" : "transparent"
+
+                            Text { anchors.centerIn: parent; text: passwordText.revealed ? "\u{1F648}" : "\u{1F441}"; font.pixelSize: 20 }
+
+                            MouseArea {
+                                id: revealMouse
+                                anchors.fill: parent
+                                onClicked: passwordText.revealed = !passwordText.revealed
                             }
                         }
 
-                        // Copy button for username/password
                         Rectangle {
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.rightMargin: 12
-                            width: 44
-                            height: 44
-                            radius: 22
-                            color: fieldCopyMouse.pressed ? "#333" : "transparent"
-                            visible: modelData.action !== null
+                            width: 48; height: 48; radius: 24
+                            color: copyPassMouse.pressed ? "#333" : "transparent"
 
-                            Text {
-                                anchors.centerIn: parent
-                                text: "\u{1F4CB}"
-                                font.pixelSize: 18
-                            }
+                            Text { anchors.centerIn: parent; text: "\u{1F4CB}"; font.pixelSize: 24 }
 
                             MouseArea {
-                                id: fieldCopyMouse
+                                id: copyPassMouse
                                 anchors.fill: parent
                                 onClicked: {
-                                    sendCommand({
-                                        action: modelData.action,
-                                        uuid: currentEntry.uuid
+                                    runHelper("copy", [currentVaultPath, masterPassword, currentEntry.title, "password"], function(success) {
+                                        if (success) copiedLabel.show()
                                     })
                                 }
                             }
+                        }
+                    }
+                }
+
+                // URL field
+                Rectangle {
+                    width: parent.width
+                    height: currentEntry && currentEntry.url ? 72 : 0
+                    radius: 12
+                    color: "#1a1a2e"
+                    visible: currentEntry && currentEntry.url
+
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 4
+
+                        Text { text: "URL"; color: "#888"; font.pixelSize: 12 }
+                        Text {
+                            text: currentEntry ? currentEntry.url : ""
+                            color: Shared.Theme.accentColor
+                            font.pixelSize: 14
+                            width: parent.width
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
+                // Notes field
+                Rectangle {
+                    width: parent.width
+                    height: currentEntry && currentEntry.notes ? Math.max(80, notesText.contentHeight + 40) : 0
+                    radius: 12
+                    color: "#1a1a2e"
+                    visible: currentEntry && currentEntry.notes
+
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 4
+
+                        Text { text: "Notes"; color: "#888"; font.pixelSize: 12 }
+                        Text {
+                            id: notesText
+                            text: currentEntry ? currentEntry.notes : ""
+                            color: "white"
+                            font.pixelSize: 14
+                            width: parent.width
+                            wrapMode: Text.Wrap
                         }
                     }
                 }
@@ -1022,9 +1230,7 @@ Window {
                         MouseArea {
                             id: deleteMouse
                             anchors.fill: parent
-                            onClicked: {
-                                deleteConfirm.visible = true
-                            }
+                            onClicked: deleteConfirm.visible = true
                         }
                     }
                 }
@@ -1044,17 +1250,12 @@ Window {
                 width: parent.width
                 spacing: 16
 
-                // Title field
+                // Title
                 Column {
                     width: parent.width
                     spacing: 4
 
-                    Text {
-                        text: "Title"
-                        color: "#888"
-                        font.pixelSize: 12
-                    }
-
+                    Text { text: "Title"; color: "#888"; font.pixelSize: 12 }
                     TextField {
                         id: editTitle
                         width: parent.width
@@ -1073,17 +1274,12 @@ Window {
                     }
                 }
 
-                // Username field
+                // Username
                 Column {
                     width: parent.width
                     spacing: 4
 
-                    Text {
-                        text: "Username"
-                        color: "#888"
-                        font.pixelSize: 12
-                    }
-
+                    Text { text: "Username"; color: "#888"; font.pixelSize: 12 }
                     TextField {
                         id: editUsername
                         width: parent.width
@@ -1102,17 +1298,12 @@ Window {
                     }
                 }
 
-                // Password field
+                // Password
                 Column {
                     width: parent.width
                     spacing: 4
 
-                    Text {
-                        text: "Password"
-                        color: "#888"
-                        font.pixelSize: 12
-                    }
-
+                    Text { text: "Password"; color: "#888"; font.pixelSize: 12 }
                     RowLayout {
                         width: parent.width
                         spacing: 8
@@ -1123,7 +1314,7 @@ Window {
                             height: 56
                             text: isEditing && currentEntry ? currentEntry.password : ""
                             placeholderText: "Password"
-                            echoMode: showPassword.checked ? TextInput.Normal : TextInput.Password
+                            echoMode: showEditPassword.checked ? TextInput.Normal : TextInput.Password
                             color: "white"
                             font.pixelSize: 16
 
@@ -1136,38 +1327,43 @@ Window {
                         }
 
                         Rectangle {
-                            width: 56
-                            height: 56
-                            radius: 12
-                            color: showPassword.checked ? Shared.Theme.accentColor : "#1a1a2e"
+                            width: 56; height: 56; radius: 12
+                            color: showEditPassword.checked ? Shared.Theme.accentColor : "#1a1a2e"
 
-                            Text {
-                                anchors.centerIn: parent
-                                text: "\u{1F441}"  // Eye
-                                font.pixelSize: 20
-                            }
+                            Text { anchors.centerIn: parent; text: "\u{1F441}"; font.pixelSize: 20 }
 
                             MouseArea {
-                                id: showPassword
-                                anchors.fill: parent
+                                id: showEditPassword
                                 property bool checked: false
+                                anchors.fill: parent
                                 onClicked: checked = !checked
+                            }
+                        }
+
+                        Rectangle {
+                            width: 56; height: 56; radius: 12
+                            color: generateMouse.pressed ? Shared.Theme.accentPressed : Shared.Theme.accentColor
+
+                            Text { anchors.centerIn: parent; text: "\u{1F3B2}"; font.pixelSize: 20 }
+
+                            MouseArea {
+                                id: generateMouse
+                                anchors.fill: parent
+                                onClicked: {
+                                    editPassword.text = generatePassword(20)
+                                    showEditPassword.checked = true
+                                }
                             }
                         }
                     }
                 }
 
-                // URL field
+                // URL
                 Column {
                     width: parent.width
                     spacing: 4
 
-                    Text {
-                        text: "URL"
-                        color: "#888"
-                        font.pixelSize: 12
-                    }
-
+                    Text { text: "URL"; color: "#888"; font.pixelSize: 12 }
                     TextField {
                         id: editUrl
                         width: parent.width
@@ -1187,17 +1383,12 @@ Window {
                     }
                 }
 
-                // Notes field
+                // Notes
                 Column {
                     width: parent.width
                     spacing: 4
 
-                    Text {
-                        text: "Notes"
-                        color: "#888"
-                        font.pixelSize: 12
-                    }
-
+                    Text { text: "Notes"; color: "#888"; font.pixelSize: 12 }
                     Rectangle {
                         width: parent.width
                         height: 120
@@ -1220,7 +1411,6 @@ Window {
                     }
                 }
 
-                // Error message
                 Text {
                     text: errorMessage
                     color: "#f44336"
@@ -1230,12 +1420,11 @@ Window {
                     width: parent.width
                 }
 
-                // Save button
                 Rectangle {
                     width: parent.width
                     height: 56
                     radius: 12
-                    color: saveMouse.pressed ? Shared.Theme.accentPressed : Shared.Theme.accentColor
+                    color: saveBusy.running ? "#444" : (saveMouse.pressed ? Shared.Theme.accentPressed : Shared.Theme.accentColor)
 
                     Text {
                         anchors.centerIn: parent
@@ -1243,41 +1432,88 @@ Window {
                         color: "white"
                         font.pixelSize: 18
                         font.bold: true
+                        visible: !saveBusy.running
+                    }
+
+                    BusyIndicator {
+                        id: saveBusy
+                        anchors.centerIn: parent
+                        running: false
+                        width: 32
+                        height: 32
                     }
 
                     MouseArea {
                         id: saveMouse
                         anchors.fill: parent
+                        enabled: !saveBusy.running
                         onClicked: {
                             if (editTitle.text.length === 0) {
                                 errorMessage = "Title is required"
                                 return
                             }
                             errorMessage = ""
+                            saveBusy.running = true
 
-                            var cmd = {
-                                action: isEditing ? "update_entry" : "add_entry",
-                                title: editTitle.text,
-                                username: editUsername.text,
-                                password: editPassword.text,
-                                url: editUrl.text,
-                                notes: editNotes.text
-                            }
-                            if (isEditing && currentEntry) {
-                                cmd.uuid = currentEntry.uuid
-                            }
-                            sendCommand(cmd)
+                            var action = isEditing ? "edit" : "add"
+                            var args = [currentVaultPath, masterPassword, editTitle.text, editUsername.text, editPassword.text, editUrl.text]
+
+                            runHelper(action, args, function(success, result) {
+                                saveBusy.running = false
+                                if (success) {
+                                    currentView = "entries"
+                                    isEditing = false
+                                    currentEntry = null
+                                    loadEntries()
+                                } else {
+                                    errorMessage = result.replace("ERROR:", "")
+                                }
+                            })
                         }
                     }
                 }
 
-                // Spacer for keyboard
-                Item {
-                    width: parent.width
-                    height: 200
-                }
+                Item { width: parent.width; height: 200 }
             }
         }
+    }
+
+    // Helper functions
+    function loadEntries() {
+        entriesBusy.running = true
+        runHelper("list", [currentVaultPath, masterPassword, currentGroup], function(success, result) {
+            entriesBusy.running = false
+            if (success) {
+                try {
+                    entries = JSON.parse(result)
+                } catch(e) {
+                    entries = []
+                }
+            }
+        })
+    }
+
+    function searchEntries(query) {
+        entriesBusy.running = true
+        runHelper("search", [currentVaultPath, masterPassword, query], function(success, result) {
+            entriesBusy.running = false
+            if (success) {
+                try {
+                    entries = JSON.parse(result)
+                } catch(e) {}
+            }
+        })
+    }
+
+    function showEntry(title) {
+        runHelper("show", [currentVaultPath, masterPassword, title], function(success, result) {
+            if (success) {
+                try {
+                    currentEntry = JSON.parse(result)
+                    currentView = "detail"
+                } catch(e) {}
+            }
+        })
     }
 
     // Copied notification
@@ -1312,22 +1548,17 @@ Window {
             onTriggered: copiedLabel.opacity = 0
         }
 
-        Behavior on opacity {
-            NumberAnimation { duration: 200 }
-        }
+        Behavior on opacity { NumberAnimation { duration: 200 } }
     }
 
-    // Delete confirmation dialog
+    // Delete confirmation
     Rectangle {
         id: deleteConfirm
         anchors.fill: parent
         color: "#000000cc"
         visible: false
 
-        MouseArea {
-            anchors.fill: parent
-            onClicked: deleteConfirm.visible = false
-        }
+        MouseArea { anchors.fill: parent; onClicked: deleteConfirm.visible = false }
 
         Rectangle {
             anchors.centerIn: parent
@@ -1353,47 +1584,29 @@ Window {
                     spacing: 12
 
                     Rectangle {
-                        width: 120
-                        height: 48
-                        radius: 24
-                        color: cancelDeleteMouse.pressed ? "#333" : "#2a2a4e"
+                        width: 120; height: 48; radius: 24
+                        color: cancelDelMouse.pressed ? "#333" : "#2a2a4e"
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Cancel"
-                            color: "white"
-                            font.pixelSize: 16
-                        }
-
-                        MouseArea {
-                            id: cancelDeleteMouse
-                            anchors.fill: parent
-                            onClicked: deleteConfirm.visible = false
-                        }
+                        Text { anchors.centerIn: parent; text: "Cancel"; color: "white"; font.pixelSize: 16 }
+                        MouseArea { id: cancelDelMouse; anchors.fill: parent; onClicked: deleteConfirm.visible = false }
                     }
 
                     Rectangle {
-                        width: 120
-                        height: 48
-                        radius: 24
-                        color: confirmDeleteMouse.pressed ? "#c62828" : "#f44336"
+                        width: 120; height: 48; radius: 24
+                        color: confirmDelMouse.pressed ? "#c62828" : "#f44336"
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Delete"
-                            color: "white"
-                            font.pixelSize: 16
-                            font.bold: true
-                        }
-
+                        Text { anchors.centerIn: parent; text: "Delete"; color: "white"; font.pixelSize: 16; font.bold: true }
                         MouseArea {
-                            id: confirmDeleteMouse
+                            id: confirmDelMouse
                             anchors.fill: parent
                             onClicked: {
                                 if (currentEntry) {
-                                    sendCommand({
-                                        action: "delete_entry",
-                                        uuid: currentEntry.uuid
+                                    runHelper("delete", [currentVaultPath, masterPassword, currentEntry.title], function(success) {
+                                        if (success) {
+                                            currentView = "entries"
+                                            currentEntry = null
+                                            loadEntries()
+                                        }
                                     })
                                 }
                                 deleteConfirm.visible = false
@@ -1405,7 +1618,7 @@ Window {
         }
     }
 
-    // Remove vault confirmation dialog
+    // Remove vault confirmation
     Rectangle {
         id: removeConfirm
         anchors.fill: parent
@@ -1415,10 +1628,7 @@ Window {
         property string vaultPath: ""
         property string vaultName: ""
 
-        MouseArea {
-            anchors.fill: parent
-            onClicked: removeConfirm.visible = false
-        }
+        MouseArea { anchors.fill: parent; onClicked: removeConfirm.visible = false }
 
         Rectangle {
             anchors.centerIn: parent
@@ -1453,58 +1663,30 @@ Window {
                     anchors.horizontalCenter: parent.horizontalCenter
 
                     Rectangle {
-                        width: 120
-                        height: 48
-                        radius: 24
-                        color: cancelRemoveMouse.pressed ? "#333" : "#2a2a4e"
+                        width: 120; height: 48; radius: 24
+                        color: cancelRemMouse.pressed ? "#333" : "#2a2a4e"
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Cancel"
-                            color: "white"
-                            font.pixelSize: 16
-                        }
-
-                        MouseArea {
-                            id: cancelRemoveMouse
-                            anchors.fill: parent
-                            onClicked: removeConfirm.visible = false
-                        }
+                        Text { anchors.centerIn: parent; text: "Cancel"; color: "white"; font.pixelSize: 16 }
+                        MouseArea { id: cancelRemMouse; anchors.fill: parent; onClicked: removeConfirm.visible = false }
                     }
 
                     Rectangle {
-                        width: 120
-                        height: 48
-                        radius: 24
-                        color: confirmRemoveMouse.pressed ? "#c62828" : "#f44336"
+                        width: 120; height: 48; radius: 24
+                        color: confirmRemMouse.pressed ? "#c62828" : "#f44336"
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Remove"
-                            color: "white"
-                            font.pixelSize: 16
-                            font.bold: true
-                        }
-
+                        Text { anchors.centerIn: parent; text: "Remove"; color: "white"; font.pixelSize: 16; font.bold: true }
                         MouseArea {
-                            id: confirmRemoveMouse
+                            id: confirmRemMouse
                             anchors.fill: parent
                             onClicked: {
-                                sendCommand({
-                                    action: "remove_vault",
-                                    path: removeConfirm.vaultPath
-                                })
+                                removeVault(removeConfirm.vaultPath)
                                 removeConfirm.visible = false
-                                sendCommand({action: "list_vaults"})
+                                loadVaultList()
                             }
                         }
                     }
                 }
             }
         }
-    }
-
-    Component.onCompleted: {
-        // Initial status check will trigger list_vaults
     }
 }
