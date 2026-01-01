@@ -194,6 +194,39 @@ Apps communicate with the shell via:
 
 All gestures track 1:1 with your finger for responsive, natural feel.
 
+## Keyboard
+
+Flick includes a custom on-screen keyboard with intelligent word prediction.
+
+### Word Prediction
+
+The keyboard uses a **Markov chain** trained on 11.6 million real text messages to predict the next word you're likely to type:
+
+1. **As you type** - Shows word completions and spell-check suggestions
+2. **After completing a word** - Shows predictions for what typically comes next
+3. **Chain predictions** - Tap a prediction to insert it and immediately see the next likely words
+
+For example:
+- Type "ho" → see "how", "home", "hope"
+- Tap "how" → word is inserted, now see "are", "do", "much" (common words after "how")
+- Tap "are" → see "you", "we", "they"
+
+This creates a fluid typing experience where you can compose messages by chaining predictions together.
+
+### Keyboard Layouts
+
+| Layout | Access | Contents |
+|--------|--------|----------|
+| Letters | Default | QWERTY layout with shift |
+| Symbols | Tap `123` | Numbers and common punctuation |
+| Terminal | Long-press `123` | Tab, Escape, Ctrl, arrows, F-keys |
+
+### Known Limitations
+
+- Some special characters are not yet mapped
+- Swipe typing not yet implemented
+- Emoji keyboard planned but not complete
+
 ## Installation
 
 ### Quick Install (Droidian)
@@ -387,6 +420,10 @@ Flick uses icons from the following open source projects:
 
 - **[Papirus Icon Theme](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)** (GPL-3.0) - App icons for Phone, Messages, Camera, Calculator, Calendar, Music, Files, Settings, and more
 - **[Lucide Icons](https://github.com/lucide-icons/lucide)** (ISC License) - UI icons for status bar and quick settings (WiFi, Bluetooth, battery, volume, etc.)
+
+### Data
+
+- **[chirunder/text_messages](https://huggingface.co/datasets/chirunder/text_messages)** - Dataset of 11.6 million text messages used to train the Markov chain word predictor
 
 ## License
 
