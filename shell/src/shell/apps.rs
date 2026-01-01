@@ -87,13 +87,16 @@ impl AppDef {
 
         // Skip hidden directories and special cases
         if id.starts_with('.') || id == "lockscreen" || id == "shared" || id == "welcome" {
+            tracing::debug!("Skipping special dir: {}", id);
             return None;
         }
 
         // Check for run script or main.qml
         let run_script = path.join(format!("run_{}.sh", id));
         let main_qml = path.join("main.qml");
+        tracing::info!("Checking {}: run_script={} main_qml={}", id, run_script.exists(), main_qml.exists());
         if !run_script.exists() && !main_qml.exists() {
+            tracing::debug!("No run script or main.qml for {}", id);
             return None;
         }
 
@@ -269,37 +272,35 @@ impl AppManager {
     pub fn scan_apps(&mut self) {
         self.apps.clear();
         let home = get_real_user_home();
-        eprintln!("DEBUG: Home directory is {:?}", home);
+        tracing::info!("App scan: home={:?}", home);
 
         // Scan ~/Flick/apps/
         let flick_apps = home.join("Flick/apps");
-        eprintln!("DEBUG: Looking for apps in {:?}, exists={}", flick_apps, flick_apps.exists());
+        tracing::info!("App scan: looking in {:?}, exists={}", flick_apps, flick_apps.exists());
         if flick_apps.exists() {
             match fs::read_dir(&flick_apps) {
                 Ok(entries) => {
                     for entry in entries.filter_map(|e| e.ok()) {
                         let path = entry.path();
-                        eprintln!("DEBUG: Found entry {:?}, is_dir={}", path, path.is_dir());
                         if path.is_dir() {
                             match AppDef::from_dir(&path) {
                                 Some(app) => {
-                                    eprintln!("DEBUG: Discovered app: {}", app.id);
                                     tracing::info!("Discovered app: {} at {:?}", app.id, path);
                                     self.apps.insert(app.id.clone(), app);
                                 }
                                 None => {
-                                    eprintln!("DEBUG: Skipped {:?} (no run script or filtered)", path);
+                                    tracing::debug!("Skipped {:?} (no run script or filtered)", path);
                                 }
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("DEBUG: Failed to read {:?}: {}", flick_apps, e);
+                    tracing::warn!("Failed to read {:?}: {}", flick_apps, e);
                 }
             }
         } else {
-            eprintln!("DEBUG: Apps directory does not exist: {:?}", flick_apps);
+            tracing::warn!("Apps directory does not exist: {:?}", flick_apps);
         }
 
         // Also scan ~/flick-store/ for the store app
