@@ -103,18 +103,23 @@ impl AppDef {
         // Load manifest if exists
         let manifest_path = path.join("manifest.json");
         let manifest: AppManifest = if manifest_path.exists() {
+            tracing::info!("{}: has manifest.json", id);
             fs::read_to_string(&manifest_path)
                 .ok()
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default()
         } else {
+            tracing::info!("{}: no manifest, using defaults", id);
             AppManifest::default()
         };
+        tracing::info!("{}: manifest.visible={}", id, manifest.visible);
 
         // Skip if not visible
         if !manifest.visible {
+            tracing::info!("{}: skipping (not visible)", id);
             return None;
         }
+        tracing::info!("{}: PASSED all checks, creating AppDef", id);
 
         // Derive name from id (capitalize first letter)
         let default_name = {
