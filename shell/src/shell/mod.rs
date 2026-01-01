@@ -17,6 +17,7 @@ pub mod apps;
 pub mod icons;
 pub mod lock_screen;
 pub mod slint_ui;
+pub mod word_prediction;
 
 use smithay::utils::{Logical, Point, Size};
 use crate::input::{Edge, GestureEvent};
@@ -343,6 +344,8 @@ pub struct Shell {
     pub text_scale: f32,
     /// Whether UI icons have been loaded and set to Slint (Cell for interior mutability)
     pub ui_icons_loaded: Cell<bool>,
+    /// Word predictor for on-screen keyboard
+    pub word_predictor: word_prediction::WordPredictor,
 }
 
 impl Shell {
@@ -459,6 +462,7 @@ impl Shell {
             screen_timeout_secs: Self::load_screen_timeout(),
             text_scale: Self::load_text_scale(),
             ui_icons_loaded: Cell::new(false),
+            word_predictor: word_prediction::WordPredictor::new(),
         };
 
         // Preload icons for all categories

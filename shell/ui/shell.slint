@@ -2452,13 +2452,14 @@ component KeyboardKey inherits Rectangle {
     in property <float> width-factor: 1.0;  // 1.0 = normal, 1.5 = 1.5x width, etc.
     in property <bool> is-special: false;  // Special keys (shift, backspace, etc.)
     in property <bool> is-active: false;  // For toggle keys like shift
+    in property <bool> is-accent: false;  // Use accent color
+    in property <int> font-size-override: 0;  // 0 = auto
 
     callback pressed();
 
     // Use stretch to fill available space proportionally
     horizontal-stretch: width-factor;
     vertical-stretch: 1;
-    // Outer rectangle is transparent - touch area covers entire cell
     background: transparent;
 
     // Inner visual key with padding
@@ -2467,21 +2468,30 @@ component KeyboardKey inherits Rectangle {
         y: 2px;
         width: parent.width - 4px;
         height: parent.height - 4px;
-        border-radius: 6px;
-        background: touch.pressed ? Theme.primary : (is-special ? (is-active ? Theme.primary-container : #2a2a3a) : Theme.surface-variant);
+        border-radius: 8px;
+        background: touch.pressed ? Theme.primary :
+                    is-accent ? Theme.accent-dim :
+                    (is-special ? (is-active ? Theme.primary-container : #252530) : #1e1e28);
+
+        // Subtle gradient overlay for depth
+        Rectangle {
+            width: 100%;
+            height: 50%;
+            border-radius: parent.border-radius;
+            background: #ffffff08;
+        }
 
         Text {
             width: 100%;
             height: 100%;
             text: root.shifted && root.shift-label != "" ? root.shift-label : root.label;
             color: Theme.on-surface;
-            font-size: is-special ? 22px : 34px;
+            font-size: font-size-override > 0 ? (font-size-override * 1px) : (is-special ? 18px : 28px);
             horizontal-alignment: center;
             vertical-alignment: center;
         }
     }
 
-    // Touch area covers entire cell (including gaps between visual keys)
     touch := TouchArea {
         width: 100%;
         height: 100%;
@@ -2489,38 +2499,138 @@ component KeyboardKey inherits Rectangle {
     }
 }
 
-// On-Screen Keyboard - scales to fill available space
+// Word prediction button
+component PredictionButton inherits Rectangle {
+    in property <string> word: "";
+    callback selected(string);
+
+    horizontal-stretch: 1;
+    background: transparent;
+
+    Rectangle {
+        x: 4px;
+        y: 4px;
+        width: parent.width - 8px;
+        height: parent.height - 8px;
+        border-radius: 8px;
+        background: touch.pressed ? Theme.primary-container : #1a1a24;
+        border-width: 1px;
+        border-color: #333344;
+
+        Text {
+            width: 100%;
+            height: 100%;
+            text: root.word;
+            color: root.word != "" ? Theme.on-surface : Theme.on-surface-variant;
+            font-size: 18px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => {
+            if root.word != "" {
+                root.selected(root.word);
+            }
+        }
+    }
+}
+
+// On-Screen Keyboard - Enhanced with predictions, emoji, terminal mode
 component OnScreenKeyboard inherits Rectangle {
     in property <bool> shifted: false;
     in property <bool> caps-lock: false;
-    in property <int> layout: 0;  // 0 = letters, 1 = numbers/symbols
-    in property <length> container-height: 720px;  // Parent height passed in
+    in-out property <int> layout: 0;  // 0 = letters, 1 = numbers/symbols, 2 = emoji, 3 = terminal
+    in property <length> container-height: 720px;
 
-    callback key-pressed(string);  // The character or key name
+    // Word predictions
+    in property <string> prediction1: "";
+    in property <string> prediction2: "";
+    in property <string> prediction3: "";
+
+    callback key-pressed(string);
     callback shift-toggled();
     callback caps-toggled();
     callback backspace-pressed();
     callback enter-pressed();
     callback space-pressed();
-    callback layout-toggled();  // Switch between letters and symbols
+    callback layout-toggled();
     callback hide-keyboard();
+    callback prediction-selected(string);
+    callback special-key-pressed(string);  // For Tab, Esc, Ctrl+C, arrows, etc.
 
     width: 100%;
-    // Height is ~22% of screen height, minimum 200px for usability
-    height: max(200px, container-height * 0.22);
-    background: Theme.background;
+    height: max(280px, container-height * 0.32);
+    background: #0c0c12;
 
     property <bool> show-shift: shifted || caps-lock;
+    property <bool> ctrl-active: false;
 
     VerticalLayout {
         width: 100%;
         height: 100%;
-        padding: 0px;  // No padding - keys extend to edges for better touch detection
-        spacing: 0px;  // No spacing - keys handle their own visual padding
+        padding: 0px;
+        spacing: 0px;
 
-        // Row 1: q w e r t y u i o p (or 1 2 3 4 5 6 7 8 9 0)
+        // Row 0: Word predictions
         HorizontalLayout {
-            spacing: 0px;  // No spacing - keys handle their own visual padding
+            height: 48px;
+            spacing: 0px;
+            padding-left: 4px;
+            padding-right: 4px;
+
+            PredictionButton { word: prediction1; selected(w) => { prediction-selected(w); } }
+            PredictionButton { word: prediction2; selected(w) => { prediction-selected(w); } }
+            PredictionButton { word: prediction3; selected(w) => { prediction-selected(w); } }
+        }
+
+        // Row 1: Number row (always visible) OR emoji/terminal content
+        HorizontalLayout {
+            spacing: 0px;
+            vertical-stretch: 1;
+
+            if layout == 0 || layout == 1: KeyboardKey { label: "1"; shift-label: "!"; shifted: show-shift; pressed => { key-pressed(show-shift ? "!" : "1"); } }
+            if layout == 0 || layout == 1: KeyboardKey { label: "2"; shift-label: "@"; shifted: show-shift; pressed => { key-pressed(show-shift ? "@" : "2"); } }
+            if layout == 0 || layout == 1: KeyboardKey { label: "3"; shift-label: "#"; shifted: show-shift; pressed => { key-pressed(show-shift ? "#" : "3"); } }
+            if layout == 0 || layout == 1: KeyboardKey { label: "4"; shift-label: "$"; shifted: show-shift; pressed => { key-pressed(show-shift ? "$" : "4"); } }
+            if layout == 0 || layout == 1: KeyboardKey { label: "5"; shift-label: "%"; shifted: show-shift; pressed => { key-pressed(show-shift ? "%" : "5"); } }
+            if layout == 0 || layout == 1: KeyboardKey { label: "6"; shift-label: "^"; shifted: show-shift; pressed => { key-pressed(show-shift ? "^" : "6"); } }
+            if layout == 0 || layout == 1: KeyboardKey { label: "7"; shift-label: "&"; shifted: show-shift; pressed => { key-pressed(show-shift ? "&" : "7"); } }
+            if layout == 0 || layout == 1: KeyboardKey { label: "8"; shift-label: "*"; shifted: show-shift; pressed => { key-pressed(show-shift ? "*" : "8"); } }
+            if layout == 0 || layout == 1: KeyboardKey { label: "9"; shift-label: "("; shifted: show-shift; pressed => { key-pressed(show-shift ? "(" : "9"); } }
+            if layout == 0 || layout == 1: KeyboardKey { label: "0"; shift-label: ")"; shifted: show-shift; pressed => { key-pressed(show-shift ? ")" : "0"); } }
+
+            // Emoji row 1
+            if layout == 2: KeyboardKey { label: "😀"; pressed => { key-pressed("😀"); } }
+            if layout == 2: KeyboardKey { label: "😂"; pressed => { key-pressed("😂"); } }
+            if layout == 2: KeyboardKey { label: "🥰"; pressed => { key-pressed("🥰"); } }
+            if layout == 2: KeyboardKey { label: "😎"; pressed => { key-pressed("😎"); } }
+            if layout == 2: KeyboardKey { label: "🤔"; pressed => { key-pressed("🤔"); } }
+            if layout == 2: KeyboardKey { label: "😭"; pressed => { key-pressed("😭"); } }
+            if layout == 2: KeyboardKey { label: "😡"; pressed => { key-pressed("😡"); } }
+            if layout == 2: KeyboardKey { label: "🥳"; pressed => { key-pressed("🥳"); } }
+            if layout == 2: KeyboardKey { label: "😴"; pressed => { key-pressed("😴"); } }
+            if layout == 2: KeyboardKey { label: "🤯"; pressed => { key-pressed("🤯"); } }
+
+            // Terminal row 1: Control keys
+            if layout == 3: KeyboardKey { label: "Esc"; is-special: true; pressed => { special-key-pressed("Escape"); } }
+            if layout == 3: KeyboardKey { label: "Tab"; is-special: true; pressed => { special-key-pressed("Tab"); } }
+            if layout == 3: KeyboardKey { label: "Ctrl"; is-special: true; is-active: ctrl-active; pressed => { ctrl-active = !ctrl-active; } }
+            if layout == 3: KeyboardKey { label: "↑"; is-special: true; pressed => { special-key-pressed("Up"); } }
+            if layout == 3: KeyboardKey { label: "↓"; is-special: true; pressed => { special-key-pressed("Down"); } }
+            if layout == 3: KeyboardKey { label: "←"; is-special: true; pressed => { special-key-pressed("Left"); } }
+            if layout == 3: KeyboardKey { label: "→"; is-special: true; pressed => { special-key-pressed("Right"); } }
+            if layout == 3: KeyboardKey { label: "Home"; is-special: true; font-size-override: 14; pressed => { special-key-pressed("Home"); } }
+            if layout == 3: KeyboardKey { label: "End"; is-special: true; font-size-override: 14; pressed => { special-key-pressed("End"); } }
+            if layout == 3: KeyboardKey { label: "PgUp"; is-special: true; font-size-override: 14; pressed => { special-key-pressed("Page_Up"); } }
+        }
+
+        // Row 2: QWERTY row 1 OR more emoji/terminal
+        HorizontalLayout {
+            spacing: 0px;
             vertical-stretch: 1;
 
             if layout == 0: KeyboardKey { label: "q"; shift-label: "Q"; shifted: show-shift; pressed => { key-pressed(show-shift ? "Q" : "q"); } }
@@ -2534,19 +2644,44 @@ component OnScreenKeyboard inherits Rectangle {
             if layout == 0: KeyboardKey { label: "o"; shift-label: "O"; shifted: show-shift; pressed => { key-pressed(show-shift ? "O" : "o"); } }
             if layout == 0: KeyboardKey { label: "p"; shift-label: "P"; shifted: show-shift; pressed => { key-pressed(show-shift ? "P" : "p"); } }
 
-            if layout == 1: KeyboardKey { label: "1"; shift-label: "!"; shifted: show-shift; pressed => { key-pressed(show-shift ? "!" : "1"); } }
-            if layout == 1: KeyboardKey { label: "2"; shift-label: "@"; shifted: show-shift; pressed => { key-pressed(show-shift ? "@" : "2"); } }
-            if layout == 1: KeyboardKey { label: "3"; shift-label: "#"; shifted: show-shift; pressed => { key-pressed(show-shift ? "#" : "3"); } }
-            if layout == 1: KeyboardKey { label: "4"; shift-label: "$"; shifted: show-shift; pressed => { key-pressed(show-shift ? "$" : "4"); } }
-            if layout == 1: KeyboardKey { label: "5"; shift-label: "%"; shifted: show-shift; pressed => { key-pressed(show-shift ? "%" : "5"); } }
-            if layout == 1: KeyboardKey { label: "6"; shift-label: "^"; shifted: show-shift; pressed => { key-pressed(show-shift ? "^" : "6"); } }
-            if layout == 1: KeyboardKey { label: "7"; shift-label: "&"; shifted: show-shift; pressed => { key-pressed(show-shift ? "&" : "7"); } }
-            if layout == 1: KeyboardKey { label: "8"; shift-label: "*"; shifted: show-shift; pressed => { key-pressed(show-shift ? "*" : "8"); } }
-            if layout == 1: KeyboardKey { label: "9"; shift-label: "("; shifted: show-shift; pressed => { key-pressed(show-shift ? "(" : "9"); } }
-            if layout == 1: KeyboardKey { label: "0"; shift-label: ")"; shifted: show-shift; pressed => { key-pressed(show-shift ? ")" : "0"); } }
+            // Symbols layout row 1
+            if layout == 1: KeyboardKey { label: "-"; shift-label: "_"; shifted: show-shift; pressed => { key-pressed(show-shift ? "_" : "-"); } }
+            if layout == 1: KeyboardKey { label: "="; shift-label: "+"; shifted: show-shift; pressed => { key-pressed(show-shift ? "+" : "="); } }
+            if layout == 1: KeyboardKey { label: "["; shift-label: "{"; shifted: show-shift; pressed => { key-pressed(show-shift ? "{" : "["); } }
+            if layout == 1: KeyboardKey { label: "]"; shift-label: "}"; shifted: show-shift; pressed => { key-pressed(show-shift ? "}" : "]"); } }
+            if layout == 1: KeyboardKey { label: "\\"; shift-label: "|"; shifted: show-shift; pressed => { key-pressed(show-shift ? "|" : "\\"); } }
+            if layout == 1: KeyboardKey { label: ";"; shift-label: ":"; shifted: show-shift; pressed => { key-pressed(show-shift ? ":" : ";"); } }
+            if layout == 1: KeyboardKey { label: "'"; shift-label: "\""; shifted: show-shift; pressed => { key-pressed(show-shift ? "\"" : "'"); } }
+            if layout == 1: KeyboardKey { label: "/"; shift-label: "?"; shifted: show-shift; pressed => { key-pressed(show-shift ? "?" : "/"); } }
+            if layout == 1: KeyboardKey { label: "`"; shift-label: "~"; shifted: show-shift; pressed => { key-pressed(show-shift ? "~" : "`"); } }
+            if layout == 1: KeyboardKey { label: "<"; shift-label: ">"; shifted: show-shift; pressed => { key-pressed(show-shift ? ">" : "<"); } }
+
+            // Emoji row 2
+            if layout == 2: KeyboardKey { label: "❤️"; pressed => { key-pressed("❤️"); } }
+            if layout == 2: KeyboardKey { label: "👍"; pressed => { key-pressed("👍"); } }
+            if layout == 2: KeyboardKey { label: "👎"; pressed => { key-pressed("👎"); } }
+            if layout == 2: KeyboardKey { label: "🎉"; pressed => { key-pressed("🎉"); } }
+            if layout == 2: KeyboardKey { label: "🔥"; pressed => { key-pressed("🔥"); } }
+            if layout == 2: KeyboardKey { label: "✨"; pressed => { key-pressed("✨"); } }
+            if layout == 2: KeyboardKey { label: "💯"; pressed => { key-pressed("💯"); } }
+            if layout == 2: KeyboardKey { label: "🙏"; pressed => { key-pressed("🙏"); } }
+            if layout == 2: KeyboardKey { label: "👀"; pressed => { key-pressed("👀"); } }
+            if layout == 2: KeyboardKey { label: "💀"; pressed => { key-pressed("💀"); } }
+
+            // Terminal row 2
+            if layout == 3: KeyboardKey { label: "C-c"; is-special: true; is-accent: true; pressed => { special-key-pressed("Ctrl+c"); } }
+            if layout == 3: KeyboardKey { label: "C-d"; is-special: true; is-accent: true; pressed => { special-key-pressed("Ctrl+d"); } }
+            if layout == 3: KeyboardKey { label: "C-z"; is-special: true; pressed => { special-key-pressed("Ctrl+z"); } }
+            if layout == 3: KeyboardKey { label: "C-l"; is-special: true; pressed => { special-key-pressed("Ctrl+l"); } }
+            if layout == 3: KeyboardKey { label: "C-a"; is-special: true; pressed => { special-key-pressed("Ctrl+a"); } }
+            if layout == 3: KeyboardKey { label: "C-e"; is-special: true; pressed => { special-key-pressed("Ctrl+e"); } }
+            if layout == 3: KeyboardKey { label: "C-r"; is-special: true; pressed => { special-key-pressed("Ctrl+r"); } }
+            if layout == 3: KeyboardKey { label: "C-w"; is-special: true; pressed => { special-key-pressed("Ctrl+w"); } }
+            if layout == 3: KeyboardKey { label: "C-u"; is-special: true; pressed => { special-key-pressed("Ctrl+u"); } }
+            if layout == 3: KeyboardKey { label: "PgDn"; is-special: true; font-size-override: 14; pressed => { special-key-pressed("Page_Down"); } }
         }
 
-        // Row 2: a s d f g h j k l (or symbols)
+        // Row 3: QWERTY row 2
         HorizontalLayout {
             spacing: 0px;
             vertical-stretch: 1;
@@ -2561,25 +2696,48 @@ component OnScreenKeyboard inherits Rectangle {
             if layout == 0: KeyboardKey { label: "k"; shift-label: "K"; shifted: show-shift; pressed => { key-pressed(show-shift ? "K" : "k"); } }
             if layout == 0: KeyboardKey { label: "l"; shift-label: "L"; shifted: show-shift; pressed => { key-pressed(show-shift ? "L" : "l"); } }
 
-            if layout == 1: KeyboardKey { label: "-"; shift-label: "_"; shifted: show-shift; pressed => { key-pressed(show-shift ? "_" : "-"); } }
-            if layout == 1: KeyboardKey { label: "="; shift-label: "+"; shifted: show-shift; pressed => { key-pressed(show-shift ? "+" : "="); } }
-            if layout == 1: KeyboardKey { label: "["; shift-label: "{"; shifted: show-shift; pressed => { key-pressed(show-shift ? "{" : "["); } }
-            if layout == 1: KeyboardKey { label: "]"; shift-label: "}"; shifted: show-shift; pressed => { key-pressed(show-shift ? "}" : "]"); } }
-            if layout == 1: KeyboardKey { label: "\\"; shift-label: "|"; shifted: show-shift; pressed => { key-pressed(show-shift ? "|" : "\\"); } }
-            if layout == 1: KeyboardKey { label: ";"; shift-label: ":"; shifted: show-shift; pressed => { key-pressed(show-shift ? ":" : ";"); } }
-            if layout == 1: KeyboardKey { label: "'"; shift-label: "\""; shifted: show-shift; pressed => { key-pressed(show-shift ? "\"" : "'"); } }
-            if layout == 1: KeyboardKey { label: ","; shift-label: "<"; shifted: show-shift; pressed => { key-pressed(show-shift ? "<" : ","); } }
-            if layout == 1: KeyboardKey { label: "."; shift-label: ">"; shifted: show-shift; pressed => { key-pressed(show-shift ? ">" : "."); } }
+            // Symbols row 2
+            if layout == 1: KeyboardKey { label: "€"; pressed => { key-pressed("€"); } }
+            if layout == 1: KeyboardKey { label: "£"; pressed => { key-pressed("£"); } }
+            if layout == 1: KeyboardKey { label: "¥"; pressed => { key-pressed("¥"); } }
+            if layout == 1: KeyboardKey { label: "•"; pressed => { key-pressed("•"); } }
+            if layout == 1: KeyboardKey { label: "°"; pressed => { key-pressed("°"); } }
+            if layout == 1: KeyboardKey { label: "©"; pressed => { key-pressed("©"); } }
+            if layout == 1: KeyboardKey { label: "®"; pressed => { key-pressed("®"); } }
+            if layout == 1: KeyboardKey { label: "™"; pressed => { key-pressed("™"); } }
+            if layout == 1: KeyboardKey { label: "…"; pressed => { key-pressed("…"); } }
+
+            // Emoji row 3
+            if layout == 2: KeyboardKey { label: "😊"; pressed => { key-pressed("😊"); } }
+            if layout == 2: KeyboardKey { label: "🤷"; pressed => { key-pressed("🤷"); } }
+            if layout == 2: KeyboardKey { label: "🤦"; pressed => { key-pressed("🤦"); } }
+            if layout == 2: KeyboardKey { label: "💪"; pressed => { key-pressed("💪"); } }
+            if layout == 2: KeyboardKey { label: "🤝"; pressed => { key-pressed("🤝"); } }
+            if layout == 2: KeyboardKey { label: "👋"; pressed => { key-pressed("👋"); } }
+            if layout == 2: KeyboardKey { label: "🎵"; pressed => { key-pressed("🎵"); } }
+            if layout == 2: KeyboardKey { label: "📱"; pressed => { key-pressed("📱"); } }
+            if layout == 2: KeyboardKey { label: "💻"; pressed => { key-pressed("💻"); } }
+
+            // Terminal row 3
+            if layout == 3: KeyboardKey { label: "F1"; is-special: true; pressed => { special-key-pressed("F1"); } }
+            if layout == 3: KeyboardKey { label: "F2"; is-special: true; pressed => { special-key-pressed("F2"); } }
+            if layout == 3: KeyboardKey { label: "F3"; is-special: true; pressed => { special-key-pressed("F3"); } }
+            if layout == 3: KeyboardKey { label: "F4"; is-special: true; pressed => { special-key-pressed("F4"); } }
+            if layout == 3: KeyboardKey { label: "F5"; is-special: true; pressed => { special-key-pressed("F5"); } }
+            if layout == 3: KeyboardKey { label: "F6"; is-special: true; pressed => { special-key-pressed("F6"); } }
+            if layout == 3: KeyboardKey { label: "F7"; is-special: true; pressed => { special-key-pressed("F7"); } }
+            if layout == 3: KeyboardKey { label: "F8"; is-special: true; pressed => { special-key-pressed("F8"); } }
+            if layout == 3: KeyboardKey { label: "Ins"; is-special: true; pressed => { special-key-pressed("Insert"); } }
         }
 
-        // Row 3: shift z x c v b n m backspace
+        // Row 4: shift + letters row 3
         HorizontalLayout {
             spacing: 0px;
             vertical-stretch: 1;
 
             KeyboardKey {
-                label: "SHIFT";
-                width-factor: 1.5;
+                label: show-shift ? "⬆" : "⇧";
+                width-factor: 1.4;
                 is-special: true;
                 is-active: show-shift;
                 pressed => { shift-toggled(); }
@@ -2593,53 +2751,94 @@ component OnScreenKeyboard inherits Rectangle {
             if layout == 0: KeyboardKey { label: "n"; shift-label: "N"; shifted: show-shift; pressed => { key-pressed(show-shift ? "N" : "n"); } }
             if layout == 0: KeyboardKey { label: "m"; shift-label: "M"; shifted: show-shift; pressed => { key-pressed(show-shift ? "M" : "m"); } }
 
-            if layout == 1: KeyboardKey { label: "/"; shift-label: "?"; shifted: show-shift; pressed => { key-pressed(show-shift ? "?" : "/"); } }
-            if layout == 1: KeyboardKey { label: "`"; shift-label: "~"; shifted: show-shift; pressed => { key-pressed(show-shift ? "~" : "`"); } }
-            if layout == 1: KeyboardKey { label: "@"; pressed => { key-pressed("@"); } }
-            if layout == 1: KeyboardKey { label: "#"; pressed => { key-pressed("#"); } }
-            if layout == 1: KeyboardKey { label: "&"; pressed => { key-pressed("&"); } }
-            if layout == 1: KeyboardKey { label: "*"; pressed => { key-pressed("*"); } }
-            if layout == 1: KeyboardKey { label: "("; pressed => { key-pressed("("); } }
+            // Symbols row 3
+            if layout == 1: KeyboardKey { label: "«"; pressed => { key-pressed("«"); } }
+            if layout == 1: KeyboardKey { label: "»"; pressed => { key-pressed("»"); } }
+            if layout == 1: KeyboardKey { label: "¿"; pressed => { key-pressed("¿"); } }
+            if layout == 1: KeyboardKey { label: "¡"; pressed => { key-pressed("¡"); } }
+            if layout == 1: KeyboardKey { label: "§"; pressed => { key-pressed("§"); } }
+            if layout == 1: KeyboardKey { label: "¶"; pressed => { key-pressed("¶"); } }
+            if layout == 1: KeyboardKey { label: "±"; pressed => { key-pressed("±"); } }
+
+            // Emoji row 4
+            if layout == 2: KeyboardKey { label: "☀️"; pressed => { key-pressed("☀️"); } }
+            if layout == 2: KeyboardKey { label: "🌙"; pressed => { key-pressed("🌙"); } }
+            if layout == 2: KeyboardKey { label: "⭐"; pressed => { key-pressed("⭐"); } }
+            if layout == 2: KeyboardKey { label: "🌈"; pressed => { key-pressed("🌈"); } }
+            if layout == 2: KeyboardKey { label: "☕"; pressed => { key-pressed("☕"); } }
+            if layout == 2: KeyboardKey { label: "🍕"; pressed => { key-pressed("🍕"); } }
+            if layout == 2: KeyboardKey { label: "🎮"; pressed => { key-pressed("🎮"); } }
+
+            // Terminal row 4
+            if layout == 3: KeyboardKey { label: "F9"; is-special: true; pressed => { special-key-pressed("F9"); } }
+            if layout == 3: KeyboardKey { label: "F10"; is-special: true; font-size-override: 14; pressed => { special-key-pressed("F10"); } }
+            if layout == 3: KeyboardKey { label: "F11"; is-special: true; font-size-override: 14; pressed => { special-key-pressed("F11"); } }
+            if layout == 3: KeyboardKey { label: "F12"; is-special: true; font-size-override: 14; pressed => { special-key-pressed("F12"); } }
+            if layout == 3: KeyboardKey { label: "Del"; is-special: true; pressed => { special-key-pressed("Delete"); } }
+            if layout == 3: KeyboardKey { label: "|"; pressed => { key-pressed("|"); } }
+            if layout == 3: KeyboardKey { label: "~"; pressed => { key-pressed("~"); } }
 
             KeyboardKey {
-                label: "DEL";
-                width-factor: 1.5;
+                label: "⌫";
+                width-factor: 1.4;
                 is-special: true;
                 pressed => { backspace-pressed(); }
             }
         }
 
-        // Row 4: 123/ABC space . enter
+        // Row 5: Bottom row with mode toggles
         HorizontalLayout {
             spacing: 0px;
             vertical-stretch: 1;
 
             KeyboardKey {
-                label: layout == 0 ? "123" : "ABC";
-                width-factor: 1.5;
+                label: layout == 0 ? "123" : (layout == 1 ? "ABC" : (layout == 2 ? "ABC" : "ABC"));
+                width-factor: 1.2;
                 is-special: true;
-                pressed => { layout-toggled(); }
+                pressed => {
+                    if layout == 0 {
+                        layout-toggled();
+                    } else {
+                        // Go back to letters
+                        layout = 0;
+                    }
+                }
             }
 
-            KeyboardKey { label: ","; pressed => { key-pressed(","); } }
+            KeyboardKey {
+                label: "😀";
+                width-factor: 1.0;
+                is-special: true;
+                is-active: layout == 2;
+                pressed => { layout = layout == 2 ? 0 : 2; }
+            }
 
             KeyboardKey {
-                label: "SPACE";
-                width-factor: 5.0;
+                label: "⌨";
+                width-factor: 1.0;
+                is-special: true;
+                is-active: layout == 3;
+                pressed => { layout = layout == 3 ? 0 : 3; }
+            }
+
+            KeyboardKey {
+                label: " ";
+                width-factor: 4.5;
                 is-special: true;
                 pressed => { space-pressed(); }
             }
 
+            KeyboardKey { label: ","; pressed => { key-pressed(","); } }
             KeyboardKey { label: "."; pressed => { key-pressed("."); } }
 
             KeyboardKey {
-                label: "ENTER";
+                label: "↵";
                 width-factor: 1.5;
                 is-special: true;
+                is-accent: true;
                 pressed => { enter-pressed(); }
             }
         }
-
     }
 }
 
@@ -3030,8 +3229,11 @@ export component FlickShell inherits Window {
     in property <bool> keyboard-visible: false;
     in property <bool> keyboard-shifted: false;
     in property <bool> keyboard-caps-lock: false;
-    in property <int> keyboard-layout: 0;  // 0 = letters, 1 = numbers/symbols
+    in property <int> keyboard-layout: 0;  // 0 = letters, 1 = numbers/symbols, 2 = emoji, 3 = terminal
     in property <length> keyboard-y-offset: 0px;  // For swipe-to-dismiss animation
+    in property <string> keyboard-prediction1: "";
+    in property <string> keyboard-prediction2: "";
+    in property <string> keyboard-prediction3: "";
 
     // Incoming call state
     in property <bool> incoming-call: false;
@@ -3081,6 +3283,8 @@ export component FlickShell inherits Window {
     callback keyboard-shift-toggled();
     callback keyboard-layout-toggled();
     callback keyboard-hide();
+    callback keyboard-prediction-selected(string);  // Word prediction selected
+    callback keyboard-special-key-pressed(string);  // Tab, Esc, Ctrl+key, arrows, F-keys
 
     // Phone call callbacks
     callback call-answered();
@@ -3268,6 +3472,9 @@ export component FlickShell inherits Window {
         shifted: keyboard-shifted;
         caps-lock: keyboard-caps-lock;
         layout: keyboard-layout;
+        prediction1: keyboard-prediction1;
+        prediction2: keyboard-prediction2;
+        prediction3: keyboard-prediction3;
         key-pressed(ch) => { keyboard-key-pressed(ch); }
         shift-toggled => { keyboard-shift-toggled(); }
         backspace-pressed => { keyboard-backspace(); }
@@ -3275,6 +3482,8 @@ export component FlickShell inherits Window {
         space-pressed => { keyboard-space(); }
         layout-toggled => { keyboard-layout-toggled(); }
         hide-keyboard => { keyboard-hide(); }
+        prediction-selected(word) => { keyboard-prediction-selected(word); }
+        special-key-pressed(key) => { keyboard-special-key-pressed(key); }
     }
 
     // Volume overlay - shown briefly when hardware volume buttons pressed

@@ -49,15 +49,69 @@ Window {
         onTriggered: loadConfig()
     }
 
-    // Title bar
+    // Title bar with action buttons
     Rectangle {
         id: titleBar
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 28 * textScale
+        height: 36 * textScale
         color: "#1a1a2e"
         z: 1
+
+        Row {
+            anchors.left: parent.left
+            anchors.leftMargin: 8 * textScale
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6 * textScale
+
+            // Copy button
+            Rectangle {
+                width: 56 * textScale
+                height: 28 * textScale
+                radius: 6 * textScale
+                color: copyArea.pressed ? "#3a3a5e" : "#2a2a4e"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Copy"
+                    color: "#aaccff"
+                    font.pixelSize: 11 * textScale
+                }
+
+                MouseArea {
+                    id: copyArea
+                    anchors.fill: parent
+                    onClicked: {
+                        terminal.copyClipboard()
+                        copiedPopup.show()
+                    }
+                }
+            }
+
+            // Paste button
+            Rectangle {
+                width: 56 * textScale
+                height: 28 * textScale
+                radius: 6 * textScale
+                color: pasteArea.pressed ? "#3a3a5e" : "#2a2a4e"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Paste"
+                    color: "#aaccff"
+                    font.pixelSize: 11 * textScale
+                }
+
+                MouseArea {
+                    id: pasteArea
+                    anchors.fill: parent
+                    onClicked: {
+                        terminal.pasteClipboard()
+                    }
+                }
+            }
+        }
 
         Text {
             anchors.centerIn: parent
@@ -69,7 +123,45 @@ Window {
 
         MouseArea {
             anchors.fill: parent
+            anchors.leftMargin: 130 * textScale  // Don't overlap buttons
             onClicked: terminal.forceActiveFocus()
+        }
+    }
+
+    // Copied popup
+    Rectangle {
+        id: copiedPopup
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: titleBar.bottom
+        anchors.topMargin: 20 * textScale
+        width: 100 * textScale
+        height: 36 * textScale
+        radius: 18 * textScale
+        color: "#44aa44"
+        opacity: 0
+        z: 10
+
+        Text {
+            anchors.centerIn: parent
+            text: "Copied!"
+            color: "white"
+            font.pixelSize: 14 * textScale
+            font.weight: Font.Medium
+        }
+
+        function show() {
+            opacity = 1
+            hideTimer.restart()
+        }
+
+        Timer {
+            id: hideTimer
+            interval: 1500
+            onTriggered: copiedPopup.opacity = 0
+        }
+
+        Behavior on opacity {
+            NumberAnimation { duration: 200 }
         }
     }
 

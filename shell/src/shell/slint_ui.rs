@@ -57,6 +57,10 @@ pub enum KeyboardAction {
     LayoutToggled,
     /// Hide keyboard requested
     Hide,
+    /// Word prediction selected (replaces current word with prediction)
+    PredictionSelected(String),
+    /// Special key pressed (Tab, Esc, arrows, F-keys, Ctrl+key)
+    SpecialKey(String),
 }
 
 /// Actions that can be triggered from phone call UI
@@ -311,6 +315,18 @@ impl SlintShell {
         shell.on_keyboard_hide(move || {
             info!("Slint keyboard hide");
             kb_clone.borrow_mut().push(KeyboardAction::Hide);
+        });
+
+        let kb_clone = pending_keyboard_actions.clone();
+        shell.on_keyboard_prediction_selected(move |word| {
+            info!("Slint keyboard prediction selected: {}", word);
+            kb_clone.borrow_mut().push(KeyboardAction::PredictionSelected(word.to_string()));
+        });
+
+        let kb_clone = pending_keyboard_actions.clone();
+        shell.on_keyboard_special_key_pressed(move |key| {
+            info!("Slint keyboard special key: {}", key);
+            kb_clone.borrow_mut().push(KeyboardAction::SpecialKey(key.to_string()));
         });
 
         // Lock screen callbacks removed - lock screen is now QML-based
@@ -1216,6 +1232,13 @@ impl SlintShell {
     pub fn toggle_keyboard_layout(&self) {
         let layout = self.get_keyboard_layout();
         self.set_keyboard_layout(if layout == 0 { 1 } else { 0 });
+    }
+
+    /// Set keyboard predictions
+    pub fn set_keyboard_predictions(&self, p1: &str, p2: &str, p3: &str) {
+        self.shell.set_keyboard_prediction1(p1.into());
+        self.shell.set_keyboard_prediction2(p2.into());
+        self.shell.set_keyboard_prediction3(p3.into());
     }
 
     /// Poll for pending keyboard actions (from Slint callbacks)

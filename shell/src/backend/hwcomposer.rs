@@ -2157,6 +2157,17 @@ fn handle_input_event(
                                     match action {
                                         KeyboardAction::Character(ch) => {
                                             if let Some(c) = ch.chars().next() {
+                                                // Update word predictor and get predictions
+                                                state.shell.word_predictor.add_char(c);
+                                                let predictions = state.shell.word_predictor.get_predictions();
+                                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                    slint_ui.set_keyboard_predictions(
+                                                        predictions.get(0).map(|s| s.as_str()).unwrap_or(""),
+                                                        predictions.get(1).map(|s| s.as_str()).unwrap_or(""),
+                                                        predictions.get(2).map(|s| s.as_str()).unwrap_or(""),
+                                                    );
+                                                }
+
                                                 if let Some((keycode, needs_shift)) = char_to_evdev(c) {
                                                     if let Some(keyboard) = state.seat.get_keyboard() {
                                                         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
@@ -2179,6 +2190,17 @@ fn handle_input_event(
                                             }
                                         }
                                         KeyboardAction::Backspace => {
+                                            // Update word predictor
+                                            state.shell.word_predictor.backspace();
+                                            let predictions = state.shell.word_predictor.get_predictions();
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                slint_ui.set_keyboard_predictions(
+                                                    predictions.get(0).map(|s| s.as_str()).unwrap_or(""),
+                                                    predictions.get(1).map(|s| s.as_str()).unwrap_or(""),
+                                                    predictions.get(2).map(|s| s.as_str()).unwrap_or(""),
+                                                );
+                                            }
+
                                             if let Some(keyboard) = state.seat.get_keyboard() {
                                                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                                                 let time = std::time::SystemTime::now()
@@ -2190,6 +2212,12 @@ fn handle_input_event(
                                             }
                                         }
                                         KeyboardAction::Enter => {
+                                            // Clear word predictor on enter (new line = new word)
+                                            state.shell.word_predictor.clear_word();
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                slint_ui.set_keyboard_predictions("", "", "");
+                                            }
+
                                             if let Some(keyboard) = state.seat.get_keyboard() {
                                                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                                                 let time = std::time::SystemTime::now()
@@ -2201,6 +2229,16 @@ fn handle_input_event(
                                             }
                                         }
                                         KeyboardAction::Space => {
+                                            // Learn the current word and clear predictor
+                                            let current_word = state.shell.word_predictor.current_word().to_string();
+                                            if !current_word.is_empty() {
+                                                state.shell.word_predictor.learn_word(&current_word);
+                                            }
+                                            state.shell.word_predictor.clear_word();
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                slint_ui.set_keyboard_predictions("", "", "");
+                                            }
+
                                             if let Some(keyboard) = state.seat.get_keyboard() {
                                                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                                                 let time = std::time::SystemTime::now()
@@ -2228,6 +2266,102 @@ fn handle_input_event(
                                                 slint_ui.set_keyboard_visible(false);
                                             }
                                             state.resize_windows_for_keyboard(false);
+                                        }
+                                        KeyboardAction::PredictionSelected(word) => {
+                                            // Delete current word and insert prediction
+                                            // First, send Ctrl+Backspace to delete word (or multiple backspaces)
+                                            // Then insert the predicted word followed by space
+                                            info!("Prediction selected: {}", word);
+                                            if let Some(keyboard) = state.seat.get_keyboard() {
+                                                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                                let time = std::time::SystemTime::now()
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .unwrap()
+                                                    .as_millis() as u32;
+                                                // Delete current word (Ctrl+Backspace)
+                                                let ctrl_keycode = smithay::input::keyboard::Keycode::new(29 + 8);
+                                                let backspace_keycode = smithay::input::keyboard::Keycode::new(14 + 8);
+                                                keyboard.input::<(), _>(state, ctrl_keycode, smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                keyboard.input::<(), _>(state, backspace_keycode, smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                keyboard.input::<(), _>(state, backspace_keycode, smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                keyboard.input::<(), _>(state, ctrl_keycode, smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                // Type the prediction + space
+                                                let word_with_space = format!("{} ", word);
+                                                for ch in word_with_space.chars() {
+                                                    if let Some((keycode, needs_shift)) = char_to_evdev(ch) {
+                                                        let xkb_keycode = keycode + 8;
+                                                        if needs_shift {
+                                                            keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(42 + 8), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                        }
+                                                        keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(xkb_keycode), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                        keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(xkb_keycode), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                        if needs_shift {
+                                                            keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(42 + 8), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            // Clear word predictor and predictions after selection
+                                            state.shell.word_predictor.learn_word(&word);
+                                            state.shell.word_predictor.clear_word();
+                                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                                slint_ui.set_keyboard_predictions("", "", "");
+                                                // Reset shift after word
+                                                slint_ui.set_keyboard_shifted(false);
+                                            }
+                                        }
+                                        KeyboardAction::SpecialKey(key) => {
+                                            info!("Special key: {}", key);
+                                            if let Some(keyboard) = state.seat.get_keyboard() {
+                                                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                                let time = std::time::SystemTime::now()
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .unwrap()
+                                                    .as_millis() as u32;
+                                                // Map special key names to keycodes (evdev + 8 for XKB)
+                                                let keycode = match key.as_str() {
+                                                    "Tab" => Some(15 + 8),
+                                                    "Escape" => Some(1 + 8),
+                                                    "Up" => Some(103 + 8),
+                                                    "Down" => Some(108 + 8),
+                                                    "Left" => Some(105 + 8),
+                                                    "Right" => Some(106 + 8),
+                                                    "Home" => Some(102 + 8),
+                                                    "End" => Some(107 + 8),
+                                                    "Page_Up" => Some(104 + 8),
+                                                    "Page_Down" => Some(109 + 8),
+                                                    "Insert" => Some(110 + 8),
+                                                    "Delete" => Some(111 + 8),
+                                                    "F1" => Some(59 + 8),
+                                                    "F2" => Some(60 + 8),
+                                                    "F3" => Some(61 + 8),
+                                                    "F4" => Some(62 + 8),
+                                                    "F5" => Some(63 + 8),
+                                                    "F6" => Some(64 + 8),
+                                                    "F7" => Some(65 + 8),
+                                                    "F8" => Some(66 + 8),
+                                                    "F9" => Some(67 + 8),
+                                                    "F10" => Some(68 + 8),
+                                                    "F11" => Some(87 + 8),
+                                                    "F12" => Some(88 + 8),
+                                                    _ => None,
+                                                };
+                                                if let Some(kc) = keycode {
+                                                    keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(kc), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                    keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(kc), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                } else if key.starts_with("Ctrl+") {
+                                                    // Handle Ctrl+key combinations
+                                                    let ch = key.chars().last().unwrap_or('c');
+                                                    let ctrl_keycode = smithay::input::keyboard::Keycode::new(29 + 8);
+                                                    if let Some((evdev_keycode, _)) = char_to_evdev(ch) {
+                                                        let xkb_keycode = evdev_keycode + 8;
+                                                        keyboard.input::<(), _>(state, ctrl_keycode, smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                        keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(xkb_keycode), smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                        keyboard.input::<(), _>(state, smithay::input::keyboard::Keycode::new(xkb_keycode), smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                        keyboard.input::<(), _>(state, ctrl_keycode, smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
