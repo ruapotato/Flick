@@ -213,6 +213,13 @@ pub struct Flick {
     // Touch position tracking for hwcomposer backend
     pub last_touch_pos: HashMap<i32, smithay::utils::Point<f64, smithay::utils::Logical>>,
 
+    // Pending touch for context menu - delays touch forwarding to apps
+    // Stored as (slot_id, position, time_msec) - forwarded if not a long press
+    // Using i32 slot_id since smithay TouchSlot doesn't have From<i32>
+    pub pending_app_touch: Option<(i32, smithay::utils::Point<f64, smithay::utils::Logical>, u32)>,
+    // The actual TouchSlot for pending touch (needed for Wayland forwarding)
+    pub pending_app_touch_slot: Option<smithay::backend::input::TouchSlot>,
+
     // Keyboard swipe-down dismiss tracking
     pub keyboard_swipe_start_y: Option<f64>,
     pub keyboard_swipe_active: bool,
@@ -365,6 +372,8 @@ impl Flick {
             system_last_refresh: Instant::now(),
             last_activity: Instant::now(),
             last_touch_pos: HashMap::new(),
+            pending_app_touch: None,
+            pending_app_touch_slot: None,
             keyboard_swipe_start_y: None,
             keyboard_swipe_active: false,
             active_window: None,

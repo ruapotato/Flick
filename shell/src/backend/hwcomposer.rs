@@ -839,17 +839,27 @@ fn handle_input_event(
                         .map(|surface| (surface, smithay::utils::Point::from((0.0, 0.0))));
 
                     if focus.is_some() {
-                        touch.down(
-                            state,
-                            focus,
-                            &smithay::input::touch::DownEvent {
-                                slot: event.slot(),
-                                location: touch_pos.to_f64(),
-                                serial,
-                                time: event.time_msec(),
-                            },
-                        );
-                        touch.frame(state);
+                        // For App view (not lock screen), delay touch forwarding to avoid
+                        // deselecting text when user wants to long-press for context menu
+                        if shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active {
+                            // Store pending touch - will be forwarded if not a long press
+                            state.pending_app_touch = Some((slot_id, touch_pos, event.time_msec()));
+                            state.pending_app_touch_slot = Some(event.slot());
+                            info!("TouchDown: Pending for context menu check (slot {})", slot_id);
+                        } else {
+                            // Lock screen: forward immediately
+                            touch.down(
+                                state,
+                                focus,
+                                &smithay::input::touch::DownEvent {
+                                    slot: event.slot(),
+                                    location: touch_pos.to_f64(),
+                                    serial,
+                                    time: event.time_msec(),
+                                },
+                            );
+                            touch.frame(state);
+                        }
                     } else {
                         info!("TouchDown: No surface found for touch event");
                     }
@@ -1119,16 +1129,55 @@ fn handle_input_event(
                         });
 
                     if focus.is_some() {
-                        touch.motion(
-                            state,
-                            focus,
-                            &smithay::input::touch::MotionEvent {
-                                slot: event.slot(),
-                                location: touch_pos.to_f64(),
-                                time: event.time_msec(),
-                            },
-                        );
-                        touch.frame(state);
+                        // Check if we have a pending touch that needs to be sent first
+                        // This happens when user starts scrolling (finger moved after touch down)
+                        if let Some((pending_slot_id, pending_pos, pending_time)) = state.pending_app_touch.take() {
+                            let pending_slot = state.pending_app_touch_slot.take();
+                            // Check if finger moved significantly (scrolling, not long press)
+                            let dx = touch_pos.x - pending_pos.x;
+                            let dy = touch_pos.y - pending_pos.y;
+                            let moved = (dx * dx + dy * dy).sqrt() > 10.0;
+
+                            if moved {
+                                // User is scrolling - forward the pending touch down first
+                                if let Some(slot) = pending_slot {
+                                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                    touch.down(
+                                        state,
+                                        focus.clone(),
+                                        &smithay::input::touch::DownEvent {
+                                            slot,
+                                            location: pending_pos.to_f64(),
+                                            serial,
+                                            time: pending_time,
+                                        },
+                                    );
+                                    touch.frame(state);
+                                    info!("TouchMotion: Forwarded pending touch (slot {}) - user is scrolling", pending_slot_id);
+                                }
+
+                                // Cancel context menu tracking since user is scrolling
+                                state.shell.cancel_context_menu();
+                            } else {
+                                // Not moved enough yet - keep pending
+                                state.pending_app_touch = Some((pending_slot_id, pending_pos, pending_time));
+                                state.pending_app_touch_slot = pending_slot;
+                            }
+                        }
+
+                        // Forward the motion (only if touch was already sent or just sent above)
+                        if state.pending_app_touch.is_none() {
+                            touch.motion(
+                                state,
+                                focus,
+                                &smithay::input::touch::MotionEvent {
+                                    slot: event.slot(),
+                                    location: touch_pos.to_f64(),
+                                    time: event.time_msec(),
+                                },
+                            );
+                            touch.frame(state);
+                        }
                     }
                 }
             } else {
@@ -1532,6 +1581,47 @@ fn handle_input_event(
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
 
+                    // Check if we have a pending touch that was never sent
+                    // This happens when user tapped quickly without moving (not scrolling)
+                    // and didn't hold long enough for context menu
+                    if let Some((pending_slot_id, pending_pos, pending_time)) = state.pending_app_touch.take() {
+                        let pending_slot = state.pending_app_touch_slot.take();
+                        // Only forward if this is the same slot and context menu wasn't triggered
+                        if pending_slot_id == slot_id && !state.shell.context_menu_active {
+                            // Forward the pending touch down first
+                            let focus = state.space.elements().last()
+                                .and_then(|window| {
+                                    if let Some(toplevel) = window.toplevel() {
+                                        Some((toplevel.wl_surface().clone(), smithay::utils::Point::from((0.0, 0.0))))
+                                    } else if let Some(x11) = window.x11_surface() {
+                                        x11.wl_surface().map(|s| (s.clone(), smithay::utils::Point::from((0.0, 0.0))))
+                                    } else {
+                                        None
+                                    }
+                                });
+
+                            if let (Some(focus), Some(slot)) = (focus, pending_slot) {
+                                let down_serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                touch.down(
+                                    state,
+                                    Some(focus),
+                                    &smithay::input::touch::DownEvent {
+                                        slot,
+                                        location: pending_pos.to_f64(),
+                                        serial: down_serial,
+                                        time: pending_time,
+                                    },
+                                );
+                                touch.frame(state);
+                                info!("TouchUp: Forwarded pending touch down + up (quick tap, slot {})", pending_slot_id);
+                            }
+                        } else if state.shell.context_menu_active {
+                            info!("TouchUp: Discarding pending touch - context menu was triggered");
+                        }
+                    }
+
+                    // Only send touch up if we've previously sent a touch down
+                    // (either just now from pending, or earlier in touch motion)
                     touch.up(
                         state,
                         &smithay::input::touch::UpEvent {
@@ -2404,6 +2494,12 @@ pub fn run() -> Result<()> {
             if state.shell.check_context_menu() {
                 info!("Long press detected - showing context menu");
                 state.shell.show_context_menu();
+                // Clear pending touch - context menu was triggered, don't forward touch to app
+                if state.pending_app_touch.is_some() {
+                    info!("Clearing pending touch - context menu triggered");
+                    state.pending_app_touch = None;
+                    state.pending_app_touch_slot = None;
+                }
             }
         }
 
@@ -3770,13 +3866,14 @@ fn render_frame(
             }
             debug!("Finished rendering windows");
 
-            // Render Slint overlays on top of app window (keyboard, volume indicator, context menu, etc.)
+            // Render Slint overlays on top of app window (keyboard, volume indicator, context menu, system menu, etc.)
             if let Some(ref slint_ui) = state.shell.slint_ui {
                 let keyboard_visible = slint_ui.is_keyboard_visible();
                 let volume_visible = state.system.should_show_volume_overlay();
                 let context_menu_visible = state.shell.context_menu_active;
+                let system_menu_visible = state.shell.system_menu_active;
 
-                if keyboard_visible || volume_visible || context_menu_visible {
+                if keyboard_visible || volume_visible || context_menu_visible || system_menu_visible {
                     slint::platform::update_timers_and_animations();
                     slint_ui.set_view("app");  // Use app view to show overlays
                     // Update volume overlay state
@@ -3786,8 +3883,8 @@ fn render_frame(
 
                     if let Some((width, height, pixels)) = slint_ui.render() {
                         if log_frame {
-                            info!("APP OVERLAY frame {}: {}x{} (kbd={}, vol={}, ctx={})",
-                                frame_num, width, height, keyboard_visible, volume_visible, context_menu_visible);
+                            info!("APP OVERLAY frame {}: {}x{} (kbd={}, vol={}, ctx={}, sys={})",
+                                frame_num, width, height, keyboard_visible, volume_visible, context_menu_visible, system_menu_visible);
                         }
                         unsafe {
                             gl::render_texture(width, height, &pixels, display.width, display.height);

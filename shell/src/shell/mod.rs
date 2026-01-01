@@ -307,6 +307,8 @@ pub struct Shell {
     pub copied_popup_start: Option<std::time::Instant>,
     /// Position for copied popup (where finger was)
     pub copied_popup_position: Option<Point<f64, Logical>>,
+    /// System menu (power options) is active
+    pub system_menu_active: bool,
     /// Icon cache for app icons
     pub icon_cache: icons::IconCache,
     /// Lock screen configuration
@@ -438,6 +440,7 @@ impl Shell {
             copied_popup_text: String::new(),
             copied_popup_start: None,
             copied_popup_position: None,
+            system_menu_active: false,
             icon_cache: icons::IconCache::new(128), // 128px icons for larger tiles
             lock_config: lock_config.clone(),
             lock_state,
@@ -1680,7 +1683,7 @@ impl Shell {
 
     /// Show system menu (reboot/shutdown/lock options)
     pub fn show_system_menu(&mut self) {
-        // For now, show the system menu in Slint UI
+        self.system_menu_active = true;
         if let Some(ref slint_ui) = self.slint_ui {
             slint_ui.set_show_system_menu(true);
         }
@@ -1689,6 +1692,7 @@ impl Shell {
 
     /// Hide system menu
     pub fn hide_system_menu(&mut self) {
+        self.system_menu_active = false;
         if let Some(ref slint_ui) = self.slint_ui {
             slint_ui.set_show_system_menu(false);
         }
