@@ -85,9 +85,7 @@ if [ "$PLATFORM" = "droidian" ]; then
         pkg-config \
         libpam0g-dev \
         libxkbcommon-dev \
-        libpixman-1-dev \
-        libpresage-dev \
-        libpresage-data
+        libpixman-1-dev
 else
     # Mobian/Debian needs DRM/seatd dependencies
     sudo apt update
@@ -108,8 +106,6 @@ else
         build-essential \
         libdisplay-info-dev \
         libpixman-1-dev \
-        libpresage-dev \
-        libpresage-data \
         seatd
 fi
 

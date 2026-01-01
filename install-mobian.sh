@@ -35,8 +35,6 @@ sudo apt install -y \
     build-essential \
     libdisplay-info-dev \
     libpixman-1-dev \
-    libpresage-dev \
-    libpresage-data \
     seatd
 
 echo ""

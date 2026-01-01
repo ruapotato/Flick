@@ -1,23 +1,18 @@
 // Word prediction module for on-screen keyboard
-// Uses libpresage for intelligent predictive text entry with fallback to simple dictionary
+// Provides real-time word suggestions based on prefix matching AND spell-check
 
-use super::presage::Presage;
 use std::collections::HashMap;
 
-/// Word predictor with presage backend and dictionary fallback
+/// Word predictor with frequency-based suggestions and spell-check
 pub struct WordPredictor {
-    /// Presage instance for intelligent prediction
-    presage: Option<Presage>,
-    /// Fallback dictionary of words with frequency scores
-    fallback_words: HashMap<String, u32>,
-    /// Text context before cursor (what user has typed)
-    past_context: String,
-    /// Current word being typed (extracted from past_context)
+    /// Dictionary of words with frequency scores
+    words: HashMap<String, u32>,
+    /// Current word being typed
     current_word: String,
 }
 
 /// Calculate Levenshtein edit distance between two strings
-/// Used for spell-check suggestions in fallback mode
+/// Used for spell-check suggestions
 fn edit_distance(a: &str, b: &str) -> usize {
     let a_chars: Vec<char> = a.chars().collect();
     let b_chars: Vec<char> = b.chars().collect();
@@ -50,17 +45,12 @@ fn edit_distance(a: &str, b: &str) -> usize {
 }
 
 impl WordPredictor {
-    /// Create a new word predictor, attempting to use presage first
+    /// Create a new word predictor with a built-in dictionary
     pub fn new() -> Self {
-        // Disable presage for now - FFI crashes on first use
-        // TODO: Fix presage integration
-        let presage: Option<Presage> = None;
-        tracing::info!("Word predictor using fallback dictionary (presage disabled)");
-
-        let mut fallback_words = HashMap::new();
+        let mut words = HashMap::new();
 
         // Common English words sorted by frequency (most common first)
-        // This is used as fallback when presage is unavailable
+        // This is a curated list of ~500 most common words
         let common_words = [
             // Articles, pronouns, prepositions (highest frequency)
             ("the", 100), ("be", 99), ("to", 98), ("of", 97), ("and", 96),
@@ -158,65 +148,33 @@ impl WordPredictor {
         ];
 
         for (word, freq) in common_words {
-            fallback_words.insert(word.to_lowercase(), freq);
+            words.insert(word.to_lowercase(), freq);
         }
 
         Self {
-            presage,
-            fallback_words,
-            past_context: String::new(),
+            words,
             current_word: String::new(),
         }
     }
 
-    /// Extract the current word from the end of the past context
-    fn update_current_word(&mut self) {
-        // Find the last word in the context
-        self.current_word = self.past_context
-            .chars()
-            .rev()
-            .take_while(|c| c.is_alphabetic())
-            .collect::<String>()
-            .chars()
-            .rev()
-            .collect();
-    }
-
-    /// Add a character to the context
+    /// Add a character to the current word
     pub fn add_char(&mut self, ch: char) {
-        self.past_context.push(ch);
-        self.update_current_word();
-
-        // Update presage context
-        if let Some(ref mut presage) = self.presage {
-            presage.set_context(&self.past_context, "");
+        if ch.is_alphabetic() {
+            self.current_word.push(ch.to_lowercase().next().unwrap_or(ch));
+        } else {
+            // Non-alphabetic character ends the current word
+            self.current_word.clear();
         }
     }
 
-    /// Remove last character from context (backspace)
+    /// Remove last character from current word (backspace)
     pub fn backspace(&mut self) {
-        self.past_context.pop();
-        self.update_current_word();
-
-        // Update presage context
-        if let Some(ref mut presage) = self.presage {
-            presage.set_context(&self.past_context, "");
-        }
+        self.current_word.pop();
     }
 
-    /// Clear current word (space, enter, etc. - but keep context)
+    /// Clear current word (space, enter, etc.)
     pub fn clear_word(&mut self) {
         self.current_word.clear();
-    }
-
-    /// Clear all context (e.g., when switching focus)
-    pub fn clear_context(&mut self) {
-        self.past_context.clear();
-        self.current_word.clear();
-
-        if let Some(ref mut presage) = self.presage {
-            presage.set_context("", "");
-        }
     }
 
     /// Get current word being typed
@@ -230,32 +188,17 @@ impl WordPredictor {
     }
 
     /// Get predictions for the current word
-    /// Returns up to 3 predictions
+    /// Returns up to 3 predictions: prefix matches first, then spell-check suggestions
     pub fn get_predictions(&self) -> Vec<String> {
         if self.current_word.len() < 1 {
             return vec![];
         }
 
-        // Try presage first
-        if let Some(ref presage) = self.presage {
-            let predictions = presage.predict();
-            if !predictions.is_empty() {
-                // Limit to 3 predictions
-                return predictions.into_iter().take(3).collect();
-            }
-        }
-
-        // Fallback to dictionary-based prediction
-        self.get_fallback_predictions()
-    }
-
-    /// Fallback prediction using simple dictionary
-    fn get_fallback_predictions(&self) -> Vec<String> {
         let prefix = &self.current_word;
         let word_len = prefix.len();
 
         // Find all words that start with the prefix (completions)
-        let mut prefix_matches: Vec<(&String, &u32)> = self.fallback_words
+        let mut prefix_matches: Vec<(&String, &u32)> = self.words
             .iter()
             .filter(|(word, _)| word.starts_with(prefix) && *word != prefix)
             .collect();
@@ -272,14 +215,17 @@ impl WordPredictor {
         // add spell-check suggestions (words with small edit distance)
         if results.len() < 3 && word_len >= 2 {
             // Calculate max allowed edit distance based on word length
+            // Short words: 1 edit, medium: 2 edits, long: 3 edits
             let max_distance = if word_len <= 3 { 1 } else if word_len <= 6 { 2 } else { 3 };
 
             // Find words with similar length and small edit distance
-            let mut fuzzy_matches: Vec<(&String, usize, u32)> = self.fallback_words
+            let mut fuzzy_matches: Vec<(&String, usize, u32)> = self.words
                 .iter()
                 .filter(|(word, _)| {
+                    // Only consider words of similar length
                     let len_diff = (word.len() as i32 - word_len as i32).abs();
                     if len_diff > (max_distance as i32) { return false; }
+                    // Don't include exact matches or prefix matches
                     if word.starts_with(prefix) { return false; }
                     true
                 })
@@ -312,40 +258,19 @@ impl WordPredictor {
 
     /// Set current word directly (e.g., when prediction is selected)
     pub fn set_word(&mut self, word: &str) {
-        // Replace the current word in the context
-        let word_len = self.current_word.len();
-        for _ in 0..word_len {
-            self.past_context.pop();
-        }
-        self.past_context.push_str(word);
         self.current_word = word.to_lowercase();
-
-        // Update presage context
-        if let Some(ref mut presage) = self.presage {
-            presage.set_context(&self.past_context, "");
-        }
     }
 
-    /// Learn a new word (add to dictionary / teach presage)
+    /// Learn a new word (add to dictionary with low frequency)
     pub fn learn_word(&mut self, word: &str) {
-        // Teach presage
-        if let Some(ref presage) = self.presage {
-            presage.learn(word);
-        }
-
-        // Also add to fallback dictionary
         let word = word.to_lowercase();
         if word.len() >= 2 && word.chars().all(|c| c.is_alphabetic()) {
-            let freq = self.fallback_words.get(&word).copied().unwrap_or(0);
+            // Only learn if word doesn't exist or has very low frequency
+            let freq = self.words.get(&word).copied().unwrap_or(0);
             if freq < 10 {
-                self.fallback_words.insert(word, freq + 1);
+                self.words.insert(word, freq + 1);
             }
         }
-    }
-
-    /// Check if presage is available
-    pub fn has_presage(&self) -> bool {
-        self.presage.is_some()
     }
 }
 
@@ -368,12 +293,8 @@ mod tests {
         predictor.add_char('h');
 
         let predictions = predictor.get_predictions();
-        // Should have at least some predictions (presage or fallback)
-        // Note: presage might not be available in test environment
-        if !predictor.has_presage() {
-            assert!(!predictions.is_empty());
-            assert!(predictions.iter().any(|w| w == "the" || w == "that" || w == "their"));
-        }
+        assert!(!predictions.is_empty());
+        assert!(predictions.iter().any(|w| w == "the" || w == "that" || w == "their"));
     }
 
     #[test]
@@ -387,21 +308,5 @@ mod tests {
 
         predictor.add_char(' ');
         assert_eq!(predictor.current_word(), "");
-    }
-
-    #[test]
-    fn test_context_tracking() {
-        let mut predictor = WordPredictor::new();
-
-        predictor.add_char('h');
-        predictor.add_char('e');
-        predictor.add_char('l');
-        predictor.add_char('l');
-        predictor.add_char('o');
-        predictor.add_char(' ');
-        predictor.add_char('w');
-        predictor.add_char('o');
-
-        assert_eq!(predictor.current_word(), "wo");
     }
 }

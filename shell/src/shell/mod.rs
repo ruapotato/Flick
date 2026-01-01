@@ -17,7 +17,6 @@ pub mod apps;
 pub mod icons;
 pub mod lock_screen;
 pub mod slint_ui;
-pub mod presage;
 pub mod word_prediction;
 
 use smithay::utils::{Logical, Point, Size};
