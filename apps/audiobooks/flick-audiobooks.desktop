@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Flick Audiobooks
-Comment=First-party audiobook player for Flick shell
-Exec=sh -c "$HOME/Flick/apps/audiobooks/run_audiobooks.sh"
-Icon=multimedia-audio-player
-Terminal=false
-Categories=Audio;AudioVideo;
-Keywords=audiobook;audio;book;player;media;

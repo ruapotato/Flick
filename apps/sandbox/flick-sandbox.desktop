@@ -1,7 +1,0 @@
-[Desktop Entry]
-Name=Flick Sandbox
-Comment=Falling sand particle simulation game
-Exec=sh -c "$HOME/Flick/apps/sandbox/run_sandbox.sh"
-Icon=sandbox
-Type=Application
-Categories=Game;

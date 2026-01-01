@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Flick Recorder
-Comment=Audio recording app for Flick shell
-Exec=sh -c "$HOME/Flick/apps/recorder/run_recorder.sh"
-Icon=audio-input-microphone
-Terminal=false
-Categories=Audio;AudioVideo;Recorder;
-Keywords=recorder;audio;microphone;voice;sound;

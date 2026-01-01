@@ -1,7 +1,0 @@
-[Desktop Entry]
-Name=Flick Distract
-Comment=Mesmerizing effects for toddlers
-Exec=sh -c "$HOME/Flick/apps/distract/run_distract.sh"
-Icon=distract
-Type=Application
-Categories=Game;
