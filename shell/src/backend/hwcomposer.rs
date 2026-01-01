@@ -2300,11 +2300,15 @@ fn handle_input_event(
                                                     }
                                                 }
                                             }
-                                            // Learn the word and clear predictor state
+                                            // Learn the word and get next predictions via Markov chain
                                             state.shell.word_predictor.learn_word(&word);
-                                            state.shell.word_predictor.clear_word();
+                                            let next_predictions = state.shell.word_predictor.select_prediction(&word);
                                             if let Some(ref slint_ui) = state.shell.slint_ui {
-                                                slint_ui.set_keyboard_predictions("", "", "");
+                                                // Show Markov predictions for the next word
+                                                let p1 = next_predictions.get(0).map(|s| s.as_str()).unwrap_or("");
+                                                let p2 = next_predictions.get(1).map(|s| s.as_str()).unwrap_or("");
+                                                let p3 = next_predictions.get(2).map(|s| s.as_str()).unwrap_or("");
+                                                slint_ui.set_keyboard_predictions(p1, p2, p3);
                                                 // Reset shift after word
                                                 slint_ui.set_keyboard_shifted(false);
                                             }

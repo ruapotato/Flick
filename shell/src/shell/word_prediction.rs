@@ -316,12 +316,19 @@ impl WordPredictor {
         results
     }
 
-    /// Set current word directly (e.g., when prediction is selected)
-    /// Also saves as last_word for Markov chain prediction
+    /// Set current word directly (for external state sync)
     pub fn set_word(&mut self, word: &str) {
+        self.current_word = word.to_lowercase();
+    }
+
+    /// Called when user selects a word prediction
+    /// Sets last_word for Markov chain and clears current_word
+    /// Returns the next predictions based on the selected word
+    pub fn select_prediction(&mut self, word: &str) -> Vec<String> {
         let word_lower = word.to_lowercase();
-        self.last_word = word_lower.clone();
-        self.current_word = word_lower;
+        self.last_word = word_lower;
+        self.current_word.clear();
+        self.get_markov_predictions()
     }
 
     /// Get Markov chain predictions for the next word based on last_word
