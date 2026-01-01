@@ -90,36 +90,8 @@ pub fn unlock_signal_path() -> PathBuf {
     PathBuf::from(home).join(".local/state/flick/unlock_signal")
 }
 
-/// App definition for the launcher
-#[derive(Debug, Clone)]
-pub struct AppInfo {
-    pub name: String,
-    pub exec: String,
-    pub color: [f32; 4], // RGBA
-}
-
-impl AppInfo {
-    pub fn new(name: &str, exec: &str, color: [f32; 4]) -> Self {
-        Self {
-            name: name.to_string(),
-            exec: exec.to_string(),
-            color,
-        }
-    }
-}
-
-/// Default apps for the launcher
-pub fn default_apps() -> Vec<AppInfo> {
-    vec![
-        // X11 apps (via XWayland) - more likely to work
-        AppInfo::new("XTerm", "xterm", [0.2, 0.6, 0.3, 1.0]),      // Green
-        AppInfo::new("XCalc", "xcalc", [0.3, 0.5, 0.8, 1.0]),      // Blue
-        AppInfo::new("XClock", "xclock", [0.8, 0.6, 0.2, 1.0]),    // Orange
-        AppInfo::new("XEyes", "xeyes", [0.7, 0.3, 0.5, 1.0]),      // Purple
-        AppInfo::new("XEdit", "xedit", [0.5, 0.5, 0.5, 1.0]),      // Gray
-        AppInfo::new("XLoad", "xload", [0.6, 0.4, 0.3, 1.0]),      // Brown
-    ]
-}
+// AppInfo is now defined in apps.rs - use apps::AppInfo
+pub use apps::AppInfo;
 
 /// Current shell view state
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -189,8 +161,8 @@ pub struct LongPressMenu {
     pub category_id: String,
     /// Position of the menu (where long press occurred)
     pub position: Point<f64, Logical>,
-    /// Available apps for this category
-    pub available_apps: Vec<apps::DesktopEntry>,
+    /// Available apps for this category (empty in simplified model)
+    pub available_apps: Vec<apps::AppDef>,
     /// Currently highlighted option
     pub highlighted: Option<usize>,
     /// Current menu level
@@ -209,8 +181,6 @@ pub struct Shell {
     pub gesture: GestureState,
     /// App manager (handles categories and installed apps)
     pub app_manager: apps::AppManager,
-    /// Legacy apps for compatibility (will be removed)
-    pub apps: Vec<AppInfo>,
     /// Selected app index (for touch feedback)
     pub selected_app: Option<usize>,
     /// Scroll offset for app switcher
@@ -391,7 +361,6 @@ impl Shell {
             screen_size,
             gesture: GestureState::default(),
             app_manager: apps::AppManager::new(),
-            apps: default_apps(),
             selected_app: None,
             switcher_scroll: 0.0,
             switcher_velocity: 0.0,
@@ -1200,7 +1169,7 @@ impl Shell {
 
     /// Show long press menu for a category
     pub fn show_long_press_menu(&mut self, category_id: &str, position: Point<f64, Logical>) {
-        let available_apps = self.app_manager.apps_for_category(category_id)
+        let available_apps: Vec<apps::AppDef> = self.app_manager.apps_for_category(category_id)
             .into_iter()
             .cloned()
             .collect();
@@ -2350,11 +2319,12 @@ impl Shell {
         None
     }
 
-    /// Hit test for app grid - returns app index if hit (legacy, for compatibility)
+    /// Hit test for app grid - returns app index if hit
     fn hit_test_app(&self, pos: Point<f64, Logical>) -> Option<usize> {
         let grid = app_grid::AppGridLayout::new(self.screen_size);
+        let apps = self.app_manager.get_category_info();
 
-        for (i, app) in self.apps.iter().enumerate() {
+        for (i, app) in apps.iter().enumerate() {
             let rect = grid.app_rect(i);
             // Adjust for scroll offset - tiles scroll up as home_scroll increases
             let adjusted_y = rect.y - self.home_scroll;
