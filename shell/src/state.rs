@@ -548,7 +548,7 @@ impl Flick {
 
     /// Get keyboard height in pixels
     pub fn get_keyboard_height(&self) -> i32 {
-        std::cmp::max(200, (self.screen_size.h as f32 * 0.22) as i32)
+        std::cmp::max(280, (self.screen_size.h as f32 * 0.32) as i32)
     }
 
     /// Start home gesture - find the top-most app window and track it for upward slide
@@ -776,7 +776,7 @@ impl Flick {
     /// When keyboard shows, reduce window height to fit above keyboard
     /// When keyboard hides, restore full screen height
     pub fn resize_windows_for_keyboard(&mut self, keyboard_visible: bool) {
-        let keyboard_height = std::cmp::max(200, (self.screen_size.h as f32 * 0.22) as i32);
+        let keyboard_height = std::cmp::max(280, (self.screen_size.h as f32 * 0.32) as i32);
         let available_height = if keyboard_visible {
             self.screen_size.h - keyboard_height
         } else {

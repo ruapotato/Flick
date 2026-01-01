@@ -752,9 +752,9 @@ fn handle_input_event(
             let touch_on_keyboard = if shell_view == crate::shell::ShellView::App || shell_view == crate::shell::ShellView::LockScreen {
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     if slint_ui.is_keyboard_visible() {
-                        // Keyboard is ~22% of screen height at the bottom
+                        // Keyboard is ~32% of screen height at the bottom
                         let screen_height = state.screen_size.h as f64;
-                        let keyboard_height = (screen_height * 0.22).max(200.0);
+                        let keyboard_height = (screen_height * 0.32).max(280.0);
                         let keyboard_top = screen_height - keyboard_height;
                         touch_pos.y >= keyboard_top
                     } else {
@@ -1107,7 +1107,7 @@ fn handle_input_event(
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     if slint_ui.is_keyboard_visible() {
                         let screen_height = state.screen_size.h as f64;
-                        let keyboard_height = (screen_height * 0.22).max(200.0);
+                        let keyboard_height = (screen_height * 0.32).max(280.0);
                         let keyboard_top = screen_height - keyboard_height;
                         touch_pos.y >= keyboard_top
                     } else {
@@ -1671,7 +1671,7 @@ fn handle_input_event(
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         if slint_ui.is_keyboard_visible() {
                             let screen_height = state.screen_size.h as f64;
-                            let keyboard_height = (screen_height * 0.22).max(200.0);
+                            let keyboard_height = (screen_height * 0.32).max(280.0);
                             let keyboard_top = screen_height - keyboard_height;
                             pos.y >= keyboard_top
                         } else {

@@ -1576,8 +1576,8 @@ fn render_surface(
                 slint_ui.request_redraw();
 
                 if let Some((width, height, pixels)) = slint_ui.render() {
-                    // Keyboard height is 22% of screen, minimum 200px (matches Slint)
-                    let keyboard_height: u32 = std::cmp::max(200, (height as f32 * 0.22) as u32);
+                    // Keyboard height is 32% of screen, minimum 280px (matches Slint)
+                    let keyboard_height: u32 = std::cmp::max(280, (height as f32 * 0.32) as u32);
                     let keyboard_y = height.saturating_sub(keyboard_height);
                     tracing::info!("Lock screen keyboard render: slint buffer {}x{}, keyboard_height={}, keyboard_y={}",
                         width, height, keyboard_height, keyboard_y);
@@ -2143,8 +2143,8 @@ fn render_surface(
                 slint_ui.request_redraw();
 
                 if let Some((width, height, pixels)) = slint_ui.render() {
-                    // Keyboard height is 22% of screen, minimum 200px (matches Slint)
-                    let keyboard_height: u32 = std::cmp::max(200, (height as f32 * 0.22) as u32);
+                    // Keyboard height is 32% of screen, minimum 280px (matches Slint)
+                    let keyboard_height: u32 = std::cmp::max(280, (height as f32 * 0.32) as u32);
                     let keyboard_y = height.saturating_sub(keyboard_height);
                     tracing::info!("Keyboard render: slint buffer {}x{}, keyboard_height={}, keyboard_y={}, pixels.len={}",
                         width, height, keyboard_height, keyboard_y, pixels.len());
@@ -2697,7 +2697,7 @@ fn handle_input_event(
             let keyboard_visible = state.shell.slint_ui.as_ref()
                 .map(|ui| ui.is_keyboard_visible())
                 .unwrap_or(false);
-            let keyboard_height = std::cmp::max(200, (state.screen_size.h as f32 * 0.22) as i32);
+            let keyboard_height = std::cmp::max(280, (state.screen_size.h as f32 * 0.32) as i32);
             let keyboard_top = state.screen_size.h - keyboard_height;
             let touch_on_keyboard = keyboard_visible && touch_pos.y >= keyboard_top as f64;
             info!("Touch down kb check: kb_visible={}, kb_height={}, kb_top={}, touch_y={}, on_kb={}",
