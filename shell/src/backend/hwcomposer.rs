@@ -1289,10 +1289,33 @@ fn handle_input_event(
                     let action = state.shell.complete_context_menu();
                     match action {
                         1 => {
-                            // Clipboard view - show what's in clipboard
-                            info!("Context menu: CLIPBOARD selected");
-                            if let Some(ref text) = state.shell.clipboard_content.clone() {
-                                state.shell.show_copied_notification(text.clone(), state.shell.context_menu_position);
+                            // Copy action - copy primary selection (highlighted text) to clipboard
+                            info!("Context menu: COPY selected");
+                            // Get primary selection (text that was highlighted before long press)
+                            match std::process::Command::new("timeout")
+                                .args(["0.5", "wl-paste", "--primary", "--no-newline"])
+                                .output()
+                            {
+                                Ok(output) if output.status.success() => {
+                                    let text = String::from_utf8_lossy(&output.stdout).to_string();
+                                    if !text.is_empty() {
+                                        // Copy to regular clipboard using wl-copy
+                                        let _ = std::process::Command::new("wl-copy")
+                                            .arg(&text)
+                                            .spawn();
+                                        info!("Copied primary selection to clipboard: {:?}", text);
+                                        state.shell.show_copied_notification(text.clone(), state.shell.context_menu_position);
+                                        state.shell.clipboard_content = Some(text);
+                                    } else {
+                                        info!("Primary selection is empty");
+                                    }
+                                }
+                                Ok(_) => {
+                                    info!("No primary selection available");
+                                }
+                                Err(e) => {
+                                    error!("Failed to get primary selection: {}", e);
+                                }
                             }
                             state.system.haptic_tap();
                         }
