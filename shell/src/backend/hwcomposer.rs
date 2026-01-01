@@ -666,8 +666,13 @@ fn handle_input_event(
             state.add_touch_effect(touch_pos.x, touch_pos.y, slot_id as u64);
 
             // Start tracking for context menu (copy/paste)
-            // Only track if not on lock screen
-            if !state.shell.lock_screen_active {
+            // Only track if not on lock screen and not near screen edges (where edge swipes trigger)
+            let edge_margin = 50.0; // pixels from edge where gestures are detected
+            let screen_w = state.screen_size.w as f64;
+            let screen_h = state.screen_size.h as f64;
+            let near_edge = touch_pos.x < edge_margin || touch_pos.x > screen_w - edge_margin ||
+                           touch_pos.y < edge_margin || touch_pos.y > screen_h - edge_margin;
+            if !state.shell.lock_screen_active && !near_edge {
                 state.shell.start_context_menu_tracking(touch_pos, slot_id);
             }
 
@@ -678,6 +683,9 @@ fn handle_input_event(
                 // Handle edge swipe start for quick settings, app switcher, and home/close gestures
                 if let crate::input::GestureEvent::EdgeSwipeStart { edge, .. } = &gesture_event {
                     let shell_view = state.shell.view;
+
+                    // Cancel context menu tracking when edge gesture starts
+                    state.shell.cancel_context_menu();
 
                     // Cancel any pending touch sequences immediately when edge gesture starts
                     // This prevents the app from having a "stuck" touch when gesture is recognized
@@ -2556,6 +2564,7 @@ pub fn run() -> Result<()> {
         // This takes priority over wiggle mode
         let edge_gesture_active = state.switcher_gesture_active || state.qs_gesture_active ||
             state.switcher_return_active || state.qs_return_active ||
+            state.home_gesture_window.is_some() || state.close_gesture_window.is_some() ||
             state.gesture_recognizer.has_potential_edge_swipe();
         if !state.shell.context_menu_active
             && !state.shell.is_scrolling
