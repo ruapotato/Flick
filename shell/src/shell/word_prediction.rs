@@ -90,6 +90,19 @@ impl WordPredictor {
             ("hour", 10), ("game", 9), ("line", 8), ("end", 7), ("member", 6),
             ("law", 5), ("car", 4), ("city", 3), ("community", 2), ("name", 1),
 
+            // More common nouns (animals, food, objects)
+            ("dog", 55), ("cat", 54), ("fish", 53), ("bird", 52), ("food", 51),
+            ("thing", 50), ("door", 49), ("table", 48), ("chair", 47), ("window", 46),
+            ("tree", 45), ("road", 44), ("street", 43), ("school", 42), ("church", 41),
+            ("sun", 40), ("moon", 39), ("star", 38), ("sky", 37), ("rain", 36),
+            ("snow", 35), ("wind", 34), ("fire", 33), ("earth", 32), ("sea", 31),
+            ("beach", 30), ("mountain", 29), ("river", 28), ("lake", 27), ("forest", 26),
+            ("cup", 25), ("glass", 24), ("plate", 23), ("bowl", 22), ("knife", 21),
+            ("fork", 20), ("spoon", 19), ("bed", 18), ("desk", 17), ("floor", 16),
+            ("wall", 15), ("roof", 14), ("garden", 13), ("park", 12), ("shop", 11),
+            ("store", 10), ("office", 9), ("bank", 8), ("hotel", 7), ("restaurant", 6),
+            ("movie", 5), ("music", 4), ("song", 3), ("art", 2), ("picture", 1),
+
             // Common adjectives
             ("good", 60), ("new", 59), ("first", 58), ("last", 57), ("long", 56),
             ("great", 55), ("little", 54), ("own", 53), ("other", 52), ("old", 51),
@@ -218,34 +231,49 @@ impl WordPredictor {
             // Short words: 1 edit, medium: 2 edits, long: 3 edits
             let max_distance = if word_len <= 3 { 1 } else if word_len <= 6 { 2 } else { 3 };
 
+            // Get first letter for prioritization
+            let first_char = prefix.chars().next();
+            let first_two: String = prefix.chars().take(2).collect();
+
             // Find words with similar length and small edit distance
-            let mut fuzzy_matches: Vec<(&String, usize, u32)> = self.words
+            let mut fuzzy_matches: Vec<(&String, usize, u32, usize)> = self.words
                 .iter()
                 .filter(|(word, _)| {
-                    // Only consider words of similar length
+                    // Only consider words of similar length (prefer same length)
                     let len_diff = (word.len() as i32 - word_len as i32).abs();
                     if len_diff > (max_distance as i32) { return false; }
-                    // Don't include exact matches or prefix matches
+                    // Don't include exact matches or prefix matches (those are already added)
                     if word.starts_with(prefix) { return false; }
                     true
                 })
                 .filter_map(|(word, freq)| {
                     let distance = edit_distance(prefix, word);
                     if distance <= max_distance && distance > 0 {
-                        Some((word, distance, *freq))
+                        // Calculate prefix match score (higher = better match)
+                        // Words starting with same letters are more likely what user meant
+                        let prefix_score = if word.starts_with(&first_two) {
+                            2  // Same first 2 letters = best
+                        } else if first_char.is_some() && word.chars().next() == first_char {
+                            1  // Same first letter = good
+                        } else {
+                            0  // Different first letter = less likely
+                        };
+                        Some((word, distance, *freq, prefix_score))
                     } else {
                         None
                     }
                 })
                 .collect();
 
-            // Sort by edit distance first, then by frequency
+            // Sort by: prefix match (desc), then edit distance (asc), then frequency (desc)
             fuzzy_matches.sort_by(|a, b| {
-                a.1.cmp(&b.1).then_with(|| b.2.cmp(&a.2))
+                b.3.cmp(&a.3)  // Higher prefix score first
+                    .then_with(|| a.1.cmp(&b.1))  // Lower edit distance first
+                    .then_with(|| b.2.cmp(&a.2))  // Higher frequency first
             });
 
             // Add fuzzy matches to fill up to 3 results
-            for (word, _, _) in fuzzy_matches {
+            for (word, _, _, _) in fuzzy_matches {
                 if results.len() >= 3 { break; }
                 if !results.contains(word) {
                     results.push(word.clone());
