@@ -2268,23 +2268,22 @@ fn handle_input_event(
                                             state.resize_windows_for_keyboard(false);
                                         }
                                         KeyboardAction::PredictionSelected(word) => {
-                                            // Delete current word and insert prediction
-                                            // First, send Ctrl+Backspace to delete word (or multiple backspaces)
-                                            // Then insert the predicted word followed by space
-                                            info!("Prediction selected: {}", word);
+                                            // Autocorrect: delete the current word and insert the prediction
+                                            // Use explicit backspaces (more reliable than Ctrl+Backspace)
+                                            let word_len = state.shell.word_predictor.current_word_len();
+                                            info!("Prediction selected: {} (replacing {} chars)", word, word_len);
                                             if let Some(keyboard) = state.seat.get_keyboard() {
                                                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                                                 let time = std::time::SystemTime::now()
                                                     .duration_since(std::time::UNIX_EPOCH)
                                                     .unwrap()
                                                     .as_millis() as u32;
-                                                // Delete current word (Ctrl+Backspace)
-                                                let ctrl_keycode = smithay::input::keyboard::Keycode::new(29 + 8);
+                                                // Send backspaces to delete the current word
                                                 let backspace_keycode = smithay::input::keyboard::Keycode::new(14 + 8);
-                                                keyboard.input::<(), _>(state, ctrl_keycode, smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
-                                                keyboard.input::<(), _>(state, backspace_keycode, smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
-                                                keyboard.input::<(), _>(state, backspace_keycode, smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
-                                                keyboard.input::<(), _>(state, ctrl_keycode, smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                for _ in 0..word_len {
+                                                    keyboard.input::<(), _>(state, backspace_keycode, smithay::backend::input::KeyState::Pressed, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                    keyboard.input::<(), _>(state, backspace_keycode, smithay::backend::input::KeyState::Released, serial, time, |_, _, _| { FilterResult::Forward::<()> });
+                                                }
                                                 // Type the prediction + space
                                                 let word_with_space = format!("{} ", word);
                                                 for ch in word_with_space.chars() {
@@ -2301,7 +2300,7 @@ fn handle_input_event(
                                                     }
                                                 }
                                             }
-                                            // Clear word predictor and predictions after selection
+                                            // Learn the word and clear predictor state
                                             state.shell.word_predictor.learn_word(&word);
                                             state.shell.word_predictor.clear_word();
                                             if let Some(ref slint_ui) = state.shell.slint_ui {

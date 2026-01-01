@@ -2486,7 +2486,8 @@ component KeyboardKey inherits Rectangle {
             height: 100%;
             text: root.shifted && root.shift-label != "" ? root.shift-label : root.label;
             color: Theme.on-surface;
-            font-size: font-size-override > 0 ? (font-size-override * 1px) : (is-special ? 18px : 28px);
+            font-size: font-size-override > 0 ? (font-size-override * 1px) : (is-special ? 22px : 32px);
+            font-weight: 500;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
@@ -2499,7 +2500,7 @@ component KeyboardKey inherits Rectangle {
     }
 }
 
-// Word prediction button
+// Word prediction button - large text for easy reading
 component PredictionButton inherits Rectangle {
     in property <string> word: "";
     callback selected(string);
@@ -2512,17 +2513,18 @@ component PredictionButton inherits Rectangle {
         y: 4px;
         width: parent.width - 8px;
         height: parent.height - 8px;
-        border-radius: 8px;
+        border-radius: 12px;
         background: touch.pressed ? Theme.primary-container : #1a1a24;
         border-width: 1px;
-        border-color: #333344;
+        border-color: #404055;
 
         Text {
             width: 100%;
             height: 100%;
             text: root.word;
             color: root.word != "" ? Theme.on-surface : Theme.on-surface-variant;
-            font-size: 18px;
+            font-size: 24px;
+            font-weight: 500;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
@@ -2576,12 +2578,12 @@ component OnScreenKeyboard inherits Rectangle {
         padding: 0px;
         spacing: 0px;
 
-        // Row 0: Word predictions - taller for better touch targets
+        // Row 0: Word predictions - tall for easy touch and readability
         HorizontalLayout {
-            height: 56px;
-            spacing: 4px;
-            padding-left: 4px;
-            padding-right: 4px;
+            height: 72px;
+            spacing: 6px;
+            padding-left: 6px;
+            padding-right: 6px;
 
             PredictionButton { word: prediction1; selected(w) => { prediction-selected(w); } }
             PredictionButton { word: prediction2; selected(w) => { prediction-selected(w); } }

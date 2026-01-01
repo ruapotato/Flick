@@ -1,14 +1,47 @@
 // Word prediction module for on-screen keyboard
-// Provides real-time word suggestions based on prefix matching
+// Provides real-time word suggestions based on prefix matching AND spell-check
 
 use std::collections::HashMap;
 
-/// Word predictor with frequency-based suggestions
+/// Word predictor with frequency-based suggestions and spell-check
 pub struct WordPredictor {
-    /// Prefix trie for fast lookups
+    /// Dictionary of words with frequency scores
     words: HashMap<String, u32>,
     /// Current word being typed
     current_word: String,
+}
+
+/// Calculate Levenshtein edit distance between two strings
+/// Used for spell-check suggestions
+fn edit_distance(a: &str, b: &str) -> usize {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let a_len = a_chars.len();
+    let b_len = b_chars.len();
+
+    if a_len == 0 { return b_len; }
+    if b_len == 0 { return a_len; }
+
+    // Use two-row algorithm for memory efficiency
+    let mut prev_row: Vec<usize> = (0..=b_len).collect();
+    let mut curr_row: Vec<usize> = vec![0; b_len + 1];
+
+    for i in 1..=a_len {
+        curr_row[0] = i;
+        for j in 1..=b_len {
+            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+            curr_row[j] = std::cmp::min(
+                std::cmp::min(
+                    prev_row[j] + 1,      // deletion
+                    curr_row[j - 1] + 1,  // insertion
+                ),
+                prev_row[j - 1] + cost,   // substitution
+            );
+        }
+        std::mem::swap(&mut prev_row, &mut curr_row);
+    }
+
+    prev_row[b_len]
 }
 
 impl WordPredictor {
@@ -149,29 +182,78 @@ impl WordPredictor {
         &self.current_word
     }
 
+    /// Get the length of the current word (for backspace count)
+    pub fn current_word_len(&self) -> usize {
+        self.current_word.len()
+    }
+
     /// Get predictions for the current word
-    /// Returns up to 3 predictions sorted by frequency
+    /// Returns up to 3 predictions: prefix matches first, then spell-check suggestions
     pub fn get_predictions(&self) -> Vec<String> {
         if self.current_word.len() < 1 {
             return vec![];
         }
 
         let prefix = &self.current_word;
+        let word_len = prefix.len();
 
-        // Find all words that start with the prefix
-        let mut matches: Vec<(&String, &u32)> = self.words
+        // Find all words that start with the prefix (completions)
+        let mut prefix_matches: Vec<(&String, &u32)> = self.words
             .iter()
             .filter(|(word, _)| word.starts_with(prefix) && *word != prefix)
             .collect();
 
         // Sort by frequency (descending)
-        matches.sort_by(|a, b| b.1.cmp(a.1));
+        prefix_matches.sort_by(|a, b| b.1.cmp(a.1));
 
-        // Take top 3
-        matches.into_iter()
+        let mut results: Vec<String> = prefix_matches.iter()
             .take(3)
-            .map(|(word, _)| word.clone())
-            .collect()
+            .map(|(word, _)| (*word).clone())
+            .collect();
+
+        // If we have fewer than 3 predictions and word is at least 2 chars,
+        // add spell-check suggestions (words with small edit distance)
+        if results.len() < 3 && word_len >= 2 {
+            // Calculate max allowed edit distance based on word length
+            // Short words: 1 edit, medium: 2 edits, long: 3 edits
+            let max_distance = if word_len <= 3 { 1 } else if word_len <= 6 { 2 } else { 3 };
+
+            // Find words with similar length and small edit distance
+            let mut fuzzy_matches: Vec<(&String, usize, u32)> = self.words
+                .iter()
+                .filter(|(word, _)| {
+                    // Only consider words of similar length
+                    let len_diff = (word.len() as i32 - word_len as i32).abs();
+                    if len_diff > (max_distance as i32) { return false; }
+                    // Don't include exact matches or prefix matches
+                    if word.starts_with(prefix) { return false; }
+                    true
+                })
+                .filter_map(|(word, freq)| {
+                    let distance = edit_distance(prefix, word);
+                    if distance <= max_distance && distance > 0 {
+                        Some((word, distance, *freq))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Sort by edit distance first, then by frequency
+            fuzzy_matches.sort_by(|a, b| {
+                a.1.cmp(&b.1).then_with(|| b.2.cmp(&a.2))
+            });
+
+            // Add fuzzy matches to fill up to 3 results
+            for (word, _, _) in fuzzy_matches {
+                if results.len() >= 3 { break; }
+                if !results.contains(word) {
+                    results.push(word.clone());
+                }
+            }
+        }
+
+        results
     }
 
     /// Set current word directly (e.g., when prediction is selected)
