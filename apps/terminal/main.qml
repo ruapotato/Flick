@@ -12,7 +12,7 @@ Window {
 
     // Settings from Flick config
     property real textScale: 2.0
-    property color accentColor: Theme.accentColor
+    property color accentColor: "#4a9eff"
     property color accentPressed: Qt.darker(accentColor, 1.2)
     property int baseFontSize: 8
 
