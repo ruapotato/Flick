@@ -61,16 +61,16 @@ impl WordPredictor {
     /// Create a new word predictor with a built-in dictionary and Markov chain
     pub fn new() -> Self {
         // Load Markov chain from embedded JSON
-        let markov_chain: HashMap<String, Vec<String>> = match serde_json::from_str(MARKOV_DATA) {
-            Ok(data) => {
-                tracing::info!("Loaded Markov chain with {} words", data.len());
-                data
-            }
-            Err(e) => {
-                tracing::warn!("Failed to load Markov chain: {}", e);
-                HashMap::new()
-            }
-        };
+        let markov_chain: HashMap<String, Vec<String>> =
+            serde_json::from_str::<HashMap<String, Vec<String>>>(MARKOV_DATA)
+                .map(|data| {
+                    tracing::info!("Loaded Markov chain with {} words", data.len());
+                    data
+                })
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to load Markov chain: {}", e);
+                    HashMap::new()
+                });
 
         let mut words = HashMap::new();
 
