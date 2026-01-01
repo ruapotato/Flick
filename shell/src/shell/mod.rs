@@ -1435,6 +1435,7 @@ impl Shell {
             self.context_menu_position = Some(pos);
             self.context_menu_slot = Some(slot);
             self.context_menu_start = Some(std::time::Instant::now());
+            tracing::info!("Context menu tracking started at ({}, {}), slot {}", pos.x, pos.y, slot);
         }
     }
 
@@ -1442,18 +1443,24 @@ impl Shell {
     /// Called from main loop
     pub fn check_context_menu(&mut self) -> bool {
         // Only check if we're tracking a touch and menu not already shown
-        if self.context_menu_active || self.context_menu_position.is_none() {
+        if self.context_menu_active {
+            return false;
+        }
+        if self.context_menu_position.is_none() {
             return false;
         }
 
         // Don't show context menu if user is scrolling
         if self.is_scrolling {
+            tracing::debug!("Context menu blocked: scrolling");
             return false;
         }
 
         // Check if long press duration has passed (using context menu's own timer)
         if let Some(start) = self.context_menu_start {
-            if start.elapsed() >= std::time::Duration::from_millis(500) {
+            let elapsed = start.elapsed();
+            if elapsed >= std::time::Duration::from_millis(500) {
+                tracing::info!("Context menu ready after {}ms", elapsed.as_millis());
                 return true;
             }
         }
