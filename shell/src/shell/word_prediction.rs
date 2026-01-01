@@ -1,14 +1,27 @@
 // Word prediction module for on-screen keyboard
-// Provides real-time word suggestions based on prefix matching AND spell-check
+// Provides real-time word suggestions based on prefix matching, spell-check,
+// and Markov chain next-word prediction.
+//
+// Markov chain data built from chirunder/text_messages dataset on Hugging Face
+// https://huggingface.co/datasets/chirunder/text_messages
 
 use std::collections::HashMap;
+use serde_json;
 
-/// Word predictor with frequency-based suggestions and spell-check
+/// Markov chain data embedded at compile time
+/// Credit: chirunder/text_messages dataset on Hugging Face
+const MARKOV_DATA: &str = include_str!("../../data/markov_transitions.json");
+
+/// Word predictor with frequency-based suggestions, spell-check, and Markov chain
 pub struct WordPredictor {
     /// Dictionary of words with frequency scores
     words: HashMap<String, u32>,
     /// Current word being typed
     current_word: String,
+    /// Last completed word (for Markov chain prediction)
+    last_word: String,
+    /// Markov chain: word -> most likely next words
+    markov_chain: HashMap<String, Vec<String>>,
 }
 
 /// Calculate Levenshtein edit distance between two strings
@@ -45,8 +58,20 @@ fn edit_distance(a: &str, b: &str) -> usize {
 }
 
 impl WordPredictor {
-    /// Create a new word predictor with a built-in dictionary
+    /// Create a new word predictor with a built-in dictionary and Markov chain
     pub fn new() -> Self {
+        // Load Markov chain from embedded JSON
+        let markov_chain: HashMap<String, Vec<String>> = match serde_json::from_str(MARKOV_DATA) {
+            Ok(data) => {
+                tracing::info!("Loaded Markov chain with {} words", data.len());
+                data
+            }
+            Err(e) => {
+                tracing::warn!("Failed to load Markov chain: {}", e);
+                HashMap::new()
+            }
+        };
+
         let mut words = HashMap::new();
 
         // Common English words sorted by frequency (most common first)
@@ -167,6 +192,8 @@ impl WordPredictor {
         Self {
             words,
             current_word: String::new(),
+            last_word: String::new(),
+            markov_chain,
         }
     }
 
@@ -186,7 +213,11 @@ impl WordPredictor {
     }
 
     /// Clear current word (space, enter, etc.)
+    /// Saves the current word as last_word for Markov chain prediction
     pub fn clear_word(&mut self) {
+        if !self.current_word.is_empty() {
+            self.last_word = self.current_word.clone();
+        }
         self.current_word.clear();
     }
 
@@ -203,8 +234,9 @@ impl WordPredictor {
     /// Get predictions for the current word
     /// Returns up to 3 predictions: prefix matches first, then spell-check suggestions
     pub fn get_predictions(&self) -> Vec<String> {
-        if self.current_word.len() < 1 {
-            return vec![];
+        // If no current word, use Markov chain to predict next word based on last word
+        if self.current_word.is_empty() {
+            return self.get_markov_predictions();
         }
 
         let prefix = &self.current_word;
@@ -285,8 +317,26 @@ impl WordPredictor {
     }
 
     /// Set current word directly (e.g., when prediction is selected)
+    /// Also saves as last_word for Markov chain prediction
     pub fn set_word(&mut self, word: &str) {
-        self.current_word = word.to_lowercase();
+        let word_lower = word.to_lowercase();
+        self.last_word = word_lower.clone();
+        self.current_word = word_lower;
+    }
+
+    /// Get Markov chain predictions for the next word based on last_word
+    fn get_markov_predictions(&self) -> Vec<String> {
+        if self.last_word.is_empty() {
+            return vec![];
+        }
+
+        // Look up the last word in the Markov chain
+        if let Some(next_words) = self.markov_chain.get(&self.last_word) {
+            // Return up to 3 predictions
+            return next_words.iter().take(3).cloned().collect();
+        }
+
+        vec![]
     }
 
     /// Learn a new word (add to dictionary with low frequency)
