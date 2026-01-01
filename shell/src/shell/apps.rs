@@ -42,7 +42,7 @@ fn get_real_user_home() -> PathBuf {
 }
 
 /// Optional manifest for an app (manifest.json in app directory)
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppManifest {
     /// Display name (defaults to capitalized directory name)
     #[serde(default)]
@@ -62,6 +62,18 @@ pub struct AppManifest {
 }
 
 fn default_true() -> bool { true }
+
+impl Default for AppManifest {
+    fn default() -> Self {
+        Self {
+            name: None,
+            icon: None,
+            color: None,
+            exec: None,
+            visible: true,  // Default to visible
+        }
+    }
+}
 
 /// A discovered app
 #[derive(Debug, Clone)]
