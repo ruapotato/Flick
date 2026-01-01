@@ -297,20 +297,6 @@ impl AppManager {
             }
         }
 
-        // Also scan ~/flick-store/ for the store app
-        let store_path = home.join("flick-store");
-        if store_path.exists() && store_path.join("run_store.sh").exists() {
-            let store_app = AppDef {
-                id: "store".to_string(),
-                name: "Store".to_string(),
-                icon: "store".to_string(),
-                color: [0.2, 0.6, 0.9, 1.0],
-                exec: format!("sh -c \"{}/flick-store/run_store.sh\"", home.display()),
-                path: store_path,
-            };
-            self.apps.insert("store".to_string(), store_app);
-        }
-
         // Ensure grid_order contains all discovered apps
         let all_ids: Vec<String> = self.apps.keys().cloned().collect();
         for id in &all_ids {
