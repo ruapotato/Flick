@@ -14,6 +14,8 @@ echo "=== Flick Terminal started at $(date) ===" >> "$LOG_FILE"
 # Set Wayland environment
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+# Enable text input protocol for virtual keyboard
+export QT_IM_MODULE=textinputv3
 
 # Force software rendering for hwcomposer compatibility
 # Hardware acceleration enabled

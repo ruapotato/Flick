@@ -59,6 +59,9 @@ impl TextInputState {
     pub fn focus_changed(new_focus: Option<&WlSurface>) {
         let mut tracker = TRACKER.lock().unwrap();
 
+        info!("TextInputState::focus_changed called - new_focus: {:?}, instances: {}",
+            new_focus.map(|s| s.id()), tracker.instances.len());
+
         // Get old focus
         let old_focus = tracker.focused_surface.take();
 
@@ -67,7 +70,7 @@ impl TextInputState {
             let old_client_id = old_surface.client().map(|c| c.id());
             for (client_id, text_input) in &tracker.instances {
                 if old_client_id.as_ref().map(|id| id == client_id).unwrap_or(false) {
-                    debug!("Sending text_input leave to client {:?}", client_id);
+                    info!("Sending text_input LEAVE to client {:?}", client_id);
                     text_input.leave(old_surface);
                 }
             }
@@ -81,7 +84,7 @@ impl TextInputState {
             let new_client_id = new_surface.client().map(|c| c.id());
             for (client_id, text_input) in &tracker.instances {
                 if new_client_id.as_ref().map(|id| id == client_id).unwrap_or(false) {
-                    debug!("Sending text_input enter to client {:?}", client_id);
+                    info!("Sending text_input ENTER to client {:?}", client_id);
                     text_input.enter(new_surface);
                 }
             }
@@ -154,7 +157,7 @@ where
             zwp_text_input_manager_v3::Request::GetTextInput { id, seat: _ } => {
                 let instance = data_init.init(id, TextInputData::default());
                 let client_id = client.id();
-                debug!("Text input instance created: {:?} for client {:?}", instance.id(), client_id);
+                info!("Text input INSTANCE CREATED: {:?} for client {:?}", instance.id(), client_id);
 
                 // Register instance in tracker
                 let mut tracker = TRACKER.lock().unwrap();
@@ -192,11 +195,11 @@ where
     ) {
         match request {
             zwp_text_input_v3::Request::Enable => {
-                debug!("Text input ENABLE requested (pending)");
+                info!("Text input ENABLE requested (pending) from client");
                 data.inner.lock().unwrap().pending_enable = Some(true);
             }
             zwp_text_input_v3::Request::Disable => {
-                debug!("Text input DISABLE requested (pending)");
+                info!("Text input DISABLE requested (pending) from client");
                 data.inner.lock().unwrap().pending_enable = Some(false);
             }
             zwp_text_input_v3::Request::SetSurroundingText { text, cursor, anchor } => {

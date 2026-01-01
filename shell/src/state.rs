@@ -1524,12 +1524,55 @@ impl SeatHandler for Flick {
     }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&Self::KeyboardFocus>) {
+        tracing::info!("SeatHandler::focus_changed called - focused: {:?}",
+            focused.map(|s| s.id()));
+
         let dh = &self.display_handle;
         let client = focused.and_then(|s| dh.get_client(s.id()).ok());
         set_data_device_focus(dh, seat, client);
 
         // Notify text input protocol of focus change (sends enter/leave events)
         TextInputState::focus_changed(focused);
+
+        // For terminal windows, auto-show keyboard since they don't use text_input protocol
+        if let Some(surface) = focused {
+            // Find the window for this surface
+            let window = self.space.elements()
+                .find(|w| w.toplevel().map(|t| t.wl_surface() == surface).unwrap_or(false));
+
+            // Check if window needs auto-show keyboard (terminal, notes, text editors, etc.)
+            let needs_keyboard = window.map(|w| {
+                // Check X11 title first
+                if let Some(x11) = w.x11_surface() {
+                    let title = x11.title().to_lowercase();
+                    return title.contains("terminal") || title.contains("konsole") || title.contains("term") ||
+                           title.contains("notes") || title.contains("editor") || title.contains("text");
+                }
+                // For Wayland, check XdgToplevelSurfaceData
+                if let Some(toplevel) = w.toplevel() {
+                    let title = smithay::wayland::compositor::with_states(toplevel.wl_surface(), |states| {
+                        states
+                            .data_map
+                            .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                            .and_then(|data| data.lock().unwrap().title.clone())
+                    });
+                    if let Some(title) = title {
+                        let title = title.to_lowercase();
+                        return title.contains("terminal") || title.contains("konsole") || title.contains("term") ||
+                               title.contains("notes") || title.contains("editor") || title.contains("text");
+                    }
+                }
+                false
+            }).unwrap_or(false);
+
+            if needs_keyboard && self.shell.view == crate::shell::ShellView::App {
+                tracing::info!("Text-focused app focused - auto-showing keyboard");
+                if let Some(ref slint_ui) = self.shell.slint_ui {
+                    slint_ui.set_keyboard_visible(true);
+                }
+                self.resize_windows_for_keyboard(true);
+            }
+        }
     }
 
     fn cursor_image(

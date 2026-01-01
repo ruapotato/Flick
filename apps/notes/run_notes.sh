@@ -35,6 +35,8 @@ export QML_XHR_ALLOW_FILE_READ=1
 # export QT_QUICK_BACKEND=software  # Using hardware accel
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+# Enable text input protocol for virtual keyboard
+export QT_IM_MODULE=textinputv3
 # Hardware acceleration enabled
 # Try wayland-egl integration
 export QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=wayland-egl

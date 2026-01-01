@@ -1312,8 +1312,35 @@ fn handle_input_event(
                     let action = state.shell.complete_context_menu();
                     match action {
                         1 => {
-                            // Copy action - send Ctrl+C to copy highlighted text
-                            info!("Context menu: COPY selected - sending Ctrl+C");
+                            // Copy action - send Ctrl+C (or Shift+Ctrl+C for terminals)
+                            // Check if topmost window is a terminal
+                            let is_terminal = state.space.elements().last()
+                                .map(|window| {
+                                    // Check X11 title first
+                                    if let Some(x11) = window.x11_surface() {
+                                        let title = x11.title().to_lowercase();
+                                        return title.contains("terminal") || title.contains("konsole") || title.contains("term");
+                                    }
+                                    // For Wayland, check XdgToplevelSurfaceData
+                                    if let Some(toplevel) = window.toplevel() {
+                                        let title = compositor::with_states(toplevel.wl_surface(), |states| {
+                                            states
+                                                .data_map
+                                                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                                .and_then(|data| data.lock().unwrap().title.clone())
+                                        });
+                                        if let Some(title) = title {
+                                            let title = title.to_lowercase();
+                                            return title.contains("terminal") || title.contains("konsole") || title.contains("term");
+                                        }
+                                    }
+                                    false
+                                })
+                                .unwrap_or(false);
+
+                            info!("Context menu: COPY selected - sending {} (is_terminal={})",
+                                if is_terminal { "Shift+Ctrl+C" } else { "Ctrl+C" }, is_terminal);
+
                             if let Some(keyboard) = state.seat.get_keyboard() {
                                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                                 let time = std::time::SystemTime::now()
@@ -1321,18 +1348,30 @@ fn handle_input_event(
                                     .unwrap_or_default()
                                     .as_millis() as u32;
 
-                                // evdev keycodes: Ctrl=29, C=46
+                                // evdev keycodes: Shift=42, Ctrl=29, C=46
                                 // XKB keycodes are evdev + 8
+                                let shift_keycode = 42 + 8;
                                 let ctrl_keycode = 29 + 8;
                                 let c_keycode = 46 + 8;
 
+                                // Press Shift (for terminal)
+                                if is_terminal {
+                                    keyboard.input::<(), _>(
+                                        state,
+                                        smithay::input::keyboard::Keycode::new(shift_keycode),
+                                        smithay::backend::input::KeyState::Pressed,
+                                        serial,
+                                        time,
+                                        |_, _, _| smithay::input::keyboard::FilterResult::Forward::<()>,
+                                    );
+                                }
                                 // Press Ctrl
                                 keyboard.input::<(), _>(
                                     state,
                                     smithay::input::keyboard::Keycode::new(ctrl_keycode),
                                     smithay::backend::input::KeyState::Pressed,
                                     serial,
-                                    time,
+                                    time + 1,
                                     |_, _, _| smithay::input::keyboard::FilterResult::Forward::<()>,
                                 );
                                 // Press C
@@ -1341,7 +1380,7 @@ fn handle_input_event(
                                     smithay::input::keyboard::Keycode::new(c_keycode),
                                     smithay::backend::input::KeyState::Pressed,
                                     serial,
-                                    time + 1,
+                                    time + 2,
                                     |_, _, _| smithay::input::keyboard::FilterResult::Forward::<()>,
                                 );
                                 // Release C
@@ -1350,7 +1389,7 @@ fn handle_input_event(
                                     smithay::input::keyboard::Keycode::new(c_keycode),
                                     smithay::backend::input::KeyState::Released,
                                     serial,
-                                    time + 2,
+                                    time + 3,
                                     |_, _, _| smithay::input::keyboard::FilterResult::Forward::<()>,
                                 );
                                 // Release Ctrl
@@ -1359,10 +1398,21 @@ fn handle_input_event(
                                     smithay::input::keyboard::Keycode::new(ctrl_keycode),
                                     smithay::backend::input::KeyState::Released,
                                     serial,
-                                    time + 3,
+                                    time + 4,
                                     |_, _, _| smithay::input::keyboard::FilterResult::Forward::<()>,
                                 );
-                                info!("Ctrl+C sent to app");
+                                // Release Shift (for terminal)
+                                if is_terminal {
+                                    keyboard.input::<(), _>(
+                                        state,
+                                        smithay::input::keyboard::Keycode::new(shift_keycode),
+                                        smithay::backend::input::KeyState::Released,
+                                        serial,
+                                        time + 5,
+                                        |_, _, _| smithay::input::keyboard::FilterResult::Forward::<()>,
+                                    );
+                                }
+                                info!("{} sent to app", if is_terminal { "Shift+Ctrl+C" } else { "Ctrl+C" });
                             }
                             state.system.haptic_tap();
                         }
