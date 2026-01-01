@@ -3770,12 +3770,13 @@ fn render_frame(
             }
             debug!("Finished rendering windows");
 
-            // Render Slint overlays on top of app window (keyboard, volume indicator, etc.)
+            // Render Slint overlays on top of app window (keyboard, volume indicator, context menu, etc.)
             if let Some(ref slint_ui) = state.shell.slint_ui {
                 let keyboard_visible = slint_ui.is_keyboard_visible();
                 let volume_visible = state.system.should_show_volume_overlay();
+                let context_menu_visible = state.shell.context_menu_active;
 
-                if keyboard_visible || volume_visible {
+                if keyboard_visible || volume_visible || context_menu_visible {
                     slint::platform::update_timers_and_animations();
                     slint_ui.set_view("app");  // Use app view to show overlays
                     // Update volume overlay state
@@ -3785,8 +3786,8 @@ fn render_frame(
 
                     if let Some((width, height, pixels)) = slint_ui.render() {
                         if log_frame {
-                            info!("APP OVERLAY frame {}: {}x{} (kbd={}, vol={})",
-                                frame_num, width, height, keyboard_visible, volume_visible);
+                            info!("APP OVERLAY frame {}: {}x{} (kbd={}, vol={}, ctx={})",
+                                frame_num, width, height, keyboard_visible, volume_visible, context_menu_visible);
                         }
                         unsafe {
                             gl::render_texture(width, height, &pixels, display.width, display.height);
