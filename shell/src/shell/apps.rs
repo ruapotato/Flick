@@ -99,39 +99,31 @@ impl AppDef {
 
         // Skip hidden directories and special cases
         if id.starts_with('.') || id == "lockscreen" || id == "shared" || id == "welcome" {
-            tracing::debug!("Skipping special dir: {}", id);
             return None;
         }
 
         // Check for run script or main.qml
         let run_script = path.join(format!("run_{}.sh", id));
         let main_qml = path.join("main.qml");
-        tracing::info!("Checking {}: run_script={} main_qml={}", id, run_script.exists(), main_qml.exists());
         if !run_script.exists() && !main_qml.exists() {
-            tracing::debug!("No run script or main.qml for {}", id);
             return None;
         }
 
         // Load manifest if exists
         let manifest_path = path.join("manifest.json");
         let manifest: AppManifest = if manifest_path.exists() {
-            tracing::info!("{}: has manifest.json", id);
             fs::read_to_string(&manifest_path)
                 .ok()
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default()
         } else {
-            tracing::info!("{}: no manifest, using defaults", id);
             AppManifest::default()
         };
-        tracing::info!("{}: manifest.visible={}", id, manifest.visible);
 
         // Skip if not visible
         if !manifest.visible {
-            tracing::info!("{}: skipping (not visible)", id);
             return None;
         }
-        tracing::info!("{}: PASSED all checks, creating AppDef", id);
 
         // Derive name from id (capitalize first letter)
         let default_name = {
@@ -289,35 +281,20 @@ impl AppManager {
     pub fn scan_apps(&mut self) {
         self.apps.clear();
         let home = get_real_user_home();
-        tracing::info!("App scan: home={:?}", home);
 
         // Scan ~/Flick/apps/
         let flick_apps = home.join("Flick/apps");
-        tracing::info!("App scan: looking in {:?}, exists={}", flick_apps, flick_apps.exists());
         if flick_apps.exists() {
-            match fs::read_dir(&flick_apps) {
-                Ok(entries) => {
-                    for entry in entries.filter_map(|e| e.ok()) {
-                        let path = entry.path();
-                        if path.is_dir() {
-                            match AppDef::from_dir(&path) {
-                                Some(app) => {
-                                    tracing::info!("Discovered app: {} at {:?}", app.id, path);
-                                    self.apps.insert(app.id.clone(), app);
-                                }
-                                None => {
-                                    tracing::debug!("Skipped {:?} (no run script or filtered)", path);
-                                }
-                            }
+            if let Ok(entries) = fs::read_dir(&flick_apps) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        if let Some(app) = AppDef::from_dir(&path) {
+                            self.apps.insert(app.id.clone(), app);
                         }
                     }
                 }
-                Err(e) => {
-                    tracing::warn!("Failed to read {:?}: {}", flick_apps, e);
-                }
             }
-        } else {
-            tracing::warn!("Apps directory does not exist: {:?}", flick_apps);
         }
 
         // Also scan ~/flick-store/ for the store app
