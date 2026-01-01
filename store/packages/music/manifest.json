@@ -1,0 +1,52 @@
+{
+  "format_version": 1,
+  "id": "com.flick.music",
+  "name": "Flick Music",
+  "version": "1.0.0",
+  "description": "A beautiful music player for Flick with library scanning, playback controls, and lock screen integration.",
+  "long_description": "Flick Music is a first-party music player designed specifically for the Flick mobile shell. Features include:\n\n- Automatic music library scanning from ~/Music\n- Support for MP3, FLAC, OGG, M4A, WAV, and Opus formats\n- Ambient glow UI with smooth animations\n- Lock screen media controls\n- Background playback\n- Progress tracking and seeking\n- Auto-advance to next track",
+  "author": {
+    "name": "Flick Project",
+    "email": "flick@example.com",
+    "url": "https://github.com/ruapotato/Flick"
+  },
+  "license": "AGPL-3.0",
+  "categories": ["Audio", "Music", "Player"],
+  "keywords": ["music", "audio", "player", "mp3", "flac", "ogg"],
+  "homepage": "https://github.com/ruapotato/Flick",
+  "repository": "https://github.com/ruapotato/Flick",
+
+  "app": {
+    "type": "qml",
+    "entry": "main.qml",
+    "min_flick_version": "1.0.0"
+  },
+
+  "dependencies": {
+    "apt": [
+      "qml-module-qtmultimedia",
+      "libqt5multimedia5-plugins"
+    ],
+    "pip": {
+      "enabled": false,
+      "packages": []
+    }
+  },
+
+  "permissions": [
+    "audio",
+    "files:read:~/Music",
+    "background"
+  ],
+
+  "ai_generated": {
+    "is_ai_generated": false
+  },
+
+  "store": {
+    "maturity_rating": "everyone",
+    "price": "free",
+    "testing_status": "stable",
+    "featured": true
+  }
+}

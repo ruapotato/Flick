@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Flick Store
+Comment=Browse, download and install apps for Flick
+Exec=sh -c "$HOME/Flick/apps/store/run_store.sh"
+Icon=system-software-install
+Terminal=false
+Categories=System;PackageManager;
+Keywords=store;apps;download;install;packages;
