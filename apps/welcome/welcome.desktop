@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Welcome
+Comment=Flick Tutorial
+Exec=/home/droidian/Flick/apps/welcome/run_welcome.sh
+Icon=help-about
+Type=Application
+Categories=Utility;
+Terminal=false

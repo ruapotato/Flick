@@ -2212,6 +2212,8 @@ pub fn run() -> Result<()> {
         }
     }
 
+    // Note: Welcome app is launched after first unlock (see unlock handler below)
+
     // Track session state
     let session_active = Rc::new(RefCell::new(true));
     let session_active_for_notifier = session_active.clone();
@@ -2295,8 +2297,19 @@ pub fn run() -> Result<()> {
             state.shell.unlock();
             info!("After unlock: view={:?}, lock_screen_active={}", state.shell.view, state.shell.lock_screen_active);
 
-            // Check if we need to launch an app after unlock (from notification tap)
-            if let Some(app_cmd) = state.shell.unlock_open_app.take() {
+            // Launch welcome/tutorial app on first unlock (takes priority over restore)
+            let show_welcome = state.shell.should_show_welcome();
+            if show_welcome {
+                info!("First unlock - launching welcome tutorial");
+                // Clear any restore state that might interfere
+                state.shell.pre_lock_had_app = false;
+                state.shell.unlock_open_app = None;
+                state.shell.set_view(crate::shell::ShellView::App);
+                if let Some(socket) = state.socket_name.to_str() {
+                    state.shell.launch_welcome_app(socket);
+                }
+            } else if let Some(app_cmd) = state.shell.unlock_open_app.take() {
+                // Check if we need to launch an app after unlock (from notification tap)
                 info!("Launching app after unlock: {}", app_cmd);
                 state.shell.unlock_app_launched = true; // Allow new window to switch to App view
                 if let Some(socket) = state.socket_name.to_str() {

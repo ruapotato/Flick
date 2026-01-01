@@ -914,6 +914,88 @@ impl Shell {
         }
     }
 
+    /// Check if welcome app should be shown (first launch)
+    pub fn should_show_welcome(&self) -> bool {
+        let config_path = if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+            format!("/home/{}/.local/state/flick/welcome_config.json", sudo_user)
+        } else {
+            std::env::var("HOME")
+                .map(|h| format!("{}/.local/state/flick/welcome_config.json", h))
+                .unwrap_or_else(|_| "/tmp/welcome_config.json".to_string())
+        };
+
+        // If config doesn't exist, show welcome (first launch)
+        if !std::path::Path::new(&config_path).exists() {
+            tracing::info!("Welcome config not found, showing welcome screen");
+            return true;
+        }
+
+        // Read config and check showOnStartup
+        match std::fs::read_to_string(&config_path) {
+            Ok(content) => {
+                // Simple JSON parsing - look for "showOnStartup":true/false
+                let show = content.contains("\"showOnStartup\":true") ||
+                           content.contains("\"showOnStartup\": true");
+                tracing::info!("Welcome config: showOnStartup = {}", show);
+                show
+            }
+            Err(e) => {
+                tracing::warn!("Failed to read welcome config: {}, showing welcome", e);
+                true
+            }
+        }
+    }
+
+    /// Launch the welcome/tutorial app
+    pub fn launch_welcome_app(&self, socket_name: &str) -> bool {
+        // Get the welcome app path
+        let welcome_script = if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+            format!("/home/{}/Flick/apps/welcome/run_welcome.sh", sudo_user)
+        } else {
+            std::env::var("HOME")
+                .map(|h| format!("{}/Flick/apps/welcome/run_welcome.sh", h))
+                .unwrap_or_else(|_| "/home/droidian/Flick/apps/welcome/run_welcome.sh".to_string())
+        };
+
+        if !std::path::Path::new(&welcome_script).exists() {
+            tracing::warn!("Welcome script not found at: {}", welcome_script);
+            return false;
+        }
+
+        tracing::info!("Launching welcome app: {}", welcome_script);
+
+        let state_dir = if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+            format!("/home/{}/.local/state/flick", sudo_user)
+        } else {
+            std::env::var("HOME")
+                .map(|h| format!("{}/.local/state/flick", h))
+                .unwrap_or_else(|_| "/tmp".to_string())
+        };
+
+        let qt_scale = format!("{}", self.text_scale);
+        match std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&welcome_script)
+            .env("WAYLAND_DISPLAY", socket_name)
+            .env("QT_QPA_PLATFORM", "wayland")
+            .env("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")
+            .env("FLICK_STATE_DIR", &state_dir)
+            .env("XDG_RUNTIME_DIR", std::env::var("XDG_RUNTIME_DIR").unwrap_or_default())
+            .env("QT_SCALE_FACTOR", &qt_scale)
+            .env("QT_FONT_DPI", format!("{}", (96.0 * self.text_scale) as i32))
+            .spawn()
+        {
+            Ok(_) => {
+                tracing::info!("Welcome app launched successfully");
+                true
+            }
+            Err(e) => {
+                tracing::error!("Failed to launch welcome app: {}", e);
+                false
+            }
+        }
+    }
+
     /// Reload lock config from disk
     pub fn reload_lock_config(&mut self) {
         self.lock_config = lock_screen::LockConfig::load();
