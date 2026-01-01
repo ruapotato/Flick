@@ -52,17 +52,10 @@ fn edit_distance(a: &str, b: &str) -> usize {
 impl WordPredictor {
     /// Create a new word predictor, attempting to use presage first
     pub fn new() -> Self {
-        // Try to initialize presage
-        let presage = match Presage::new() {
-            Ok(p) => {
-                tracing::info!("Presage initialized successfully for word prediction");
-                Some(p)
-            }
-            Err(e) => {
-                tracing::warn!("Failed to initialize presage, using fallback dictionary: {}", e);
-                None
-            }
-        };
+        // Disable presage for now - FFI crashes on first use
+        // TODO: Fix presage integration
+        let presage: Option<Presage> = None;
+        tracing::info!("Word predictor using fallback dictionary (presage disabled)");
 
         let mut fallback_words = HashMap::new();
 
