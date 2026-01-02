@@ -2959,7 +2959,10 @@ pub fn run() -> Result<()> {
         state.cleanup_touch_effects();
 
         // Check for app rescan signal (for dynamic app installation)
-        state.shell.app_manager.check_rescan();
+        if state.shell.app_manager.check_rescan() {
+            // Reload icons for any new apps
+            state.shell.preload_icons();
+        }
 
         // Update home screen scroll momentum physics
         if state.shell.view == crate::shell::ShellView::Home {

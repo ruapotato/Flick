@@ -102,10 +102,11 @@ impl AppDef {
             return None;
         }
 
-        // Check for run script or main.qml
+        // Check for run script or main.qml (in root or app/ subfolder)
         let run_script = path.join(format!("run_{}.sh", id));
         let main_qml = path.join("main.qml");
-        if !run_script.exists() && !main_qml.exists() {
+        let app_main_qml = path.join("app/main.qml");
+        if !run_script.exists() && !main_qml.exists() && !app_main_qml.exists() {
             return None;
         }
 
@@ -141,7 +142,11 @@ impl AppDef {
         let home = get_real_user_home();
         let default_exec = if run_script.exists() {
             format!("sh -c \"{}/Flick/apps/{}/run_{}.sh\"", home.display(), id, id)
+        } else if app_main_qml.exists() {
+            // Store package structure: app/main.qml
+            format!("qmlscene {}/Flick/apps/{}/app/main.qml", home.display(), id)
         } else {
+            // Traditional structure: main.qml in root
             format!("qmlscene {}/Flick/apps/{}/main.qml", home.display(), id)
         };
 

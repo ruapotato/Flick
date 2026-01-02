@@ -418,6 +418,46 @@ Window {
         xhr.send()
     }
 
+    function loadAllApps() {
+        if (isLoadingCategory) return
+        isLoadingCategory = true
+        apiError = ""
+
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", apiBaseUrl + "/apps")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                isLoadingCategory = false
+                if (xhr.status === 200) {
+                    try {
+                        var data = JSON.parse(xhr.responseText)
+                        categoryApps = data.apps || data || []
+                    } catch (e) {
+                        console.log("Error parsing all apps:", e)
+                        categoryApps = []
+                    }
+                } else {
+                    categoryApps = []
+                }
+            }
+        }
+        xhr.send()
+    }
+
+    function findAppById(appId) {
+        // Search in all known app lists
+        var lists = [featuredApps, newApps, popularApps, categoryApps, wildWestApps]
+        for (var i = 0; i < lists.length; i++) {
+            var list = lists[i]
+            for (var j = 0; j < list.length; j++) {
+                if (list[j].id === appId || list[j].slug === appId) {
+                    return list[j]
+                }
+            }
+        }
+        return null
+    }
+
     function loadWildWestApps() {
         if (isLoadingWildWest) return
         isLoadingWildWest = true
@@ -489,25 +529,9 @@ Window {
     }
 
     function loadCategories() {
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", apiBaseUrl + "/apps/categories")
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === XMLHttpRequest.DONE) {
-                if (xhr.status === 200) {
-                    try {
-                        var data = JSON.parse(xhr.responseText)
-                        if (data.categories && data.categories.length > 0) {
-                            categories = data.categories
-                        }
-                    } catch (e) {
-                        console.log("Error parsing categories:", e)
-                    }
-                } else {
-                    console.log("Error loading categories:", xhr.status, xhr.statusText)
-                }
-            }
-        }
-        xhr.send()
+        // Keep default categories with colors - API categories don't have colors
+        // Just use the built-in categories defined at the top
+        console.log("Using built-in categories")
     }
 
     function loadAppDetails(slug) {
@@ -695,6 +719,9 @@ Window {
         return app.slug || app.id || ""
     }
 
+    // Local install server URL
+    property string installServerUrl: "http://localhost:7654"
+
     function installApp(app) {
         if (isDownloading) return
         isDownloading = true
@@ -702,10 +729,29 @@ Window {
         downloadingApp = slug
         downloadProgress = 0
 
-        // Write install request for flick-pkg to handle
+        // POST install request to local server
         var xhr = new XMLHttpRequest()
-        xhr.open("PUT", "file://" + installRequestFile)
-        xhr.send(slug + ":install")
+        xhr.open("POST", installServerUrl + "/install")
+        xhr.setRequestHeader("Content-Type", "application/json")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                if (xhr.status === 200) {
+                    try {
+                        var result = JSON.parse(xhr.responseText)
+                        if (result.success) {
+                            console.log("Install success: " + result.output)
+                            // Reload installed apps and complete
+                            reloadInstalledApps()
+                            downloadProgress = 1.0
+                            completeInstallation()
+                            return
+                        }
+                    } catch (e) {}
+                }
+                console.log("Install request sent, waiting for completion...")
+            }
+        }
+        xhr.send(JSON.stringify({app: slug}))
 
         // Start progress simulation while install happens
         installTimer.start()
@@ -733,14 +779,14 @@ Window {
             downloadProgress = Math.min(0.9, downloadProgress + 0.1)
             checkCount++
 
-            // Check if installation completed by reloading installedApps file
+            // Check if installation completed via server
             if (selectedApp) {
                 var slug = getAppSlug(selectedApp)
                 var xhr = new XMLHttpRequest()
-                xhr.open("GET", "file://" + installedFile, false)
+                xhr.open("GET", installServerUrl + "/installed", false)
                 try {
                     xhr.send()
-                    if (xhr.status === 200 || xhr.status === 0) {
+                    if (xhr.status === 200) {
                         var data = JSON.parse(xhr.responseText)
                         var apps = data.apps || []
                         for (var i = 0; i < apps.length; i++) {
@@ -755,7 +801,10 @@ Window {
                             }
                         }
                     }
-                } catch (e) {}
+                } catch (e) {
+                    // Server not available, try local file
+                    loadInstalledApps()
+                }
             }
 
             // Timeout after 15 seconds
@@ -799,11 +848,35 @@ Window {
         Haptic.click()
     }
 
-    function uninstallApp(appId) {
-        // Write uninstall request
+    function reloadInstalledApps() {
+        // Reload installed apps from server
         var xhr = new XMLHttpRequest()
-        xhr.open("PUT", "file://" + installRequestFile)
-        xhr.send(appId + ":uninstall")
+        xhr.open("GET", installServerUrl + "/installed", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200) {
+                var data = JSON.parse(xhr.responseText)
+                installedApps = data.apps || []
+            }
+        } catch (e) {
+            // Fall back to file if server not available
+            loadInstalledApps()
+        }
+    }
+
+    function uninstallApp(appId) {
+        // POST uninstall request to local server
+        var xhr = new XMLHttpRequest()
+        xhr.open("POST", installServerUrl + "/uninstall")
+        xhr.setRequestHeader("Content-Type", "application/json")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                if (xhr.status === 200) {
+                    reloadInstalledApps()
+                }
+            }
+        }
+        xhr.send(JSON.stringify({app: appId}))
 
         // Remove from installed list
         for (var i = 0; i < installedApps.length; i++) {
@@ -914,7 +987,11 @@ Window {
         return date.toLocaleDateString()
     }
 
+
     // ==================== HOME VIEW ====================
+    // Clean tabbed design with Browse, Installed, Wild West
+
+    property string homeTab: "browse"  // browse, installed, wildwest
 
     Rectangle {
         id: homeView
@@ -922,543 +999,383 @@ Window {
         color: "#0a0a0f"
         visible: currentView === "home"
 
-        Flickable {
-            id: homeFlickable
+        Column {
             anchors.fill: parent
-            anchors.bottomMargin: 100
-            contentHeight: homeColumn.height + 40
-            clip: true
-            flickableDirection: Flickable.VerticalFlick
+            spacing: 0
 
-            Column {
-                id: homeColumn
+            // Header with title and login
+            Rectangle {
                 width: parent.width
-                spacing: 24
+                height: 100
+                color: "transparent"
 
-                // Header with search and settings
+                Text {
+                    anchors.centerIn: parent
+                    text: "Flick Store"
+                    font.pixelSize: 32 * textScale
+                    font.weight: Font.Bold
+                    color: "#ffffff"
+                }
+
+                // Login/Profile button
                 Rectangle {
-                    width: parent.width
-                    height: 180
-                    color: "transparent"
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.rightMargin: 20
+                    width: isLoggedIn ? 48 : 100
+                    height: 48
+                    radius: 24
+                    color: loginBtnMouse.pressed ? "#333344" : "#222233"
 
-                    // Ambient glow
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: 300
-                        height: 200
-                        radius: 150
-                        color: accentColor
-                        opacity: 0.08
-
-                        NumberAnimation on opacity {
-                            from: 0.05
-                            to: 0.12
-                            duration: 3000
-                            loops: Animation.Infinite
-                            easing.type: Easing.InOutSine
-                        }
-                    }
-
-                    Column {
+                    Row {
                         anchors.centerIn: parent
                         spacing: 8
 
                         Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Store"
-                            font.pixelSize: 48 * textScale
-                            font.weight: Font.ExtraLight
-                            font.letterSpacing: 6
-                            color: "#ffffff"
-                        }
-
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: "FLICK APP STORE"
-                            font.pixelSize: 14 * textScale
-                            font.weight: Font.Medium
-                            font.letterSpacing: 3
-                            color: "#555566"
-                        }
-                    }
-
-                    // Settings button
-                    Rectangle {
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.rightMargin: 20
-                        anchors.topMargin: 60
-                        width: 48
-                        height: 48
-                        radius: 24
-                        color: settingsMouse.pressed ? "#333344" : "#222233"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "gear"
+                            text: isLoggedIn ? "person" : "login"
                             font.family: iconFont.name
-                            font.pixelSize: 24
-                            color: "#888899"
-                        }
-
-                        MouseArea {
-                            id: settingsMouse
-                            anchors.fill: parent
-                            onClicked: navigateTo("settings")
-                        }
-                    }
-
-                    // Profile button
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.top: parent.top
-                        anchors.leftMargin: 20
-                        anchors.topMargin: 60
-                        width: 48
-                        height: 48
-                        radius: 24
-                        color: profileMouse.pressed ? "#333344" : "#222233"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "person"
-                            font.family: iconFont.name
-                            font.pixelSize: 24
-                            color: "#888899"
-                        }
-
-                        MouseArea {
-                            id: profileMouse
-                            anchors.fill: parent
-                            onClicked: navigateTo("profile")
-                        }
-                    }
-
-                    // Bottom fade line
-                    Rectangle {
-                        anchors.bottom: parent.bottom
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        height: 1
-                        gradient: Gradient {
-                            orientation: Gradient.Horizontal
-                            GradientStop { position: 0.0; color: "transparent" }
-                            GradientStop { position: 0.2; color: accentColor }
-                            GradientStop { position: 0.8; color: accentColor }
-                            GradientStop { position: 1.0; color: "transparent" }
-                        }
-                        opacity: 0.3
-                    }
-                }
-
-                // Search bar
-                Rectangle {
-                    width: parent.width - 32
-                    height: 56
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    radius: 28
-                    color: "#1a1a2e"
-                    border.color: "#2a2a3e"
-                    border.width: 1
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 12
-
-                        Text {
-                            text: "search"
-                            font.family: iconFont.name
-                            font.pixelSize: 22
-                            color: "#666677"
+                            font.pixelSize: 20
+                            color: accentColor
+                            anchors.verticalCenter: parent.verticalCenter
                         }
 
                         Text {
-                            Layout.fillWidth: true
-                            text: "Search apps..."
+                            visible: !isLoggedIn
+                            text: "Login"
                             font.pixelSize: 16 * textScale
-                            color: "#666677"
+                            color: "#ffffff"
+                            anchors.verticalCenter: parent.verticalCenter
                         }
                     }
 
                     MouseArea {
+                        id: loginBtnMouse
                         anchors.fill: parent
-                        onClicked: navigateTo("search")
+                        onClicked: navigateTo(isLoggedIn ? "profile" : "login")
                     }
                 }
 
-                // Featured apps carousel
-                Column {
-                    width: parent.width
-                    spacing: 12
+                // Back button
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 20
+                    width: 48
+                    height: 48
+                    radius: 24
+                    color: homeBackBtnMouse.pressed ? "#333344" : "#222233"
 
                     Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        text: "Featured"
-                        font.pixelSize: 20 * textScale
-                        font.weight: Font.Bold
-                        color: "#ffffff"
+                        anchors.centerIn: parent
+                        text: "arrow_back"
+                        font.family: iconFont.name
+                        font.pixelSize: 24
+                        color: "#888899"
                     }
 
-                    ListView {
-                        id: featuredList
-                        width: parent.width
-                        height: 200
-                        orientation: ListView.Horizontal
-                        spacing: 16
-                        leftMargin: 16
-                        rightMargin: 16
-                        clip: true
-                        model: featuredApps
+                    MouseArea {
+                        id: homeBackBtnMouse
+                        anchors.fill: parent
+                        onClicked: Qt.quit()
+                    }
+                }
+            }
 
-                        delegate: Rectangle {
-                            width: 280
-                            height: 180
-                            radius: 20
-                            gradient: Gradient {
-                                GradientStop { position: 0.0; color: "#2a2a4e" }
-                                GradientStop { position: 1.0; color: "#1a1a2e" }
-                            }
+            // Tab bar
+            Rectangle {
+                width: parent.width
+                height: 56
+                color: "#111118"
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 0
+
+                    Repeater {
+                        model: [
+                            { id: "browse", label: "Browse", icon: "apps" },
+                            { id: "installed", label: "Installed", icon: "check_circle" },
+                            { id: "wildwest", label: "Wild West", icon: "science" }
+                        ]
+
+                        Rectangle {
+                            width: (root.width - 40) / 3
+                            height: 48
+                            radius: 12
+                            color: homeTab === modelData.id ? accentColor : "transparent"
+                            opacity: homeTab === modelData.id ? 1.0 : 0.7
 
                             Row {
-                                anchors.fill: parent
-                                anchors.margins: 20
-                                spacing: 16
+                                anchors.centerIn: parent
+                                spacing: 8
 
-                                // App icon
-                                Rectangle {
-                                    width: 80
-                                    height: 80
-                                    radius: 20
-                                    color: accentColor
-                                    opacity: 0.3
+                                Text {
+                                    text: modelData.icon
+                                    font.family: iconFont.name
+                                    font.pixelSize: 18
+                                    color: homeTab === modelData.id ? "#ffffff" : "#888899"
                                     anchors.verticalCenter: parent.verticalCenter
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: modelData.icon
-                                        font.family: iconFont.name
-                                        font.pixelSize: 36
-                                        color: "#ffffff"
-                                    }
                                 }
 
-                                Column {
+                                Text {
+                                    text: modelData.label
+                                    font.pixelSize: 15 * textScale
+                                    font.weight: Font.Medium
+                                    color: homeTab === modelData.id ? "#ffffff" : "#888899"
                                     anchors.verticalCenter: parent.verticalCenter
-                                    width: parent.width - 96
-                                    spacing: 8
-
-                                    Text {
-                                        text: modelData.name
-                                        font.pixelSize: 18 * textScale
-                                        font.weight: Font.Bold
-                                        color: "#ffffff"
-                                        elide: Text.ElideRight
-                                        width: parent.width
-                                    }
-
-                                    Text {
-                                        text: modelData.description
-                                        font.pixelSize: 15 * textScale
-                                        color: "#888899"
-                                        elide: Text.ElideRight
-                                        width: parent.width
-                                        maximumLineCount: 2
-                                        wrapMode: Text.Wrap
-                                    }
-
-                                    Row {
-                                        spacing: 8
-
-                                        Text {
-                                            text: "star"
-                                            font.family: iconFont.name
-                                            font.pixelSize: 14
-                                            color: "#ffc107"
-                                        }
-
-                                        Text {
-                                            text: modelData.rating.toFixed(1)
-                                            font.pixelSize: 15 * textScale
-                                            color: "#888899"
-                                        }
-
-                                        Text {
-                                            text: "  |  " + formatNumber(modelData.downloads) + " downloads"
-                                            font.pixelSize: 15 * textScale
-                                            color: "#666677"
-                                        }
-                                    }
                                 }
                             }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: openAppDetail(modelData)
-                            }
-                        }
-                    }
-                }
-
-                // Categories grid
-                Column {
-                    width: parent.width
-                    spacing: 12
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        text: "Categories"
-                        font.pixelSize: 20 * textScale
-                        font.weight: Font.Bold
-                        color: "#ffffff"
-                    }
-
-                    Grid {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        columns: 4
-                        spacing: 12
-
-                        Repeater {
-                            model: categories
-
-                            Rectangle {
-                                width: (root.width - 64) / 4
-                                height: width
-                                radius: 16
-                                color: catMouse.pressed ? Qt.lighter(modelData.color, 1.2) : modelData.color
-                                opacity: 0.8
-
-                                Column {
-                                    anchors.centerIn: parent
-                                    spacing: 8
-
-                                    Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: modelData.icon
-                                        font.family: iconFont.name
-                                        font.pixelSize: 28
-                                        color: "#ffffff"
-                                    }
-
-                                    Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: modelData.name
-                                        font.pixelSize: 14 * textScale
-                                        font.weight: Font.Medium
-                                        color: "#ffffff"
-                                    }
-                                }
-
-                                MouseArea {
-                                    id: catMouse
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        loadCategoryApps(modelData.id)
-                                        navigateTo("browse")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // New Apps section
-                Column {
-                    width: parent.width
-                    spacing: 12
-
-                    Row {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        anchors.right: parent.right
-                        anchors.rightMargin: 16
-
-                        Text {
-                            text: "New Apps"
-                            font.pixelSize: 20 * textScale
-                            font.weight: Font.Bold
-                            color: "#ffffff"
-                        }
-
-                        Item { width: parent.width - 150; height: 1 }
-
-                        Text {
-                            text: "See all >"
-                            font.pixelSize: 14 * textScale
-                            color: accentColor
 
                             MouseArea {
                                 anchors.fill: parent
                                 onClicked: {
-                                    categoryApps = newApps
-                                    selectedCategory = "new"
-                                    navigateTo("browse")
-                                }
-                            }
-                        }
-                    }
-
-                    ListView {
-                        id: newAppsList
-                        width: parent.width
-                        height: 100
-                        orientation: ListView.Horizontal
-                        spacing: 12
-                        leftMargin: 16
-                        rightMargin: 16
-                        clip: true
-                        model: newApps
-
-                        delegate: Rectangle {
-                            width: 220
-                            height: 80
-                            radius: 16
-                            color: newAppMouse.pressed ? "#2a2a3e" : "#1a1a2e"
-
-                            Row {
-                                anchors.fill: parent
-                                anchors.margins: 12
-                                spacing: 12
-
-                                Rectangle {
-                                    width: 56
-                                    height: 56
-                                    radius: 14
-                                    color: accentColor
-                                    opacity: 0.3
-                                    anchors.verticalCenter: parent.verticalCenter
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: modelData.icon
-                                        font.family: iconFont.name
-                                        font.pixelSize: 24
-                                        color: "#ffffff"
+                                    homeTab = modelData.id
+                                    if (modelData.id === "wildwest") {
+                                        loadWildWestApps()
                                     }
+                                    Haptic.click()
                                 }
-
-                                Column {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 4
-
-                                    Text {
-                                        text: modelData.name
-                                        font.pixelSize: 15 * textScale
-                                        font.weight: Font.Medium
-                                        color: "#ffffff"
-                                    }
-
-                                    Row {
-                                        spacing: 4
-                                        Text {
-                                            text: "star"
-                                            font.family: iconFont.name
-                                            font.pixelSize: 12
-                                            color: "#ffc107"
-                                        }
-                                        Text {
-                                            text: modelData.rating.toFixed(1)
-                                            font.pixelSize: 14 * textScale
-                                            color: "#888899"
-                                        }
-                                    }
-                                }
-                            }
-
-                            MouseArea {
-                                id: newAppMouse
-                                anchors.fill: parent
-                                onClicked: openAppDetail(modelData)
                             }
                         }
                     }
                 }
+            }
 
-                // Popular Apps section
-                Column {
-                    width: parent.width
+            // Search bar
+            Rectangle {
+                width: parent.width - 32
+                height: 56
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.topMargin: 16
+                radius: 28
+                color: "#1a1a2e"
+                border.color: "#2a2a3e"
+                border.width: 1
+
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
                     spacing: 12
 
-                    Row {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        anchors.right: parent.right
-                        anchors.rightMargin: 16
-
-                        Text {
-                            text: "Popular Apps"
-                            font.pixelSize: 20 * textScale
-                            font.weight: Font.Bold
-                            color: "#ffffff"
-                        }
-
-                        Item { width: parent.width - 180; height: 1 }
-
-                        Text {
-                            text: "See all >"
-                            font.pixelSize: 14 * textScale
-                            color: accentColor
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    categoryApps = popularApps
-                                    selectedCategory = "popular"
-                                    navigateTo("browse")
-                                }
-                            }
-                        }
+                    Text {
+                        text: "search"
+                        font.family: iconFont.name
+                        font.pixelSize: 22
+                        color: "#666677"
+                        anchors.verticalCenter: parent.verticalCenter
                     }
+
+                    Text {
+                        text: "Search apps..."
+                        font.pixelSize: 16 * textScale
+                        color: "#666677"
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: navigateTo("search")
+                }
+            }
+
+            Item { width: 1; height: 16 }
+
+            // Tab content
+            Item {
+                width: parent.width
+                height: parent.height - 230
+
+                // Browse tab - Categories
+                Flickable {
+                    anchors.fill: parent
+                    visible: homeTab === "browse"
+                    contentHeight: browseColumn.height + 40
+                    clip: true
 
                     Column {
-                        width: parent.width - 32
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 8
+                        id: browseColumn
+                        width: parent.width
+                        spacing: 24
+                        topPadding: 8
 
+                        // Categories header
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            text: "Categories"
+                            font.pixelSize: 22 * textScale
+                            font.weight: Font.Bold
+                            color: "#ffffff"
+                        }
+
+                        // Categories grid - big buttons
+                        Grid {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            columns: 2
+                            spacing: 16
+
+                            Repeater {
+                                model: categories
+
+                                Rectangle {
+                                    property color catColor: modelData.color || "#4a90d9"
+                                    width: (root.width - 48) / 2
+                                    height: 100
+                                    radius: 20
+                                    color: catMouseHome.pressed ? Qt.darker(catColor, 1.2) : catColor
+
+                                    Row {
+                                        anchors.centerIn: parent
+                                        spacing: 16
+
+                                        Text {
+                                            text: modelData.icon || "apps"
+                                            font.family: iconFont.name
+                                            font.pixelSize: 36
+                                            color: "#ffffff"
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+
+                                        Text {
+                                            text: modelData.name || ""
+                                            font.pixelSize: 18 * textScale
+                                            font.weight: Font.Bold
+                                            color: "#ffffff"
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: catMouseHome
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            loadCategoryApps(modelData.id)
+                                            selectedCategory = modelData.name
+                                            navigateTo("browse")
+                                            Haptic.click()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // All Apps button
+                        Rectangle {
+                            width: parent.width - 32
+                            height: 64
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            radius: 16
+                            color: allAppsMouse.pressed ? "#333344" : "#222233"
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 12
+
+                                Text {
+                                    text: "view_list"
+                                    font.family: iconFont.name
+                                    font.pixelSize: 24
+                                    color: accentColor
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    text: "Browse All Apps"
+                                    font.pixelSize: 18 * textScale
+                                    font.weight: Font.Medium
+                                    color: "#ffffff"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            MouseArea {
+                                id: allAppsMouse
+                                anchors.fill: parent
+                                onClicked: {
+                                    loadAllApps()
+                                    selectedCategory = "All Apps"
+                                    navigateTo("browse")
+                                    Haptic.click()
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Installed tab
+                Flickable {
+                    anchors.fill: parent
+                    visible: homeTab === "installed"
+                    contentHeight: installedColumn.height + 40
+                    clip: true
+
+                    Column {
+                        id: installedColumn
+                        width: parent.width
+                        spacing: 12
+                        topPadding: 8
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            text: "Installed Apps (" + installedApps.length + ")"
+                            font.pixelSize: 22 * textScale
+                            font.weight: Font.Bold
+                            color: "#ffffff"
+                        }
+
+                        // Empty state
+                        Column {
+                            visible: installedApps.length === 0
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: 16
+                            topPadding: 60
+
+                            Text {
+                                text: "inbox"
+                                font.family: iconFont.name
+                                font.pixelSize: 64
+                                color: "#444455"
+                                anchors.horizontalCenter: parent.horizontalCenter
+                            }
+
+                            Text {
+                                text: "No apps installed yet"
+                                font.pixelSize: 18 * textScale
+                                color: "#666677"
+                                anchors.horizontalCenter: parent.horizontalCenter
+                            }
+                        }
+
+                        // Installed apps list
                         Repeater {
-                            model: popularApps
+                            model: installedApps
 
                             Rectangle {
-                                width: parent.width
+                                width: parent.width - 32
                                 height: 80
+                                anchors.horizontalCenter: parent.horizontalCenter
                                 radius: 16
-                                color: popAppMouse.pressed ? "#2a2a3e" : "#1a1a2e"
+                                color: installedItemMouse.pressed ? "#2a2a3e" : "#1a1a2e"
 
                                 Row {
                                     anchors.fill: parent
-                                    anchors.margins: 12
-                                    spacing: 12
-
-                                    // Rank number
-                                    Rectangle {
-                                        width: 32
-                                        height: 32
-                                        radius: 16
-                                        color: index === 0 ? "#ffc107" : (index === 1 ? "#c0c0c0" : (index === 2 ? "#cd7f32" : "#3a3a4e"))
-                                        anchors.verticalCenter: parent.verticalCenter
-
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: (index + 1).toString()
-                                            font.pixelSize: 14 * textScale
-                                            font.weight: Font.Bold
-                                            color: index < 3 ? "#000000" : "#ffffff"
-                                        }
-                                    }
+                                    anchors.margins: 16
+                                    spacing: 16
 
                                     Rectangle {
-                                        width: 56
-                                        height: 56
-                                        radius: 14
+                                        width: 48
+                                        height: 48
+                                        radius: 12
                                         color: accentColor
                                         opacity: 0.3
                                         anchors.verticalCenter: parent.verticalCenter
 
                                         Text {
                                             anchors.centerIn: parent
-                                            text: modelData.icon
+                                            text: "apps"
                                             font.family: iconFont.name
                                             font.pixelSize: 24
                                             color: "#ffffff"
@@ -1467,12 +1384,12 @@ Window {
 
                                     Column {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - 120
                                         spacing: 4
+                                        width: parent.width - 180
 
                                         Text {
-                                            text: modelData.name
-                                            font.pixelSize: 15 * textScale
+                                            text: modelData.name || modelData.id
+                                            font.pixelSize: 17 * textScale
                                             font.weight: Font.Medium
                                             color: "#ffffff"
                                             elide: Text.ElideRight
@@ -1480,234 +1397,222 @@ Window {
                                         }
 
                                         Text {
-                                            text: formatNumber(modelData.downloads) + " downloads"
+                                            text: "v" + (modelData.version || "1.0.0")
                                             font.pixelSize: 14 * textScale
-                                            color: "#888899"
+                                            color: "#666677"
+                                        }
+                                    }
+
+                                    // Uninstall button
+                                    Rectangle {
+                                        width: 80
+                                        height: 40
+                                        radius: 20
+                                        color: uninstallBtnMouse.pressed ? "#6b1a1a" : "#4a1a1a"
+                                        anchors.verticalCenter: parent.verticalCenter
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "Remove"
+                                            font.pixelSize: 13 * textScale
+                                            color: "#ff6666"
+                                        }
+
+                                        MouseArea {
+                                            id: uninstallBtnMouse
+                                            anchors.fill: parent
+                                            onClicked: {
+                                                uninstallApp(modelData.id || modelData.slug)
+                                                Haptic.click()
+                                            }
                                         }
                                     }
                                 }
 
                                 MouseArea {
-                                    id: popAppMouse
+                                    id: installedItemMouse
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        // Find full app info and open detail
+                                        var app = findAppById(modelData.id)
+                                        if (app) openAppDetail(app)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Wild West tab
+                Flickable {
+                    anchors.fill: parent
+                    visible: homeTab === "wildwest"
+                    contentHeight: wildwestColumn.height + 40
+                    clip: true
+
+                    Column {
+                        id: wildwestColumn
+                        width: parent.width
+                        spacing: 12
+                        topPadding: 8
+
+                        // Header
+                        Row {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            spacing: 12
+
+                            Text {
+                                text: "science"
+                                font.family: iconFont.name
+                                font.pixelSize: 28
+                                color: "#ff9800"
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Column {
+                                Text {
+                                    text: "Wild West"
+                                    font.pixelSize: 22 * textScale
+                                    font.weight: Font.Bold
+                                    color: "#ffffff"
+                                }
+                                Text {
+                                    text: "AI-generated apps in testing"
+                                    font.pixelSize: 14 * textScale
+                                    color: "#888899"
+                                }
+                            }
+                        }
+
+                        // Warning banner
+                        Rectangle {
+                            width: parent.width - 32
+                            height: 60
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            radius: 12
+                            color: "#2a1a00"
+                            border.color: "#ff9800"
+                            border.width: 1
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 12
+
+                                Text {
+                                    text: "warning"
+                                    font.family: iconFont.name
+                                    font.pixelSize: 24
+                                    color: "#ff9800"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    text: "These apps are experimental and may have bugs"
+                                    font.pixelSize: 14 * textScale
+                                    color: "#ffcc80"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                        }
+
+                        // Wild west apps list
+                        Repeater {
+                            model: wildWestApps
+
+                            Rectangle {
+                                width: parent.width - 32
+                                height: 90
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                radius: 16
+                                color: wwItemMouse.pressed ? "#2a2a3e" : "#1a1a2e"
+                                border.color: "#ff9800"
+                                border.width: 1
+
+                                Row {
+                                    anchors.fill: parent
+                                    anchors.margins: 16
+                                    spacing: 16
+
+                                    Rectangle {
+                                        width: 56
+                                        height: 56
+                                        radius: 14
+                                        color: "#ff9800"
+                                        opacity: 0.3
+                                        anchors.verticalCenter: parent.verticalCenter
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "science"
+                                            font.family: iconFont.name
+                                            font.pixelSize: 28
+                                            color: "#ff9800"
+                                        }
+                                    }
+
+                                    Column {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 4
+                                        width: parent.width - 90
+
+                                        Text {
+                                            text: modelData.name
+                                            font.pixelSize: 17 * textScale
+                                            font.weight: Font.Medium
+                                            color: "#ffffff"
+                                            elide: Text.ElideRight
+                                            width: parent.width
+                                        }
+
+                                        Text {
+                                            text: modelData.description || ""
+                                            font.pixelSize: 14 * textScale
+                                            color: "#888899"
+                                            elide: Text.ElideRight
+                                            width: parent.width
+                                        }
+
+                                        Text {
+                                            text: "v" + (modelData.version || "0.1") + " • AI Generated"
+                                            font.pixelSize: 12 * textScale
+                                            color: "#ff9800"
+                                        }
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: wwItemMouse
                                     anchors.fill: parent
                                     onClicked: openAppDetail(modelData)
                                 }
                             }
                         }
-                    }
-                }
 
-                // Wild West teaser
-                Rectangle {
-                    width: parent.width - 32
-                    height: 100
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    radius: 20
-                    gradient: Gradient {
-                        GradientStop { position: 0.0; color: "#4a2a1a" }
-                        GradientStop { position: 1.0; color: "#2a1a0a" }
-                    }
-
-                    Row {
-                        anchors.fill: parent
-                        anchors.margins: 20
-                        spacing: 16
-
-                        Text {
-                            text: "warning"
-                            font.family: iconFont.name
-                            font.pixelSize: 40
-                            color: "#ff9800"
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-
+                        // Empty state for wild west
                         Column {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - 60
-                            spacing: 4
+                            visible: wildWestApps.length === 0
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: 16
+                            topPadding: 40
 
                             Text {
-                                text: "Wild West"
-                                font.pixelSize: 18 * textScale
-                                font.weight: Font.Bold
-                                color: "#ffffff"
-                            }
-
-                            Text {
-                                text: "Try AI-generated apps and help test them"
-                                font.pixelSize: 15 * textScale
-                                color: "#ccaa88"
-                                width: parent.width
-                                elide: Text.ElideRight
-                            }
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            loadWildWestApps()
-                            navigateTo("wildwest")
-                        }
-                    }
-                }
-
-                // Request apps teaser
-                Rectangle {
-                    width: parent.width - 32
-                    height: 80
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    radius: 16
-                    color: "#1a2a3a"
-
-                    Row {
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 16
-
-                        Text {
-                            text: "lightbulb"
-                            font.family: iconFont.name
-                            font.pixelSize: 32
-                            color: "#ffc107"
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-
-                        Column {
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 2
-
-                            Text {
-                                text: "Request an App"
-                                font.pixelSize: 16 * textScale
-                                font.weight: Font.Medium
-                                color: "#ffffff"
-                            }
-
-                            Text {
-                                text: "Submit ideas and vote on requests"
-                                font.pixelSize: 14 * textScale
-                                color: "#888899"
-                            }
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            loadAppRequests()
-                            navigateTo("request")
-                        }
-                    }
-                }
-
-                // Spacing at bottom
-                Item { width: 1; height: 20 }
-            }
-        }
-
-        // Bottom navigation bar
-        Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: 100
-            color: "#1a1a2e"
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 24
-                anchors.rightMargin: 24
-                anchors.topMargin: 8
-                anchors.bottomMargin: 36
-
-                Repeater {
-                    model: [
-                        { icon: "home", label: "Home", view: "home" },
-                        { icon: "apps", label: "Browse", view: "browse" },
-                        { icon: "search", label: "Search", view: "search" },
-                        { icon: "person", label: "Profile", view: "profile" }
-                    ]
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        color: "transparent"
-
-                        Column {
-                            anchors.centerIn: parent
-                            spacing: 4
-
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: modelData.icon
+                                text: "science"
                                 font.family: iconFont.name
-                                font.pixelSize: 24
-                                color: currentView === modelData.view ? accentColor : "#666677"
+                                font.pixelSize: 64
+                                color: "#444455"
+                                anchors.horizontalCenter: parent.horizontalCenter
                             }
 
                             Text {
+                                text: "No apps in testing"
+                                font.pixelSize: 18 * textScale
+                                color: "#666677"
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: modelData.label
-                                font.pixelSize: 14 * textScale
-                                color: currentView === modelData.view ? accentColor : "#666677"
-                            }
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: {
-                                if (modelData.view === "browse") {
-                                    categoryApps = featuredApps.concat(newApps).concat(popularApps)
-                                    selectedCategory = "all"
-                                }
-                                currentView = modelData.view
-                                viewStack = [modelData.view]
-                                Haptic.tap()
                             }
                         }
                     }
                 }
-            }
-
-            // Home indicator
-            Rectangle {
-                anchors.bottom: parent.bottom
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottomMargin: 8
-                width: 120
-                height: 4
-                radius: 2
-                color: "#333344"
-            }
-        }
-
-        // Back button - prominent floating action button
-        Rectangle {
-            id: homeBackButton
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.rightMargin: 24
-            anchors.bottomMargin: 120
-            width: 72
-            height: 72
-            radius: 36
-            color: homeBackMouse.pressed ? accentPressed : accentColor
-
-            Behavior on color { ColorAnimation { duration: 150 } }
-
-            Text {
-                anchors.centerIn: parent
-                text: "←"
-                font.pixelSize: 32
-                font.weight: Font.Medium
-                color: "#ffffff"
-            }
-
-            MouseArea {
-                id: homeBackMouse
-                anchors.fill: parent
-                onClicked: Qt.quit()
             }
         }
     }
@@ -2346,8 +2251,8 @@ Window {
                         if (isDownloading && downloadingApp === (selectedApp ? getAppSlug(selectedApp) : "")) {
                             return "#333344"
                         }
-                        if (isAppInstalled(selectedApp ? selectedApp.id : "")) {
-                            return "#2a4a2a"
+                        if (selectedApp && isAppInstalled(getAppSlug(selectedApp))) {
+                            return installMouse.pressed ? "#8b2a2a" : "#a33"  // Red for uninstall
                         }
                         return installMouse.pressed ? accentPressed : accentColor
                     }
@@ -2372,8 +2277,8 @@ Window {
                                 if (isDownloading && downloadingApp === (selectedApp ? getAppSlug(selectedApp) : "")) {
                                     return "hourglass_empty"
                                 }
-                                if (isAppInstalled(selectedApp ? selectedApp.id : "")) {
-                                    return "check_circle"
+                                if (selectedApp && isAppInstalled(getAppSlug(selectedApp))) {
+                                    return "delete"
                                 }
                                 return "download"
                             }
@@ -2389,7 +2294,7 @@ Window {
                                     return "Installing... " + Math.round(downloadProgress * 100) + "%"
                                 }
                                 if (selectedApp && isAppInstalled(getAppSlug(selectedApp))) {
-                                    return "Installed"
+                                    return "Remove from device"
                                 }
                                 return "Install from 255.one"
                             }
@@ -2404,7 +2309,13 @@ Window {
                         id: installMouse
                         anchors.fill: parent
                         onClicked: {
-                            if (!isDownloading && selectedApp && !isAppInstalled(getAppSlug(selectedApp))) {
+                            if (isDownloading) return
+                            if (!selectedApp) return
+                            var slug = getAppSlug(selectedApp)
+                            if (isAppInstalled(slug)) {
+                                uninstallApp(slug)
+                                Haptic.click()
+                            } else {
                                 installApp(selectedApp)
                                 Haptic.click()
                             }
