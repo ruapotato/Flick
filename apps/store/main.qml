@@ -61,18 +61,33 @@ Window {
     property real downloadProgress: 0
     property string downloadingApp: ""
 
-    // File paths
-    property string stateDir: "/home/droidian/.local/state/flick"
+    // File paths - detect home directory
+    property string userHome: {
+        var home = Qt.resolvedUrl(".").toString().replace("file://", "")
+        // Extract home from path like /home/user/Flick/apps/store/
+        var match = home.match(/^(\/home\/[^\/]+)\//)
+        return match ? match[1] : "/home/droidian"
+    }
+    property string flickDir: userHome + "/Flick"
+    property string stateDir: userHome + "/.local/state/flick"
     property string cacheDir: stateDir + "/store_cache"
     property string settingsFile: stateDir + "/store_settings.json"
     property string installedFile: stateDir + "/store_installed.json"
     property string reviewsFile: stateDir + "/store_reviews.json"
     property string requestsFile: stateDir + "/store_requests.json"
+    property string localPackagesDir: flickDir + "/store/packages"
+    property string installScript: flickDir + "/apps/store/install_app.sh"
+    property string installRequestFile: "/tmp/flick_install_request"
+    property string installStatusFile: "/tmp/flick_install_status"
+
+    // Local packages
+    property var localPackages: []
 
     Component.onCompleted: {
         loadConfig()
         loadSettings()
         loadInstalledApps()
+        loadLocalPackages()
         loadMyReviews()
         loadMyRequests()
         loadCategories()
@@ -99,6 +114,68 @@ Window {
         } catch (e) {
             console.log("Using default text scale")
         }
+    }
+
+    function loadLocalPackages() {
+        // Known local packages - read their manifests
+        var packageIds = ["distract", "audiobooks", "ebooks", "passwordsafe", "podcast", "recorder", "sandbox", "music"]
+        var packages = []
+
+        for (var i = 0; i < packageIds.length; i++) {
+            var pkgId = packageIds[i]
+            var manifestPath = localPackagesDir + "/" + pkgId + "/manifest.json"
+            var xhr = new XMLHttpRequest()
+            xhr.open("GET", "file://" + manifestPath, false)
+            try {
+                xhr.send()
+                if (xhr.status === 200 || xhr.status === 0) {
+                    var manifest = JSON.parse(xhr.responseText)
+                    packages.push({
+                        id: pkgId,
+                        name: manifest.name || pkgId,
+                        description: manifest.description || "",
+                        long_description: manifest.long_description || manifest.description || "",
+                        author: manifest.author ? manifest.author.name : "Flick Project",
+                        version: manifest.version || "1.0.0",
+                        icon: getIconForCategory(manifest.categories ? manifest.categories[0] : "Utilities"),
+                        rating: 4.5,
+                        downloads: 100,
+                        categories: manifest.categories || ["Utilities"],
+                        isLocal: true
+                    })
+                }
+            } catch (e) {
+                console.log("Could not load manifest for " + pkgId + ": " + e)
+            }
+        }
+
+        localPackages = packages
+        console.log("Loaded " + packages.length + " local packages")
+
+        // Add local packages to featured if not already showing API apps
+        if (featuredApps.length === 0) {
+            featuredApps = packages.slice(0, 4)
+        }
+        if (newApps.length === 0) {
+            newApps = packages
+        }
+    }
+
+    function getIconForCategory(category) {
+        var icons = {
+            "Games": "game",
+            "Utilities": "wrench",
+            "Media": "play",
+            "Audio": "music",
+            "Player": "play",
+            "Social": "people",
+            "Productivity": "briefcase",
+            "Education": "book",
+            "Lifestyle": "heart",
+            "Security": "gear",
+            "Entertainment": "game"
+        }
+        return icons[category] || "app"
     }
 
     function loadSettings() {
@@ -604,9 +681,21 @@ Window {
     }
 
     function isAppInstalled(appId) {
+        // Check the installed apps list
         for (var i = 0; i < installedApps.length; i++) {
             if (installedApps[i].id === appId) return true
         }
+        // Also check if app exists in apps directory (for local packages)
+        var manifestPath = flickDir + "/apps/" + appId + "/manifest.json"
+        var mainQml = flickDir + "/apps/" + appId + "/main.qml"
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + mainQml, false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                return true
+            }
+        } catch (e) {}
         return false
     }
 
@@ -616,8 +705,19 @@ Window {
         downloadingApp = app.id
         downloadProgress = 0
 
-        // Simulate download progress
-        downloadTimer.start()
+        // For local packages, do actual installation
+        if (app.isLocal) {
+            // Write install request
+            var xhr = new XMLHttpRequest()
+            xhr.open("PUT", "file://" + installRequestFile)
+            xhr.send(app.id + ":install")
+
+            // Start progress simulation while install happens
+            installTimer.start()
+        } else {
+            // Simulate download progress for remote apps
+            downloadTimer.start()
+        }
     }
 
     Timer {
@@ -633,16 +733,65 @@ Window {
         }
     }
 
+    Timer {
+        id: installTimer
+        interval: 200
+        repeat: true
+        property int checkCount: 0
+        onTriggered: {
+            downloadProgress += 0.1
+            checkCount++
+
+            // Check if installation completed (by checking if app dir exists)
+            if (selectedApp) {
+                var mainQml = flickDir + "/apps/" + selectedApp.id + "/main.qml"
+                var xhr = new XMLHttpRequest()
+                xhr.open("GET", "file://" + mainQml, false)
+                try {
+                    xhr.send()
+                    if (xhr.status === 200 || xhr.status === 0) {
+                        // Installation complete!
+                        installTimer.stop()
+                        checkCount = 0
+                        downloadProgress = 1.0
+                        completeInstallation()
+                        return
+                    }
+                } catch (e) {}
+            }
+
+            // Timeout after 10 seconds
+            if (checkCount >= 50) {
+                installTimer.stop()
+                checkCount = 0
+                isDownloading = false
+                downloadProgress = 0
+                downloadingApp = ""
+                console.log("Installation timeout - run install script manually")
+            }
+        }
+    }
+
     function completeInstallation() {
         if (selectedApp) {
-            installedApps.push({
-                id: selectedApp.id,
-                name: selectedApp.name,
-                icon: selectedApp.icon,
-                version: selectedApp.version,
-                installedAt: Date.now()
-            })
-            saveInstalledApps()
+            // Add to installed list if not already there
+            var found = false
+            for (var i = 0; i < installedApps.length; i++) {
+                if (installedApps[i].id === selectedApp.id) {
+                    found = true
+                    break
+                }
+            }
+            if (!found) {
+                installedApps.push({
+                    id: selectedApp.id,
+                    name: selectedApp.name,
+                    icon: selectedApp.icon,
+                    version: selectedApp.version,
+                    installedAt: Date.now()
+                })
+                saveInstalledApps()
+            }
         }
         isDownloading = false
         downloadProgress = 0
@@ -651,6 +800,12 @@ Window {
     }
 
     function uninstallApp(appId) {
+        // Write uninstall request
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file://" + installRequestFile)
+        xhr.send(appId + ":uninstall")
+
+        // Remove from installed list
         for (var i = 0; i < installedApps.length; i++) {
             if (installedApps[i].id === appId) {
                 installedApps.splice(i, 1)
@@ -1589,9 +1744,9 @@ Window {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "arrow_back"
-                            font.family: iconFont.name
-                            font.pixelSize: 24
+                            text: "←"
+                            font.pixelSize: 28
+                            font.weight: Font.Medium
                             color: "#ffffff"
                         }
 
@@ -1824,9 +1979,9 @@ Window {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "arrow_back"
-                                font.family: iconFont.name
-                                font.pixelSize: 24
+                                text: "←"
+                                font.pixelSize: 28
+                                font.weight: Font.Medium
                                 color: "#ffffff"
                             }
 
@@ -2070,9 +2225,9 @@ Window {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "arrow_back"
-                                font.family: iconFont.name
-                                font.pixelSize: 24
+                                text: "←"
+                                font.pixelSize: 28
+                                font.weight: Font.Medium
                                 color: "#ffffff"
                             }
 
@@ -2491,9 +2646,9 @@ Window {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "arrow_back"
-                            font.family: iconFont.name
-                            font.pixelSize: 24
+                            text: "←"
+                            font.pixelSize: 28
+                            font.weight: Font.Medium
                             color: "#ffffff"
                         }
 
@@ -2773,9 +2928,9 @@ Window {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "arrow_back"
-                            font.family: iconFont.name
-                            font.pixelSize: 24
+                            text: "←"
+                            font.pixelSize: 28
+                            font.weight: Font.Medium
                             color: "#ffffff"
                         }
 
@@ -3088,9 +3243,9 @@ Window {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "arrow_back"
-                            font.family: iconFont.name
-                            font.pixelSize: 24
+                            text: "←"
+                            font.pixelSize: 28
+                            font.weight: Font.Medium
                             color: "#ffffff"
                         }
 
@@ -3474,9 +3629,9 @@ Window {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "arrow_back"
-                            font.family: iconFont.name
-                            font.pixelSize: 24
+                            text: "←"
+                            font.pixelSize: 28
+                            font.weight: Font.Medium
                             color: "#ffffff"
                         }
 
@@ -3795,9 +3950,9 @@ Window {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "arrow_back"
-                            font.family: iconFont.name
-                            font.pixelSize: 24
+                            text: "←"
+                            font.pixelSize: 28
+                            font.weight: Font.Medium
                             color: "#ffffff"
                         }
 
@@ -4018,9 +4173,9 @@ Window {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "arrow_back"
-                            font.family: iconFont.name
-                            font.pixelSize: 24
+                            text: "←"
+                            font.pixelSize: 28
+                            font.weight: Font.Medium
                             color: "#ffffff"
                         }
 
