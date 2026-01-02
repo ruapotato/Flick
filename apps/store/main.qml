@@ -945,11 +945,19 @@ Window {
 
     function showDebugReportDialog() {
         reportText = ""
+        reportStatus = ""
+        reportError = ""
+        isSubmittingReport = false
         showingReportDialog = true
     }
 
     function submitDebugReport() {
         if (!selectedApp || reportText.length < 10) return
+        if (isSubmittingReport) return
+
+        isSubmittingReport = true
+        reportStatus = "Submitting..."
+        reportError = ""
 
         var slug = getAppSlug(selectedApp)
         var xhr = new XMLHttpRequest()
@@ -957,15 +965,29 @@ Window {
         xhr.setRequestHeader("Content-Type", "application/json")
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
+                isSubmittingReport = false
                 if (xhr.status === 200 || xhr.status === 201) {
                     console.log("Feedback submitted successfully")
-                    // Show success message briefly
-                    reportSubmitted = true
+                    reportStatus = "Submitted!"
+                    // Close dialog after brief delay
+                    reportSuccessTimer.start()
                 } else {
+                    // Parse error message from backend
+                    var errorMsg = "Failed to submit (error " + xhr.status + ")"
+                    try {
+                        var resp = JSON.parse(xhr.responseText)
+                        if (resp.error) errorMsg = resp.error
+                    } catch (e) {}
                     console.log("Failed to submit feedback:", xhr.status, xhr.responseText)
+                    reportError = errorMsg
+                    reportStatus = ""
                 }
-                showingReportDialog = false
             }
+        }
+        xhr.onerror = function() {
+            isSubmittingReport = false
+            reportError = "Network error - check connection"
+            reportStatus = ""
         }
         // Backend expects: type (bug/suggestion/rebuild_request), title, content
         var data = JSON.stringify({
@@ -977,7 +999,15 @@ Window {
         xhr.send(data)
     }
 
-    property bool reportSubmitted: false
+    property bool isSubmittingReport: false
+    property string reportStatus: ""
+    property string reportError: ""
+
+    Timer {
+        id: reportSuccessTimer
+        interval: 1500
+        onTriggered: showingReportDialog = false
+    }
 
     // ==================== Config Timer ====================
 
@@ -4688,6 +4718,40 @@ Window {
                     text: "Minimum 10 characters required"
                     font.pixelSize: 12 * textScale
                     color: "#666677"
+                    visible: reportError === "" && reportStatus === ""
+                }
+
+                // Status message (submitting/success)
+                Text {
+                    width: parent.width
+                    text: reportStatus
+                    font.pixelSize: 14 * textScale
+                    font.weight: Font.Medium
+                    color: reportStatus === "Submitted!" ? "#4caf50" : "#ff9800"
+                    visible: reportStatus !== ""
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
+                // Error message
+                Rectangle {
+                    width: parent.width
+                    height: errorText.height + 16
+                    radius: 8
+                    color: "#3d1a1a"
+                    border.width: 1
+                    border.color: "#ff4444"
+                    visible: reportError !== ""
+
+                    Text {
+                        id: errorText
+                        anchors.centerIn: parent
+                        width: parent.width - 16
+                        text: reportError
+                        font.pixelSize: 13 * textScale
+                        color: "#ff6666"
+                        wrapMode: Text.Wrap
+                        horizontalAlignment: Text.AlignHCenter
+                    }
                 }
 
                 Row {
@@ -4721,22 +4785,28 @@ Window {
                         width: (parent.width - 12) / 2
                         height: 48
                         radius: 24
-                        color: reportText.length >= 10
-                            ? (submitReportMouse.pressed ? "#cc7700" : "#ff9800")
-                            : "#444455"
+                        color: {
+                            if (isSubmittingReport) return "#666666"
+                            if (reportText.length >= 10) return submitReportMouse.pressed ? "#cc7700" : "#ff9800"
+                            return "#444455"
+                        }
 
                         Text {
                             anchors.centerIn: parent
-                            text: "Submit"
+                            text: isSubmittingReport ? "..." : "Submit"
                             font.pixelSize: 16 * textScale
                             font.weight: Font.Bold
-                            color: reportText.length >= 10 ? "#000000" : "#666666"
+                            color: {
+                                if (isSubmittingReport) return "#999999"
+                                if (reportText.length >= 10) return "#000000"
+                                return "#666666"
+                            }
                         }
 
                         MouseArea {
                             id: submitReportMouse
                             anchors.fill: parent
-                            enabled: reportText.length >= 10
+                            enabled: reportText.length >= 10 && !isSubmittingReport
                             onClicked: {
                                 Haptic.click()
                                 submitDebugReport()
