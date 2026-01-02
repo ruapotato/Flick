@@ -1,0 +1,388 @@
+#!/usr/bin/env python3
+"""
+Flick Package Manager
+
+Commands:
+    list        - List available packages
+    installed   - List installed apps
+    install     - Install a package
+    uninstall   - Remove an installed app
+    search      - Search packages
+"""
+
+import os
+import sys
+import json
+import shutil
+import argparse
+from pathlib import Path
+
+def get_home():
+    """Get the real user's home directory."""
+    # Check FLICK_USER first
+    flick_user = os.environ.get('FLICK_USER', '')
+    if flick_user and flick_user != 'root':
+        home = f'/home/{flick_user}'
+        if os.path.exists(home):
+            return Path(home)
+
+    # Check SUDO_USER
+    sudo_user = os.environ.get('SUDO_USER', '')
+    if sudo_user and sudo_user != 'root':
+        home = f'/home/{sudo_user}'
+        if os.path.exists(home):
+            return Path(home)
+
+    # Check for droidian
+    if os.path.exists('/home/droidian'):
+        return Path('/home/droidian')
+
+    # Fallback to HOME
+    return Path(os.environ.get('HOME', '/root'))
+
+HOME = get_home()
+FLICK_DIR = HOME / 'Flick'
+APPS_DIR = FLICK_DIR / 'apps'
+PACKAGES_DIR = FLICK_DIR / 'store' / 'packages'
+SIGNAL_FILE = Path('/tmp/flick_rescan_apps')
+STATE_DIR = HOME / '.local' / 'state' / 'flick'
+INSTALLED_FILE = STATE_DIR / 'store_installed.json'
+
+def load_manifest(path):
+    """Load a manifest.json file."""
+    manifest_path = path / 'manifest.json'
+    if manifest_path.exists():
+        try:
+            with open(manifest_path) as f:
+                return json.load(f)
+        except:
+            pass
+    return None
+
+def get_app_info(path):
+    """Get app info from a directory."""
+    manifest = load_manifest(path)
+    app_id = path.name
+
+    if manifest:
+        return {
+            'id': app_id,
+            'name': manifest.get('name', app_id.title()),
+            'version': manifest.get('version', '1.0.0'),
+            'description': manifest.get('description', ''),
+            'categories': manifest.get('categories', []),
+        }
+
+    # Check if it has main.qml (valid app)
+    if (path / 'main.qml').exists() or (path / f'run_{app_id}.sh').exists():
+        return {
+            'id': app_id,
+            'name': app_id.title(),
+            'version': '1.0.0',
+            'description': '',
+            'categories': [],
+        }
+
+    return None
+
+def signal_rescan():
+    """Signal the shell to rescan apps."""
+    SIGNAL_FILE.touch()
+    print("  (Shell will detect new apps automatically)")
+
+def load_store_installed():
+    """Load the Store's installed apps list."""
+    if INSTALLED_FILE.exists():
+        try:
+            with open(INSTALLED_FILE) as f:
+                data = json.load(f)
+                return data.get('apps', [])
+        except:
+            pass
+    return []
+
+def save_store_installed(apps):
+    """Save the Store's installed apps list."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    with open(INSTALLED_FILE, 'w') as f:
+        json.dump({'apps': apps}, f, indent=2)
+
+def add_to_store_installed(info):
+    """Add an app to the Store's installed list."""
+    apps = load_store_installed()
+    # Remove if already exists
+    apps = [a for a in apps if a.get('id') != info['id']]
+    # Add new entry
+    import time
+    apps.append({
+        'id': info['id'],
+        'name': info['name'],
+        'icon': info.get('icon', 'app'),
+        'version': info['version'],
+        'installedAt': int(time.time() * 1000)
+    })
+    save_store_installed(apps)
+
+def remove_from_store_installed(app_id):
+    """Remove an app from the Store's installed list."""
+    apps = load_store_installed()
+    apps = [a for a in apps if a.get('id') != app_id]
+    save_store_installed(apps)
+
+def cmd_list(args):
+    """List available packages."""
+    if not PACKAGES_DIR.exists():
+        print(f"No packages directory found at {PACKAGES_DIR}")
+        return 1
+
+    packages = []
+    for pkg_dir in sorted(PACKAGES_DIR.iterdir()):
+        if pkg_dir.is_dir() and not pkg_dir.name.startswith('.'):
+            info = get_app_info(pkg_dir)
+            if info:
+                # Check if installed
+                installed = (APPS_DIR / pkg_dir.name).exists()
+                packages.append((info, installed))
+
+    if not packages:
+        print("No packages available")
+        return 0
+
+    print(f"\nAvailable packages ({len(packages)}):\n")
+    for info, installed in packages:
+        status = "[installed]" if installed else ""
+        print(f"  {info['id']:20} {info['name']:25} {status}")
+        if info['description']:
+            print(f"                       {info['description'][:50]}...")
+    print()
+    return 0
+
+def cmd_installed(args):
+    """List installed apps."""
+    if not APPS_DIR.exists():
+        print(f"No apps directory found at {APPS_DIR}")
+        return 1
+
+    # Skip these system apps
+    skip = {'lockscreen', 'shared', 'welcome', 'store'}
+
+    apps = []
+    for app_dir in sorted(APPS_DIR.iterdir()):
+        if app_dir.is_dir() and not app_dir.name.startswith('.'):
+            if app_dir.name in skip:
+                continue
+            info = get_app_info(app_dir)
+            if info:
+                apps.append(info)
+
+    if not apps:
+        print("No apps installed")
+        return 0
+
+    print(f"\nInstalled apps ({len(apps)}):\n")
+    for info in apps:
+        print(f"  {info['id']:20} {info['name']:25} v{info['version']}")
+    print()
+    return 0
+
+def cmd_install(args):
+    """Install a package."""
+    pkg_id = args.package
+    pkg_dir = PACKAGES_DIR / pkg_id
+
+    if not pkg_dir.exists():
+        print(f"Package not found: {pkg_id}")
+        print(f"Use 'flick-pkg list' to see available packages")
+        return 1
+
+    dest_dir = APPS_DIR / pkg_id
+
+    if dest_dir.exists():
+        print(f"Already installed: {pkg_id}")
+        return 1
+
+    info = get_app_info(pkg_dir)
+    if not info:
+        print(f"Invalid package: {pkg_id}")
+        return 1
+
+    print(f"Installing {info['name']} ({pkg_id})...")
+
+    try:
+        shutil.copytree(pkg_dir, dest_dir)
+        print(f"  Copied to {dest_dir}")
+        add_to_store_installed(info)
+        print(f"  Updated Store installed list")
+        signal_rescan()
+        print(f"Successfully installed: {info['name']}")
+        return 0
+    except Exception as e:
+        print(f"Installation failed: {e}")
+        return 1
+
+def cmd_uninstall(args):
+    """Uninstall an app."""
+    app_id = args.package
+    app_dir = APPS_DIR / app_id
+
+    # Don't allow removing core apps
+    protected = {'settings', 'store', 'phone', 'messages', 'contacts', 'browser', 'camera', 'gallery', 'files', 'terminal', 'calculator', 'clock', 'calendar', 'notes', 'weather', 'maps'}
+
+    if app_id in protected:
+        print(f"Cannot uninstall core app: {app_id}")
+        return 1
+
+    if not app_dir.exists():
+        print(f"App not installed: {app_id}")
+        return 1
+
+    info = get_app_info(app_dir)
+    name = info['name'] if info else app_id
+
+    print(f"Uninstalling {name} ({app_id})...")
+
+    try:
+        shutil.rmtree(app_dir)
+        print(f"  Removed {app_dir}")
+        remove_from_store_installed(app_id)
+        print(f"  Updated Store installed list")
+        signal_rescan()
+        print(f"Successfully uninstalled: {name}")
+        return 0
+    except Exception as e:
+        print(f"Uninstall failed: {e}")
+        return 1
+
+def cmd_search(args):
+    """Search packages."""
+    query = args.query.lower()
+
+    if not PACKAGES_DIR.exists():
+        print("No packages available")
+        return 1
+
+    results = []
+    for pkg_dir in sorted(PACKAGES_DIR.iterdir()):
+        if pkg_dir.is_dir() and not pkg_dir.name.startswith('.'):
+            info = get_app_info(pkg_dir)
+            if info:
+                # Search in id, name, description
+                searchable = f"{info['id']} {info['name']} {info['description']}".lower()
+                if query in searchable:
+                    installed = (APPS_DIR / pkg_dir.name).exists()
+                    results.append((info, installed))
+
+    if not results:
+        print(f"No packages matching: {query}")
+        return 0
+
+    print(f"\nSearch results for '{query}' ({len(results)}):\n")
+    for info, installed in results:
+        status = "[installed]" if installed else ""
+        print(f"  {info['id']:20} {info['name']:25} {status}")
+    print()
+    return 0
+
+def cmd_info(args):
+    """Show package info."""
+    pkg_id = args.package
+
+    # Check packages first, then installed apps
+    pkg_dir = PACKAGES_DIR / pkg_id
+    app_dir = APPS_DIR / pkg_id
+
+    source_dir = None
+    installed = False
+
+    if app_dir.exists():
+        source_dir = app_dir
+        installed = True
+    elif pkg_dir.exists():
+        source_dir = pkg_dir
+    else:
+        print(f"Package not found: {pkg_id}")
+        return 1
+
+    info = get_app_info(source_dir)
+    if not info:
+        print(f"Invalid package: {pkg_id}")
+        return 1
+
+    manifest = load_manifest(source_dir)
+
+    print(f"\n{info['name']}")
+    print("=" * len(info['name']))
+    print(f"ID:          {info['id']}")
+    print(f"Version:     {info['version']}")
+    print(f"Status:      {'Installed' if installed else 'Not installed'}")
+    if info['categories']:
+        print(f"Categories:  {', '.join(info['categories'])}")
+    if info['description']:
+        print(f"Description: {info['description']}")
+    if manifest:
+        if manifest.get('author'):
+            author = manifest['author']
+            if isinstance(author, dict):
+                print(f"Author:      {author.get('name', 'Unknown')}")
+            else:
+                print(f"Author:      {author}")
+        if manifest.get('long_description'):
+            print(f"\n{manifest['long_description']}")
+    print()
+    return 0
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Flick Package Manager',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  flick-pkg list              List available packages
+  flick-pkg installed         List installed apps
+  flick-pkg install distract  Install the distract package
+  flick-pkg uninstall distract Remove the distract app
+  flick-pkg search audio      Search for packages
+  flick-pkg info distract     Show package details
+"""
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Command to run')
+
+    # list
+    list_parser = subparsers.add_parser('list', help='List available packages')
+    list_parser.set_defaults(func=cmd_list)
+
+    # installed
+    installed_parser = subparsers.add_parser('installed', help='List installed apps')
+    installed_parser.set_defaults(func=cmd_installed)
+
+    # install
+    install_parser = subparsers.add_parser('install', help='Install a package')
+    install_parser.add_argument('package', help='Package ID to install')
+    install_parser.set_defaults(func=cmd_install)
+
+    # uninstall
+    uninstall_parser = subparsers.add_parser('uninstall', help='Uninstall an app')
+    uninstall_parser.add_argument('package', help='App ID to uninstall')
+    uninstall_parser.set_defaults(func=cmd_uninstall)
+
+    # search
+    search_parser = subparsers.add_parser('search', help='Search packages')
+    search_parser.add_argument('query', help='Search query')
+    search_parser.set_defaults(func=cmd_search)
+
+    # info
+    info_parser = subparsers.add_parser('info', help='Show package info')
+    info_parser.add_argument('package', help='Package ID')
+    info_parser.set_defaults(func=cmd_info)
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 0
+
+    return args.func(args)
+
+if __name__ == '__main__':
+    sys.exit(main())

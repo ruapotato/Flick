@@ -2958,6 +2958,9 @@ pub fn run() -> Result<()> {
         // Clean up expired touch effects before rendering
         state.cleanup_touch_effects();
 
+        // Check for app rescan signal (for dynamic app installation)
+        state.shell.app_manager.check_rescan();
+
         // Update home screen scroll momentum physics
         if state.shell.view == crate::shell::ShellView::Home {
             state.shell.update_home_scroll_physics();

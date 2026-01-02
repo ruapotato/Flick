@@ -252,6 +252,9 @@ pub struct AppInfo {
 // Keep CategoryInfo as an alias for compatibility
 pub type CategoryInfo = AppInfo;
 
+/// Signal file for dynamic app rescanning
+const RESCAN_SIGNAL_FILE: &str = "/tmp/flick_rescan_apps";
+
 /// Manager for discovering apps
 pub struct AppManager {
     /// All discovered apps by ID
@@ -260,6 +263,8 @@ pub struct AppManager {
     pub config: AppConfig,
     /// Cached app info for rendering (in grid order)
     cached_app_info: Vec<AppInfo>,
+    /// Last check time for rescan signal
+    last_signal_check: std::time::Instant,
 }
 
 impl AppManager {
@@ -269,12 +274,38 @@ impl AppManager {
             apps: HashMap::new(),
             config: AppConfig::load(),
             cached_app_info: Vec::new(),
+            last_signal_check: std::time::Instant::now(),
         };
 
         manager.scan_apps();
         manager.rebuild_cache();
         manager.config.save();
         manager
+    }
+
+    /// Check if a rescan is needed and perform it
+    /// Call this periodically (e.g., every frame or every few seconds)
+    pub fn check_rescan(&mut self) -> bool {
+        // Only check every 500ms to avoid overhead
+        if self.last_signal_check.elapsed().as_millis() < 500 {
+            return false;
+        }
+        self.last_signal_check = std::time::Instant::now();
+
+        // Check if signal file exists
+        let signal_path = std::path::Path::new(RESCAN_SIGNAL_FILE);
+        if signal_path.exists() {
+            // Remove the signal file
+            let _ = std::fs::remove_file(signal_path);
+
+            // Rescan apps
+            tracing::info!("Rescan signal detected - rescanning apps");
+            self.scan_apps();
+            self.rebuild_cache();
+            self.config.save();
+            return true;
+        }
+        false
     }
 
     /// Scan for apps in ~/Flick/apps/ and other locations

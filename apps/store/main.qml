@@ -681,21 +681,11 @@ Window {
     }
 
     function isAppInstalled(appId) {
-        // Check the installed apps list
+        // Check the installed apps list only
+        // The list is synced with actual filesystem by flick-pkg
         for (var i = 0; i < installedApps.length; i++) {
             if (installedApps[i].id === appId) return true
         }
-        // Also check if app exists in apps directory (for local packages)
-        var manifestPath = flickDir + "/apps/" + appId + "/manifest.json"
-        var mainQml = flickDir + "/apps/" + appId + "/main.qml"
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + mainQml, false)
-        try {
-            xhr.send()
-            if (xhr.status === 200 || xhr.status === 0) {
-                return true
-            }
-        } catch (e) {}
         return false
     }
 
@@ -735,39 +725,45 @@ Window {
 
     Timer {
         id: installTimer
-        interval: 200
+        interval: 300
         repeat: true
         property int checkCount: 0
         onTriggered: {
-            downloadProgress += 0.1
+            downloadProgress = Math.min(0.9, downloadProgress + 0.1)
             checkCount++
 
-            // Check if installation completed (by checking if app dir exists)
+            // Check if installation completed by reloading installedApps file
             if (selectedApp) {
-                var mainQml = flickDir + "/apps/" + selectedApp.id + "/main.qml"
                 var xhr = new XMLHttpRequest()
-                xhr.open("GET", "file://" + mainQml, false)
+                xhr.open("GET", "file://" + installedFile, false)
                 try {
                     xhr.send()
                     if (xhr.status === 200 || xhr.status === 0) {
-                        // Installation complete!
-                        installTimer.stop()
-                        checkCount = 0
-                        downloadProgress = 1.0
-                        completeInstallation()
-                        return
+                        var data = JSON.parse(xhr.responseText)
+                        var apps = data.apps || []
+                        for (var i = 0; i < apps.length; i++) {
+                            if (apps[i].id === selectedApp.id) {
+                                // Found in installed list - installation complete!
+                                installedApps = apps
+                                installTimer.stop()
+                                checkCount = 0
+                                downloadProgress = 1.0
+                                completeInstallation()
+                                return
+                            }
+                        }
                     }
                 } catch (e) {}
             }
 
-            // Timeout after 10 seconds
+            // Timeout after 15 seconds
             if (checkCount >= 50) {
                 installTimer.stop()
                 checkCount = 0
                 isDownloading = false
                 downloadProgress = 0
                 downloadingApp = ""
-                console.log("Installation timeout - run install script manually")
+                console.log("Installation timeout - use: flick-pkg install " + (selectedApp ? selectedApp.id : ""))
             }
         }
     }
