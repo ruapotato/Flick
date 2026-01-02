@@ -948,6 +948,7 @@ Window {
         reportStatus = ""
         reportError = ""
         isSubmittingReport = false
+        attachLogsToReport = true  // Default to attaching logs
         showingReportDialog = true
     }
 
@@ -960,48 +961,90 @@ Window {
         reportError = ""
 
         var slug = getAppSlug(selectedApp)
-        var xhr = new XMLHttpRequest()
-        xhr.open("POST", apiBaseUrl + "/feedback/app/" + slug)
-        xhr.setRequestHeader("Content-Type", "application/json")
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === XMLHttpRequest.DONE) {
-                isSubmittingReport = false
-                if (xhr.status === 200 || xhr.status === 201) {
-                    console.log("Feedback submitted successfully")
-                    reportStatus = "Submitted!"
-                    // Close dialog after brief delay
-                    reportSuccessTimer.start()
-                } else {
-                    // Parse error message from backend
-                    var errorMsg = "Failed to submit (error " + xhr.status + ")"
-                    try {
-                        var resp = JSON.parse(xhr.responseText)
-                        if (resp.error) errorMsg = resp.error
-                    } catch (e) {}
-                    console.log("Failed to submit feedback:", xhr.status, xhr.responseText)
-                    reportError = errorMsg
-                    reportStatus = ""
+
+        // Helper to actually submit the report
+        function doSubmit(logsText) {
+            var xhr = new XMLHttpRequest()
+            xhr.open("POST", apiBaseUrl + "/feedback/app/" + slug)
+            xhr.setRequestHeader("Content-Type", "application/json")
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    isSubmittingReport = false
+                    if (xhr.status === 200 || xhr.status === 201) {
+                        console.log("Feedback submitted successfully")
+                        reportStatus = "Submitted!"
+                        reportSuccessTimer.start()
+                    } else {
+                        var errorMsg = "Failed to submit (error " + xhr.status + ")"
+                        try {
+                            var resp = JSON.parse(xhr.responseText)
+                            if (resp.error) errorMsg = resp.error
+                        } catch (e) {}
+                        console.log("Failed to submit feedback:", xhr.status, xhr.responseText)
+                        reportError = errorMsg
+                        reportStatus = ""
+                    }
                 }
             }
+            xhr.onerror = function() {
+                isSubmittingReport = false
+                reportError = "Network error - check connection"
+                reportStatus = ""
+            }
+
+            // Build content with optional logs
+            var content = reportText
+            if (logsText && logsText.length > 0) {
+                content += "\n\n--- App Logs ---\n" + logsText
+            }
+
+            var data = JSON.stringify({
+                type: "bug",
+                title: "Bug Report: " + selectedApp.name,
+                content: content,
+                priority: "medium"
+            })
+            xhr.send(data)
         }
-        xhr.onerror = function() {
-            isSubmittingReport = false
-            reportError = "Network error - check connection"
-            reportStatus = ""
+
+        // If attaching logs, fetch them first
+        if (attachLogsToReport && selectedApp) {
+            var appId = selectedApp.slug || selectedApp.id || selectedApp.name.toLowerCase().replace(/ /g, '-')
+            var logsXhr = new XMLHttpRequest()
+            logsXhr.open("GET", "http://localhost:7654/logs/" + appId)
+            logsXhr.onreadystatechange = function() {
+                if (logsXhr.readyState === XMLHttpRequest.DONE) {
+                    var logsText = ""
+                    if (logsXhr.status === 200) {
+                        try {
+                            var logsData = JSON.parse(logsXhr.responseText)
+                            if (logsData.logs && logsData.logs.length > 0) {
+                                // Get last 50 log lines
+                                var recentLogs = logsData.logs.slice(-50)
+                                logsText = recentLogs.map(function(l) { return l.text }).join("\n")
+                            }
+                        } catch (e) {
+                            console.log("Failed to parse logs:", e)
+                        }
+                    }
+                    doSubmit(logsText)
+                }
+            }
+            logsXhr.onerror = function() {
+                // Submit without logs if fetch fails
+                doSubmit("")
+            }
+            logsXhr.send()
+        } else {
+            // Submit without logs
+            doSubmit("")
         }
-        // Backend expects: type (bug/suggestion/rebuild_request), title, content
-        var data = JSON.stringify({
-            type: "bug",
-            title: "Bug Report: " + selectedApp.name,
-            content: reportText,
-            priority: "medium"
-        })
-        xhr.send(data)
     }
 
     property bool isSubmittingReport: false
     property string reportStatus: ""
     property string reportError: ""
+    property bool attachLogsToReport: true  // Checkbox state for attaching logs
 
     Timer {
         id: reportSuccessTimer
@@ -5000,6 +5043,52 @@ Window {
                             text: "Crashes, bugs, unexpected behavior..."
                             font.pixelSize: 14 * textScale
                             color: "#666677"
+                        }
+                    }
+                }
+
+                // Attach logs checkbox
+                Row {
+                    spacing: 12
+
+                    Rectangle {
+                        width: 24
+                        height: 24
+                        radius: 6
+                        color: attachLogsToReport ? "#ff9800" : "#2a2a3e"
+                        border.width: 1
+                        border.color: attachLogsToReport ? "#ff9800" : "#444455"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "check"
+                            font.family: iconFont.name
+                            font.pixelSize: 18
+                            color: "#000000"
+                            visible: attachLogsToReport
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                Haptic.tap()
+                                attachLogsToReport = !attachLogsToReport
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Attach app logs"
+                        font.pixelSize: 14 * textScale
+                        color: "#cccccc"
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                Haptic.tap()
+                                attachLogsToReport = !attachLogsToReport
+                            }
                         }
                     }
                 }

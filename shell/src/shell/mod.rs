@@ -1362,11 +1362,17 @@ impl Shell {
         (content_height - grid_height).max(0.0)
     }
 
-    /// End touch gesture - returns app exec string if this was a tap (not scroll)
-    pub fn end_home_touch(&mut self) -> Option<String> {
+    /// End touch gesture - returns (app_id, exec) if this was a tap (not scroll)
+    pub fn end_home_touch(&mut self) -> Option<(String, String)> {
         let app = if !self.is_scrolling {
-            self.pending_app_launch.take()
+            // Return both app_id and exec command
+            match (self.pending_category_id.take(), self.pending_app_launch.take()) {
+                (Some(id), Some(exec)) => Some((id, exec)),
+                _ => None,
+            }
         } else {
+            self.pending_category_id = None;
+            self.pending_app_launch = None;
             None
         };
 
@@ -1392,8 +1398,7 @@ impl Shell {
 
         self.scroll_touch_start_y = None;
         self.scroll_touch_last_y = None;
-        self.pending_app_launch = None;
-        self.pending_category_id = None;
+        // pending_app_launch and pending_category_id already taken above
         self.is_scrolling = false;
         self.long_press_start = None;
         self.long_press_category_id = None;

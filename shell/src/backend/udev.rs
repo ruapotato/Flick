@@ -3699,19 +3699,19 @@ fn handle_input_event(
                     // Use shell's hit testing which handles scroll offset properly
                     if let Some(pos) = last_touch_pos {
                         // Use hit_test_category which accounts for scroll offset
-                        if let Some(category) = state.shell.hit_test_category(pos) {
-                            info!("App tap detected: category={:?}", category);
+                        if let Some(app_id) = state.shell.hit_test_category(pos) {
+                            info!("App tap detected: app_id={:?}", app_id);
                             // Use get_exec() which properly handles Settings (uses built-in Flick Settings)
-                            if let Some(exec) = state.shell.app_manager.get_exec(category) {
+                            if let Some(exec) = state.shell.app_manager.get_exec(app_id) {
                                 // First, try to focus an existing window for this app
                                 if state.try_focus_existing_app(&exec) {
                                     info!("Focused existing window for: {}", exec);
                                 } else {
-                                    // No existing window found, launch new instance
-                                    info!("Launching app: {}", exec);
+                                    // No existing window found, launch new instance with logging
+                                    info!("Launching app: {} ({})", app_id, exec);
                                     let socket = state.socket_name.to_str().unwrap_or("wayland-1");
                                     let text_scale = state.shell.text_scale;
-                                    if let Err(e) = crate::spawn_user::spawn_as_user(&exec, socket, text_scale) {
+                                    if let Err(e) = crate::spawn_user::spawn_app_with_logging(&exec, app_id, socket, text_scale) {
                                         error!("Failed to launch app: {}", e);
                                     }
                                     // Don't call app_launched() here - stay on Home until window appears

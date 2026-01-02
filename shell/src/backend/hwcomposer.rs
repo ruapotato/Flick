@@ -1838,16 +1838,16 @@ fn handle_input_event(
                             }
                         } else {
                             // Normal mode - end home touch tracking, returns pending app if it was a tap (not scroll)
-                            if let Some(exec) = state.shell.end_home_touch() {
-                                info!("Launching app from home touch: {}", exec);
+                            if let Some((app_id, exec)) = state.shell.end_home_touch() {
+                                info!("Launching app from home touch: {} ({})", app_id, exec);
                                 // Haptic feedback on app launch
                                 state.system.haptic_tap();
                                 // Get socket name for WAYLAND_DISPLAY
                                 let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
                                 // Get text scale for app scaling
                                 let text_scale = state.shell.text_scale as f64;
-                                // Launch app as user with hwcomposer-specific settings
-                                if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(&exec, socket_name, text_scale) {
+                                // Launch app with logging to ~/.local/share/flick/logs/<app_id>/
+                                if let Err(e) = crate::spawn_user::spawn_app_with_logging(&exec, &app_id, socket_name, text_scale) {
                                     error!("Failed to launch app: {}", e);
                                 }
 
@@ -1964,8 +1964,8 @@ fn handle_input_event(
                                                 state.shell.set_view(crate::shell::ShellView::App);
                                                 let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
                                                 let text_scale = state.shell.text_scale as f64;
-                                                // Launch as user with hwcomposer-specific settings
-                                                if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(&exec, socket_name, text_scale) {
+                                                // Launch with logging
+                                                if let Err(e) = crate::spawn_user::spawn_app_with_logging(&exec, "settings", socket_name, text_scale) {
                                                     error!("Failed to launch settings app: {}", e);
                                                 }
                                             }
@@ -2718,11 +2718,19 @@ pub fn run() -> Result<()> {
                 }
             } else if let Some(app_cmd) = state.shell.unlock_open_app.take() {
                 // Check if we need to launch an app after unlock (from notification tap)
-                info!("Launching app after unlock: {}", app_cmd);
+                // Try to extract app_id from command, fallback to "notification_app"
+                let app_id = if app_cmd.contains("/apps/") {
+                    app_cmd.split("/apps/").nth(1)
+                        .and_then(|s| s.split('/').next())
+                        .unwrap_or("notification_app")
+                } else {
+                    "notification_app"
+                };
+                info!("Launching app after unlock: {} ({})", app_id, app_cmd);
                 state.shell.unlock_app_launched = true; // Allow new window to switch to App view
                 if let Some(socket) = state.socket_name.to_str() {
                     let text_scale = state.shell.text_scale as f64;
-                    if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(&app_cmd, socket, text_scale) {
+                    if let Err(e) = crate::spawn_user::spawn_app_with_logging(&app_cmd, app_id, socket, text_scale) {
                         error!("Failed to launch app after unlock: {}", e);
                         state.shell.unlock_app_launched = false; // Reset on failure
                     }
@@ -2888,7 +2896,7 @@ pub fn run() -> Result<()> {
                 let text_scale = state.shell.text_scale;
                 if let Some(socket) = state.socket_name.to_str() {
                     let phone_exec = r#"sh -c "$HOME/Flick/apps/phone/run_phone.sh""#;
-                    if let Err(e) = crate::spawn_user::spawn_as_user_hwcomposer(phone_exec, socket, text_scale as f64) {
+                    if let Err(e) = crate::spawn_user::spawn_app_with_logging(phone_exec, "phone", socket, text_scale as f64) {
                         error!("Failed to launch phone app: {}", e);
                     }
                 }

@@ -25,8 +25,8 @@ Environment=XDG_CURRENT_DESKTOP=Flick
 Environment=EGL_PLATFORM=hwcomposer
 Environment=HOME=/home/droidian
 
-# Wait for Android container to be fully ready
-ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do if [ "$(getprop sys.boot_completed)" = "1" ]; then exit 0; fi; sleep 1; done; echo "Android container not ready, continuing anyway"'
+# Wait longer for Android container to be fully ready (60 seconds)
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do if [ "$(getprop sys.boot_completed)" = "1" ]; then exit 0; fi; sleep 1; done; echo "Android container not ready, continuing anyway"'
 
 # Kill any lingering Wayland clients from previous session
 ExecStartPre=-/usr/bin/pkill -9 qmlscene
@@ -34,15 +34,18 @@ ExecStartPre=-/usr/bin/pkill -9 Xwayland
 
 # Restart hwcomposer to clear stale frame buffers
 ExecStartPre=/bin/sh -c 'ANDROID_SERVICE="(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)" /usr/lib/halium-wrappers/android-service.sh hwcomposer stop || true'
-ExecStartPre=/bin/sleep 1
+ExecStartPre=/bin/sleep 2
 
 # Ensure state directory exists and has correct permissions
 ExecStartPre=/bin/mkdir -p /home/droidian/.local/state/flick
 ExecStartPre=/bin/chown -R droidian:droidian /home/droidian/.local/state/flick
 
-# Start hwcomposer (don't stop first - stopping causes it to become unstable)
-ExecStartPre=/bin/sh -c 'ANDROID_SERVICE="(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)" /usr/lib/halium-wrappers/android-service.sh hwcomposer start'
+# Start hwcomposer with retry loop (try 3 times with 5 second gaps)
+ExecStartPre=/bin/sh -c 'for i in 1 2 3; do ANDROID_SERVICE="(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)" /usr/lib/halium-wrappers/android-service.sh hwcomposer start && exit 0; sleep 5; done; echo "hwcomposer failed to start after retries"'
 ExecStartPre=/bin/sleep 2
+
+# Set default audio sink (ensures audio routing works after boot)
+ExecStartPre=/bin/sh -c 'sudo -u droidian XDG_RUNTIME_DIR=/run/user/32011 pactl set-default-sink sink.primary_output || true'
 
 # Main compositor
 ExecStart=/home/droidian/Flick/shell/target/release/flick
@@ -54,7 +57,7 @@ SyslogIdentifier=flick
 
 # Restart on failure
 Restart=on-failure
-RestartSec=3
+RestartSec=5
 
 # Resource limits
 LimitNOFILE=65536
