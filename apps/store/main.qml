@@ -820,7 +820,7 @@ Window {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "FLICK APP STORE"
-                            font.pixelSize: 12 * textScale
+                            font.pixelSize: 14 * textScale
                             font.weight: Font.Medium
                             font.letterSpacing: 3
                             color: "#555566"
@@ -1005,7 +1005,7 @@ Window {
 
                                     Text {
                                         text: modelData.description
-                                        font.pixelSize: 13 * textScale
+                                        font.pixelSize: 15 * textScale
                                         color: "#888899"
                                         elide: Text.ElideRight
                                         width: parent.width
@@ -1025,13 +1025,13 @@ Window {
 
                                         Text {
                                             text: modelData.rating.toFixed(1)
-                                            font.pixelSize: 13 * textScale
+                                            font.pixelSize: 15 * textScale
                                             color: "#888899"
                                         }
 
                                         Text {
                                             text: "  |  " + formatNumber(modelData.downloads) + " downloads"
-                                            font.pixelSize: 13 * textScale
+                                            font.pixelSize: 15 * textScale
                                             color: "#666677"
                                         }
                                     }
@@ -1090,7 +1090,7 @@ Window {
                                     Text {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: modelData.name
-                                        font.pixelSize: 11 * textScale
+                                        font.pixelSize: 14 * textScale
                                         font.weight: Font.Medium
                                         color: "#ffffff"
                                     }
@@ -1205,7 +1205,7 @@ Window {
                                         }
                                         Text {
                                             text: modelData.rating.toFixed(1)
-                                            font.pixelSize: 12 * textScale
+                                            font.pixelSize: 14 * textScale
                                             color: "#888899"
                                         }
                                     }
@@ -1326,7 +1326,7 @@ Window {
 
                                         Text {
                                             text: formatNumber(modelData.downloads) + " downloads"
-                                            font.pixelSize: 12 * textScale
+                                            font.pixelSize: 14 * textScale
                                             color: "#888899"
                                         }
                                     }
@@ -1380,7 +1380,7 @@ Window {
 
                             Text {
                                 text: "Try AI-generated apps and help test them"
-                                font.pixelSize: 13 * textScale
+                                font.pixelSize: 15 * textScale
                                 color: "#ccaa88"
                                 width: parent.width
                                 elide: Text.ElideRight
@@ -1431,7 +1431,7 @@ Window {
 
                             Text {
                                 text: "Submit ideas and vote on requests"
-                                font.pixelSize: 12 * textScale
+                                font.pixelSize: 14 * textScale
                                 color: "#888899"
                             }
                         }
@@ -1494,7 +1494,7 @@ Window {
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData.label
-                                font.pixelSize: 11 * textScale
+                                font.pixelSize: 14 * textScale
                                 color: currentView === modelData.view ? accentColor : "#666677"
                             }
                         }
@@ -1524,6 +1524,35 @@ Window {
                 height: 4
                 radius: 2
                 color: "#333344"
+            }
+        }
+
+        // Back button - prominent floating action button
+        Rectangle {
+            id: homeBackButton
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.rightMargin: 24
+            anchors.bottomMargin: 120
+            width: 72
+            height: 72
+            radius: 36
+            color: homeBackMouse.pressed ? accentPressed : accentColor
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            Text {
+                anchors.centerIn: parent
+                text: "←"
+                font.pixelSize: 32
+                font.weight: Font.Medium
+                color: "#ffffff"
+            }
+
+            MouseArea {
+                id: homeBackMouse
+                anchors.fill: parent
+                onClicked: Qt.quit()
             }
         }
     }
@@ -1614,7 +1643,7 @@ Window {
                             anchors.centerIn: parent
                             text: "filter Sort"
                             font.family: iconFont.name
-                            font.pixelSize: 13 * textScale
+                            font.pixelSize: 15 * textScale
                             color: "#ffffff"
                         }
                     }
@@ -1628,7 +1657,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "Free"
-                            font.pixelSize: 13 * textScale
+                            font.pixelSize: 15 * textScale
                             color: "#888899"
                         }
                     }
@@ -1642,7 +1671,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "Rating"
-                            font.pixelSize: 13 * textScale
+                            font.pixelSize: 15 * textScale
                             color: "#888899"
                         }
                     }
@@ -1715,7 +1744,7 @@ Window {
 
                                 Text {
                                     text: modelData.rating.toFixed(1)
-                                    font.pixelSize: 13 * textScale
+                                    font.pixelSize: 15 * textScale
                                     color: "#888899"
                                 }
                             }
@@ -1928,7 +1957,7 @@ Window {
 
                             Text {
                                 text: modelData.description
-                                font.pixelSize: 13 * textScale
+                                font.pixelSize: 15 * textScale
                                 color: "#888899"
                                 elide: Text.ElideRight
                                 width: parent.width
@@ -1944,7 +1973,7 @@ Window {
                                 }
                                 Text {
                                     text: modelData.rating.toFixed(1)
-                                    font.pixelSize: 12 * textScale
+                                    font.pixelSize: 14 * textScale
                                     color: "#888899"
                                 }
                             }
@@ -2139,7 +2168,7 @@ Window {
 
                             Text {
                                 text: selectedApp ? "v" + selectedApp.version : ""
-                                font.pixelSize: 12 * textScale
+                                font.pixelSize: 14 * textScale
                                 color: "#666677"
                             }
                         }
@@ -2247,7 +2276,7 @@ Window {
                                 Text {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     text: "Screenshot " + (index + 1)
-                                    font.pixelSize: 12 * textScale
+                                    font.pixelSize: 14 * textScale
                                     color: "#666677"
                                 }
                             }
@@ -2305,7 +2334,7 @@ Window {
                                 anchors.centerIn: parent
                                 text: "edit Write Review"
                                 font.family: iconFont.name
-                                font.pixelSize: 13 * textScale
+                                font.pixelSize: 15 * textScale
                                 color: accentColor
                             }
 
@@ -2363,7 +2392,7 @@ Window {
 
                                     Text {
                                         text: formatDate(modelData.date)
-                                        font.pixelSize: 11 * textScale
+                                        font.pixelSize: 14 * textScale
                                         color: "#666677"
                                     }
                                 }
@@ -2508,7 +2537,7 @@ Window {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "These are AI-generated apps in testing.\nUse at your own risk and provide feedback!"
-                        font.pixelSize: 13 * textScale
+                        font.pixelSize: 15 * textScale
                         color: "#ccaa88"
                         width: parent.width - 50
                         wrapMode: Text.Wrap
@@ -2574,7 +2603,7 @@ Window {
 
                             Text {
                                 text: modelData.description
-                                font.pixelSize: 13 * textScale
+                                font.pixelSize: 15 * textScale
                                 color: "#aa8866"
                                 elide: Text.ElideRight
                                 width: parent.width
@@ -2585,13 +2614,13 @@ Window {
 
                                 Text {
                                     text: modelData.downloads + " testers"
-                                    font.pixelSize: 12 * textScale
+                                    font.pixelSize: 14 * textScale
                                     color: "#888866"
                                 }
 
                                 Text {
                                     text: modelData.feedbackCount + " feedback"
-                                    font.pixelSize: 12 * textScale
+                                    font.pixelSize: 14 * textScale
                                     color: "#888866"
                                 }
                             }
@@ -2610,7 +2639,7 @@ Window {
                                 Text {
                                     anchors.centerIn: parent
                                     text: "Test"
-                                    font.pixelSize: 13 * textScale
+                                    font.pixelSize: 15 * textScale
                                     font.weight: Font.Bold
                                     color: "#000000"
                                 }
@@ -2922,7 +2951,7 @@ Window {
 
                             Text {
                                 text: modelData.description
-                                font.pixelSize: 13 * textScale
+                                font.pixelSize: 15 * textScale
                                 color: "#aabbcc"
                                 elide: Text.ElideRight
                                 width: parent.width
@@ -2932,7 +2961,7 @@ Window {
 
                             Text {
                                 text: "by " + modelData.author + " - " + formatDate(modelData.createdAt)
-                                font.pixelSize: 11 * textScale
+                                font.pixelSize: 14 * textScale
                                 color: "#667788"
                             }
                         }
@@ -3171,7 +3200,7 @@ Window {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "Installed"
-                            font.pixelSize: 13 * textScale
+                            font.pixelSize: 15 * textScale
                             color: "#888899"
                         }
                     }
@@ -3190,7 +3219,7 @@ Window {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "Reviews"
-                            font.pixelSize: 13 * textScale
+                            font.pixelSize: 15 * textScale
                             color: "#888899"
                         }
                     }
@@ -3209,7 +3238,7 @@ Window {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "Requests"
-                            font.pixelSize: 13 * textScale
+                            font.pixelSize: 15 * textScale
                             color: "#888899"
                         }
                     }
@@ -3281,7 +3310,7 @@ Window {
 
                                         Text {
                                             text: "v" + modelData.version
-                                            font.pixelSize: 12 * textScale
+                                            font.pixelSize: 14 * textScale
                                             color: "#888899"
                                         }
                                     }
@@ -3296,7 +3325,7 @@ Window {
                                         Text {
                                             anchors.centerIn: parent
                                             text: "Remove"
-                                            font.pixelSize: 12 * textScale
+                                            font.pixelSize: 14 * textScale
                                             color: "#ff6666"
                                         }
 
