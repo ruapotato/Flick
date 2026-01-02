@@ -367,6 +367,21 @@ Window {
         isLoadingSearch = true
         apiError = ""
 
+        // Search Wild West apps locally
+        var lowerQuery = query.toLowerCase()
+        var wildWestMatches = []
+        for (var i = 0; i < wildWestApps.length; i++) {
+            var app = wildWestApps[i]
+            var name = (app.name || "").toLowerCase()
+            var desc = (app.description || "").toLowerCase()
+            if (name.indexOf(lowerQuery) >= 0 || desc.indexOf(lowerQuery) >= 0) {
+                // Clone the app object and mark as Wild West
+                var matchedApp = JSON.parse(JSON.stringify(app))
+                matchedApp.isWildWest = true
+                wildWestMatches.push(matchedApp)
+            }
+        }
+
         var xhr = new XMLHttpRequest()
         xhr.open("GET", apiBaseUrl + "/apps/search?q=" + encodeURIComponent(query))
         xhr.onreadystatechange = function() {
@@ -375,14 +390,17 @@ Window {
                 if (xhr.status === 200) {
                     try {
                         var data = JSON.parse(xhr.responseText)
-                        searchResults = data.apps || data || []
+                        var apiResults = data.apps || data || []
+                        // Combine API results with Wild West matches (Wild West at end)
+                        searchResults = apiResults.concat(wildWestMatches)
                     } catch (e) {
                         console.log("Error parsing search results:", e)
-                        searchResults = []
+                        searchResults = wildWestMatches
                     }
                 } else {
                     console.log("Error searching apps:", xhr.status, xhr.statusText)
-                    searchResults = []
+                    // Still show Wild West matches even if API fails
+                    searchResults = wildWestMatches
                 }
             }
         }
@@ -431,7 +449,15 @@ Window {
                 if (xhr.status === 200) {
                     try {
                         var data = JSON.parse(xhr.responseText)
-                        categoryApps = data.apps || data || []
+                        var apiApps = data.apps || data || []
+                        // Also include Wild West apps marked with isWildWest
+                        var wwApps = []
+                        for (var i = 0; i < wildWestApps.length; i++) {
+                            var app = JSON.parse(JSON.stringify(wildWestApps[i]))
+                            app.isWildWest = true
+                            wwApps.push(app)
+                        }
+                        categoryApps = apiApps.concat(wwApps)
                     } catch (e) {
                         console.log("Error parsing all apps:", e)
                         categoryApps = []
@@ -911,6 +937,40 @@ Window {
     function openAppDetail(app) {
         selectedApp = app
         navigateTo("detail")
+    }
+
+    // Debug report dialog state
+    property bool showingReportDialog: false
+    property string reportText: ""
+
+    function showDebugReportDialog() {
+        reportText = ""
+        showingReportDialog = true
+    }
+
+    function submitDebugReport() {
+        if (!selectedApp || reportText.length < 10) return
+
+        var xhr = new XMLHttpRequest()
+        xhr.open("POST", apiBaseUrl + "/reports")
+        xhr.setRequestHeader("Content-Type", "application/json")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                if (xhr.status === 200 || xhr.status === 201) {
+                    console.log("Report submitted successfully")
+                } else {
+                    console.log("Failed to submit report:", xhr.status)
+                }
+                showingReportDialog = false
+            }
+        }
+        var data = JSON.stringify({
+            app_id: selectedApp.id || selectedApp.slug,
+            app_name: selectedApp.name,
+            report: reportText,
+            timestamp: new Date().toISOString()
+        })
+        xhr.send(data)
     }
 
     // ==================== Config Timer ====================
@@ -1749,6 +1809,7 @@ Window {
                 model: categoryApps
 
                 delegate: Item {
+                    property bool isWildWest: modelData.isWildWest === true
                     width: browseGrid.cellWidth
                     height: 180
 
@@ -1756,7 +1817,11 @@ Window {
                         anchors.fill: parent
                         anchors.margins: 8
                         radius: 20
-                        color: browseAppMouse.pressed ? "#2a2a3e" : "#1a1a2e"
+                        color: isWildWest
+                            ? (browseAppMouse.pressed ? "#3d2a1a" : "#2d1f15")
+                            : (browseAppMouse.pressed ? "#2a2a3e" : "#1a1a2e")
+                        border.width: isWildWest ? 1 : 0
+                        border.color: "#ff9800"
 
                         Column {
                             anchors.fill: parent
@@ -1767,7 +1832,7 @@ Window {
                                 width: 64
                                 height: 64
                                 radius: 16
-                                color: accentColor
+                                color: isWildWest ? "#ff9800" : accentColor
                                 opacity: 0.3
                                 anchors.horizontalCenter: parent.horizontalCenter
 
@@ -1780,15 +1845,26 @@ Window {
                                 }
                             }
 
-                            Text {
+                            Row {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: modelData.name
-                                font.pixelSize: 15 * textScale
-                                font.weight: Font.Medium
-                                color: "#ffffff"
-                                elide: Text.ElideRight
-                                width: parent.width
-                                horizontalAlignment: Text.AlignHCenter
+                                spacing: 6
+
+                                Text {
+                                    text: modelData.name
+                                    font.pixelSize: 15 * textScale
+                                    font.weight: Font.Medium
+                                    color: "#ffffff"
+                                    elide: Text.ElideRight
+                                }
+
+                                Rectangle {
+                                    visible: isWildWest
+                                    width: 8
+                                    height: 8
+                                    radius: 4
+                                    color: "#ff9800"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
                             }
 
                             Row {
@@ -1810,9 +1886,40 @@ Window {
                             }
                         }
 
+                        // Feedback button
+                        Rectangle {
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 8
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: feedbackBtnMouse.pressed ? "#3a3a4e" : "#2a2a3e"
+                            z: 10
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "feedback"
+                                font.family: iconFont.name
+                                font.pixelSize: 16
+                                color: isWildWest ? "#ff9800" : accentColor
+                            }
+
+                            MouseArea {
+                                id: feedbackBtnMouse
+                                anchors.fill: parent
+                                onClicked: {
+                                    selectedApp = modelData
+                                    showDebugReportDialog()
+                                    Haptic.tap()
+                                }
+                            }
+                        }
+
                         MouseArea {
                             id: browseAppMouse
                             anchors.fill: parent
+                            anchors.rightMargin: 40  // Don't overlap feedback button
                             onClicked: openAppDetail(modelData)
                         }
                     }
@@ -1973,11 +2080,16 @@ Window {
                 model: searchResults
 
                 delegate: Rectangle {
+                    property bool isWildWest: modelData.isWildWest === true
                     width: parent.width - 32
                     height: 80
                     x: 16
                     radius: 16
-                    color: searchResultMouse.pressed ? "#2a2a3e" : "#1a1a2e"
+                    color: isWildWest
+                        ? (searchResultMouse.pressed ? "#3d2a1a" : "#2d1f15")
+                        : (searchResultMouse.pressed ? "#2a2a3e" : "#1a1a2e")
+                    border.width: isWildWest ? 1 : 0
+                    border.color: "#ff9800"
 
                     Row {
                         anchors.fill: parent
@@ -1988,7 +2100,7 @@ Window {
                             width: 56
                             height: 56
                             radius: 14
-                            color: accentColor
+                            color: isWildWest ? "#ff9800" : accentColor
                             opacity: 0.3
                             anchors.verticalCenter: parent.verticalCenter
 
@@ -2006,13 +2118,31 @@ Window {
                             width: parent.width - 80
                             spacing: 4
 
-                            Text {
-                                text: modelData.name
-                                font.pixelSize: 16 * textScale
-                                font.weight: Font.Medium
-                                color: "#ffffff"
-                                elide: Text.ElideRight
-                                width: parent.width
+                            Row {
+                                spacing: 8
+                                Text {
+                                    text: modelData.name
+                                    font.pixelSize: 16 * textScale
+                                    font.weight: Font.Medium
+                                    color: "#ffffff"
+                                    elide: Text.ElideRight
+                                }
+                                Rectangle {
+                                    visible: isWildWest
+                                    width: wildWestLabel.width + 8
+                                    height: 16
+                                    radius: 4
+                                    color: "#ff9800"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text {
+                                        id: wildWestLabel
+                                        anchors.centerIn: parent
+                                        text: "Wild West"
+                                        font.pixelSize: 10
+                                        font.weight: Font.Bold
+                                        color: "#000000"
+                                    }
+                                }
                             }
 
                             Text {
@@ -2040,9 +2170,40 @@ Window {
                         }
                     }
 
+                    // Feedback button
+                    Rectangle {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.rightMargin: 12
+                        width: 40
+                        height: 40
+                        radius: 20
+                        color: searchFeedbackMouse.pressed ? "#3a3a4e" : "#2a2a3e"
+                        z: 10
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "feedback"
+                            font.family: iconFont.name
+                            font.pixelSize: 18
+                            color: isWildWest ? "#ff9800" : accentColor
+                        }
+
+                        MouseArea {
+                            id: searchFeedbackMouse
+                            anchors.fill: parent
+                            onClicked: {
+                                selectedApp = modelData
+                                showDebugReportDialog()
+                                Haptic.tap()
+                            }
+                        }
+                    }
+
                     MouseArea {
                         id: searchResultMouse
                         anchors.fill: parent
+                        anchors.rightMargin: 52  // Don't overlap feedback button
                         onClicked: openAppDetail(modelData)
                     }
                 }
@@ -2318,6 +2479,86 @@ Window {
                             } else {
                                 installApp(selectedApp)
                                 Haptic.click()
+                            }
+                        }
+                    }
+                }
+
+                // Wild West warning banner
+                Rectangle {
+                    visible: selectedApp && (selectedApp.status === "wild_west" || selectedApp.isWildWest)
+                    width: parent.width - 32
+                    height: wildWestBannerCol.height + 24
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    radius: 16
+                    color: "#2d1f15"
+                    border.width: 1
+                    border.color: "#ff9800"
+
+                    Column {
+                        id: wildWestBannerCol
+                        width: parent.width - 24
+                        anchors.centerIn: parent
+                        spacing: 12
+
+                        Row {
+                            spacing: 8
+                            Text {
+                                text: "warning"
+                                font.family: iconFont.name
+                                font.pixelSize: 20
+                                color: "#ff9800"
+                            }
+                            Text {
+                                text: "Wild West App"
+                                font.pixelSize: 16 * textScale
+                                font.weight: Font.Bold
+                                color: "#ff9800"
+                            }
+                        }
+
+                        Text {
+                            width: parent.width
+                            text: "This app has not been reviewed. It may contain bugs or security issues. Use at your own risk."
+                            font.pixelSize: 14 * textScale
+                            color: "#cc9966"
+                            wrapMode: Text.Wrap
+                        }
+
+                        Rectangle {
+                            width: parent.width
+                            height: 44
+                            radius: 22
+                            color: debugReportMouse.pressed ? "#4a3020" : "#3d2a1a"
+                            border.width: 1
+                            border.color: "#ff9800"
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 8
+
+                                Text {
+                                    text: "bug_report"
+                                    font.family: iconFont.name
+                                    font.pixelSize: 18
+                                    color: "#ff9800"
+                                }
+
+                                Text {
+                                    text: "Report Issue"
+                                    font.pixelSize: 14 * textScale
+                                    font.weight: Font.Medium
+                                    color: "#ff9800"
+                                }
+                            }
+
+                            MouseArea {
+                                id: debugReportMouse
+                                anchors.fill: parent
+                                onClicked: {
+                                    Haptic.click()
+                                    showDebugReportDialog()
+                                }
                             }
                         }
                     }
@@ -4348,6 +4589,155 @@ Window {
         onStatusChanged: {
             if (status === FontLoader.Error) {
                 console.log("Icon font not available, using text fallbacks")
+            }
+        }
+    }
+
+    // ==================== Debug Report Dialog ====================
+
+    Rectangle {
+        id: reportDialogOverlay
+        anchors.fill: parent
+        color: "#000000aa"
+        visible: showingReportDialog
+        z: 1000
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: showingReportDialog = false
+        }
+
+        Rectangle {
+            width: parent.width - 48
+            height: reportDialogColumn.height + 48
+            anchors.centerIn: parent
+            radius: 24
+            color: "#1a1a2e"
+            border.width: 1
+            border.color: "#ff9800"
+
+            MouseArea {
+                anchors.fill: parent
+                // Prevent click through
+            }
+
+            Column {
+                id: reportDialogColumn
+                width: parent.width - 48
+                anchors.centerIn: parent
+                spacing: 16
+
+                Row {
+                    spacing: 8
+                    Text {
+                        text: "bug_report"
+                        font.family: iconFont.name
+                        font.pixelSize: 24
+                        color: "#ff9800"
+                    }
+                    Text {
+                        text: "Report Issue"
+                        font.pixelSize: 20 * textScale
+                        font.weight: Font.Bold
+                        color: "#ffffff"
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    text: "Describe the issue with " + (selectedApp ? selectedApp.name : "this app") + ":"
+                    font.pixelSize: 14 * textScale
+                    color: "#aaaaaa"
+                    wrapMode: Text.Wrap
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 120
+                    radius: 12
+                    color: "#2a2a3e"
+                    border.width: 1
+                    border.color: reportTextInput.activeFocus ? accentColor : "#444455"
+
+                    TextEdit {
+                        id: reportTextInput
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        font.pixelSize: 14 * textScale
+                        color: "#ffffff"
+                        wrapMode: TextEdit.Wrap
+                        onTextChanged: reportText = text
+
+                        Text {
+                            visible: reportTextInput.text.length === 0
+                            text: "Crashes, bugs, unexpected behavior..."
+                            font.pixelSize: 14 * textScale
+                            color: "#666677"
+                        }
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    text: "Minimum 10 characters required"
+                    font.pixelSize: 12 * textScale
+                    color: "#666677"
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: 12
+
+                    Rectangle {
+                        width: (parent.width - 12) / 2
+                        height: 48
+                        radius: 24
+                        color: cancelReportMouse.pressed ? "#3a3a4e" : "#2a2a3e"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Cancel"
+                            font.pixelSize: 16 * textScale
+                            color: "#aaaaaa"
+                        }
+
+                        MouseArea {
+                            id: cancelReportMouse
+                            anchors.fill: parent
+                            onClicked: {
+                                Haptic.tap()
+                                showingReportDialog = false
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: (parent.width - 12) / 2
+                        height: 48
+                        radius: 24
+                        color: reportText.length >= 10
+                            ? (submitReportMouse.pressed ? "#cc7700" : "#ff9800")
+                            : "#444455"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Submit"
+                            font.pixelSize: 16 * textScale
+                            font.weight: Font.Bold
+                            color: reportText.length >= 10 ? "#000000" : "#666666"
+                        }
+
+                        MouseArea {
+                            id: submitReportMouse
+                            anchors.fill: parent
+                            enabled: reportText.length >= 10
+                            onClicked: {
+                                Haptic.click()
+                                submitDebugReport()
+                            }
+                        }
+                    }
+                }
             }
         }
     }
