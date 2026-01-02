@@ -681,33 +681,34 @@ Window {
     }
 
     function isAppInstalled(appId) {
-        // Check the installed apps list only
+        // Check the installed apps list
         // The list is synced with actual filesystem by flick-pkg
         for (var i = 0; i < installedApps.length; i++) {
-            if (installedApps[i].id === appId) return true
+            // Check both id and slug since API uses both
+            if (installedApps[i].id === appId || installedApps[i].slug === appId) return true
         }
         return false
+    }
+
+    function getAppSlug(app) {
+        // Get the slug/id for installation - prefer slug over numeric id
+        return app.slug || app.id || ""
     }
 
     function installApp(app) {
         if (isDownloading) return
         isDownloading = true
-        downloadingApp = app.id
+        var slug = getAppSlug(app)
+        downloadingApp = slug
         downloadProgress = 0
 
-        // For local packages, do actual installation
-        if (app.isLocal) {
-            // Write install request
-            var xhr = new XMLHttpRequest()
-            xhr.open("PUT", "file://" + installRequestFile)
-            xhr.send(app.id + ":install")
+        // Write install request for flick-pkg to handle
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file://" + installRequestFile)
+        xhr.send(slug + ":install")
 
-            // Start progress simulation while install happens
-            installTimer.start()
-        } else {
-            // Simulate download progress for remote apps
-            downloadTimer.start()
-        }
+        // Start progress simulation while install happens
+        installTimer.start()
     }
 
     Timer {
@@ -734,6 +735,7 @@ Window {
 
             // Check if installation completed by reloading installedApps file
             if (selectedApp) {
+                var slug = getAppSlug(selectedApp)
                 var xhr = new XMLHttpRequest()
                 xhr.open("GET", "file://" + installedFile, false)
                 try {
@@ -742,7 +744,7 @@ Window {
                         var data = JSON.parse(xhr.responseText)
                         var apps = data.apps || []
                         for (var i = 0; i < apps.length; i++) {
-                            if (apps[i].id === selectedApp.id) {
+                            if (apps[i].id === slug || apps[i].slug === slug) {
                                 // Found in installed list - installation complete!
                                 installedApps = apps
                                 installTimer.stop()
@@ -763,27 +765,29 @@ Window {
                 isDownloading = false
                 downloadProgress = 0
                 downloadingApp = ""
-                console.log("Installation timeout - use: flick-pkg install " + (selectedApp ? selectedApp.id : ""))
+                console.log("Installation timeout - use: flick-pkg install " + (selectedApp ? getAppSlug(selectedApp) : ""))
             }
         }
     }
 
     function completeInstallation() {
         if (selectedApp) {
+            var slug = getAppSlug(selectedApp)
             // Add to installed list if not already there
             var found = false
             for (var i = 0; i < installedApps.length; i++) {
-                if (installedApps[i].id === selectedApp.id) {
+                if (installedApps[i].id === slug || installedApps[i].slug === slug) {
                     found = true
                     break
                 }
             }
             if (!found) {
                 installedApps.push({
-                    id: selectedApp.id,
+                    id: slug,
+                    slug: slug,
                     name: selectedApp.name,
-                    icon: selectedApp.icon,
-                    version: selectedApp.version,
+                    icon: selectedApp.icon || "app",
+                    version: selectedApp.version || "1.0.0",
                     installedAt: Date.now()
                 })
                 saveInstalledApps()
@@ -2322,6 +2326,12 @@ Window {
                                 font.pixelSize: 14 * textScale
                                 color: "#666677"
                             }
+
+                            Text {
+                                text: selectedApp && selectedApp.isLocal ? "Local package" : "From 255.one"
+                                font.pixelSize: 14 * textScale
+                                color: "#888899"
+                            }
                         }
                     }
                 }
@@ -2333,7 +2343,7 @@ Window {
                     anchors.horizontalCenter: parent.horizontalCenter
                     radius: 28
                     color: {
-                        if (isDownloading && downloadingApp === (selectedApp ? selectedApp.id : "")) {
+                        if (isDownloading && downloadingApp === (selectedApp ? getAppSlug(selectedApp) : "")) {
                             return "#333344"
                         }
                         if (isAppInstalled(selectedApp ? selectedApp.id : "")) {
@@ -2350,31 +2360,51 @@ Window {
                         width: parent.width * downloadProgress
                         radius: 28
                         color: accentColor
-                        visible: isDownloading && downloadingApp === (selectedApp ? selectedApp.id : "")
+                        visible: isDownloading && downloadingApp === (selectedApp ? getAppSlug(selectedApp) : "")
                     }
 
-                    Text {
+                    Row {
                         anchors.centerIn: parent
-                        text: {
-                            if (isDownloading && downloadingApp === (selectedApp ? selectedApp.id : "")) {
-                                return "Downloading... " + Math.round(downloadProgress * 100) + "%"
+                        spacing: 8
+
+                        Text {
+                            text: {
+                                if (isDownloading && downloadingApp === (selectedApp ? getAppSlug(selectedApp) : "")) {
+                                    return "hourglass_empty"
+                                }
+                                if (isAppInstalled(selectedApp ? selectedApp.id : "")) {
+                                    return "check_circle"
+                                }
+                                return "download"
                             }
-                            if (isAppInstalled(selectedApp ? selectedApp.id : "")) {
-                                return "check Installed"
-                            }
-                            return "download Install"
+                            font.family: iconFont.name
+                            font.pixelSize: 22
+                            color: "#ffffff"
+                            anchors.verticalCenter: parent.verticalCenter
                         }
-                        font.family: iconFont.name
-                        font.pixelSize: 18 * textScale
-                        font.weight: Font.Bold
-                        color: "#ffffff"
+
+                        Text {
+                            text: {
+                                if (isDownloading && downloadingApp === (selectedApp ? getAppSlug(selectedApp) : "")) {
+                                    return "Installing... " + Math.round(downloadProgress * 100) + "%"
+                                }
+                                if (selectedApp && isAppInstalled(getAppSlug(selectedApp))) {
+                                    return "Installed"
+                                }
+                                return "Install from 255.one"
+                            }
+                            font.pixelSize: 18 * textScale
+                            font.weight: Font.Bold
+                            color: "#ffffff"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
 
                     MouseArea {
                         id: installMouse
                         anchors.fill: parent
                         onClicked: {
-                            if (!isDownloading && selectedApp && !isAppInstalled(selectedApp.id)) {
+                            if (!isDownloading && selectedApp && !isAppInstalled(getAppSlug(selectedApp))) {
                                 installApp(selectedApp)
                                 Haptic.click()
                             }
