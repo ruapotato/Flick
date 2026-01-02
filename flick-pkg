@@ -9,6 +9,10 @@ Commands:
     uninstall   - Remove an installed app
     search      - Search packages
     update      - Update package cache from remote
+    feedback    - Submit feedback for an app (with optional logs)
+    logs        - View app logs
+    subscribe   - Subscribe to app updates
+    unsubscribe - Unsubscribe from app updates
 """
 
 import os
@@ -19,9 +23,12 @@ import argparse
 import tempfile
 import zipfile
 import tarfile
+import glob
+import time
 from pathlib import Path
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
+from datetime import datetime
 
 # Configuration
 DEFAULT_REPO = "https://255.one"
@@ -48,6 +55,13 @@ STATE_DIR = HOME / '.local' / 'state' / 'flick'
 CACHE_DIR = STATE_DIR / 'pkg_cache'
 INSTALLED_FILE = STATE_DIR / 'store_installed.json'
 REPOS_FILE = STATE_DIR / 'repositories.json'
+SUBSCRIPTIONS_FILE = STATE_DIR / 'subscriptions.json'
+
+# Logging configuration
+DATA_DIR = HOME / '.local' / 'share' / 'flick'
+LOGS_DIR = DATA_DIR / 'logs'
+LOG_MAX_SIZE = 1024 * 1024  # 1MB
+LOG_MAX_FILES = 5  # Keep last 5 log files
 
 def api_get(endpoint, repo=DEFAULT_REPO):
     """Make a GET request to the API."""
@@ -77,6 +91,141 @@ def download_file(url, dest_path):
     except Exception as e:
         print(f"Download error: {e}")
         return False
+
+def api_post(endpoint, data, repo=DEFAULT_REPO):
+    """Make a POST request to the API."""
+    url = f"{repo}{API_BASE}{endpoint}"
+    try:
+        body = json.dumps(data).encode('utf-8')
+        req = Request(url, data=body, headers={
+            'User-Agent': 'flick-pkg/1.0',
+            'Content-Type': 'application/json'
+        })
+        with urlopen(req, timeout=30) as response:
+            return json.loads(response.read().decode())
+    except HTTPError as e:
+        try:
+            error_body = json.loads(e.read().decode())
+            return {'error': error_body.get('error', f'HTTP {e.code}')}
+        except:
+            return {'error': f'HTTP {e.code}: {e.reason}'}
+    except URLError as e:
+        return {'error': f'Connection error: {e.reason}'}
+    except Exception as e:
+        return {'error': str(e)}
+
+# ============================================================================
+# LOGGING INFRASTRUCTURE
+# ============================================================================
+
+def get_log_dir(app_id):
+    """Get the log directory for an app."""
+    log_dir = LOGS_DIR / app_id
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
+
+def get_log_file(app_id):
+    """Get the current log file path for an app."""
+    return get_log_dir(app_id) / 'app.log'
+
+def rotate_logs(app_id):
+    """Rotate log files when they exceed max size."""
+    log_file = get_log_file(app_id)
+    if not log_file.exists():
+        return
+
+    if log_file.stat().st_size < LOG_MAX_SIZE:
+        return
+
+    log_dir = get_log_dir(app_id)
+
+    # Delete oldest if we have max files
+    existing = sorted(log_dir.glob('app.log.*'), key=lambda p: p.stat().st_mtime)
+    while len(existing) >= LOG_MAX_FILES - 1:
+        oldest = existing.pop(0)
+        oldest.unlink()
+
+    # Rotate current log
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    rotated = log_dir / f'app.log.{timestamp}'
+    log_file.rename(rotated)
+
+def write_log(app_id, message, level='INFO'):
+    """Write a log entry for an app."""
+    rotate_logs(app_id)
+    log_file = get_log_file(app_id)
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    entry = f"[{timestamp}] [{level}] {message}\n"
+    with open(log_file, 'a') as f:
+        f.write(entry)
+
+def read_logs(app_id, lines=100, include_rotated=False):
+    """Read recent log entries for an app."""
+    log_dir = get_log_dir(app_id)
+    log_file = get_log_file(app_id)
+
+    all_lines = []
+
+    if include_rotated:
+        # Read rotated logs (oldest first)
+        for rotated in sorted(log_dir.glob('app.log.*')):
+            try:
+                with open(rotated) as f:
+                    all_lines.extend(f.readlines())
+            except:
+                pass
+
+    # Read current log
+    if log_file.exists():
+        try:
+            with open(log_file) as f:
+                all_lines.extend(f.readlines())
+        except:
+            pass
+
+    # Return last N lines
+    return all_lines[-lines:] if lines else all_lines
+
+def get_all_logs_for_app(app_id):
+    """Get all log files for an app (for feedback attachment)."""
+    log_dir = get_log_dir(app_id)
+    if not log_dir.exists():
+        return []
+
+    logs = []
+    for log_path in sorted(log_dir.glob('app.log*')):
+        try:
+            with open(log_path) as f:
+                content = f.read()
+            logs.append({
+                'filename': log_path.name,
+                'content': content,
+                'size': log_path.stat().st_size,
+                'modified': log_path.stat().st_mtime
+            })
+        except:
+            pass
+    return logs
+
+# ============================================================================
+# SUBSCRIPTIONS
+# ============================================================================
+
+def load_subscriptions():
+    """Load app subscriptions."""
+    if SUBSCRIPTIONS_FILE.exists():
+        try:
+            with open(SUBSCRIPTIONS_FILE) as f:
+                return json.load(f)
+        except:
+            pass
+    return {'apps': [], 'last_check': 0}
+
+def save_subscriptions(data):
+    """Save app subscriptions."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    with open(SUBSCRIPTIONS_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
 
 def get_repos():
     """Get list of repositories."""
@@ -489,6 +638,207 @@ def cmd_update(args):
     print("Done.")
     return 0
 
+def cmd_feedback(args):
+    """Submit feedback for an app."""
+    app_id = args.app
+    feedback_type = args.type or 'bug'
+    title = args.title
+    content = args.message
+
+    if not title:
+        title = f"Feedback: {app_id}"
+
+    if not content:
+        print("Error: --message is required")
+        return 1
+
+    print(f"\nSubmitting {feedback_type} report for {app_id}...")
+
+    # Build feedback data
+    data = {
+        'type': feedback_type,
+        'title': title,
+        'content': content,
+        'priority': args.priority or 'medium'
+    }
+
+    # Attach logs if requested
+    if args.attach_logs:
+        logs = get_all_logs_for_app(app_id)
+        if logs:
+            print(f"  Attaching {len(logs)} log file(s)...")
+            # Combine logs into content
+            log_text = "\n\n=== ATTACHED LOGS ===\n"
+            for log in logs:
+                log_text += f"\n--- {log['filename']} ---\n"
+                # Limit log content to last 500 lines
+                lines = log['content'].split('\n')[-500:]
+                log_text += '\n'.join(lines)
+            data['content'] = content + log_text
+        else:
+            print("  No logs found for this app")
+
+    # Submit to API
+    result = api_post(f"/feedback/app/{app_id}", data)
+
+    if result and 'error' not in result:
+        print(f"  Feedback submitted successfully!")
+        if 'feedback' in result:
+            print(f"  ID: {result['feedback'].get('id', 'N/A')}")
+        return 0
+    else:
+        error = result.get('error', 'Unknown error') if result else 'No response'
+        print(f"  Error: {error}")
+        return 1
+
+def cmd_logs(args):
+    """View logs for an app."""
+    app_id = args.app
+    log_dir = LOGS_DIR / app_id
+
+    if not log_dir.exists():
+        print(f"No logs found for: {app_id}")
+        return 0
+
+    if args.clear:
+        # Clear all logs for this app
+        shutil.rmtree(log_dir)
+        print(f"Cleared logs for: {app_id}")
+        return 0
+
+    if args.list:
+        # List log files
+        print(f"\nLog files for {app_id}:\n")
+        for log_path in sorted(log_dir.glob('app.log*')):
+            size = log_path.stat().st_size
+            mtime = datetime.fromtimestamp(log_path.stat().st_mtime)
+            size_str = f"{size/1024:.1f}KB" if size > 1024 else f"{size}B"
+            print(f"  {log_path.name:25} {size_str:>10}  {mtime.strftime('%Y-%m-%d %H:%M')}")
+        return 0
+
+    # Show recent logs
+    lines = read_logs(app_id, lines=args.lines or 50, include_rotated=args.all)
+
+    if not lines:
+        print(f"No log entries for: {app_id}")
+        return 0
+
+    print(f"\n=== Logs for {app_id} (last {len(lines)} lines) ===\n")
+    for line in lines:
+        print(line.rstrip())
+    print()
+    return 0
+
+def cmd_subscribe(args):
+    """Subscribe to app updates."""
+    app_id = args.app
+
+    subs = load_subscriptions()
+    if app_id in subs['apps']:
+        print(f"Already subscribed to: {app_id}")
+        return 0
+
+    # Verify app exists
+    data = api_get(f"/apps/{app_id}")
+    if not data or 'app' not in data:
+        print(f"App not found: {app_id}")
+        return 1
+
+    app = data['app']
+    subs['apps'].append(app_id)
+    save_subscriptions(subs)
+
+    print(f"Subscribed to: {app['name']} ({app_id})")
+    print("  You'll receive notifications when new versions are released.")
+    return 0
+
+def cmd_unsubscribe(args):
+    """Unsubscribe from app updates."""
+    app_id = args.app
+
+    subs = load_subscriptions()
+    if app_id not in subs['apps']:
+        print(f"Not subscribed to: {app_id}")
+        return 0
+
+    subs['apps'].remove(app_id)
+    save_subscriptions(subs)
+
+    print(f"Unsubscribed from: {app_id}")
+    return 0
+
+def cmd_subscriptions(args):
+    """List subscribed apps."""
+    subs = load_subscriptions()
+
+    if not subs['apps']:
+        print("No subscriptions")
+        return 0
+
+    print(f"\nSubscribed apps ({len(subs['apps'])}):\n")
+    for app_id in sorted(subs['apps']):
+        # Get app info
+        data = api_get(f"/apps/{app_id}")
+        if data and 'app' in data:
+            app = data['app']
+            print(f"  {app_id:20} {app['name']:25} v{app.get('version', '?')}")
+        else:
+            print(f"  {app_id:20} (unable to fetch info)")
+    print()
+    return 0
+
+def cmd_check_updates(args):
+    """Check for updates to subscribed apps."""
+    subs = load_subscriptions()
+
+    if not subs['apps']:
+        print("No subscriptions - nothing to check")
+        return 0
+
+    print("Checking for updates...")
+    updates = []
+
+    for app_id in subs['apps']:
+        # Get remote version
+        data = api_get(f"/apps/{app_id}")
+        if not data or 'app' not in data:
+            continue
+
+        remote_app = data['app']
+        remote_version = remote_app.get('version', '0')
+
+        # Get installed version
+        app_dir = APPS_DIR / app_id
+        if not app_dir.exists():
+            continue
+
+        local_info = get_local_app_info(app_dir)
+        if not local_info:
+            continue
+
+        local_version = local_info.get('version', '0')
+
+        if remote_version != local_version:
+            updates.append({
+                'id': app_id,
+                'name': remote_app['name'],
+                'local': local_version,
+                'remote': remote_version
+            })
+
+    subs['last_check'] = int(time.time())
+    save_subscriptions(subs)
+
+    if not updates:
+        print("  All subscribed apps are up to date!")
+        return 0
+
+    print(f"\n{len(updates)} update(s) available:\n")
+    for u in updates:
+        print(f"  {u['id']:20} {u['name']:20} {u['local']} -> {u['remote']}")
+    print("\nRun 'flick-pkg install <app>' to update")
+    return 0
+
 def main():
     parser = argparse.ArgumentParser(
         description='Flick Package Manager',
@@ -497,12 +847,18 @@ def main():
 Default repository: {DEFAULT_REPO}
 
 Examples:
-  flick-pkg list              List all available packages
-  flick-pkg search game       Search for packages
-  flick-pkg install distract  Install a package
-  flick-pkg uninstall distract Remove an app
-  flick-pkg info distract     Show package details
-  flick-pkg update            Refresh package lists
+  flick-pkg list                          List all available packages
+  flick-pkg search game                   Search for packages
+  flick-pkg install distract              Install a package
+  flick-pkg uninstall distract            Remove an app
+  flick-pkg info distract                 Show package details
+  flick-pkg update                        Refresh package lists
+  flick-pkg feedback distract -m "bug"    Submit feedback
+  flick-pkg feedback distract --attach-logs -m "crash"
+  flick-pkg logs distract                 View app logs
+  flick-pkg subscribe distract            Subscribe to updates
+  flick-pkg subscriptions                 List subscriptions
+  flick-pkg check-updates                 Check for updates
 """
     )
 
@@ -527,6 +883,44 @@ Examples:
     p = subparsers.add_parser('info', help='Show package info')
     p.add_argument('package', help='Package ID')
     p.set_defaults(func=cmd_info)
+
+    # Feedback command
+    p = subparsers.add_parser('feedback', help='Submit feedback for an app')
+    p.add_argument('app', help='App ID/slug')
+    p.add_argument('-m', '--message', required=True, help='Feedback message')
+    p.add_argument('-t', '--title', help='Feedback title')
+    p.add_argument('--type', choices=['bug', 'suggestion', 'rebuild_request'],
+                   default='bug', help='Feedback type')
+    p.add_argument('-p', '--priority', choices=['low', 'medium', 'high'],
+                   default='medium', help='Priority level')
+    p.add_argument('--attach-logs', action='store_true',
+                   help='Attach app logs to feedback')
+    p.set_defaults(func=cmd_feedback)
+
+    # Logs command
+    p = subparsers.add_parser('logs', help='View app logs')
+    p.add_argument('app', help='App ID')
+    p.add_argument('-n', '--lines', type=int, default=50, help='Number of lines')
+    p.add_argument('-a', '--all', action='store_true', help='Include rotated logs')
+    p.add_argument('-l', '--list', action='store_true', help='List log files')
+    p.add_argument('--clear', action='store_true', help='Clear all logs for app')
+    p.set_defaults(func=cmd_logs)
+
+    # Subscribe command
+    p = subparsers.add_parser('subscribe', help='Subscribe to app updates')
+    p.add_argument('app', help='App ID/slug')
+    p.set_defaults(func=cmd_subscribe)
+
+    # Unsubscribe command
+    p = subparsers.add_parser('unsubscribe', help='Unsubscribe from app updates')
+    p.add_argument('app', help='App ID/slug')
+    p.set_defaults(func=cmd_unsubscribe)
+
+    # Subscriptions command
+    subparsers.add_parser('subscriptions', help='List subscribed apps').set_defaults(func=cmd_subscriptions)
+
+    # Check updates command
+    subparsers.add_parser('check-updates', help='Check for updates to subscribed apps').set_defaults(func=cmd_check_updates)
 
     args = parser.parse_args()
     if not args.command:
