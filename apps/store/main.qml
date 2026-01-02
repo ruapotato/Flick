@@ -3563,7 +3563,6 @@ Window {
                             color: addRepoMouse.pressed ? "#3a3a4e" : "#2a2a3e"
                             border.color: accentColor
                             border.width: 1
-                            border.style: Qt.DashLine
 
                             Row {
                                 anchors.centerIn: parent
