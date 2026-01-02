@@ -56,7 +56,7 @@ class InstallHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        """Handle status check."""
+        """Handle status check and log requests."""
         parsed = urllib.parse.urlparse(self.path)
 
         if parsed.path == "/status":
@@ -66,6 +66,7 @@ class InstallHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             response = {"status": "ok", "flick_pkg": FLICK_PKG is not None}
             self.wfile.write(json.dumps(response).encode())
+
         elif parsed.path == "/installed":
             # Return the installed apps list
             self.send_response(200)
@@ -83,6 +84,39 @@ class InstallHandler(http.server.BaseHTTPRequestHandler):
                 except:
                     pass
             self.wfile.write(json.dumps({"apps": apps}).encode())
+
+        elif parsed.path.startswith("/logs/"):
+            # Return logs for an app
+            app_id = parsed.path[6:]  # Remove "/logs/"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_cors_headers()
+            self.end_headers()
+
+            logs_dir = Path.home() / ".local" / "share" / "flick" / "logs" / app_id
+            logs = []
+
+            if logs_dir.exists():
+                # Read all log files
+                for log_file in sorted(logs_dir.glob("app.log*")):
+                    try:
+                        with open(log_file) as f:
+                            for line in f:
+                                line = line.rstrip()
+                                if not line:
+                                    continue
+                                # Parse log line format: [timestamp] [LEVEL] message
+                                level = "INFO"
+                                if "[ERROR]" in line:
+                                    level = "ERROR"
+                                elif "[WARN]" in line:
+                                    level = "WARN"
+                                logs.append({"text": line, "level": level})
+                    except Exception as e:
+                        logs.append({"text": f"Error reading {log_file.name}: {e}", "level": "ERROR"})
+
+            self.wfile.write(json.dumps({"logs": logs[-200:]}).encode())  # Last 200 lines
+
         else:
             self.send_response(404)
             self.send_cors_headers()

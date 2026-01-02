@@ -1009,6 +1009,49 @@ Window {
         onTriggered: showingReportDialog = false
     }
 
+    // ==================== App Logs ====================
+
+    property string logsAppId: ""
+    property string logsAppName: ""
+    property var logsContent: []
+    property bool isLoadingLogs: false
+
+    function openAppLogs(appId) {
+        logsAppId = appId
+        logsAppName = selectedApp ? selectedApp.name : appId
+        loadAppLogs()
+        navigateTo("logs")
+    }
+
+    function loadAppLogs() {
+        // Read logs from file system via local HTTP server
+        isLoadingLogs = true
+        logsContent = []
+
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "http://localhost:7654/logs/" + logsAppId)
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                isLoadingLogs = false
+                if (xhr.status === 200) {
+                    try {
+                        var data = JSON.parse(xhr.responseText)
+                        logsContent = data.logs || []
+                    } catch (e) {
+                        logsContent = [{text: "Error parsing logs: " + e, level: "ERROR"}]
+                    }
+                } else {
+                    logsContent = [{text: "No logs found for this app", level: "INFO"}]
+                }
+            }
+        }
+        xhr.onerror = function() {
+            isLoadingLogs = false
+            logsContent = [{text: "Could not connect to log server", level: "ERROR"}]
+        }
+        xhr.send()
+    }
+
     // ==================== Config Timer ====================
 
     Timer {
@@ -2600,6 +2643,46 @@ Window {
                     }
                 }
 
+                // View Logs button (for installed apps)
+                Rectangle {
+                    visible: selectedApp && isAppInstalled(getAppSlug(selectedApp))
+                    width: parent.width - 32
+                    height: 52
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    radius: 26
+                    color: viewLogsMouse.pressed ? "#2a3a4a" : "#1a2a3a"
+                    border.width: 1
+                    border.color: "#4a90d9"
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 10
+
+                        Text {
+                            text: "description"
+                            font.family: iconFont.name
+                            font.pixelSize: 20
+                            color: "#4a90d9"
+                        }
+
+                        Text {
+                            text: "View Logs"
+                            font.pixelSize: 16 * textScale
+                            font.weight: Font.Medium
+                            color: "#ffffff"
+                        }
+                    }
+
+                    MouseArea {
+                        id: viewLogsMouse
+                        anchors.fill: parent
+                        onClicked: {
+                            Haptic.tap()
+                            openAppLogs(getAppSlug(selectedApp))
+                        }
+                    }
+                }
+
                 // Screenshots section
                 Column {
                     width: parent.width
@@ -3807,6 +3890,214 @@ Window {
                 height: 4
                 radius: 2
                 color: "#333344"
+            }
+        }
+    }
+
+    // ==================== LOGS VIEW ====================
+
+    Rectangle {
+        id: logsView
+        anchors.fill: parent
+        color: "#0a0a0f"
+        visible: currentView === "logs"
+
+        Column {
+            anchors.fill: parent
+            spacing: 0
+
+            // Header
+            Rectangle {
+                width: parent.width
+                height: 100
+                color: "#1a2a3a"
+
+                Row {
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    anchors.topMargin: 40
+                    spacing: 16
+
+                    Rectangle {
+                        width: 44
+                        height: 44
+                        radius: 22
+                        color: logsBackMouse.pressed ? "#2a3a4a" : "transparent"
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "←"
+                            font.pixelSize: 28
+                            font.weight: Font.Medium
+                            color: "#ffffff"
+                        }
+
+                        MouseArea {
+                            id: logsBackMouse
+                            anchors.fill: parent
+                            onClicked: goBack()
+                        }
+                    }
+
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+
+                        Text {
+                            text: "App Logs"
+                            font.pixelSize: 22 * textScale
+                            font.weight: Font.Bold
+                            color: "#ffffff"
+                        }
+
+                        Text {
+                            text: logsAppName
+                            font.pixelSize: 14 * textScale
+                            color: "#88aacc"
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Rectangle {
+                        width: 44
+                        height: 44
+                        radius: 22
+                        color: refreshLogsMouse.pressed ? "#2a3a4a" : "transparent"
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "refresh"
+                            font.family: iconFont.name
+                            font.pixelSize: 24
+                            color: "#4a90d9"
+                        }
+
+                        MouseArea {
+                            id: refreshLogsMouse
+                            anchors.fill: parent
+                            onClicked: {
+                                Haptic.tap()
+                                loadAppLogs()
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Logs content
+            Rectangle {
+                width: parent.width
+                height: parent.height - 200
+                color: "#0a0a0f"
+
+                Flickable {
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    contentHeight: logsColumn.height
+                    clip: true
+
+                    Column {
+                        id: logsColumn
+                        width: parent.width
+                        spacing: 2
+
+                        // Loading indicator
+                        Text {
+                            visible: isLoadingLogs
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "Loading logs..."
+                            font.pixelSize: 14 * textScale
+                            color: "#666677"
+                        }
+
+                        // Empty state
+                        Column {
+                            visible: !isLoadingLogs && logsContent.length === 0
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: 16
+                            topPadding: 60
+
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: "description"
+                                font.family: iconFont.name
+                                font.pixelSize: 64
+                                color: "#333344"
+                            }
+
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: "No logs available"
+                                font.pixelSize: 18 * textScale
+                                color: "#666677"
+                            }
+
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: "Logs will appear here when the app runs"
+                                font.pixelSize: 14 * textScale
+                                color: "#555566"
+                            }
+                        }
+
+                        // Log entries
+                        Repeater {
+                            model: logsContent
+
+                            Rectangle {
+                                width: parent.width
+                                height: logText.height + 8
+                                radius: 4
+                                color: {
+                                    var level = modelData.level || "INFO"
+                                    if (level === "ERROR") return "#2d1a1a"
+                                    if (level === "WARN") return "#2d2a1a"
+                                    return "#1a1a2a"
+                                }
+
+                                Text {
+                                    id: logText
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.margins: 8
+                                    text: modelData.text || modelData
+                                    font.pixelSize: 12 * textScale
+                                    font.family: "monospace"
+                                    color: {
+                                        var level = modelData.level || "INFO"
+                                        if (level === "ERROR") return "#ff6666"
+                                        if (level === "WARN") return "#ffaa44"
+                                        return "#aabbcc"
+                                    }
+                                    wrapMode: Text.WrapAnywhere
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Bottom nav
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 100
+            color: "#1a2a3a"
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottomMargin: 8
+                width: 120
+                height: 4
+                radius: 2
+                color: "#2a3a4a"
             }
         }
     }
