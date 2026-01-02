@@ -951,27 +951,33 @@ Window {
     function submitDebugReport() {
         if (!selectedApp || reportText.length < 10) return
 
+        var slug = getAppSlug(selectedApp)
         var xhr = new XMLHttpRequest()
-        xhr.open("POST", apiBaseUrl + "/reports")
+        xhr.open("POST", apiBaseUrl + "/feedback/app/" + slug)
         xhr.setRequestHeader("Content-Type", "application/json")
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
                 if (xhr.status === 200 || xhr.status === 201) {
-                    console.log("Report submitted successfully")
+                    console.log("Feedback submitted successfully")
+                    // Show success message briefly
+                    reportSubmitted = true
                 } else {
-                    console.log("Failed to submit report:", xhr.status)
+                    console.log("Failed to submit feedback:", xhr.status, xhr.responseText)
                 }
                 showingReportDialog = false
             }
         }
+        // Backend expects: type (bug/suggestion/rebuild_request), title, content
         var data = JSON.stringify({
-            app_id: selectedApp.id || selectedApp.slug,
-            app_name: selectedApp.name,
-            report: reportText,
-            timestamp: new Date().toISOString()
+            type: "bug",
+            title: "Bug Report: " + selectedApp.name,
+            content: reportText,
+            priority: "medium"
         })
         xhr.send(data)
     }
+
+    property bool reportSubmitted: false
 
     // ==================== Config Timer ====================
 
