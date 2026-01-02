@@ -40,8 +40,8 @@ ExecStartPre=/bin/sleep 2
 ExecStartPre=/bin/mkdir -p /home/droidian/.local/state/flick
 ExecStartPre=/bin/chown -R droidian:droidian /home/droidian/.local/state/flick
 
-# Start hwcomposer with retry loop (try 3 times with 5 second gaps)
-ExecStartPre=/bin/sh -c 'for i in 1 2 3; do ANDROID_SERVICE="(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)" /usr/lib/halium-wrappers/android-service.sh hwcomposer start && exit 0; sleep 5; done; echo "hwcomposer failed to start after retries"'
+# Start hwcomposer directly via lxc-attach (more reliable than android-service.sh on cold boot)
+ExecStartPre=/bin/sh -c 'for i in 1 2 3 4 5; do lxc-attach -n android -- /system/bin/start vendor.hwcomposer-2-2 2>/dev/null && sleep 2 && [ "$(getprop init.svc.vendor.hwcomposer-2-2)" = "running" ] && exit 0; sleep 3; done; echo "hwcomposer failed to start after retries"'
 ExecStartPre=/bin/sleep 2
 
 # Set default audio sink (ensures audio routing works after boot)
