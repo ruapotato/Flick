@@ -3,11 +3,12 @@
 Flick Package Manager
 
 Commands:
-    list        - List available packages
+    list        - List available packages (remote + local)
     installed   - List installed apps
     install     - Install a package
     uninstall   - Remove an installed app
     search      - Search packages
+    update      - Update package cache from remote
 """
 
 import os
@@ -15,29 +16,27 @@ import sys
 import json
 import shutil
 import argparse
+import tempfile
+import zipfile
+import tarfile
 from pathlib import Path
+from urllib.request import urlopen, Request
+from urllib.error import URLError, HTTPError
+
+# Configuration
+DEFAULT_REPO = "https://255.one"
+API_BASE = "/api"
 
 def get_home():
     """Get the real user's home directory."""
-    # Check FLICK_USER first
-    flick_user = os.environ.get('FLICK_USER', '')
-    if flick_user and flick_user != 'root':
-        home = f'/home/{flick_user}'
-        if os.path.exists(home):
-            return Path(home)
-
-    # Check SUDO_USER
-    sudo_user = os.environ.get('SUDO_USER', '')
-    if sudo_user and sudo_user != 'root':
-        home = f'/home/{sudo_user}'
-        if os.path.exists(home):
-            return Path(home)
-
-    # Check for droidian
+    for env_var in ['FLICK_USER', 'SUDO_USER']:
+        user = os.environ.get(env_var, '')
+        if user and user != 'root':
+            home = f'/home/{user}'
+            if os.path.exists(home):
+                return Path(home)
     if os.path.exists('/home/droidian'):
         return Path('/home/droidian')
-
-    # Fallback to HOME
     return Path(os.environ.get('HOME', '/root'))
 
 HOME = get_home()
@@ -46,7 +45,49 @@ APPS_DIR = FLICK_DIR / 'apps'
 PACKAGES_DIR = FLICK_DIR / 'store' / 'packages'
 SIGNAL_FILE = Path('/tmp/flick_rescan_apps')
 STATE_DIR = HOME / '.local' / 'state' / 'flick'
+CACHE_DIR = STATE_DIR / 'pkg_cache'
 INSTALLED_FILE = STATE_DIR / 'store_installed.json'
+REPOS_FILE = STATE_DIR / 'repositories.json'
+
+def api_get(endpoint, repo=DEFAULT_REPO):
+    """Make a GET request to the API."""
+    url = f"{repo}{API_BASE}{endpoint}"
+    try:
+        req = Request(url, headers={'User-Agent': 'flick-pkg/1.0'})
+        with urlopen(req, timeout=30) as response:
+            return json.loads(response.read().decode())
+    except HTTPError as e:
+        print(f"HTTP Error {e.code}: {e.reason}")
+        return None
+    except URLError as e:
+        print(f"Connection error: {e.reason}")
+        return None
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+def download_file(url, dest_path):
+    """Download a file from URL."""
+    try:
+        req = Request(url, headers={'User-Agent': 'flick-pkg/1.0'})
+        with urlopen(req, timeout=120) as response:
+            with open(dest_path, 'wb') as f:
+                shutil.copyfileobj(response, f)
+        return True
+    except Exception as e:
+        print(f"Download error: {e}")
+        return False
+
+def get_repos():
+    """Get list of repositories."""
+    if REPOS_FILE.exists():
+        try:
+            with open(REPOS_FILE) as f:
+                data = json.load(f)
+                return data.get('repositories', [DEFAULT_REPO])
+        except:
+            pass
+    return [DEFAULT_REPO]
 
 def load_manifest(path):
     """Load a manifest.json file."""
@@ -59,30 +100,26 @@ def load_manifest(path):
             pass
     return None
 
-def get_app_info(path):
-    """Get app info from a directory."""
+def get_local_app_info(path):
+    """Get app info from a local directory."""
     manifest = load_manifest(path)
     app_id = path.name
-
     if manifest:
         return {
             'id': app_id,
             'name': manifest.get('name', app_id.title()),
             'version': manifest.get('version', '1.0.0'),
             'description': manifest.get('description', ''),
-            'categories': manifest.get('categories', []),
+            'source': 'local',
         }
-
-    # Check if it has main.qml (valid app)
     if (path / 'main.qml').exists() or (path / f'run_{app_id}.sh').exists():
         return {
             'id': app_id,
             'name': app_id.title(),
             'version': '1.0.0',
             'description': '',
-            'categories': [],
+            'source': 'local',
         }
-
     return None
 
 def signal_rescan():
@@ -95,8 +132,7 @@ def load_store_installed():
     if INSTALLED_FILE.exists():
         try:
             with open(INSTALLED_FILE) as f:
-                data = json.load(f)
-                return data.get('apps', [])
+                return json.load(f).get('apps', [])
         except:
             pass
     return []
@@ -109,11 +145,9 @@ def save_store_installed(apps):
 
 def add_to_store_installed(info):
     """Add an app to the Store's installed list."""
-    apps = load_store_installed()
-    # Remove if already exists
-    apps = [a for a in apps if a.get('id') != info['id']]
-    # Add new entry
     import time
+    apps = load_store_installed()
+    apps = [a for a in apps if a.get('id') != info['id']]
     apps.append({
         'id': info['id'],
         'name': info['name'],
@@ -129,51 +163,87 @@ def remove_from_store_installed(app_id):
     apps = [a for a in apps if a.get('id') != app_id]
     save_store_installed(apps)
 
+def extract_flick_package(flick_path, dest_dir):
+    """Extract a .flick package (zip or tar.gz)."""
+    try:
+        # Try as zip first
+        if zipfile.is_zipfile(flick_path):
+            with zipfile.ZipFile(flick_path, 'r') as zf:
+                zf.extractall(dest_dir)
+            return True
+    except:
+        pass
+
+    try:
+        # Try as tar.gz
+        with tarfile.open(flick_path, 'r:*') as tf:
+            tf.extractall(dest_dir)
+        return True
+    except:
+        pass
+
+    return False
+
 def cmd_list(args):
-    """List available packages."""
-    if not PACKAGES_DIR.exists():
-        print(f"No packages directory found at {PACKAGES_DIR}")
-        return 1
+    """List available packages from remote and local."""
+    print("\nFetching packages from remote repositories...")
 
-    packages = []
-    for pkg_dir in sorted(PACKAGES_DIR.iterdir()):
-        if pkg_dir.is_dir() and not pkg_dir.name.startswith('.'):
-            info = get_app_info(pkg_dir)
-            if info:
-                # Check if installed
-                installed = (APPS_DIR / pkg_dir.name).exists()
-                packages.append((info, installed))
+    all_packages = []
 
-    if not packages:
-        print("No packages available")
+    # Fetch from remote repos
+    for repo in get_repos():
+        print(f"  Checking {repo}...")
+        data = api_get("/apps?per_page=100", repo)
+        if data and 'apps' in data:
+            for app in data['apps']:
+                all_packages.append({
+                    'id': app.get('slug', app.get('id', '')),
+                    'name': app.get('name', ''),
+                    'version': app.get('version', '1.0.0'),
+                    'description': app.get('description', ''),
+                    'downloads': app.get('download_count', 0),
+                    'source': repo,
+                })
+
+    # Add local packages
+    if PACKAGES_DIR.exists():
+        for pkg_dir in PACKAGES_DIR.iterdir():
+            if pkg_dir.is_dir() and not pkg_dir.name.startswith('.'):
+                info = get_local_app_info(pkg_dir)
+                if info:
+                    # Don't duplicate if already in remote
+                    if not any(p['id'] == info['id'] for p in all_packages):
+                        all_packages.append(info)
+
+    if not all_packages:
+        print("\nNo packages available")
         return 0
 
-    print(f"\nAvailable packages ({len(packages)}):\n")
-    for info, installed in packages:
+    print(f"\nAvailable packages ({len(all_packages)}):\n")
+    for pkg in sorted(all_packages, key=lambda x: x['name'].lower()):
+        installed = (APPS_DIR / pkg['id']).exists()
         status = "[installed]" if installed else ""
-        print(f"  {info['id']:20} {info['name']:25} {status}")
-        if info['description']:
-            print(f"                       {info['description'][:50]}...")
+        source = "(local)" if pkg.get('source') == 'local' else ""
+        print(f"  {pkg['id']:20} {pkg['name'][:25]:25} {status} {source}")
+        if pkg.get('description'):
+            desc = pkg['description'][:50] + '...' if len(pkg.get('description', '')) > 50 else pkg.get('description', '')
+            print(f"                       {desc}")
     print()
     return 0
 
 def cmd_installed(args):
     """List installed apps."""
-    if not APPS_DIR.exists():
-        print(f"No apps directory found at {APPS_DIR}")
-        return 1
-
-    # Skip these system apps
     skip = {'lockscreen', 'shared', 'welcome', 'store'}
-
     apps = []
-    for app_dir in sorted(APPS_DIR.iterdir()):
-        if app_dir.is_dir() and not app_dir.name.startswith('.'):
-            if app_dir.name in skip:
-                continue
-            info = get_app_info(app_dir)
-            if info:
-                apps.append(info)
+
+    if APPS_DIR.exists():
+        for app_dir in sorted(APPS_DIR.iterdir()):
+            if app_dir.is_dir() and not app_dir.name.startswith('.'):
+                if app_dir.name in skip:
+                    continue
+                info = get_local_app_info(app_dir)
+                if info:
+                    apps.append(info)
 
     if not apps:
         print("No apps installed")
@@ -186,47 +256,106 @@ def cmd_installed(args):
     return 0
 
 def cmd_install(args):
-    """Install a package."""
+    """Install a package from remote or local."""
     pkg_id = args.package
-    pkg_dir = PACKAGES_DIR / pkg_id
-
-    if not pkg_dir.exists():
-        print(f"Package not found: {pkg_id}")
-        print(f"Use 'flick-pkg list' to see available packages")
-        return 1
-
     dest_dir = APPS_DIR / pkg_id
 
     if dest_dir.exists():
         print(f"Already installed: {pkg_id}")
         return 1
 
-    info = get_app_info(pkg_dir)
-    if not info:
-        print(f"Invalid package: {pkg_id}")
-        return 1
+    # Check local packages first
+    local_pkg = PACKAGES_DIR / pkg_id
+    if local_pkg.exists():
+        info = get_local_app_info(local_pkg)
+        if info:
+            print(f"Installing {info['name']} ({pkg_id}) from local...")
+            try:
+                shutil.copytree(local_pkg, dest_dir)
+                print(f"  Copied to {dest_dir}")
+                add_to_store_installed(info)
+                signal_rescan()
+                print(f"Successfully installed: {info['name']}")
+                return 0
+            except Exception as e:
+                print(f"Installation failed: {e}")
+                return 1
 
-    print(f"Installing {info['name']} ({pkg_id})...")
+    # Try remote repos
+    print(f"Searching remote repositories for {pkg_id}...")
+    for repo in get_repos():
+        # Get app info
+        data = api_get(f"/apps/{pkg_id}", repo)
+        if not data or 'app' not in data:
+            continue
 
-    try:
-        shutil.copytree(pkg_dir, dest_dir)
-        print(f"  Copied to {dest_dir}")
+        app = data['app']
+        print(f"Found {app['name']} v{app.get('version', '1.0.0')} on {repo}")
+
+        # Download package
+        download_url = f"{repo}{API_BASE}/apps/{pkg_id}/download"
+        print(f"  Downloading...")
+
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        flick_path = CACHE_DIR / f"{pkg_id}.flick"
+
+        if not download_file(download_url, flick_path):
+            print(f"  Failed to download from {repo}")
+            continue
+
+        print(f"  Extracting...")
+
+        # Extract to temp dir first
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            if not extract_flick_package(flick_path, tmppath):
+                print(f"  Failed to extract package")
+                continue
+
+            # Find the app directory (might be nested)
+            app_content = None
+            for item in tmppath.iterdir():
+                if item.is_dir():
+                    if (item / 'main.qml').exists() or (item / 'manifest.json').exists():
+                        app_content = item
+                        break
+            if not app_content:
+                # Check if files are at root level
+                if (tmppath / 'main.qml').exists() or (tmppath / 'manifest.json').exists():
+                    app_content = tmppath
+
+            if not app_content:
+                print(f"  Invalid package structure")
+                continue
+
+            # Move to apps directory
+            shutil.copytree(app_content, dest_dir)
+
+        # Clean up cache
+        flick_path.unlink(missing_ok=True)
+
+        info = {
+            'id': pkg_id,
+            'name': app['name'],
+            'version': app.get('version', '1.0.0'),
+            'icon': app.get('icon', 'app'),
+        }
         add_to_store_installed(info)
-        print(f"  Updated Store installed list")
         signal_rescan()
-        print(f"Successfully installed: {info['name']}")
+        print(f"Successfully installed: {app['name']}")
         return 0
-    except Exception as e:
-        print(f"Installation failed: {e}")
-        return 1
+
+    print(f"Package not found: {pkg_id}")
+    return 1
 
 def cmd_uninstall(args):
     """Uninstall an app."""
     app_id = args.package
     app_dir = APPS_DIR / app_id
 
-    # Don't allow removing core apps
-    protected = {'settings', 'store', 'phone', 'messages', 'contacts', 'browser', 'camera', 'gallery', 'files', 'terminal', 'calculator', 'clock', 'calendar', 'notes', 'weather', 'maps'}
+    protected = {'settings', 'store', 'phone', 'messages', 'contacts', 'browser',
+                 'camera', 'gallery', 'files', 'terminal', 'calculator', 'clock',
+                 'calendar', 'notes', 'weather', 'maps'}
 
     if app_id in protected:
         print(f"Cannot uninstall core app: {app_id}")
@@ -236,16 +365,14 @@ def cmd_uninstall(args):
         print(f"App not installed: {app_id}")
         return 1
 
-    info = get_app_info(app_dir)
+    info = get_local_app_info(app_dir)
     name = info['name'] if info else app_id
 
     print(f"Uninstalling {name} ({app_id})...")
-
     try:
         shutil.rmtree(app_dir)
         print(f"  Removed {app_dir}")
         remove_from_store_installed(app_id)
-        print(f"  Updated Store installed list")
         signal_rescan()
         print(f"Successfully uninstalled: {name}")
         return 0
@@ -256,30 +383,41 @@ def cmd_uninstall(args):
 def cmd_search(args):
     """Search packages."""
     query = args.query.lower()
-
-    if not PACKAGES_DIR.exists():
-        print("No packages available")
-        return 1
-
     results = []
-    for pkg_dir in sorted(PACKAGES_DIR.iterdir()):
-        if pkg_dir.is_dir() and not pkg_dir.name.startswith('.'):
-            info = get_app_info(pkg_dir)
-            if info:
-                # Search in id, name, description
-                searchable = f"{info['id']} {info['name']} {info['description']}".lower()
-                if query in searchable:
-                    installed = (APPS_DIR / pkg_dir.name).exists()
-                    results.append((info, installed))
+
+    # Search remote
+    for repo in get_repos():
+        data = api_get(f"/apps/search?q={query}", repo)
+        if data and 'apps' in data:
+            for app in data['apps']:
+                results.append({
+                    'id': app.get('slug', app.get('id', '')),
+                    'name': app.get('name', ''),
+                    'description': app.get('description', ''),
+                    'source': repo,
+                })
+
+    # Search local
+    if PACKAGES_DIR.exists():
+        for pkg_dir in PACKAGES_DIR.iterdir():
+            if pkg_dir.is_dir():
+                info = get_local_app_info(pkg_dir)
+                if info:
+                    searchable = f"{info['id']} {info['name']} {info.get('description', '')}".lower()
+                    if query in searchable:
+                        if not any(r['id'] == info['id'] for r in results):
+                            info['source'] = 'local'
+                            results.append(info)
 
     if not results:
         print(f"No packages matching: {query}")
         return 0
 
     print(f"\nSearch results for '{query}' ({len(results)}):\n")
-    for info, installed in results:
+    for pkg in results:
+        installed = (APPS_DIR / pkg['id']).exists()
         status = "[installed]" if installed else ""
-        print(f"  {info['id']:20} {info['name']:25} {status}")
+        print(f"  {pkg['id']:20} {pkg['name'][:25]:25} {status}")
     print()
     return 0
 
@@ -287,97 +425,110 @@ def cmd_info(args):
     """Show package info."""
     pkg_id = args.package
 
-    # Check packages first, then installed apps
-    pkg_dir = PACKAGES_DIR / pkg_id
+    # Check installed first
     app_dir = APPS_DIR / pkg_id
-
-    source_dir = None
-    installed = False
-
     if app_dir.exists():
-        source_dir = app_dir
-        installed = True
-    elif pkg_dir.exists():
-        source_dir = pkg_dir
-    else:
-        print(f"Package not found: {pkg_id}")
-        return 1
+        info = get_local_app_info(app_dir)
+        manifest = load_manifest(app_dir)
+        if info:
+            print(f"\n{info['name']}")
+            print("=" * len(info['name']))
+            print(f"ID:          {info['id']}")
+            print(f"Version:     {info['version']}")
+            print(f"Status:      Installed")
+            if manifest and manifest.get('description'):
+                print(f"Description: {manifest['description']}")
+            print()
+            return 0
 
-    info = get_app_info(source_dir)
-    if not info:
-        print(f"Invalid package: {pkg_id}")
-        return 1
+    # Check remote
+    for repo in get_repos():
+        data = api_get(f"/apps/{pkg_id}", repo)
+        if data and 'app' in data:
+            app = data['app']
+            print(f"\n{app['name']}")
+            print("=" * len(app['name']))
+            print(f"ID:          {app.get('slug', pkg_id)}")
+            print(f"Version:     {app.get('version', '1.0.0')}")
+            print(f"Status:      Not installed")
+            print(f"Downloads:   {app.get('download_count', 0)}")
+            print(f"Category:    {app.get('category', 'Unknown')}")
+            if app.get('description'):
+                print(f"Description: {app['description']}")
+            print(f"Source:      {repo}")
+            print()
+            return 0
 
-    manifest = load_manifest(source_dir)
+    # Check local packages
+    local_pkg = PACKAGES_DIR / pkg_id
+    if local_pkg.exists():
+        info = get_local_app_info(local_pkg)
+        if info:
+            print(f"\n{info['name']}")
+            print("=" * len(info['name']))
+            print(f"ID:          {info['id']}")
+            print(f"Version:     {info['version']}")
+            print(f"Status:      Not installed (local package)")
+            print()
+            return 0
 
-    print(f"\n{info['name']}")
-    print("=" * len(info['name']))
-    print(f"ID:          {info['id']}")
-    print(f"Version:     {info['version']}")
-    print(f"Status:      {'Installed' if installed else 'Not installed'}")
-    if info['categories']:
-        print(f"Categories:  {', '.join(info['categories'])}")
-    if info['description']:
-        print(f"Description: {info['description']}")
-    if manifest:
-        if manifest.get('author'):
-            author = manifest['author']
-            if isinstance(author, dict):
-                print(f"Author:      {author.get('name', 'Unknown')}")
-            else:
-                print(f"Author:      {author}")
-        if manifest.get('long_description'):
-            print(f"\n{manifest['long_description']}")
-    print()
+    print(f"Package not found: {pkg_id}")
+    return 1
+
+def cmd_update(args):
+    """Update package cache from remote."""
+    print("Updating package lists...")
+    for repo in get_repos():
+        print(f"  Fetching from {repo}...")
+        data = api_get("/apps?per_page=100", repo)
+        if data:
+            count = len(data.get('apps', []))
+            print(f"    Found {count} packages")
+        else:
+            print(f"    Failed to connect")
+    print("Done.")
     return 0
 
 def main():
     parser = argparse.ArgumentParser(
         description='Flick Package Manager',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
+Default repository: {DEFAULT_REPO}
+
 Examples:
-  flick-pkg list              List available packages
-  flick-pkg installed         List installed apps
-  flick-pkg install distract  Install the distract package
-  flick-pkg uninstall distract Remove the distract app
-  flick-pkg search audio      Search for packages
+  flick-pkg list              List all available packages
+  flick-pkg search game       Search for packages
+  flick-pkg install distract  Install a package
+  flick-pkg uninstall distract Remove an app
   flick-pkg info distract     Show package details
+  flick-pkg update            Refresh package lists
 """
     )
 
-    subparsers = parser.add_subparsers(dest='command', help='Command to run')
+    subparsers = parser.add_subparsers(dest='command', help='Command')
 
-    # list
-    list_parser = subparsers.add_parser('list', help='List available packages')
-    list_parser.set_defaults(func=cmd_list)
+    subparsers.add_parser('list', help='List available packages').set_defaults(func=cmd_list)
+    subparsers.add_parser('installed', help='List installed apps').set_defaults(func=cmd_installed)
+    subparsers.add_parser('update', help='Update package cache').set_defaults(func=cmd_update)
 
-    # installed
-    installed_parser = subparsers.add_parser('installed', help='List installed apps')
-    installed_parser.set_defaults(func=cmd_installed)
+    p = subparsers.add_parser('install', help='Install a package')
+    p.add_argument('package', help='Package ID')
+    p.set_defaults(func=cmd_install)
 
-    # install
-    install_parser = subparsers.add_parser('install', help='Install a package')
-    install_parser.add_argument('package', help='Package ID to install')
-    install_parser.set_defaults(func=cmd_install)
+    p = subparsers.add_parser('uninstall', help='Uninstall an app')
+    p.add_argument('package', help='App ID')
+    p.set_defaults(func=cmd_uninstall)
 
-    # uninstall
-    uninstall_parser = subparsers.add_parser('uninstall', help='Uninstall an app')
-    uninstall_parser.add_argument('package', help='App ID to uninstall')
-    uninstall_parser.set_defaults(func=cmd_uninstall)
+    p = subparsers.add_parser('search', help='Search packages')
+    p.add_argument('query', help='Search query')
+    p.set_defaults(func=cmd_search)
 
-    # search
-    search_parser = subparsers.add_parser('search', help='Search packages')
-    search_parser.add_argument('query', help='Search query')
-    search_parser.set_defaults(func=cmd_search)
-
-    # info
-    info_parser = subparsers.add_parser('info', help='Show package info')
-    info_parser.add_argument('package', help='Package ID')
-    info_parser.set_defaults(func=cmd_info)
+    p = subparsers.add_parser('info', help='Show package info')
+    p.add_argument('package', help='Package ID')
+    p.set_defaults(func=cmd_info)
 
     args = parser.parse_args()
-
     if not args.command:
         parser.print_help()
         return 0
