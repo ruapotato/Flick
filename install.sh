@@ -199,7 +199,19 @@ if [ "$DEVICE_PLATFORM" = "droidian" ]; then
         qmlscene \
         qml-module-qtquick2 \
         qml-module-qtquick-window2 \
-        qml-module-qtquick-controls2
+        qml-module-qtquick-controls2 \
+        qml-module-qtquick-layouts \
+        qml-module-qtlocation \
+        qml-module-qtpositioning \
+        qml-module-qtmultimedia \
+        qml-module-qtwebengine \
+        qml-module-qt-labs-folderlistmodel \
+        qml-module-qt-labs-platform \
+        gstreamer1.0-plugins-base \
+        gstreamer1.0-plugins-good \
+        gstreamer1.0-plugins-bad \
+        gstreamer1.0-plugins-ugly \
+        gstreamer1.0-libav
 else
     sudo apt update
     sudo apt install -y \

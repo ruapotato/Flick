@@ -6,16 +6,16 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 
 **Why Flick?** Phosh (GNOME/GTK) and Plasma Mobile (KDE/Qt) are desktop environments squeezed onto phones. Flick is built from the ground up for mobile - gestures are the primary input, not an afterthought. Rust + Smithay + Qt/QML means it's lean, fast, and doesn't carry decades of desktop baggage.
 
-**Target devices:** Android phones running Droidian (Pixel 3a, OnePlus, etc.). Native Linux support (PinePhone, Librem 5) is deprecated but the DRM/KMS backend could work with some effort.
+**Target devices:** Android phones running Droidian/FuriOS (FLX1s, Pixel 3a, OnePlus, etc.). Native Linux support (PinePhone, Librem 5) is deprecated but the DRM/KMS backend could work with some effort.
 
 ## Device Compatibility
 
 | Device Type | Status | Notes |
 |-------------|--------|-------|
-| **Droidian** | ✅ Daily Driver | Primary target, fully functional phone shell |
-| **Native Linux** (PinePhone, Librem 5) | ❌ Deprecated | DRM/KMS backend exists but unmaintained, could work with effort |
+| **FLX1s (FuriOS)** | ✅ Primary | 720x1600 @ 90Hz, fully functional |
+| **Droidian** | ✅ Daily Driver | Tested on Pixel 3a (1080x2160) |
+| **Native Linux** (PinePhone, Librem 5) | ❌ Deprecated | DRM/KMS backend exists but unmaintained |
 | **PostmarketOS** (mainline kernel) | ❌ Deprecated | Could work with DRM backend fixes |
-| **Mobian** | ❌ Deprecated | Could work with DRM backend fixes |
 
 ### Droidian / HWComposer Support
 
@@ -229,7 +229,7 @@ This creates a fluid typing experience where you can compose messages by chainin
 
 ## Installation
 
-### Quick Install (Droidian)
+### Quick Install (Droidian/FuriOS)
 
 The install script handles everything: dependencies, Rust toolchain, building, and systemd service setup.
 
@@ -241,14 +241,66 @@ sudo ./install.sh
 ```
 
 This will:
-- Install build dependencies
-- Install Rust (if needed)
-- Build Flick from source
+- Detect your device and configure appropriately
+- Install build dependencies (including QML modules for apps)
+- Install Rust toolchain (if needed)
+- Build Flick from source (~5-35 min depending on device)
 - Create and enable systemd services
-- Mask Phosh to prevent conflicts
-- Configure audio fixes for Droidian
+- Stop Phosh (keeps it as fallback)
+- Install device-specific config to `/etc/flick/device.conf`
 
 After installation, reboot and Flick will start automatically.
+
+### Setting Up a New Device
+
+1. **SSH into your device** (recommended - keeps terminal access if display fails):
+   ```bash
+   ssh user@device-ip
+   ```
+
+2. **Clone and run installer**:
+   ```bash
+   git clone https://github.com/ruapotato/Flick.git
+   cd Flick
+   sudo ./install.sh
+   ```
+
+3. **If build fails**, check for missing dev packages:
+   ```bash
+   # The installer should handle this, but if not:
+   sudo apt install libhybris-dev libhybris-common-dev libhardware-dev
+   ```
+
+4. **Test without rebooting**:
+   ```bash
+   sudo systemctl stop phosh
+   sudo systemctl start flick flick-phone-helper flick-messaging
+   ```
+
+5. **View logs if issues**:
+   ```bash
+   journalctl -u flick -f
+   ```
+
+6. **Switch back to Phosh if needed**:
+   ```bash
+   sudo systemctl stop flick
+   sudo systemctl start phosh
+   ```
+
+### Device Configuration
+
+Device settings are stored in `/etc/flick/device.conf`:
+
+```bash
+# Example for FLX1s
+DEVICE_NAME="FLX1s"
+DEVICE_USER="furios"
+DEVICE_HOME="/home/furios"
+FLICK_BACKEND="hwcomposer"
+```
+
+The installer auto-detects your device. For new devices, create a config in `config/devices/` and submit a PR.
 
 ### What Gets Installed
 
@@ -296,7 +348,10 @@ sudo apt install libseat-dev libinput-dev libudev-dev libgbm-dev \
 # QML app dependencies
 sudo apt install qmlscene qml-module-qtquick2 qml-module-qtquick-window2 \
                  qml-module-qtquick-controls2 qml-module-qtquick-layouts \
-                 qml-module-qtgraphicaleffects
+                 qml-module-qtlocation qml-module-qtpositioning \
+                 qml-module-qtmultimedia qml-module-qtwebengine \
+                 qml-module-qt-labs-folderlistmodel qml-module-qt-labs-platform \
+                 gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
 ```
 
 ### Build & Run
