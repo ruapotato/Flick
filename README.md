@@ -12,7 +12,7 @@ A mobile-first Wayland compositor and shell for Linux phones, designed to replac
 
 | Device Type | Status | Notes |
 |-------------|--------|-------|
-| **Droidian** (Android phones) | ✅ Daily Driver | Primary target, fully functional phone shell |
+| **Droidian** | ✅ Daily Driver | Primary target, fully functional phone shell |
 | **Native Linux** (PinePhone, Librem 5) | ❌ Deprecated | DRM/KMS backend exists but unmaintained, could work with effort |
 | **PostmarketOS** (mainline kernel) | ❌ Deprecated | Could work with DRM backend fixes |
 | **Mobian** | ❌ Deprecated | Could work with DRM backend fixes |
