@@ -21,7 +21,7 @@ Page {
     property bool lpShootingStars: true  // Occasional shooting stars
     property bool rainEffectEnabled: false // Compiz-style rain ripples
 
-    property string configPath: "/home/droidian/.local/state/flick/effects_config.json"
+    property string configPath: Theme.stateDir + "/effects_config.json"
 
     Component.onCompleted: {
         loadConfig()

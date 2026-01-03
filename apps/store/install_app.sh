@@ -11,6 +11,8 @@ if [ -n "$FLICK_USER" ] && [ "$FLICK_USER" != "root" ]; then
     USER_HOME="/home/$FLICK_USER"
 elif [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
     USER_HOME="/home/$SUDO_USER"
+elif [ -d "/home/furios" ]; then
+    USER_HOME="/home/furios"
 elif [ -d "/home/droidian" ]; then
     USER_HOME="/home/droidian"
 else

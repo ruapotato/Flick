@@ -7,8 +7,8 @@ import "../shared"
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: "Photos"
     color: "#0a0a0f"
 
@@ -32,8 +32,8 @@ Window {
 
     // Base directories to scan for photos
     property var baseDirs: [
-        "/home/droidian/Pictures",
-        "/home/droidian/DCIM"
+        Theme.homeDir + "/Pictures",
+        Theme.homeDir + "/DCIM"
     ]
 
     // Discovered directories (including subfolders)

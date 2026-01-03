@@ -8,8 +8,8 @@ import "../shared"
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: "Flick Video"
     color: "#0a0a0f"
 
@@ -23,7 +23,7 @@ Window {
 
     function loadConfig() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json", false)
+        xhr.open("GET", "file://" + Theme.stateDir + "/display_config.json", false)
         try {
             xhr.send()
             if (xhr.status === 200 || xhr.status === 0) {
@@ -42,10 +42,10 @@ Window {
 
     // Video folders to scan
     property var videoFolders: [
-        "/home/droidian/Videos",
-        "/home/droidian/Movies",
-        "/home/droidian/Downloads",
-        "/home/droidian/DCIM"
+        Theme.homeDir + "/Videos",
+        Theme.homeDir + "/Movies",
+        Theme.homeDir + "/Downloads",
+        Theme.homeDir + "/DCIM"
     ]
 
     ListModel { id: videoModel }

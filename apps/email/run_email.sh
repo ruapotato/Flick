@@ -2,7 +2,7 @@
 # Flick Email - Mobile email client for Flick shell
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STATE_DIR="/home/droidian/.local/state/flick/email"
+STATE_DIR=Theme.stateDir + "/email"
 LOG_FILE="${STATE_DIR}/email.log"
 
 # Ensure state directory exists

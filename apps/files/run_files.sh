@@ -5,7 +5,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Support running from any user - default to droidian
-STATE_DIR="/home/droidian/.local/state/flick"
+STATE_DIR=Theme.stateDir + ""
 LOG_FILE="${STATE_DIR}/files.log"
 
 mkdir -p "$STATE_DIR"

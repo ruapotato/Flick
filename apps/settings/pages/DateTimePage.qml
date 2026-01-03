@@ -16,7 +16,7 @@ Page {
     property string locationName: "Not set"
     property real latitude: 0
     property real longitude: 0
-    property string weatherConfigFile: "/home/droidian/.local/state/flick/weather_config.json"
+    property string weatherConfigFile: Theme.stateDir + "/weather_config.json"
 
     Component.onCompleted: {
         loadDateTimeInfo()

@@ -42,7 +42,7 @@ Window {
     property var downloadsList: []
 
     // File paths
-    property string stateDir: "/home/droidian/.local/state/flick"
+    property string stateDir: Theme.stateDir + ""
     property string bookmarksFile: stateDir + "/browser_bookmarks.json"
     property string historyFile: stateDir + "/browser_history.json"
     property string downloadsFile: stateDir + "/browser_downloads.json"
@@ -359,9 +359,9 @@ Window {
 
     function handleDownload(download) {
         var filename = download.downloadFileName
-        var downloadPath = "/home/droidian/Downloads/" + filename
+        var downloadPath = Theme.homeDir + "/Downloads/" + filename
 
-        download.downloadDirectory = "/home/droidian/Downloads"
+        download.downloadDirectory = Theme.homeDir + "/Downloads"
         download.accept()
 
         var dlEntry = {

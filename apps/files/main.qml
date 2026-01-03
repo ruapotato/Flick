@@ -6,14 +6,14 @@ import Qt.labs.folderlistmodel 2.15
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: pickerMode ? "Select " + (pickerFilter === "images" ? "Image" : pickerFilter === "vcf" ? "Contact File" : "File") : "Flick Files"
     color: "#0a0a0f"
 
     // Use shell text scale
     property real textScale: 1.0
-    property string currentPath: "/home/droidian"
+    property string currentPath: Theme.homeDir
     property color accentColor: accentColor
 
     // Picker mode properties (set via environment variables)
@@ -90,7 +90,7 @@ Window {
 
     function loadConfig() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json")
+        xhr.open("GET", "file://" + Theme.stateDir + "/display_config.json")
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
                 if (xhr.status === 200 || xhr.status === 0) {

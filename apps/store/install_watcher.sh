@@ -11,8 +11,8 @@ find_flick_pkg() {
         echo "/home/$FLICK_USER/Flick/flick-pkg"
     elif [ -n "$SUDO_USER" ] && [ -f "/home/$SUDO_USER/Flick/flick-pkg" ]; then
         echo "/home/$SUDO_USER/Flick/flick-pkg"
-    elif [ -f "/home/droidian/Flick/flick-pkg" ]; then
-        echo "/home/droidian/Flick/flick-pkg"
+    elif [ -f Theme.homeDir + "/Flick/flick-pkg" ]; then
+        echo Theme.homeDir + "/Flick/flick-pkg"
     elif [ -f "$HOME/Flick/flick-pkg" ]; then
         echo "$HOME/Flick/flick-pkg"
     else

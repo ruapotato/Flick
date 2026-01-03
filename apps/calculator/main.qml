@@ -6,8 +6,8 @@ Window {
     id: root
     visible: true
     visibility: Window.FullScreen
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: "Calculator"
     color: "#0a0a0f"
 

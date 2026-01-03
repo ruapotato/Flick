@@ -6,8 +6,8 @@ import "../shared"
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: "Flick Clock"
     color: "#0a0a0f"
 
@@ -15,7 +15,7 @@ Window {
     property color accentColor: Theme.accentColor
     property color accentPressed: Qt.darker(accentColor, 1.2)
     property string currentTab: "clock"  // clock, alarm, timer, stopwatch
-    property string alarmsFile: "/home/droidian/.local/state/flick/alarms.json"
+    property string alarmsFile: Theme.stateDir + "/alarms.json"
 
     // Timer state
     property int timerSeconds: 0
@@ -35,7 +35,7 @@ Window {
 
     function loadConfig() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json", false)
+        xhr.open("GET", "file://" + Theme.stateDir + "/display_config.json", false)
         try {
             xhr.send()
             if (xhr.status === 200 || xhr.status === 0) {

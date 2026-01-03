@@ -5,8 +5,8 @@ import QMLTermWidget 1.0
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: "Flick Terminal"
     color: "#0a0a0f"
 
@@ -22,7 +22,7 @@ Window {
 
     function loadConfig() {
         // Try to read config from standard location (uses droidian home)
-        var configPath = "/home/droidian/.local/state/flick/display_config.json"
+        var configPath = Theme.stateDir + "/display_config.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + configPath, false)
         try {
@@ -173,7 +173,7 @@ Window {
 
         session: QMLTermSession {
             id: termSession
-            initialWorkingDirectory: "/home/droidian"
+            initialWorkingDirectory: Theme.homeDir
             onFinished: Qt.quit()
         }
 

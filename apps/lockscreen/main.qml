@@ -13,7 +13,7 @@ Window {
     property string correctPin: "1234"
     property var correctPattern: [0, 1, 2, 5, 8]  // Default pattern
     // State dir - use droidian home on phone, wrapper script sets this path
-    property string stateDir: "/home/droidian/.local/state/flick"
+    property string stateDir: Theme.stateDir + ""
     property string wallpaperPath: ""
 
     // Call state

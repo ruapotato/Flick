@@ -6,8 +6,8 @@ import "../shared"
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: "Phone"
     color: "#0a0a0f"
 
@@ -38,7 +38,7 @@ Window {
         // Phone app uses fixed scaling - don't load textScale from shell config
         // But load accent color
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json", false)
+        xhr.open("GET", "file://" + Theme.stateDir + "/display_config.json", false)
         try {
             xhr.send()
             if (xhr.status === 200 || xhr.status === 0) {
@@ -51,7 +51,7 @@ Window {
     }
 
     function loadHistory() {
-        var historyPath = "/home/droidian/.local/state/flick/call_history.json"
+        var historyPath = Theme.stateDir + "/call_history.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + historyPath, false)
         try {

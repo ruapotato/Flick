@@ -16,7 +16,7 @@ Page {
     property string accentColor: "#e94560"  // Accent color for buttons
     property var accentColors: ["#e94560", "#4a90d9", "#50c878", "#ffa500", "#9b59b6", "#1abc9c", "#e74c3c", "#f39c12"]
     property var accentColorNames: ["Pink", "Blue", "Green", "Orange", "Purple", "Teal", "Red", "Gold"]
-    property string scaleConfigPath: "/home/droidian/.local/state/flick/display_config.json"
+    property string scaleConfigPath: Theme.stateDir + "/display_config.json"
     property string pickerResultFile: "/tmp/flick_wallpaper_pick.txt"
     property bool waitingForPicker: false
 
@@ -174,7 +174,7 @@ Page {
         console.warn("PICKER_CLEAR:" + pickerResultFile)
         waitingForPicker = true
         // Launch file app in picker mode
-        console.warn("PICKER_LAUNCH:images:/home/droidian/Pictures:" + pickerResultFile)
+        console.warn("PICKER_LAUNCH:images:" + Theme.homeDir + "/Pictures:" + pickerResultFile)
         // Start polling for result
         pickerPollTimer.start()
     }

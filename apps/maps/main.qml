@@ -8,8 +8,8 @@ import "../shared"
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: "Flick Maps"
     color: "#0a0a0f"
 
@@ -21,7 +21,7 @@ Window {
     property bool searchVisible: false
     property var searchResults: []
     property var favorites: []
-    property string favoritesFile: "/home/droidian/.local/state/flick/map_favorites.json"
+    property string favoritesFile: Theme.stateDir + "/map_favorites.json"
 
     // Navigation state
     property bool navigating: false
@@ -44,7 +44,7 @@ Window {
 
     function loadConfig() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json", false)
+        xhr.open("GET", "file://" + Theme.stateDir + "/display_config.json", false)
         try {
             xhr.send()
             if (xhr.status === 200 || xhr.status === 0) {
@@ -139,7 +139,7 @@ Window {
     }
 
     // Voice navigation functions
-    property string speakQueueFile: "/home/droidian/.local/state/flick/speak_queue"
+    property string speakQueueFile: Theme.stateDir + "/speak_queue"
 
     function speak(text) {
         if (!voiceEnabled || !text) return

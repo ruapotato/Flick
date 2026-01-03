@@ -27,7 +27,7 @@ def find_flick_pkg():
     """Find the flick-pkg script."""
     candidates = [
         os.environ.get("FLICK_PKG"),
-        "/home/droidian/Flick/flick-pkg",
+        Theme.homeDir + "/Flick/flick-pkg",
         str(Path.home() / "Flick" / "flick-pkg"),
         "/home/david/Flick/flick-pkg",
     ]

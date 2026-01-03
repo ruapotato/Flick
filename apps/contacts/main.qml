@@ -6,19 +6,19 @@ import "../shared"
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: "Flick Contacts"
     color: "#0a0a0f"
 
     property real textScale: 2.0
     property color accentColor: Theme.accentColor
     property color accentPressed: Qt.darker(accentColor, 1.2)
-    property string contactsFile: "/home/droidian/.local/state/flick/contacts.json"
+    property string contactsFile: Theme.stateDir + "/contacts.json"
     property string currentView: "list"  // list, detail, edit, add, menu
     property int selectedContactIndex: -1
     property string searchText: ""
-    property string exportPath: "/home/droidian/Documents/contacts.vcf"
+    property string exportPath: Theme.homeDir + "/Documents/contacts.vcf"
     property string importPath: ""
     property string pickerResultFile: "/tmp/flick_vcf_pick.txt"
     property bool waitingForPicker: false
@@ -33,7 +33,7 @@ Window {
     }
 
     function checkAddContactHint() {
-        var hintPath = "/home/droidian/.local/state/flick/add_contact.json"
+        var hintPath = Theme.stateDir + "/add_contact.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + hintPath, false)
         try {
@@ -60,7 +60,7 @@ Window {
 
     function loadConfig() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json", false)
+        xhr.open("GET", "file://" + Theme.stateDir + "/display_config.json", false)
         try {
             xhr.send()
             if (xhr.status === 200 || xhr.status === 0) {
@@ -93,7 +93,7 @@ Window {
         console.warn("PICKER_CLEAR:" + pickerResultFile)
         waitingForPicker = true
         // Launch file app in picker mode for vcf files in Documents
-        console.warn("PICKER_LAUNCH:vcf:/home/droidian/Documents:" + pickerResultFile)
+        console.warn("PICKER_LAUNCH:vcf:" + Theme.homeDir + "/Documents:" + pickerResultFile)
         // Start polling for result
         pickerPollTimer.start()
     }
@@ -236,14 +236,14 @@ Window {
     function messageContact(phone) {
         Haptic.click()
         // Write hint file for messages app to open this conversation
-        var hintPath = "/home/droidian/.local/state/flick/open_conversation.json"
+        var hintPath = Theme.stateDir + "/open_conversation.json"
         var xhr = new XMLHttpRequest()
         xhr.open("PUT", "file://" + hintPath, false)
         try {
             xhr.send(JSON.stringify({phone_number: phone}))
         } catch (e) {}
         // Launch messages app
-        console.log("LAUNCH:/home/droidian/Flick/apps/messages/run_messages.sh")
+        console.log("LAUNCH:" + Theme.homeDir + "/Flick/apps/messages/run_messages.sh")
     }
 
     function filteredContacts() {

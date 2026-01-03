@@ -25,3 +25,6 @@ Thumbs.db
 *.pyc
 __pycache__/
 drm-hwcomposer-shim/target/
+hwc-shim/*.a
+hwc-shim/*.so*
+hwc-shim/src/*.o

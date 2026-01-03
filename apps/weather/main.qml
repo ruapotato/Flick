@@ -6,15 +6,15 @@ import "../shared"
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: "Flick Weather"
     color: "#0a0a0f"
 
     property real textScale: 2.0
     property color accentColor: Theme.accentColor
     property color accentPressed: Qt.darker(accentColor, 1.2)
-    property string configFile: "/home/droidian/.local/state/flick/weather_config.json"
+    property string configFile: Theme.stateDir + "/weather_config.json"
 
     // Weather data
     property real currentTemp: 0
@@ -40,7 +40,7 @@ Window {
 
     function loadConfig() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json", false)
+        xhr.open("GET", "file://" + Theme.stateDir + "/display_config.json", false)
         try {
             xhr.send()
             if (xhr.status === 200 || xhr.status === 0) {

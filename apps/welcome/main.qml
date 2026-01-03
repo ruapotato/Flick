@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import "../shared"
 
 Window {
     id: root
@@ -12,7 +13,7 @@ Window {
 
     property int currentPage: 0
     property int totalPages: 7
-    property string configPath: Qt.resolvedUrl("file://" + (Qt.platform.os === "android" ? "/home/droidian" : "/home/" + Qt.getenv("USER")) + "/.local/state/flick/welcome_config.json")
+    property string configPath: "file://" + Theme.stateDir + "/welcome_config.json"
 
     // Tutorial pages data
     property var pages: [

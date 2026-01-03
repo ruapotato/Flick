@@ -66,7 +66,7 @@ Window {
         var home = Qt.resolvedUrl(".").toString().replace("file://", "")
         // Extract home from path like /home/user/Flick/apps/store/
         var match = home.match(/^(\/home\/[^\/]+)\//)
-        return match ? match[1] : "/home/droidian"
+        return match ? match[1] : Theme.homeDir
     }
     property string flickDir: userHome + "/Flick"
     property string stateDir: userHome + "/.local/state/flick"

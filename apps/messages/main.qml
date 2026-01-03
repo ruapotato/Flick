@@ -6,8 +6,8 @@ import "../shared"
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: "Messages"
     color: "#0a0a0f"
 
@@ -46,7 +46,7 @@ Window {
     }
 
     function checkOpenConversationHint() {
-        var hintPath = "/home/droidian/.local/state/flick/open_conversation.json"
+        var hintPath = Theme.stateDir + "/open_conversation.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + hintPath, false)
         try {
@@ -68,7 +68,7 @@ Window {
     }
 
     function loadConfig() {
-        var configPath = "/home/droidian/.local/state/flick/display_config.json"
+        var configPath = Theme.stateDir + "/display_config.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + configPath, false)
         try {
@@ -88,7 +88,7 @@ Window {
     }
 
     function loadContacts() {
-        var contactsPath = "/home/droidian/.local/state/flick/contacts.json"
+        var contactsPath = Theme.stateDir + "/contacts.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + contactsPath, false)
         try {
@@ -128,7 +128,7 @@ Window {
 
     function saveNewContact(name, phone) {
         // Load existing contacts
-        var contactsPath = "/home/droidian/.local/state/flick/contacts.json"
+        var contactsPath = Theme.stateDir + "/contacts.json"
         var contacts = []
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + contactsPath, false)
@@ -177,7 +177,7 @@ Window {
 
     function launchAddContact(phone) {
         // Write hint file for contacts app to pre-fill the phone number
-        var hintPath = "/home/droidian/.local/state/flick/add_contact.json"
+        var hintPath = Theme.stateDir + "/add_contact.json"
         var xhr = new XMLHttpRequest()
         xhr.open("PUT", "file://" + hintPath, false)
         try {
@@ -186,11 +186,11 @@ Window {
             console.log("Error writing add contact hint: " + e)
         }
         // Launch contacts app
-        console.warn("LAUNCH:/home/droidian/Flick/apps/contacts/run_contacts.sh")
+        console.warn("LAUNCH:" + Theme.homeDir + "/Flick/apps/contacts/run_contacts.sh")
     }
 
     function loadConversations() {
-        var messagesPath = "/home/droidian/.local/state/flick/messages.json"
+        var messagesPath = Theme.stateDir + "/messages.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + messagesPath, false)
         try {
@@ -210,7 +210,7 @@ Window {
     }
 
     function loadMessages(phoneNumber) {
-        var messagesPath = "/home/droidian/.local/state/flick/messages.json"
+        var messagesPath = Theme.stateDir + "/messages.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + messagesPath, false)
         try {
@@ -341,7 +341,7 @@ Window {
     }
 
     function markConversationRead(phoneNumber) {
-        var messagesPath = "/home/droidian/.local/state/flick/messages.json"
+        var messagesPath = Theme.stateDir + "/messages.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + messagesPath, false)
         try {

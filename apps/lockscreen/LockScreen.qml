@@ -20,7 +20,7 @@ Item {
 
     function loadAccentColor() {
         var xhr = new XMLHttpRequest()
-        var configPath = stateDir !== "" ? stateDir : "/home/droidian/.local/state/flick"
+        var configPath = stateDir !== "" ? stateDir : Theme.stateDir + ""
         xhr.open("GET", "file://" + configPath + "/display_config.json", false)
         try {
             xhr.send()

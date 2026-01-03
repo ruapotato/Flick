@@ -22,7 +22,7 @@ Item {
     property string app: ""
     property int position: 0
     property int duration: 0
-    property string stateDir: "/home/droidian/.local/state/flick"
+    property string stateDir: Theme.stateDir + ""
     property color accentColor: "#e94560"  // Can be set from parent
 
     Behavior on height { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }

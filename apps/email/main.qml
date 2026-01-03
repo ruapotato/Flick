@@ -28,7 +28,7 @@ Window {
     property string errorMessage: ""
 
     // Command/response paths
-    readonly property string stateDir: "/home/droidian/.local/state/flick/email"
+    readonly property string stateDir: Theme.stateDir + "/email"
     readonly property string commandsFile: stateDir + "/commands.json"
     readonly property string responseFile: stateDir + "/response.json"
 
@@ -46,7 +46,7 @@ Window {
     }
 
     function loadConfig() {
-        var configPath = "/home/droidian/.local/state/flick/display_config.json"
+        var configPath = Theme.stateDir + "/display_config.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + configPath, false)
         try {

@@ -718,7 +718,7 @@ class EmailBackend:
             if url:
                 import subprocess
                 try:
-                    browser_script = "/home/droidian/Flick/apps/web/run_web.sh"
+                    browser_script = Theme.homeDir + "/Flick/apps/web/run_web.sh"
                     subprocess.Popen([browser_script, url], start_new_session=True)
                     log(f"Opening URL in browser: {url}")
                     return {"success": True}

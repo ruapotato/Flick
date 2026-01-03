@@ -7,13 +7,13 @@ import "../shared"
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     visibility: Window.FullScreen
     title: "Notes"
     color: "#0a0a0f"
 
-    property string notesDir: "/home/droidian/.local/state/flick/notes"
+    property string notesDir: Theme.stateDir + "/notes"
     property bool editMode: false
     property string currentNoteFile: ""
     property string currentNoteContent: ""

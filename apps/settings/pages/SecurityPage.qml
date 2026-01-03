@@ -8,7 +8,7 @@ Page {
     id: securityPage
 
     property int selectedMethod: 1  // 0=PIN, 1=Password, 2=Pattern, 3=None (default to password)
-    property string configPath: "/home/droidian/.local/state/flick/lock_config.json"
+    property string configPath: Theme.stateDir + "/lock_config.json"
 
     // Load current config on startup
     Component.onCompleted: {

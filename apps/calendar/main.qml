@@ -6,8 +6,8 @@ import "../shared"
 Window {
     id: root
     visible: true
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: "Flick Calendar"
     color: "#0a0a0f"
 
@@ -27,7 +27,7 @@ Window {
     }
 
     function loadEvents() {
-        var eventsPath = "/home/droidian/.local/state/flick/calendar.json"
+        var eventsPath = Theme.stateDir + "/calendar.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + eventsPath, false)
         try {
@@ -43,7 +43,7 @@ Window {
     }
 
     function saveEvents() {
-        var eventsPath = "/home/droidian/.local/state/flick/calendar.json"
+        var eventsPath = Theme.stateDir + "/calendar.json"
         var eventsJson = JSON.stringify(events, null, 2)
         var xhr = new XMLHttpRequest()
         xhr.open("PUT", "file://" + eventsPath, false)
