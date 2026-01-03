@@ -174,7 +174,7 @@ component VolumeOverlay inherits Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 text: root.muted ? "🔇" : (root.volume > 66 ? "🔊" : (root.volume > 33 ? "🔉" : (root.volume > 0 ? "🔈" : "🔇")));
-                font-size: 42px;
+                font-size: 28px;
             }
         }
 
@@ -303,7 +303,7 @@ component StatusBar inherits Rectangle {
         Text {
             text: time;
             color: Theme.on-surface;
-            font-size: 54px * text-scale;
+            font-size: 24px * text-scale;
             font-weight: 600;
             vertical-alignment: center;
         }
@@ -318,7 +318,7 @@ component StatusBar inherits Rectangle {
             Text {
                 text: wifi ? "W" : "-";
                 color: wifi ? Theme.primary : Theme.on-surface-variant;
-                font-size: 48px * text-scale;
+                font-size: 32px * text-scale;
                 font-weight: 500;
                 vertical-alignment: center;
             }
@@ -327,7 +327,7 @@ component StatusBar inherits Rectangle {
             Text {
                 text: battery + "%";
                 color: battery > 20 ? Theme.success : Theme.error;
-                font-size: 54px * text-scale;
+                font-size: 24px * text-scale;
                 font-weight: 600;
                 vertical-alignment: center;
             }
@@ -474,7 +474,7 @@ component CircularContextMenu inherits Rectangle {
             padding: 10px;
             Text {
                 text: "📋";
-                font-size: 48px;
+                font-size: 32px;
                 horizontal-alignment: center;
             }
             Text {
@@ -502,7 +502,7 @@ component CircularContextMenu inherits Rectangle {
             spacing: 12px;
             Text {
                 text: "📄";
-                font-size: 48px;
+                font-size: 32px;
                 horizontal-alignment: center;
             }
             Text {
@@ -619,7 +619,7 @@ component SystemMenu inherits Rectangle {
             Text {
                 text: "System";
                 color: #ffffff;
-                font-size: 56px;
+                font-size: 38px;
                 horizontal-alignment: center;
             }
 
@@ -634,13 +634,13 @@ component SystemMenu inherits Rectangle {
                     spacing: 32px;
                     Text {
                         text: "🔒";
-                        font-size: 64px;
+                        font-size: 28px;
                         vertical-alignment: center;
                     }
                     Text {
                         text: "Lock Screen";
                         color: #ffffff;
-                        font-size: 44px;
+                        font-size: 30px;
                         vertical-alignment: center;
                     }
                 }
@@ -661,13 +661,13 @@ component SystemMenu inherits Rectangle {
                     spacing: 32px;
                     Text {
                         text: "🔄";
-                        font-size: 64px;
+                        font-size: 28px;
                         vertical-alignment: center;
                     }
                     Text {
                         text: "Reboot";
                         color: #ffffff;
-                        font-size: 44px;
+                        font-size: 30px;
                         vertical-alignment: center;
                     }
                 }
@@ -688,13 +688,13 @@ component SystemMenu inherits Rectangle {
                     spacing: 32px;
                     Text {
                         text: "⏻";
-                        font-size: 64px;
+                        font-size: 28px;
                         vertical-alignment: center;
                     }
                     Text {
                         text: "Power Off";
                         color: #ffffff;
-                        font-size: 44px;
+                        font-size: 30px;
                         vertical-alignment: center;
                     }
                 }
@@ -715,7 +715,7 @@ component SystemMenu inherits Rectangle {
                 Text {
                     text: "Cancel";
                     color: #888899;
-                    font-size: 36px;
+                    font-size: 24px;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
@@ -2409,7 +2409,7 @@ component QuickSettingsPanel inherits Rectangle {
 
                 Text {
                     text: "🔔";
-                    font-size: 48px;
+                    font-size: 32px;
                     horizontal-alignment: center;
                     opacity: 0.5;
                 }
@@ -3102,7 +3102,7 @@ component IncomingCallOverlay inherits Rectangle {
         // Caller number
         Text {
             text: caller-number;
-            font-size: 36px;
+            font-size: 24px;
             font-weight: 700;
             color: Theme.on-surface;
             horizontal-alignment: center;
@@ -3127,7 +3127,7 @@ component IncomingCallOverlay inherits Rectangle {
 
                 Text {
                     text: "\u{2716}";  // X mark
-                    font-size: 36px;
+                    font-size: 24px;
                     color: white;
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
@@ -3147,7 +3147,7 @@ component IncomingCallOverlay inherits Rectangle {
 
                 Text {
                     text: "\u{2714}";  // Check mark
-                    font-size: 36px;
+                    font-size: 24px;
                     color: white;
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;

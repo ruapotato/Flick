@@ -487,8 +487,8 @@ impl Shell {
                 }
             }
         }
-        tracing::info!("Using default text scale: 2.0 (config: {:?})", config_path);
-        2.0 // Default scale for mobile
+        tracing::info!("Using default text scale: 1.0 (config: {:?})", config_path);
+        1.0 // Default scale for 720px mobile (was 2.0 for 1080px)
     }
 
     /// Reload screen timeout from config (called when settings may have changed)
