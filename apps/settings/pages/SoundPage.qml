@@ -180,7 +180,7 @@ Page {
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 8
-                height: 80
+                height: 54
 
                 Repeater {
                     model: 7
@@ -214,7 +214,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Sound"
-                font.pixelSize: 42
+                font.pixelSize: 20
                 font.weight: Font.ExtraLight
                 font.letterSpacing: 6
                 color: "#ffffff"
@@ -455,7 +455,7 @@ Page {
             // Mute toggle (replaces silent mode)
             Rectangle {
                 width: controlsColumn.width
-                height: 90
+                height: 40
                 radius: 24
                 color: muteMouse.pressed ? "#1e1e2e" : "#14141e"
                 border.color: silentMode ? Theme.accentColor : "#1a1a2e"
@@ -537,7 +537,7 @@ Page {
             // Notification sound toggle and selector
             Rectangle {
                 width: controlsColumn.width
-                height: 90
+                height: 40
                 radius: 24
                 color: "#14141e"
                 border.color: notificationEnabled ? "#1a1a2e" : Theme.accentColor
@@ -710,7 +710,7 @@ Page {
             // Ringtone toggle and selector
             Rectangle {
                 width: controlsColumn.width
-                height: 90
+                height: 40
                 radius: 24
                 color: "#14141e"
                 border.color: ringtoneEnabled ? "#1a1a2e" : Theme.accentColor
@@ -880,8 +880,8 @@ Page {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
@@ -890,7 +890,7 @@ Page {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             font.weight: Font.Medium
             color: "#ffffff"
         }

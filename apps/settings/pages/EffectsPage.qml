@@ -156,7 +156,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "✨"
-                font.pixelSize: 56
+                font.pixelSize: 38
             }
 
             Text {
@@ -251,7 +251,7 @@ Page {
                             ]
 
                             Rectangle {
-                                width: 90
+                                width: 40
                                 height: 56
                                 radius: 14
                                 color: touchEffectStyle === modelData.style ? Qt.darker(modelData.color, 2) : "#1a1a28"
@@ -524,7 +524,7 @@ Page {
                 }
             }
 
-            Item { height: 60 }
+            Item { height: 40 }
         }
     }
 
@@ -534,15 +534,15 @@ Page {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 64
-        height: 64
+        width: 44
+        height: 44
         radius: 32
         color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 28
+            font.pixelSize: 20
             color: "#ffffff"
         }
 

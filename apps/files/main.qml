@@ -390,8 +390,8 @@ Window {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? accentPressed : accentColor
         z: 10
@@ -402,7 +402,7 @@ Window {
             anchors.centerIn: parent
             text: currentPath === "/" ? "✕" : "←"
             color: "#ffffff"
-            font.pixelSize: 32
+            font.pixelSize: 22
             font.weight: Font.Medium
         }
 
@@ -433,8 +433,8 @@ Window {
         anchors.bottom: parent.bottom
         anchors.leftMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: pasteMouse.pressed ? "#2a8a4a" : "#3ca55c"
         visible: clipboardPath !== ""
@@ -445,7 +445,7 @@ Window {
         Text {
             anchors.centerIn: parent
             text: "📋"
-            font.pixelSize: 28
+            font.pixelSize: 20
         }
 
         MouseArea {

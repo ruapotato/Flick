@@ -214,12 +214,12 @@ Window {
 
         Column {
             anchors.centerIn: parent
-            spacing: 30
+            spacing: 20
 
             // Phone icon
             Text {
                 text: "📞"
-                font.pixelSize: 72
+                font.pixelSize: 22
                 anchors.horizontalCenter: parent.horizontalCenter
             }
 
@@ -234,30 +234,30 @@ Window {
             // Caller number
             Text {
                 text: callNumber
-                font.pixelSize: 32
+                font.pixelSize: 22
                 font.bold: true
                 color: "#ffffff"
                 anchors.horizontalCenter: parent.horizontalCenter
             }
 
             // Spacer
-            Item { width: 1; height: 60 }
+            Item { width: 1; height: 40 }
 
             // Answer/Reject buttons
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 80
+                spacing: 32
 
                 // Reject button (red)
                 Rectangle {
-                    width: 80
-                    height: 80
+                    width: 54
+                    height: 54
                     radius: 40
                     color: rejectMouse.pressed ? "#cc3333" : "#e94560"
 
                     Text {
                         text: "✕"
-                        font.pixelSize: 36
+                        font.pixelSize: 24
                         color: "white"
                         anchors.centerIn: parent
                     }
@@ -271,14 +271,14 @@ Window {
 
                 // Answer button (green)
                 Rectangle {
-                    width: 80
-                    height: 80
+                    width: 54
+                    height: 54
                     radius: 40
                     color: answerMouse.pressed ? "#33cc33" : "#4ade80"
 
                     Text {
                         text: "✓"
-                        font.pixelSize: 36
+                        font.pixelSize: 24
                         color: "white"
                         anchors.centerIn: parent
                     }
@@ -308,7 +308,7 @@ Window {
             // Phone icon (green for active)
             Text {
                 text: "📱"
-                font.pixelSize: 64
+                font.pixelSize: 20
                 anchors.horizontalCenter: parent.horizontalCenter
             }
 
@@ -323,7 +323,7 @@ Window {
             // Caller number
             Text {
                 text: callNumber
-                font.pixelSize: 28
+                font.pixelSize: 20
                 font.bold: true
                 color: "#ffffff"
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -332,7 +332,7 @@ Window {
             // Call duration
             Text {
                 text: formatDuration(callDuration)
-                font.pixelSize: 48
+                font.pixelSize: 22
                 font.bold: true
                 color: "#ffffff"
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -344,15 +344,15 @@ Window {
             // Mute, Speaker and Hang up buttons
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 40
+                spacing: 26
 
                 // Mute button
                 Column {
                     spacing: 8
 
                     Rectangle {
-                        width: 64
-                        height: 64
+                        width: 44
+                        height: 44
                         radius: 32
                         color: isMuted ? "#e94560" : (muteMouse.pressed ? "#444466" : "#333355")
 
@@ -382,8 +382,8 @@ Window {
                     spacing: 8
 
                     Rectangle {
-                        width: 64
-                        height: 64
+                        width: 44
+                        height: 44
                         radius: 32
                         color: isSpeaker ? "#4ade80" : (speakerMouse.pressed ? "#444466" : "#333355")
 
@@ -413,14 +413,14 @@ Window {
                     spacing: 8
 
                     Rectangle {
-                        width: 64
-                        height: 64
+                        width: 44
+                        height: 44
                         radius: 32
                         color: hangupMouse.pressed ? "#cc3333" : "#e94560"
 
                         Text {
                             text: "✕"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                             color: "white"
                             anchors.centerIn: parent
                         }

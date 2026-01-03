@@ -160,7 +160,7 @@ Window {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: getMonthName(currentMonth) + " " + currentYear
-                font.pixelSize: 36
+                font.pixelSize: 24
                 font.weight: Font.Light
                 color: "#ffffff"
             }
@@ -333,7 +333,7 @@ Window {
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
-                spacing: 40
+                spacing: 26
 
                 Rectangle {
                     width: 56
@@ -423,7 +423,7 @@ Window {
 
                             // Day info
                             Column {
-                                width: 80
+                                width: 54
                                 anchors.verticalCenter: parent.verticalCenter
 
                                 Text {
@@ -433,7 +433,7 @@ Window {
                                 }
                                 Text {
                                     text: dayNum > 0 ? dayNum : ""
-                                    font.pixelSize: 28
+                                    font.pixelSize: 20
                                     font.weight: Font.Bold
                                     color: dayNum > 0 && isToday(dayNum) ? accentColor : "#ffffff"
                                 }
@@ -481,7 +481,7 @@ Window {
                 // Week navigation
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: 40
+                    spacing: 26
 
                     Rectangle {
                         width: 56
@@ -562,7 +562,7 @@ Window {
 
                     delegate: Rectangle {
                         width: eventsList.width
-                        height: 80
+                        height: 54
                         radius: 16
                         color: "#1a1a2e"
                         border.color: accentColor
@@ -883,7 +883,7 @@ Window {
                             spacing: 8
 
                             Rectangle {
-                                width: 60
+                                width: 40
                                 height: 36
                                 radius: 8
                                 color: eventPopup.selectedHour >= 0 && eventPopup.selectedHour < 12 ? accentColor : "#2a2a3e"
@@ -906,7 +906,7 @@ Window {
                             }
 
                             Rectangle {
-                                width: 60
+                                width: 40
                                 height: 36
                                 radius: 8
                                 color: eventPopup.selectedHour >= 12 ? accentColor : "#2a2a3e"
@@ -1033,8 +1033,8 @@ Window {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? accentPressed : accentColor
         z: 50
@@ -1042,7 +1042,7 @@ Window {
         Text {
             anchors.centerIn: parent
             text: selectedDay !== -1 ? "←" : "✕"
-            font.pixelSize: 32
+            font.pixelSize: 22
             color: "#ffffff"
         }
 

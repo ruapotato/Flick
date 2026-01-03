@@ -11,7 +11,7 @@ Window {
     title: "Flick Weather"
     color: "#0a0a0f"
 
-    property real textScale: 2.0
+    property real textScale: Theme.textScale
     property color accentColor: Theme.accentColor
     property color accentPressed: Qt.darker(accentColor, 1.2)
     property string configFile: Theme.stateDir + "/weather_config.json"
@@ -251,7 +251,7 @@ Window {
             // Header with location
             Row {
                 width: parent.width
-                height: 80
+                height: 54
                 spacing: 12
 
                 Column {
@@ -260,7 +260,7 @@ Window {
 
                     Text {
                         text: locationName
-                        font.pixelSize: 28 * textScale
+                        font.pixelSize: 20 * textScale
                         font.weight: Font.Medium
                         color: "#ffffff"
                         elide: Text.ElideRight
@@ -347,7 +347,7 @@ Window {
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "📍"
-                        font.pixelSize: 64
+                        font.pixelSize: 20
                     }
 
                     Text {
@@ -403,7 +403,7 @@ Window {
 
                         Text {
                             text: currentIcon
-                            font.pixelSize: 80
+                            font.pixelSize: 22
                         }
 
                         Text {
@@ -421,7 +421,7 @@ Window {
 
                         Text {
                             text: currentTemp + "°"
-                            font.pixelSize: 72 * textScale
+                            font.pixelSize: 22 * textScale
                             font.weight: Font.ExtraLight
                             color: "#ffffff"
                         }
@@ -462,7 +462,7 @@ Window {
 
             Rectangle {
                 width: parent.width
-                height: 80 + 60 * textScale  // Scale with text
+                height: 54 + 60 * textScale  // Scale with text
                 radius: 16
                 color: "#15151f"
                 visible: hasLocation
@@ -540,7 +540,7 @@ Window {
                                 spacing: 16
 
                                 Text {
-                                    width: 80
+                                    width: 54
                                     text: model.day
                                     font.pixelSize: 16 * textScale
                                     color: "#ffffff"
@@ -549,7 +549,7 @@ Window {
 
                                 Text {
                                     text: model.icon
-                                    font.pixelSize: 28
+                                    font.pixelSize: 20
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
 
@@ -591,8 +591,8 @@ Window {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 100
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? accentPressed : accentColor
         z: 10
@@ -600,7 +600,7 @@ Window {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             color: "#ffffff"
         }
 

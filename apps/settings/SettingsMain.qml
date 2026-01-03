@@ -46,7 +46,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Settings"
-                font.pixelSize: 52
+                font.pixelSize: 22
                 font.weight: Font.ExtraLight
                 font.letterSpacing: 8
                 color: "#ffffff"
@@ -217,7 +217,7 @@ Page {
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: model.icon
-                        font.pixelSize: 56
+                        font.pixelSize: 38
                         opacity: 0.9
                     }
 
@@ -278,8 +278,8 @@ Page {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backButtonMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
@@ -288,7 +288,7 @@ Page {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             font.weight: Font.Medium
             color: "#ffffff"
         }

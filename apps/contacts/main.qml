@@ -11,7 +11,7 @@ Window {
     title: "Flick Contacts"
     color: "#0a0a0f"
 
-    property real textScale: 2.0
+    property real textScale: Theme.textScale
     property color accentColor: Theme.accentColor
     property color accentPressed: Qt.darker(accentColor, 1.2)
     property string contactsFile: Theme.stateDir + "/contacts.json"
@@ -380,7 +380,7 @@ Window {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "Contacts"
-                    font.pixelSize: 48 * textScale
+                    font.pixelSize: 22 * textScale
                     font.weight: Font.ExtraLight
                     font.letterSpacing: 6
                     color: "#ffffff"
@@ -410,7 +410,7 @@ Window {
                 Text {
                     anchors.centerIn: parent
                     text: "⋮"
-                    font.pixelSize: 28
+                    font.pixelSize: 20
                     color: "#ffffff"
                 }
 
@@ -438,7 +438,7 @@ Window {
                 Text {
                     anchors.centerIn: parent
                     text: "+"
-                    font.pixelSize: 32
+                    font.pixelSize: 22
                     color: "#ffffff"
                 }
 
@@ -648,7 +648,7 @@ Window {
                 Text {
                     anchors.centerIn: parent
                     text: "←"
-                    font.pixelSize: 28
+                    font.pixelSize: 20
                     color: "#ffffff"
                 }
 
@@ -673,7 +673,7 @@ Window {
                 Text {
                     anchors.centerIn: parent
                     text: parent.parent.parent.contact ? parent.parent.parent.contact.initials || getInitials(parent.parent.parent.contact.name) : ""
-                    font.pixelSize: 48
+                    font.pixelSize: 22
                     font.weight: Font.Medium
                     color: "#ffffff"
                 }
@@ -683,7 +683,7 @@ Window {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: parent.parent.contact ? parent.parent.contact.name : ""
-                font.pixelSize: 32 * textScale
+                font.pixelSize: 22 * textScale
                 font.weight: Font.Medium
                 color: "#ffffff"
             }
@@ -691,21 +691,21 @@ Window {
             // Action buttons
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 40
+                spacing: 26
 
                 Column {
                     spacing: 8
 
                     Rectangle {
-                        width: 72
-                        height: 72
+                        width: 48
+                        height: 48
                         radius: 36
                         color: callDetailMouse.pressed ? "#1a7a3a" : "#228B22"
 
                         Text {
                             anchors.centerIn: parent
                             text: "📞"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                         }
 
                         MouseArea {
@@ -727,15 +727,15 @@ Window {
                     spacing: 8
 
                     Rectangle {
-                        width: 72
-                        height: 72
+                        width: 48
+                        height: 48
                         radius: 36
                         color: msgDetailMouse.pressed ? "#3a7ac2" : "#4a9eff"
 
                         Text {
                             anchors.centerIn: parent
                             text: "💬"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                         }
 
                         MouseArea {
@@ -757,15 +757,15 @@ Window {
                     spacing: 8
 
                     Rectangle {
-                        width: 72
-                        height: 72
+                        width: 48
+                        height: 48
                         radius: 36
                         color: editDetailMouse.pressed ? "#333344" : "#222233"
 
                         Text {
                             anchors.centerIn: parent
                             text: "✏️"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                         }
 
                         MouseArea {
@@ -978,7 +978,7 @@ Window {
 
                 Rectangle {
                     width: parent.width
-                    height: 60
+                    height: 40
                     radius: 12
                     color: "#1a1a2e"
                     border.color: nameInput.activeFocus ? accentColor : "transparent"
@@ -1009,7 +1009,7 @@ Window {
 
                 Rectangle {
                     width: parent.width
-                    height: 60
+                    height: 40
                     radius: 12
                     color: "#1a1a2e"
                     border.color: phoneInput.activeFocus ? accentColor : "transparent"
@@ -1041,7 +1041,7 @@ Window {
 
                 Rectangle {
                     width: parent.width
-                    height: 60
+                    height: 40
                     radius: 12
                     color: "#1a1a2e"
                     border.color: emailInput.activeFocus ? accentColor : "transparent"
@@ -1095,7 +1095,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: "←"
-                        font.pixelSize: 28
+                        font.pixelSize: 20
                         color: "#ffffff"
                     }
 
@@ -1126,7 +1126,7 @@ Window {
                 // Import button
                 Rectangle {
                     width: parent.width
-                    height: 80
+                    height: 54
                     radius: 16
                     color: waitingForPicker ? "#2a3a2e" : (importMouse.pressed ? "#2a2a3e" : "#1a1a2e")
 
@@ -1183,7 +1183,7 @@ Window {
                 // Export button
                 Rectangle {
                     width: parent.width
-                    height: 80
+                    height: 54
                     radius: 16
                     color: exportMouse.pressed ? "#2a2a3e" : "#1a1a2e"
 
@@ -1267,8 +1267,8 @@ Window {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 100
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? accentPressed : accentColor
         visible: currentView === "list"
@@ -1277,7 +1277,7 @@ Window {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             color: "#ffffff"
         }
 

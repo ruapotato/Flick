@@ -129,7 +129,7 @@ Page {
                     Text {
                         anchors.centerIn: parent
                         text: batteryLevel + "%"
-                        font.pixelSize: 32
+                        font.pixelSize: 22
                         font.weight: Font.Bold
                         color: "#ffffff"
                     }
@@ -151,7 +151,7 @@ Page {
                     anchors.centerIn: parent
                     anchors.verticalCenterOffset: 20
                     text: isCharging ? "⚡" : ""
-                    font.pixelSize: 48
+                    font.pixelSize: 22
                     opacity: 0.9
                     visible: isCharging
 
@@ -382,7 +382,7 @@ Page {
 
             Rectangle {
                 width: detailsColumn.width
-                height: 90
+                height: 40
                 radius: 24
                 color: "#14141e"
                 border.color: "#1a1a2e"
@@ -442,8 +442,8 @@ Page {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
@@ -452,7 +452,7 @@ Page {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             font.weight: Font.Medium
             color: "#ffffff"
         }

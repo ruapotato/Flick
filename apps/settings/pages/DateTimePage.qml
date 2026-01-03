@@ -228,7 +228,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: currentTime
-                font.pixelSize: 80
+                font.pixelSize: 22
                 font.weight: Font.Light
                 font.letterSpacing: 4
                 color: "#ffffff"
@@ -247,7 +247,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: currentDay
-                font.pixelSize: 28
+                font.pixelSize: 20
                 font.weight: Font.Medium
                 color: Theme.accentColor
             }
@@ -289,7 +289,7 @@ Page {
             // Auto time sync toggle
             Rectangle {
                 width: settingsColumn.width
-                height: 90
+                height: 40
                 radius: 24
                 color: ntpMouse.pressed ? "#1e1e2e" : "#14141e"
                 border.color: ntpEnabled ? Theme.accentColor : "#1a1a2e"
@@ -361,7 +361,7 @@ Page {
             // Timezone
             Rectangle {
                 width: settingsColumn.width
-                height: 90
+                height: 40
                 radius: 24
                 color: tzMouse.pressed ? "#1e1e2e" : "#14141e"
                 border.color: timezonePickerVisible ? Theme.accentColor : "#1a1a2e"
@@ -632,7 +632,7 @@ Page {
             // 24-hour time
             Rectangle {
                 width: settingsColumn.width
-                height: 80
+                height: 54
                 radius: 24
                 color: "#14141e"
                 border.color: "#1a1a2e"
@@ -686,7 +686,7 @@ Page {
             // Current location display
             Rectangle {
                 width: settingsColumn.width
-                height: 90
+                height: 40
                 radius: 24
                 color: locationMouse.pressed ? "#1e1e2e" : "#14141e"
                 border.color: locationName !== "Not set" ? Theme.accentColor : "#1a1a2e"
@@ -823,7 +823,7 @@ Page {
 
                             Rectangle {
                                 width: searchCol.width
-                                height: 60
+                                height: 40
                                 radius: 10
                                 color: resultMouse.pressed ? "#2a2a3e" : "#1a1a28"
 
@@ -876,8 +876,8 @@ Page {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
@@ -886,7 +886,7 @@ Page {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             font.weight: Font.Medium
             color: "#ffffff"
         }

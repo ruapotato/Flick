@@ -78,8 +78,8 @@ Window {
         // Swipe up indicator
         Rectangle {
             id: swipeUpIndicator
-            width: 60
-            height: 60
+            width: 40
+            height: 40
             radius: 30
             color: "#4fc3f7"
             opacity: 0
@@ -107,8 +107,8 @@ Window {
         // Swipe down indicator
         Rectangle {
             id: swipeDownIndicator
-            width: 60
-            height: 60
+            width: 40
+            height: 40
             radius: 30
             color: "#f44336"
             opacity: 0
@@ -135,8 +135,8 @@ Window {
         // Swipe from left indicator
         Rectangle {
             id: swipeLeftIndicator
-            width: 60
-            height: 60
+            width: 40
+            height: 40
             radius: 30
             color: "#66bb6a"
             opacity: 0
@@ -163,8 +163,8 @@ Window {
         // Swipe from right indicator
         Rectangle {
             id: swipeRightIndicator
-            width: 60
-            height: 60
+            width: 40
+            height: 40
             radius: 30
             color: "#ffb74d"
             opacity: 0
@@ -196,7 +196,7 @@ Window {
         ColumnLayout {
             anchors.centerIn: parent
             width: parent.width * 0.85
-            spacing: 30
+            spacing: 20
 
             // Icon circle
             Rectangle {
@@ -223,7 +223,7 @@ Window {
                             default: return "\u2192"        // Arrow
                         }
                     }
-                    font.pixelSize: 48
+                    font.pixelSize: 22
                     color: "#4fc3f7"
                 }
             }
@@ -232,7 +232,7 @@ Window {
             Text {
                 Layout.alignment: Qt.AlignHCenter
                 text: pages[currentPage].title
-                font.pixelSize: 36
+                font.pixelSize: 24
                 font.bold: true
                 color: "white"
             }
@@ -272,7 +272,7 @@ Window {
 
                 Rectangle {
                     id: toggleBg
-                    width: 60
+                    width: 40
                     height: 32
                     radius: 16
                     color: dontShowToggle.checked ? "#4fc3f7" : "#444466"
@@ -336,7 +336,7 @@ Window {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 40
-        spacing: 40
+        spacing: 26
 
         // Back button
         Rectangle {

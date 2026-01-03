@@ -58,7 +58,7 @@ Item {
         Text {
             anchors.centerIn: parent
             text: "‹"
-            font.pixelSize: 48
+            font.pixelSize: 22
             font.weight: Font.Light
             color: "#ffffff"
         }
@@ -70,7 +70,7 @@ Item {
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        width: 60  // Only detect swipes starting from left 60px
+        width: 40  // Only detect swipes starting from left 60px
         z: 1000
 
         property real dragDistance: 0

@@ -97,7 +97,7 @@ Page {
                 Text {
                     anchors.centerIn: parent
                     text: doNotDisturb ? "🔕" : "🔔"
-                    font.pixelSize: 52
+                    font.pixelSize: 22
 
                     // Ring animation when not DND
                     SequentialAnimation on rotation {
@@ -121,7 +121,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Notifications"
-                font.pixelSize: 42
+                font.pixelSize: 20
                 font.weight: Font.ExtraLight
                 font.letterSpacing: 6
                 color: "#ffffff"
@@ -182,7 +182,7 @@ Page {
                         Text {
                             anchors.centerIn: parent
                             text: "🌙"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                         }
                     }
 
@@ -243,7 +243,7 @@ Page {
             // Show previews
             Rectangle {
                 width: settingsColumn.width
-                height: 80
+                height: 54
                 radius: 24
                 color: previewMouse.pressed ? "#1e1e2e" : "#14141e"
                 border.color: showPreviews ? "#f59e0b" : "#1a1a2e"
@@ -297,7 +297,7 @@ Page {
             // Sound
             Rectangle {
                 width: settingsColumn.width
-                height: 80
+                height: 54
                 radius: 24
                 color: soundMouse.pressed ? "#1e1e2e" : "#14141e"
                 border.color: soundEnabled ? "#4ade80" : "#1a1a2e"
@@ -351,7 +351,7 @@ Page {
             // Vibration
             Rectangle {
                 width: settingsColumn.width
-                height: 80
+                height: 54
                 radius: 24
                 color: vibMouse.pressed ? "#1e1e2e" : "#14141e"
                 border.color: vibrationEnabled ? "#8b5cf6" : "#1a1a2e"
@@ -412,8 +412,8 @@ Page {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
@@ -422,7 +422,7 @@ Page {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             font.weight: Font.Medium
             color: "#ffffff"
         }

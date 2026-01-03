@@ -291,7 +291,7 @@ Item {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "^"
-            font.pixelSize: 32
+            font.pixelSize: 22
             font.weight: Font.Light
             color: "#666688"
 

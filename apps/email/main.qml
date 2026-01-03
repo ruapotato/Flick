@@ -345,7 +345,7 @@ Window {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "✉"
-                font.pixelSize: 80
+                font.pixelSize: 22
             }
 
             Text {
@@ -512,7 +512,7 @@ Window {
             Column {
                 id: setupContent
                 width: parent.width
-                padding: 24
+                padding: 16
                 spacing: 20
 
                 // ===== Step 1: Provider Selection =====
@@ -524,7 +524,7 @@ Window {
                     Text {
                         text: "Add Email Account"
                         color: "#ffffff"
-                        font.pixelSize: 28 * textScale
+                        font.pixelSize: 20 * textScale
                         font.weight: Font.Bold
                     }
 
@@ -544,7 +544,7 @@ Window {
 
                         Rectangle {
                             width: parent.width
-                            height: 64
+                            height: 44
                             radius: 16
                             color: providerMouse.pressed ? "#2a2a4e" : "#1a1a2e"
                             border.width: 2
@@ -597,7 +597,7 @@ Window {
 
                     // Back button
                     Rectangle {
-                        width: 80
+                        width: 54
                         height: 40
                         radius: 20
                         color: "transparent"
@@ -698,7 +698,7 @@ Window {
                     // Open browser button
                     Rectangle {
                         width: parent.width
-                        height: 64
+                        height: 44
                         radius: 32
                         color: setupView.providers[setupView.selectedProvider] ?
                                setupView.providers[setupView.selectedProvider].color : accentColor
@@ -769,7 +769,7 @@ Window {
 
                     // Back button
                     Rectangle {
-                        width: 80
+                        width: 54
                         height: 40
                         radius: 20
                         color: "transparent"
@@ -952,7 +952,7 @@ Window {
                                 }
                             }
                             Rectangle {
-                                width: 80
+                                width: 54
                                 height: 48
                                 radius: 12
                                 color: "#1a1a2e"
@@ -998,7 +998,7 @@ Window {
                                 }
                             }
                             Rectangle {
-                                width: 80
+                                width: 54
                                 height: 48
                                 radius: 12
                                 color: "#1a1a2e"
@@ -1032,7 +1032,7 @@ Window {
                     // Add Account button
                     Rectangle {
                         width: parent.width
-                        height: 64
+                        height: 44
                         radius: 32
                         color: loading ? "#555555" : accentColor
 
@@ -1063,8 +1063,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.margins: 24
             anchors.bottomMargin: 100
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: "#2a2a3e"
             visible: accounts.length > 0
@@ -1073,7 +1073,7 @@ Window {
                 anchors.centerIn: parent
                 text: "←"
                 color: "#ffffff"
-                font.pixelSize: 32
+                font.pixelSize: 22
             }
 
             MouseArea {
@@ -1099,7 +1099,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a1a2e"
 
                 RowLayout {
@@ -1308,7 +1308,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "🗑"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                             visible: parent.width > 60
                         }
                     }
@@ -1367,7 +1367,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a1a2e"
 
                 RowLayout {
@@ -1648,7 +1648,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a1a2e"
 
                 RowLayout {
@@ -1658,7 +1658,7 @@ Window {
 
                     // Cancel button
                     Rectangle {
-                        width: 80
+                        width: 54
                         height: 44
                         radius: 22
                         color: cancelMouse.pressed ? "#3a3a4e" : "transparent"
@@ -1691,7 +1691,7 @@ Window {
 
                     // Send button
                     Rectangle {
-                        width: 80
+                        width: 54
                         height: 44
                         radius: 22
                         color: loading ? "#555555" : accentColor
@@ -1876,7 +1876,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a1a2e"
 
                 RowLayout {
@@ -1921,7 +1921,7 @@ Window {
             // Account selector
             Rectangle {
                 width: parent.width
-                height: 72
+                height: 48
                 color: "#1a1a2e"
                 visible: accounts.length > 1
 
@@ -1971,7 +1971,7 @@ Window {
 
                 delegate: Rectangle {
                     width: parent.width
-                    height: 64
+                    height: 44
                     color: modelData.name === currentFolder ? "#2a2a3e" : "transparent"
 
                     RowLayout {
@@ -2011,8 +2011,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.margins: 24
             anchors.bottomMargin: 100
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: accentColor
 
@@ -2020,7 +2020,7 @@ Window {
                 anchors.centerIn: parent
                 text: "←"
                 color: "#ffffff"
-                font.pixelSize: 32
+                font.pixelSize: 22
             }
 
             MouseArea {
@@ -2046,7 +2046,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a1a2e"
 
                 Text {
@@ -2083,7 +2083,7 @@ Window {
 
                         Rectangle {
                             width: parent.width - 32
-                            height: 72
+                            height: 48
                             radius: 12
                             color: "#1a1a2e"
 
@@ -2194,7 +2194,7 @@ Window {
 
                     Rectangle {
                         width: parent.width - 32
-                        height: 80
+                        height: 54
                         radius: 12
                         color: "#1a1a2e"
 
@@ -2228,8 +2228,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.margins: 24
             anchors.bottomMargin: 100
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: accentColor
 
@@ -2237,7 +2237,7 @@ Window {
                 anchors.centerIn: parent
                 text: "←"
                 color: "#ffffff"
-                font.pixelSize: 32
+                font.pixelSize: 22
             }
 
             MouseArea {

@@ -27,7 +27,7 @@ Item {
         anchors.top: parent.top
         anchors.topMargin: 20
         width: 200
-        height: 60
+        height: 40
         radius: 30
         color: accentColor
         opacity: 0.08

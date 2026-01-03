@@ -238,7 +238,7 @@ Window {
 
                 Rectangle {
                     width: 200 * textScale
-                    height: 60 * textScale
+                    height: 40 * textScale
                     radius: 30 * textScale
                     color: currentTab === index ? accentColor : "#1a1a2e"
                     border.color: "#2a2a4e"
@@ -289,7 +289,7 @@ Window {
                     anchors.centerIn: parent
                     text: phoneNumber.length > 0 ? phoneNumber : "Enter number"
                     color: phoneNumber.length > 0 ? "#ffffff" : "#666688"
-                    font.pixelSize: 40 * textScale
+                    font.pixelSize: 26 * textScale
                     font.weight: Font.Bold
                     font.letterSpacing: 4
                 }
@@ -299,8 +299,8 @@ Window {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.rightMargin: 20 * textScale
-                    width: 60 * textScale
-                    height: 60 * textScale
+                    width: 40 * textScale
+                    height: 40 * textScale
                     radius: 30 * textScale
                     color: clearArea.pressed ? "#3a3a4e" : "#2a2a3e"
                     visible: phoneNumber.length > 0
@@ -352,7 +352,7 @@ Window {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData
                                 color: "white"
-                                font.pixelSize: 40 * textScale
+                                font.pixelSize: 26 * textScale
                                 font.weight: Font.Bold
                             }
 
@@ -388,12 +388,12 @@ Window {
                 anchors.top: dialpad.bottom
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.topMargin: 40 * textScale
-                spacing: 60 * textScale
+                spacing: 26 * textScale
 
                 // Backspace
                 Rectangle {
-                    width: 80 * textScale
-                    height: 80 * textScale
+                    width: 54 * textScale
+                    height: 54 * textScale
                     radius: 40 * textScale
                     color: backspaceArea.pressed ? "#3a3a4e" : "#2a2a3e"
 
@@ -401,7 +401,7 @@ Window {
                         anchors.centerIn: parent
                         text: "<"
                         color: phoneNumber.length > 0 ? "white" : "#444"
-                        font.pixelSize: 32 * textScale
+                        font.pixelSize: 22 * textScale
                         font.weight: Font.Bold
                     }
 
@@ -425,7 +425,7 @@ Window {
                         anchors.centerIn: parent
                         text: "Call"
                         color: phoneNumber.length > 0 ? "white" : "#555"
-                        font.pixelSize: 28 * textScale
+                        font.pixelSize: 20 * textScale
                         font.weight: Font.Bold
                     }
 
@@ -439,8 +439,8 @@ Window {
 
                 // Placeholder for symmetry
                 Item {
-                    width: 80 * textScale
-                    height: 80 * textScale
+                    width: 54 * textScale
+                    height: 54 * textScale
                 }
             }
         }
@@ -551,7 +551,7 @@ Window {
 
         Column {
             anchors.centerIn: parent
-            spacing: 30 * textScale
+            spacing: 20 * textScale
 
             // Status
             Text {
@@ -562,7 +562,7 @@ Window {
                     return "Connected"
                 }
                 color: "#888899"
-                font.pixelSize: 28 * textScale
+                font.pixelSize: 20 * textScale
             }
 
             // Caller number
@@ -570,7 +570,7 @@ Window {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: callerNumber
                 color: "white"
-                font.pixelSize: 48 * textScale
+                font.pixelSize: 22 * textScale
                 font.weight: Font.Bold
                 font.letterSpacing: 4
             }
@@ -580,7 +580,7 @@ Window {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: formatDuration(callDuration)
                 color: accentColor
-                font.pixelSize: 36 * textScale
+                font.pixelSize: 24 * textScale
                 font.weight: Font.Medium
                 visible: callState === "active"
             }
@@ -591,12 +591,12 @@ Window {
             // Call actions
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 40 * textScale
+                spacing: 26 * textScale
 
                 // Answer (for incoming)
                 Rectangle {
-                    width: 90 * textScale
-                    height: 90 * textScale
+                    width: 40 * textScale
+                    height: 40 * textScale
                     radius: 45 * textScale
                     color: answerArea.pressed ? "#2ecc50" : "#27ae60"
                     visible: callState === "incoming"
@@ -618,8 +618,8 @@ Window {
 
                 // Mute toggle (visible during active call)
                 Rectangle {
-                    width: 80 * textScale
-                    height: 80 * textScale
+                    width: 54 * textScale
+                    height: 54 * textScale
                     radius: 40 * textScale
                     color: muteOn ? "#e94560" : (muteArea.pressed ? "#3a3a4e" : "#2a2a3e")
                     visible: callState === "active" || callState === "dialing"
@@ -652,8 +652,8 @@ Window {
 
                 // Speaker toggle (visible during active call)
                 Rectangle {
-                    width: 80 * textScale
-                    height: 80 * textScale
+                    width: 54 * textScale
+                    height: 54 * textScale
                     radius: 40 * textScale
                     color: speakerOn ? "#3498db" : (speakerArea.pressed ? "#3a3a4e" : "#2a2a3e")
                     visible: callState === "active" || callState === "dialing"
@@ -686,8 +686,8 @@ Window {
 
                 // Hangup
                 Rectangle {
-                    width: 90 * textScale
-                    height: 90 * textScale
+                    width: 40 * textScale
+                    height: 40 * textScale
                     radius: 45 * textScale
                     color: hangupArea.pressed ? "#c0392b" : "#e74c3c"
 
@@ -715,8 +715,8 @@ Window {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 30 * textScale
         anchors.bottomMargin: 100 * textScale
-        width: 72 * textScale
-        height: 72 * textScale
+        width: 48 * textScale
+        height: 48 * textScale
         radius: 36 * textScale
         color: backBtnArea.pressed ? "#d93550" : accentColor
         visible: !inCall
@@ -726,7 +726,7 @@ Window {
             anchors.centerIn: parent
             text: "<"
             color: "white"
-            font.pixelSize: 32 * textScale
+            font.pixelSize: 22 * textScale
             font.weight: Font.Bold
         }
 

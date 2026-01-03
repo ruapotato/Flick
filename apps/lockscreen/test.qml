@@ -16,7 +16,7 @@ Window {
         Text {
             anchors.centerIn: parent
             text: "TEST"
-            font.pixelSize: 72
+            font.pixelSize: 22
             color: "#0000ff"  // Blue text
         }
     }

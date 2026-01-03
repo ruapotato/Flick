@@ -11,7 +11,7 @@ Window {
     title: "Messages"
     color: "#0a0a0f"
 
-    property real textScale: 2.0
+    property real textScale: Theme.textScale
     property color accentColor: "#e94560"
     property color accentPressed: Qt.darker(accentColor, 1.2)
     property string currentView: "list"  // "list" or "conversation"
@@ -849,8 +849,8 @@ Window {
             anchors.bottom: inputArea.top
             anchors.rightMargin: 24
             anchors.bottomMargin: 8
-            width: 96
-            height: 96
+            width: 44
+            height: 44
             radius: 48
             color: backArea.pressed ? accentPressed : accentColor
             z: 100
@@ -860,7 +860,7 @@ Window {
             Text {
                 anchors.centerIn: parent
                 text: "←"
-                font.pixelSize: 40
+                font.pixelSize: 26
                 font.weight: Font.Medium
                 color: "#ffffff"
             }
@@ -878,8 +878,8 @@ Window {
             anchors.bottom: inputArea.top
             anchors.leftMargin: 24
             anchors.bottomMargin: 8
-            width: 96
-            height: 96
+            width: 44
+            height: 44
             radius: 48
             color: saveContactArea.pressed ? "#1a6a2a" : "#228B22"
             visible: currentContactName === currentConversation
@@ -891,7 +891,7 @@ Window {
                 anchors.centerIn: parent
                 text: "+"
                 color: "white"
-                font.pixelSize: 48
+                font.pixelSize: 22
                 font.weight: Font.Bold
             }
 
@@ -1348,8 +1348,8 @@ Window {
         anchors.bottom: backBtn.top
         anchors.rightMargin: 24
         anchors.bottomMargin: 16
-        width: 96
-        height: 96
+        width: 44
+        height: 44
         radius: 48
         color: newMsgArea.pressed ? Qt.darker("#4a9eff", 1.2) : "#4a9eff"
         visible: currentView === "list"
@@ -1360,7 +1360,7 @@ Window {
         Text {
             anchors.centerIn: parent
             text: "+"
-            font.pixelSize: 48
+            font.pixelSize: 22
             font.weight: Font.Medium
             color: "#ffffff"
         }
@@ -1383,8 +1383,8 @@ Window {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 96
-        height: 96
+        width: 44
+        height: 44
         radius: 48
         color: backBtnArea.pressed ? accentPressed : accentColor
         visible: currentView === "list"
@@ -1395,7 +1395,7 @@ Window {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 40
+            font.pixelSize: 26
             font.weight: Font.Medium
             color: "#ffffff"
         }

@@ -13,7 +13,7 @@ Window {
     color: "#0a0a0f"
 
     // Settings from Flick config
-    property real textScale: 2.0
+    property real textScale: Theme.textScale
     property color accentColor: Theme.accentColor
     property color accentPressed: Qt.darker(accentColor, 1.2)
 
@@ -531,7 +531,7 @@ Window {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Music"
-                font.pixelSize: 48 * textScale
+                font.pixelSize: 22 * textScale
                 font.weight: Font.ExtraLight
                 font.letterSpacing: 6
                 color: "#ffffff"
@@ -761,12 +761,12 @@ Window {
             // Control buttons
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 30
+                spacing: 20
 
                 // Previous button
                 Rectangle {
-                    width: 60
-                    height: 60
+                    width: 40
+                    height: 40
                     radius: 30
                     color: prevMouse.pressed ? "#333344" : "#222233"
                     border.color: "#444455"
@@ -790,8 +790,8 @@ Window {
 
                 // Play/Pause button
                 Rectangle {
-                    width: 80
-                    height: 80
+                    width: 54
+                    height: 54
                     radius: 40
                     color: playMouse.pressed ? accentPressed : accentColor
 
@@ -800,7 +800,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: isPlaying ? "⏸" : "▶"
-                        font.pixelSize: 32
+                        font.pixelSize: 22
                         color: "#ffffff"
                     }
 
@@ -813,8 +813,8 @@ Window {
 
                 // Next button
                 Rectangle {
-                    width: 60
-                    height: 60
+                    width: 40
+                    height: 40
                     radius: 30
                     color: nextMouse.pressed ? "#333344" : "#222233"
                     border.color: "#444455"
@@ -855,7 +855,7 @@ Window {
 
         delegate: Rectangle {
             width: musicListView.width
-            height: 80
+            height: 54
             radius: 12
             color: trackMouse.pressed ? "#1a1a2e" : (currentTrackIndex === index ? "#2a2a3e" : "#15151f")
             border.color: currentTrackIndex === index ? accentColor : "#222233"
@@ -879,7 +879,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: "♪"
-                        font.pixelSize: 28
+                        font.pixelSize: 20
                         color: accentColor
                         opacity: 0.3
                     }
@@ -943,8 +943,8 @@ Window {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backButtonMouse.pressed ? accentPressed : accentColor
         z: 2
@@ -954,7 +954,7 @@ Window {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             font.weight: Font.Medium
             color: "#ffffff"
         }

@@ -13,7 +13,7 @@ Window {
     title: "Flick Maps"
     color: "#0a0a0f"
 
-    property real textScale: 2.0
+    property real textScale: Theme.textScale
     property color accentColor: Theme.accentColor
     property color accentPressed: Qt.darker(accentColor, 1.2)
     property var currentRoute: null
@@ -447,8 +447,8 @@ Window {
                 // Accuracy circle pulse
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 60
-                    height: 60
+                    width: 40
+                    height: 40
                     radius: 30
                     color: "transparent"
                     border.color: "#4285f4"
@@ -483,7 +483,7 @@ Window {
 
             sourceItem: Text {
                 text: "📍"
-                font.pixelSize: 40
+                font.pixelSize: 26
             }
         }
 
@@ -524,7 +524,7 @@ Window {
 
                 sourceItem: Text {
                     text: "⭐"
-                    font.pixelSize: 32
+                    font.pixelSize: 22
                 }
             }
         }
@@ -690,7 +690,7 @@ Window {
 
             delegate: Rectangle {
                 width: searchResultsView.width
-                height: 64
+                height: 44
                 color: resultMouse.pressed ? "#333344" : "transparent"
                 radius: 8
 
@@ -986,7 +986,7 @@ Window {
                 Text {
                     text: formatDistance(distanceToNextStep)
                     color: "#4285f4"
-                    font.pixelSize: 36
+                    font.pixelSize: 24
                     font.weight: Font.Bold
                 }
 
@@ -1127,7 +1127,7 @@ Window {
             Text {
                 anchors.centerIn: parent
                 text: "+"
-                font.pixelSize: 28
+                font.pixelSize: 20
                 color: "#ffffff"
             }
 
@@ -1150,7 +1150,7 @@ Window {
             Text {
                 anchors.centerIn: parent
                 text: "−"
-                font.pixelSize: 28
+                font.pixelSize: 20
                 color: "#ffffff"
             }
 

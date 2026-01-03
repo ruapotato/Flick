@@ -11,7 +11,7 @@ Window {
     title: "Flick Clock"
     color: "#0a0a0f"
 
-    property real textScale: 2.0
+    property real textScale: Theme.textScale
     property color accentColor: Theme.accentColor
     property color accentPressed: Qt.darker(accentColor, 1.2)
     property string currentTab: "clock"  // clock, alarm, timer, stopwatch
@@ -153,7 +153,7 @@ Window {
 
                 Rectangle {
                     width: 250
-                    height: 80
+                    height: 54
                     color: "transparent"
 
                     Text {
@@ -201,7 +201,7 @@ Window {
                 id: clockText
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: formatTime(new Date())
-                font.pixelSize: 80 * textScale
+                font.pixelSize: 22 * textScale
                 font.weight: Font.ExtraLight
                 color: "#ffffff"
             }
@@ -232,7 +232,7 @@ Window {
 
                 Text {
                     text: "Alarms"
-                    font.pixelSize: 28 * textScale
+                    font.pixelSize: 20 * textScale
                     font.weight: Font.Medium
                     color: "#ffffff"
                 }
@@ -248,7 +248,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: "+"
-                        font.pixelSize: 32
+                        font.pixelSize: 22
                         color: "#ffffff"
                     }
 
@@ -297,7 +297,7 @@ Window {
 
                             Text {
                                 text: (model.hour % 12 || 12) + ":" + (model.minute < 10 ? "0" : "") + model.minute + " " + (model.hour >= 12 ? "PM" : "AM")
-                                font.pixelSize: 32 * textScale
+                                font.pixelSize: 22 * textScale
                                 font.weight: Font.Light
                                 color: model.enabled ? "#ffffff" : "#555566"
                             }
@@ -313,7 +313,7 @@ Window {
 
                         // Toggle switch
                         Rectangle {
-                            width: 60
+                            width: 40
                             height: 32
                             radius: 16
                             color: model.enabled ? accentColor : "#333344"
@@ -399,7 +399,7 @@ Window {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: formatTimerTime(timerRunning ? timerSeconds : timerSetSeconds)
-                font.pixelSize: 80 * textScale
+                font.pixelSize: 22 * textScale
                 font.weight: Font.ExtraLight
                 font.family: "monospace"
                 color: timerSeconds <= 10 && timerRunning ? accentColor : "#ffffff"
@@ -415,7 +415,7 @@ Window {
                     model: [1, 5, 10, 15, 30]
 
                     Rectangle {
-                        width: 80
+                        width: 54
                         height: 48
                         radius: 24
                         color: timerPresetMouse.pressed ? "#333344" : "#1a1a2e"
@@ -446,8 +446,8 @@ Window {
 
                 // Reset
                 Rectangle {
-                    width: 72
-                    height: 72
+                    width: 48
+                    height: 48
                     radius: 36
                     color: resetTimerMouse.pressed ? "#333344" : "#222233"
                     visible: timerRunning || timerSeconds !== timerSetSeconds
@@ -455,7 +455,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: "↺"
-                        font.pixelSize: 32
+                        font.pixelSize: 22
                         color: "#ffffff"
                     }
 
@@ -480,7 +480,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: timerRunning ? "⏸" : "▶"
-                        font.pixelSize: 40
+                        font.pixelSize: 26
                         color: "#ffffff"
                     }
 
@@ -514,7 +514,7 @@ Window {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: formatStopwatchTime(stopwatchMs)
-                font.pixelSize: 80 * textScale
+                font.pixelSize: 22 * textScale
                 font.weight: Font.ExtraLight
                 font.family: "monospace"
                 color: "#ffffff"
@@ -526,8 +526,8 @@ Window {
 
                 // Reset
                 Rectangle {
-                    width: 72
-                    height: 72
+                    width: 48
+                    height: 48
                     radius: 36
                     color: resetSwMouse.pressed ? "#333344" : "#222233"
                     visible: stopwatchMs > 0
@@ -535,7 +535,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: "↺"
-                        font.pixelSize: 32
+                        font.pixelSize: 22
                         color: "#ffffff"
                     }
 
@@ -560,7 +560,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: stopwatchRunning ? "⏸" : "▶"
-                        font.pixelSize: 40
+                        font.pixelSize: 26
                         color: "#ffffff"
                     }
 
@@ -583,8 +583,8 @@ Window {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 100
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? accentPressed : accentColor
         z: 10
@@ -592,7 +592,7 @@ Window {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             color: "#ffffff"
         }
 

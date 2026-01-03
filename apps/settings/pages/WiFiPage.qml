@@ -315,7 +315,7 @@ Page {
                 Text {
                     anchors.centerIn: parent
                     text: "📶"
-                    font.pixelSize: 52
+                    font.pixelSize: 22
                     opacity: wifiEnabled ? 1 : 0.4
 
                     Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -355,7 +355,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "WiFi"
-                font.pixelSize: 42
+                font.pixelSize: 20
                 font.weight: Font.ExtraLight
                 font.letterSpacing: 6
                 color: "#ffffff"
@@ -418,7 +418,7 @@ Page {
 
                 Text {
                     text: connectedSsid
-                    font.pixelSize: 28
+                    font.pixelSize: 20
                     font.weight: Font.Medium
                     color: "#ffffff"
                 }
@@ -566,7 +566,7 @@ Page {
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "📡"
-                        font.pixelSize: 32
+                        font.pixelSize: 22
                         opacity: 0.5
                     }
 
@@ -584,7 +584,7 @@ Page {
 
                 Rectangle {
                     width: networksColumn.width
-                    height: 90
+                    height: 40
                     radius: 20
                     color: networkMouse.pressed ? "#1e1e2e" : "#14141e"
                     border.color: "#1a1a2e"
@@ -678,7 +678,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "📵"
-                font.pixelSize: 64
+                font.pixelSize: 20
                 opacity: 0.3
             }
 
@@ -697,8 +697,8 @@ Page {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
@@ -707,7 +707,7 @@ Page {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             font.weight: Font.Medium
             color: "#ffffff"
         }

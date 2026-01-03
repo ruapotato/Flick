@@ -135,7 +135,7 @@ Page {
 
         contentItem: Column {
             spacing: 20
-            padding: 24
+            padding: 16
 
             Text {
                 text: pinSetupDialog.confirming ? "Confirm PIN" : "Enter New PIN"
@@ -343,7 +343,7 @@ Page {
 
             Text {
                 text: patternSetupDialog.confirming ? "Confirm Pattern" : "Draw New Pattern"
-                font.pixelSize: 28
+                font.pixelSize: 20
                 font.weight: Font.Medium
                 color: "#ffffff"
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -408,8 +408,8 @@ Page {
 
                         Rectangle {
                             id: patternDot
-                            width: 80
-                            height: 80
+                            width: 54
+                            height: 54
                             radius: 40
                             color: patternSetupDialog.isSelected(index) ? Theme.accentColor : "#3a3a4e"
                             border.width: 4
@@ -490,7 +490,7 @@ Page {
                 spacing: 20
 
                 Rectangle {
-                    width: 90
+                    width: 40
                     height: 50
                     radius: 25
                     color: clearPatternMouse.pressed ? "#3a3a4e" : "#2a2a3e"
@@ -517,7 +517,7 @@ Page {
                 }
 
                 Rectangle {
-                    width: 90
+                    width: 40
                     height: 50
                     radius: 25
                     color: cancelPatternMouse.pressed ? "#3a3a4e" : "#2a2a3e"
@@ -543,7 +543,7 @@ Page {
                 }
 
                 Rectangle {
-                    width: 90
+                    width: 40
                     height: 50
                     radius: 25
                     color: confirmPatternMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
@@ -615,8 +615,8 @@ Page {
             // Shield icon - smaller
             Item {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 80
-                height: 80
+                width: 54
+                height: 54
 
                 // Shield glow
                 Rectangle {
@@ -646,7 +646,7 @@ Page {
                     Text {
                         anchors.centerIn: parent
                         text: selectedMethod === 3 ? "🔓" : "🔐"
-                        font.pixelSize: 32
+                        font.pixelSize: 22
                     }
                 }
             }
@@ -654,7 +654,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Security"
-                font.pixelSize: 36
+                font.pixelSize: 24
                 font.weight: Font.ExtraLight
                 font.letterSpacing: 4
                 color: "#ffffff"
@@ -1050,8 +1050,8 @@ Page {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
@@ -1060,7 +1060,7 @@ Page {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             font.weight: Font.Medium
             color: "#ffffff"
         }

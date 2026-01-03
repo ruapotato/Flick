@@ -108,8 +108,8 @@ Item {
 
         // Album art / App icon placeholder
         Rectangle {
-            width: 80
-            height: 80
+            width: 54
+            height: 54
             radius: 12
             color: app === "audiobooks" ? accentColor : "#4a9eff"
             opacity: 0.3
@@ -118,7 +118,7 @@ Item {
             Text {
                 anchors.centerIn: parent
                 text: app === "audiobooks" ? "📚" : "🎵"
-                font.pixelSize: 40
+                font.pixelSize: 26
             }
         }
 

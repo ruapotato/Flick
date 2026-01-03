@@ -192,7 +192,7 @@ Page {
                 Text {
                     anchors.centerIn: parent
                     text: "🔷"
-                    font.pixelSize: 52
+                    font.pixelSize: 22
                     opacity: btEnabled ? 1 : 0.4
 
                     Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -232,7 +232,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Bluetooth"
-                font.pixelSize: 42
+                font.pixelSize: 20
                 font.weight: Font.ExtraLight
                 font.letterSpacing: 6
                 color: "#ffffff"
@@ -395,7 +395,7 @@ Page {
             // Empty paired state
             Rectangle {
                 width: devicesColumn.width
-                height: 80
+                height: 54
                 radius: 20
                 color: "#14141e"
                 visible: pairedDevicesModel.count === 0
@@ -485,7 +485,7 @@ Page {
             // Scanning animation
             Rectangle {
                 width: devicesColumn.width
-                height: 80
+                height: 54
                 radius: 20
                 color: "#14141e"
                 border.color: "#1a1a2e"
@@ -557,7 +557,7 @@ Page {
 
                 Rectangle {
                     width: devicesColumn.width
-                    height: 80
+                    height: 54
                     radius: 20
                     color: availMouse.pressed ? "#1e1e2e" : "#14141e"
                     border.color: "#1a1a2e"
@@ -616,7 +616,7 @@ Page {
             // No devices found
             Rectangle {
                 width: devicesColumn.width
-                height: 60
+                height: 40
                 radius: 16
                 color: "#14141e"
                 visible: !isScanning && availableDevicesModel.count === 0
@@ -650,7 +650,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "📵"
-                font.pixelSize: 64
+                font.pixelSize: 20
                 opacity: 0.3
             }
 
@@ -669,8 +669,8 @@ Page {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? Qt.darker(Theme.accentColor, 1.2) : Theme.accentColor
 
@@ -679,7 +679,7 @@ Page {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             font.weight: Font.Medium
             color: "#ffffff"
         }

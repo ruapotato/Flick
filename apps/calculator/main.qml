@@ -147,7 +147,7 @@ Window {
                 height: parent.height - 40
                 text: display
                 color: "#ffffff"
-                font.pixelSize: 80
+                font.pixelSize: 22
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignRight
                 verticalAlignment: Text.AlignVCenter

@@ -147,7 +147,7 @@ Window {
 
                     Text {
                         text: "Notes"
-                        font.pixelSize: 36
+                        font.pixelSize: 24
                         font.weight: Font.Medium
                         color: "#ffffff"
                     }
@@ -313,8 +313,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.rightMargin: 100
             anchors.bottomMargin: 120
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: addMouse.pressed ? accentPressed : accentColor
             z: 10
@@ -322,7 +322,7 @@ Window {
             Text {
                 anchors.centerIn: parent
                 text: "+"
-                font.pixelSize: 40
+                font.pixelSize: 26
                 color: "#ffffff"
             }
 
@@ -339,8 +339,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.rightMargin: 24
             anchors.bottomMargin: 120
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: listBackMouse.pressed ? accentPressed : accentColor
             z: 10
@@ -348,7 +348,7 @@ Window {
             Text {
                 anchors.centerIn: parent
                 text: "X"
-                font.pixelSize: 28
+                font.pixelSize: 20
                 font.weight: Font.Bold
                 color: "#ffffff"
             }
@@ -383,7 +383,7 @@ Window {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 80
+            height: 54
             color: "#1a1a2e"
 
             Text {
@@ -457,8 +457,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.rightMargin: 100
             anchors.bottomMargin: 120
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: saveMouse.pressed ? "#2a8a4a" : "#3ca55c"
             z: 10
@@ -497,8 +497,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.rightMargin: 24
             anchors.bottomMargin: 120
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: editorBackMouse.pressed ? accentPressed : accentColor
             z: 10
@@ -506,7 +506,7 @@ Window {
             Text {
                 anchors.centerIn: parent
                 text: "<"
-                font.pixelSize: 32
+                font.pixelSize: 22
                 font.weight: Font.Bold
                 color: "#ffffff"
             }

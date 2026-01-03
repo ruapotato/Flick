@@ -413,7 +413,7 @@ Window {
             anchors.topMargin: privateMode ? 32 : 0
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 72
+            height: 48
             color: privateMode ? "#4a4a6a" : "#1a1a2e"
             z: 10
 
@@ -762,7 +762,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: "←"
-                        font.pixelSize: 28
+                        font.pixelSize: 20
                         color: "#ffffff"
                     }
 
@@ -787,7 +787,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: "→"
-                        font.pixelSize: 28
+                        font.pixelSize: 20
                         color: "#ffffff"
                     }
 
@@ -842,7 +842,7 @@ Window {
                             var tab = getCurrentTab()
                             return isBookmarked(tab ? tab.url : "") ? "★" : "☆"
                         }
-                        font.pixelSize: 28
+                        font.pixelSize: 20
                         color: privateMode ? "#6b5b95" : accentColor
                     }
 
@@ -878,7 +878,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: "⋮"
-                        font.pixelSize: 28
+                        font.pixelSize: 20
                         color: "#ffffff"
                     }
 
@@ -920,7 +920,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a1a2e"
 
                 Text {
@@ -1055,8 +1055,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.margins: 24
             anchors.bottomMargin: 100
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: accentColor
 
@@ -1064,7 +1064,7 @@ Window {
                 anchors.centerIn: parent
                 text: "←"
                 color: "#ffffff"
-                font.pixelSize: 32
+                font.pixelSize: 22
             }
 
             MouseArea {
@@ -1093,7 +1093,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 64
+                height: 44
                 color: "transparent"
 
                 Text {
@@ -1101,7 +1101,7 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Menu"
                     color: "#ffffff"
-                    font.pixelSize: 28 * textScale
+                    font.pixelSize: 20 * textScale
                     font.weight: Font.Bold
                 }
             }
@@ -1109,7 +1109,7 @@ Window {
             // Private mode toggle
             Rectangle {
                 width: parent.width
-                height: 64
+                height: 44
                 radius: 12
                 color: privateMode ? "#6b5b95" : "#1a1a2e"
 
@@ -1173,7 +1173,7 @@ Window {
 
                 Rectangle {
                     width: parent.width
-                    height: 64
+                    height: 44
                     radius: 12
                     color: menuItemMouse.pressed ? "#2a2a3e" : "#1a1a2e"
 
@@ -1229,7 +1229,7 @@ Window {
             // Close browser
             Rectangle {
                 width: parent.width
-                height: 64
+                height: 44
                 radius: 12
                 color: closeMouse.pressed ? accentPressed : accentColor
 
@@ -1258,8 +1258,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.margins: 24
             anchors.bottomMargin: 100
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: "#2a2a3e"
 
@@ -1267,7 +1267,7 @@ Window {
                 anchors.centerIn: parent
                 text: "←"
                 color: "#ffffff"
-                font.pixelSize: 32
+                font.pixelSize: 22
             }
 
             MouseArea {
@@ -1296,7 +1296,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 64
+                height: 44
                 color: "transparent"
 
                 Text {
@@ -1304,7 +1304,7 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Settings"
                     color: "#ffffff"
-                    font.pixelSize: 28 * textScale
+                    font.pixelSize: 20 * textScale
                     font.weight: Font.Bold
                 }
             }
@@ -1331,7 +1331,7 @@ Window {
 
                     Rectangle {
                         width: parent.width
-                        height: 64
+                        height: 44
                         radius: 12
                         color: searchEngine === modelData.id ? "#2a2a3e" : "#1a1a2e"
                         border.color: searchEngine === modelData.id ? accentColor : "transparent"
@@ -1385,7 +1385,7 @@ Window {
 
             Rectangle {
                 width: parent.width
-                height: 64
+                height: 44
                 radius: 12
                 color: "#1a1a2e"
 
@@ -1441,8 +1441,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.margins: 24
             anchors.bottomMargin: 100
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: accentColor
 
@@ -1450,7 +1450,7 @@ Window {
                 anchors.centerIn: parent
                 text: "←"
                 color: "#ffffff"
-                font.pixelSize: 32
+                font.pixelSize: 22
             }
 
             MouseArea {
@@ -1477,7 +1477,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a1a2e"
 
                 Text {
@@ -1499,7 +1499,7 @@ Window {
 
                 delegate: Rectangle {
                     width: bookmarksListView.width - 32
-                    height: 80
+                    height: 54
                     x: 16
                     radius: 12
                     color: bookmarkItemMouse.pressed ? "#2a2a3e" : "#1a1a2e"
@@ -1582,8 +1582,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.margins: 24
             anchors.bottomMargin: 100
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: accentColor
 
@@ -1591,7 +1591,7 @@ Window {
                 anchors.centerIn: parent
                 text: "←"
                 color: "#ffffff"
-                font.pixelSize: 32
+                font.pixelSize: 22
             }
 
             MouseArea {
@@ -1618,7 +1618,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a1a2e"
 
                 RowLayout {
@@ -1670,7 +1670,7 @@ Window {
 
                 delegate: Rectangle {
                     width: historyListView.width - 32
-                    height: 72
+                    height: 48
                     x: 16
                     radius: 12
                     color: historyItemMouse.pressed ? "#2a2a3e" : "#1a1a2e"
@@ -1724,8 +1724,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.margins: 24
             anchors.bottomMargin: 100
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: accentColor
 
@@ -1733,7 +1733,7 @@ Window {
                 anchors.centerIn: parent
                 text: "←"
                 color: "#ffffff"
-                font.pixelSize: 32
+                font.pixelSize: 22
             }
 
             MouseArea {
@@ -1760,7 +1760,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a1a2e"
 
                 Text {
@@ -1782,7 +1782,7 @@ Window {
 
                 delegate: Rectangle {
                     width: downloadsListView.width - 32
-                    height: 80
+                    height: 54
                     x: 16
                     radius: 12
                     color: "#1a1a2e"
@@ -1843,8 +1843,8 @@ Window {
             anchors.bottom: parent.bottom
             anchors.margins: 24
             anchors.bottomMargin: 100
-            width: 72
-            height: 72
+            width: 48
+            height: 48
             radius: 36
             color: accentColor
 
@@ -1852,7 +1852,7 @@ Window {
                 anchors.centerIn: parent
                 text: "←"
                 color: "#ffffff"
-                font.pixelSize: 32
+                font.pixelSize: 22
             }
 
             MouseArea {

@@ -13,7 +13,7 @@ Window {
     title: "Flick Video"
     color: "#0a0a0f"
 
-    property real textScale: 2.0
+    property real textScale: Theme.textScale
     property color accentColor: Theme.accentColor
     property color accentPressed: Qt.darker(accentColor, 1.2)
     property bool isPlaying: false
@@ -293,7 +293,7 @@ Window {
             Text {
                 anchors.centerIn: parent
                 text: isPlaying ? "⏸" : "▶"
-                font.pixelSize: 40
+                font.pixelSize: 26
                 color: "#ffffff"
             }
 
@@ -363,7 +363,7 @@ Window {
                 // Control buttons
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: 40
+                    spacing: 26
 
                     // Rewind 10s
                     Rectangle {
@@ -391,15 +391,15 @@ Window {
 
                     // Play/Pause
                     Rectangle {
-                        width: 72
-                        height: 72
+                        width: 48
+                        height: 48
                         radius: 36
                         color: playMouse.pressed ? accentPressed : accentColor
 
                         Text {
                             anchors.centerIn: parent
                             text: isPlaying ? "⏸" : "▶"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                             color: "#ffffff"
                         }
 
@@ -460,7 +460,7 @@ Window {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "Videos"
-                    font.pixelSize: 48 * textScale
+                    font.pixelSize: 22 * textScale
                     font.weight: Font.ExtraLight
                     font.letterSpacing: 6
                     color: "#ffffff"
@@ -553,7 +553,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "🎬"
-                            font.pixelSize: 32
+                            font.pixelSize: 22
                         }
                     }
 
@@ -603,8 +603,8 @@ Window {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 100
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? accentPressed : accentColor
         visible: currentVideo === ""
@@ -613,7 +613,7 @@ Window {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             color: "#ffffff"
         }
 

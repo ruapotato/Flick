@@ -11,7 +11,7 @@ Page {
     property bool autoSupported: false
     property int selectedTimeout: 1  // Index into timeout list (default 30s)
     property var timeoutValues: [15, 30, 60, 300, 0]  // Seconds for each option
-    property real textScale: 2.0  // Text scale factor (0.5 to 3.0, default 2.0)
+    property real textScale: Theme.textScale  // Text scale factor (0.5 to 3.0, default 2.0)
     property string wallpaperPath: ""  // Path to wallpaper image
     property string accentColor: "#e94560"  // Accent color for buttons
     property var accentColors: ["#e94560", "#4a90d9", "#50c878", "#ffa500", "#9b59b6", "#1abc9c", "#e74c3c", "#f39c12"]
@@ -245,7 +245,7 @@ Page {
                     Rectangle {
                         anchors.centerIn: parent
                         width: 4
-                        height: 60
+                        height: 40
                         radius: 2
                         color: "#ffaa44"
                         opacity: brightness * 0.6
@@ -259,8 +259,8 @@ Page {
                 // Sun body
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 80
-                    height: 80
+                    width: 54
+                    height: 54
                     radius: 40
                     color: Qt.lighter("#ffaa44", 1 + brightness * 0.5)
 
@@ -270,7 +270,7 @@ Page {
                 Text {
                     anchors.centerIn: parent
                     text: Math.round(brightness * 100)
-                    font.pixelSize: 28
+                    font.pixelSize: 20
                     font.weight: Font.Bold
                     color: "#0a0a0f"
                 }
@@ -279,7 +279,7 @@ Page {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Display"
-                font.pixelSize: 42
+                font.pixelSize: 20
                 font.weight: Font.ExtraLight
                 font.letterSpacing: 6
                 color: "#ffffff"
@@ -289,7 +289,7 @@ Page {
             Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: 300
-                height: 60
+                height: 40
 
                 // Track background
                 Rectangle {
@@ -392,7 +392,7 @@ Page {
                         Text {
                             anchors.centerIn: parent
                             text: "✨"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                         }
                     }
 
@@ -545,7 +545,7 @@ Page {
                     // Preview text
                     Item {
                         width: parent.width
-                        height: 60
+                        height: 40
 
                         Text {
                             anchors.centerIn: parent
@@ -715,7 +715,7 @@ Page {
                         Text {
                             anchors.centerIn: parent
                             text: "🖼"
-                            font.pixelSize: 48
+                            font.pixelSize: 22
                             visible: wallpaperPath === ""
                             opacity: 0.3
                         }
@@ -771,7 +771,7 @@ Page {
 
                             // Clear button (only show if wallpaper is set)
                             Rectangle {
-                                width: 80
+                                width: 54
                                 height: 44
                                 radius: 12
                                 color: clearMouse.pressed ? "#2a2a3e" : "#1a1a28"
@@ -836,8 +836,8 @@ Page {
                         spacing: 16
 
                         Rectangle {
-                            width: 64
-                            height: 64
+                            width: 44
+                            height: 44
                             radius: 32
                             color: accentColor
                             border.color: "#ffffff"
@@ -1132,8 +1132,8 @@ Page {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 24
         anchors.bottomMargin: 120
-        width: 72
-        height: 72
+        width: 48
+        height: 48
         radius: 36
         color: backMouse.pressed ? Qt.darker(accentColor, 1.2) : accentColor
 
@@ -1142,7 +1142,7 @@ Page {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 32
+            font.pixelSize: 22
             font.weight: Font.Medium
             color: "#ffffff"
         }

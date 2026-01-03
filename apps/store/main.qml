@@ -1194,7 +1194,7 @@ Window {
                 Text {
                     anchors.centerIn: parent
                     text: "Flick Store"
-                    font.pixelSize: 32 * textScale
+                    font.pixelSize: 22 * textScale
                     font.weight: Font.Bold
                     color: "#ffffff"
                 }
@@ -1415,7 +1415,7 @@ Window {
                                         Text {
                                             text: modelData.icon || "apps"
                                             font.family: iconFont.name
-                                            font.pixelSize: 36
+                                            font.pixelSize: 24
                                             color: "#ffffff"
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
@@ -1446,7 +1446,7 @@ Window {
                         // All Apps button
                         Rectangle {
                             width: parent.width - 32
-                            height: 64
+                            height: 44
                             anchors.horizontalCenter: parent.horizontalCenter
                             radius: 16
                             color: allAppsMouse.pressed ? "#333344" : "#222233"
@@ -1518,7 +1518,7 @@ Window {
                             Text {
                                 text: "inbox"
                                 font.family: iconFont.name
-                                font.pixelSize: 64
+                                font.pixelSize: 20
                                 color: "#444455"
                                 anchors.horizontalCenter: parent.horizontalCenter
                             }
@@ -1537,7 +1537,7 @@ Window {
 
                             Rectangle {
                                 width: parent.width - 32
-                                height: 80
+                                height: 54
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 radius: 16
                                 color: installedItemMouse.pressed ? "#2a2a3e" : "#1a1a2e"
@@ -1587,7 +1587,7 @@ Window {
 
                                     // Uninstall button
                                     Rectangle {
-                                        width: 80
+                                        width: 54
                                         height: 40
                                         radius: 20
                                         color: uninstallBtnMouse.pressed ? "#6b1a1a" : "#4a1a1a"
@@ -1647,7 +1647,7 @@ Window {
                             Text {
                                 text: "science"
                                 font.family: iconFont.name
-                                font.pixelSize: 28
+                                font.pixelSize: 20
                                 color: "#ff9800"
                                 anchors.verticalCenter: parent.verticalCenter
                             }
@@ -1670,7 +1670,7 @@ Window {
                         // Warning banner
                         Rectangle {
                             width: parent.width - 32
-                            height: 60
+                            height: 40
                             anchors.horizontalCenter: parent.horizontalCenter
                             radius: 12
                             color: "#2a1a00"
@@ -1704,7 +1704,7 @@ Window {
 
                             Rectangle {
                                 width: parent.width - 32
-                                height: 90
+                                height: 40
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 radius: 16
                                 color: wwItemMouse.pressed ? "#2a2a3e" : "#1a1a2e"
@@ -1728,7 +1728,7 @@ Window {
                                             anchors.centerIn: parent
                                             text: "science"
                                             font.family: iconFont.name
-                                            font.pixelSize: 28
+                                            font.pixelSize: 20
                                             color: "#ff9800"
                                         }
                                     }
@@ -1781,7 +1781,7 @@ Window {
                             Text {
                                 text: "science"
                                 font.family: iconFont.name
-                                font.pixelSize: 64
+                                font.pixelSize: 20
                                 color: "#444455"
                                 anchors.horizontalCenter: parent.horizontalCenter
                             }
@@ -1832,7 +1832,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "←"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }
@@ -1891,7 +1891,7 @@ Window {
                     }
 
                     Rectangle {
-                        width: 80
+                        width: 54
                         height: 32
                         radius: 16
                         color: "#1a1a2e"
@@ -1905,7 +1905,7 @@ Window {
                     }
 
                     Rectangle {
-                        width: 80
+                        width: 54
                         height: 32
                         radius: 16
                         color: "#1a1a2e"
@@ -1951,8 +1951,8 @@ Window {
                             spacing: 12
 
                             Rectangle {
-                                width: 64
-                                height: 64
+                                width: 44
+                                height: 44
                                 radius: 16
                                 color: isWildWest ? "#ff9800" : accentColor
                                 opacity: 0.3
@@ -1962,7 +1962,7 @@ Window {
                                     anchors.centerIn: parent
                                     text: modelData.icon
                                     font.family: iconFont.name
-                                    font.pixelSize: 28
+                                    font.pixelSize: 20
                                     color: "#ffffff"
                                 }
                             }
@@ -2114,7 +2114,7 @@ Window {
                             Text {
                                 anchors.centerIn: parent
                                 text: "←"
-                                font.pixelSize: 28
+                                font.pixelSize: 20
                                 font.weight: Font.Medium
                                 color: "#ffffff"
                             }
@@ -2204,7 +2204,7 @@ Window {
                 delegate: Rectangle {
                     property bool isWildWest: modelData.isWildWest === true
                     width: parent.width - 32
-                    height: 80
+                    height: 54
                     x: 16
                     radius: 16
                     color: isWildWest
@@ -2339,7 +2339,7 @@ Window {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "search"
                         font.family: iconFont.name
-                        font.pixelSize: 64
+                        font.pixelSize: 20
                         color: "#333344"
                     }
 
@@ -2396,7 +2396,7 @@ Window {
                 // Header with back button
                 Rectangle {
                     width: parent.width
-                    height: 80
+                    height: 54
                     color: "#1a1a2e"
 
                     Row {
@@ -2414,7 +2414,7 @@ Window {
                             Text {
                                 anchors.centerIn: parent
                                 text: "←"
-                                font.pixelSize: 28
+                                font.pixelSize: 20
                                 font.weight: Font.Medium
                                 color: "#ffffff"
                             }
@@ -2459,7 +2459,7 @@ Window {
                                 anchors.centerIn: parent
                                 text: selectedApp ? selectedApp.icon : ""
                                 font.family: iconFont.name
-                                font.pixelSize: 48
+                                font.pixelSize: 22
                                 color: "#ffffff"
                             }
                         }
@@ -2764,7 +2764,7 @@ Window {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     text: "image"
                                     font.family: iconFont.name
-                                    font.pixelSize: 48
+                                    font.pixelSize: 22
                                     color: "#444455"
                                 }
 
@@ -2969,7 +2969,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#4a2a1a"
 
                 Row {
@@ -2987,7 +2987,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "←"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }
@@ -3013,7 +3013,7 @@ Window {
             // Warning banner
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#3a2a1a"
 
                 Row {
@@ -3066,8 +3066,8 @@ Window {
                         spacing: 16
 
                         Rectangle {
-                            width: 64
-                            height: 64
+                            width: 44
+                            height: 44
                             radius: 16
                             color: "#ff9800"
                             opacity: 0.3
@@ -3077,7 +3077,7 @@ Window {
                                 anchors.centerIn: parent
                                 text: modelData.icon
                                 font.family: iconFont.name
-                                font.pixelSize: 28
+                                font.pixelSize: 20
                                 color: "#ffffff"
                             }
                         }
@@ -3126,7 +3126,7 @@ Window {
                             spacing: 8
 
                             Rectangle {
-                                width: 80
+                                width: 54
                                 height: 36
                                 radius: 18
                                 color: "#ff9800"
@@ -3251,7 +3251,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a2a3a"
 
                 Row {
@@ -3269,7 +3269,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "←"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }
@@ -3540,8 +3540,8 @@ Window {
                         spacing: 12
 
                         Rectangle {
-                            width: 80
-                            height: 80
+                            width: 54
+                            height: 54
                             radius: 40
                             color: accentColor
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -3550,7 +3550,7 @@ Window {
                                 anchors.centerIn: parent
                                 text: "person"
                                 font.family: iconFont.name
-                                font.pixelSize: 40
+                                font.pixelSize: 26
                                 color: "#ffffff"
                             }
                         }
@@ -3584,7 +3584,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "←"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }
@@ -3687,7 +3687,7 @@ Window {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: installedApps.length.toString()
-                            font.pixelSize: 28 * textScale
+                            font.pixelSize: 20 * textScale
                             font.weight: Font.Bold
                             color: accentColor
                         }
@@ -3706,7 +3706,7 @@ Window {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: myReviews.length.toString()
-                            font.pixelSize: 28 * textScale
+                            font.pixelSize: 20 * textScale
                             font.weight: Font.Bold
                             color: accentColor
                         }
@@ -3725,7 +3725,7 @@ Window {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: myRequests.length.toString()
-                            font.pixelSize: 28 * textScale
+                            font.pixelSize: 20 * textScale
                             font.weight: Font.Bold
                             color: accentColor
                         }
@@ -3763,7 +3763,7 @@ Window {
 
                             Rectangle {
                                 width: parent.width
-                                height: 72
+                                height: 48
                                 radius: 16
                                 color: "#1a1a2e"
 
@@ -3971,7 +3971,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "←"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }
@@ -4067,7 +4067,7 @@ Window {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: "description"
                                 font.family: iconFont.name
-                                font.pixelSize: 64
+                                font.pixelSize: 20
                                 color: "#333344"
                             }
 
@@ -4160,7 +4160,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a1a2e"
 
                 Row {
@@ -4178,7 +4178,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "←"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }
@@ -4231,7 +4231,7 @@ Window {
 
                             Rectangle {
                                 width: parent.width
-                                height: 64
+                                height: 44
                                 radius: 16
                                 color: "#1a1a2e"
 
@@ -4481,7 +4481,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a1a2e"
 
                 Row {
@@ -4499,7 +4499,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "←"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }
@@ -4704,7 +4704,7 @@ Window {
             // Header
             Rectangle {
                 width: parent.width
-                height: 80
+                height: 54
                 color: "#1a1a2e"
 
                 Row {
@@ -4722,7 +4722,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "←"
-                            font.pixelSize: 28
+                            font.pixelSize: 20
                             font.weight: Font.Medium
                             color: "#ffffff"
                         }

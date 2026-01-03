@@ -336,8 +336,8 @@ Window {
                 anchors.right: parent.right
                 anchors.bottomMargin: 30
                 anchors.rightMargin: 30
-                width: 72
-                height: 72
+                width: 48
+                height: 48
                 radius: 36
                 color: closeBtnMouse.pressed ? accentPressed : accentColor
                 z: 100
@@ -346,7 +346,7 @@ Window {
                     anchors.centerIn: parent
                     text: "X"
                     color: "#ffffff"
-                    font.pixelSize: 28
+                    font.pixelSize: 20
                     font.weight: Font.Bold
                 }
 
@@ -531,8 +531,8 @@ Window {
                 anchors.right: parent.right
                 anchors.bottomMargin: 30
                 anchors.rightMargin: 30
-                width: 72
-                height: 72
+                width: 48
+                height: 48
                 radius: 36
                 color: backBtnMouse.pressed ? accentPressed : accentColor
                 z: 100
@@ -541,7 +541,7 @@ Window {
                     anchors.centerIn: parent
                     text: "<"
                     color: "#ffffff"
-                    font.pixelSize: 36
+                    font.pixelSize: 24
                     font.weight: Font.Bold
                 }
 
