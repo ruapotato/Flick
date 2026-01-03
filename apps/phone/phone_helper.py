@@ -25,8 +25,49 @@ except ImportError:
     HAS_DBUS = False
     print("Warning: gi.repository not available, using mock mode")
 
-# Paths - use droidian user's state dir (daemon runs as root but data belongs to user)
-STATE_DIR = "/home/droidian/.local/state/flick"
+# Device configuration
+DEVICE_CONFIG_PATH = "/etc/flick/device.conf"
+
+def load_device_config():
+    """Load device configuration from /etc/flick/device.conf."""
+    config = {}
+    if os.path.exists(DEVICE_CONFIG_PATH):
+        try:
+            with open(DEVICE_CONFIG_PATH) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        value = value.strip().strip('"').strip("'")
+                        config[key.strip()] = value
+        except Exception as e:
+            print(f"Warning: Could not load device config: {e}")
+    return config
+
+def get_user_home():
+    """Get the user's home directory from config or environment."""
+    # Check environment first (set by systemd service)
+    if os.environ.get('FLICK_HOME'):
+        return os.environ['FLICK_HOME']
+
+    # Check device config
+    config = load_device_config()
+    if config.get('DEVICE_HOME'):
+        return config['DEVICE_HOME']
+    if config.get('DEVICE_USER'):
+        return f"/home/{config['DEVICE_USER']}"
+
+    # Fallbacks
+    if os.path.exists('/home/furios'):
+        return '/home/furios'
+    if os.path.exists('/home/droidian'):
+        return '/home/droidian'
+
+    return os.environ.get('HOME', '/root')
+
+# Paths - determined from device config (daemon runs as root but data belongs to user)
+USER_HOME = get_user_home()
+STATE_DIR = os.path.join(USER_HOME, ".local/state/flick")
 HISTORY_FILE = os.path.join(STATE_DIR, "call_history.json")
 STATUS_FILE = "/tmp/flick_phone_status"
 CMD_FILE = "/tmp/flick_phone_cmd"

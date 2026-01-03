@@ -2,22 +2,34 @@
 
 ## BUILD INSTRUCTIONS (CLAUDE: READ THIS FIRST)
 
-You are in charge of building on the phone and moving code via SSH. The shell cannot be built locally due to missing hardware libraries (libhybris, hwcomposer).
+You are in charge of building on the phone directly. The shell cannot be built on standard desktop due to missing hardware libraries (libhybris, hwcomposer).
 
-**Standard workflow:**
+**Standard workflow (on device):**
 ```bash
-# 1. Commit and push changes
-git add -A && git commit -m "message" && git push
-
-# 2. Pull and build on phone via SSH
-ssh droidian@10.15.19.82 "cd ~/Flick && git pull && ./build_phone.sh"
+# Build on the device directly
+cd ~/Flick && git pull && ./build_phone.sh
 ```
 
-**Phone details:**
-- SSH: `ssh droidian@10.15.19.82`
+**Primary Device: FLX1s**
+- User: `furios`
 - Project path: `~/Flick`
 - Build script: `./build_phone.sh`
 - Build time: ~8 minutes
+
+**Device Config System:**
+Device-specific settings are in `config/devices/`. The installer reads these to configure:
+- User/home paths
+- Runtime directories
+- Backend settings (hwcomposer vs DRM)
+- Audio/modem configuration
+
+Available configs:
+- `flx1s.conf` - FLX1s (default)
+- `pixel3a.conf` - Google Pixel 3a (reference)
+- `pinephone.conf` - PinePhone (Mobian)
+
+**Archived Device: Pixel 3a**
+The `pixel-3a-last-build` branch contains the last working Pixel 3a build.
 
 ---
 
@@ -36,10 +48,9 @@ You are building `drm-hwcomposer-shim` - a **UNIVERSAL** compositor abstraction 
 - Any standard Wayland compositor using DRM/KMS
 
 ### Phone Setup
-- **Device**: Google Pixel 3a (sargo)
-- **OS**: Droidian
-- **SSH**: `ssh droidian@10.15.19.82` (alias: `phone` may not be configured)
-- **Project path on phone**: `~/Flick`
+- **Primary Device**: FLX1s
+- **User**: furios
+- **Project path**: `~/Flick`
 
 ### What This Does
 The shim intercepts DRM/KMS ioctls and translates them to Android hwcomposer calls via libhybris. This means compositors that expect standard Linux DRM devices can run on phones that only have hwcomposer.

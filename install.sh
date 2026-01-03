@@ -1,23 +1,69 @@
 #!/bin/bash
 # Flick Installation Script
-# Supports Droidian (hwcomposer) and Mobian/standard Linux (DRM)
+# Supports multiple devices via config system
 #
-# Usage: ./install.sh [--no-build] [--no-enable]
-#   --no-build   Skip building (use existing binary)
-#   --no-enable  Don't enable on boot, just install
+# Usage: ./install.sh [options]
+#   --device <name>  Use specific device config (default: auto-detect or flx1s)
+#   --no-build       Skip building (use existing binary)
+#   --no-enable      Don't enable on boot, just install
+#   --list-devices   List available device configurations
+#   --help           Show this help
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVICE_DIR="$SCRIPT_DIR/config/systemd"
+DEVICES_DIR="$SCRIPT_DIR/config/devices"
+CONFIG_INSTALL_DIR="/etc/flick"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+log() { echo -e "${GREEN}[FLICK]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
+info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 
 # Parse arguments
 NO_BUILD=false
 NO_ENABLE=false
+DEVICE_CONFIG=""
 for arg in "$@"; do
     case $arg in
         --no-build) NO_BUILD=true ;;
         --no-enable) NO_ENABLE=true ;;
+        --device=*) DEVICE_CONFIG="${arg#*=}" ;;
+        --list-devices)
+            echo "Available device configurations:"
+            for f in "$DEVICES_DIR"/*.conf; do
+                [ -f "$f" ] || continue
+                name=$(basename "$f" .conf)
+                desc=$(grep "^DEVICE_NAME=" "$f" | cut -d'"' -f2)
+                echo "  $name - $desc"
+            done
+            exit 0
+            ;;
+        --help)
+            echo "Flick Installation Script"
+            echo ""
+            echo "Usage: ./install.sh [options]"
+            echo ""
+            echo "Options:"
+            echo "  --device=<name>  Use specific device config (default: flx1s)"
+            echo "  --no-build       Skip building (use existing binary)"
+            echo "  --no-enable      Don't enable services on boot"
+            echo "  --list-devices   List available device configurations"
+            echo "  --help           Show this help"
+            echo ""
+            echo "Examples:"
+            echo "  ./install.sh                    # Install with auto-detected or default config"
+            echo "  ./install.sh --device=pixel3a   # Install using Pixel 3a config"
+            echo "  ./install.sh --no-build         # Install without rebuilding"
+            exit 0
+            ;;
     esac
 done
 
@@ -25,6 +71,8 @@ done
 detect_platform() {
     if [ -f /etc/droidian-release ] || grep -qi droidian /etc/os-release 2>/dev/null; then
         echo "droidian"
+    elif [ -f /etc/furios-release ] || grep -qi furios /etc/os-release 2>/dev/null; then
+        echo "droidian"  # FuriOS is Droidian-based
     elif [ -f /etc/mobian-release ] || grep -qi mobian /etc/os-release 2>/dev/null; then
         echo "mobian"
     elif [ -f /etc/debian_version ]; then
@@ -34,47 +82,102 @@ detect_platform() {
     fi
 }
 
+# Auto-detect device config based on current system
+auto_detect_device() {
+    # Check if there's an existing config
+    if [ -f "$CONFIG_INSTALL_DIR/device.conf" ]; then
+        grep "^DEVICE_CODENAME=" "$CONFIG_INSTALL_DIR/device.conf" | cut -d'"' -f2
+        return
+    fi
+
+    # Check for known device indicators
+    if [ -f /etc/furios-release ] || [ -d /home/furios ]; then
+        echo "flx1s"
+    elif [ -d /home/droidian ]; then
+        # Could be any Droidian device - check hardware
+        if grep -qi "sargo\|Pixel 3a" /proc/device-tree/model 2>/dev/null; then
+            echo "pixel3a"
+        else
+            echo "pixel3a"  # Default to pixel3a for unknown Droidian
+        fi
+    elif [ -d /home/mobian ]; then
+        echo "pinephone"
+    else
+        echo "flx1s"  # Default
+    fi
+}
+
 PLATFORM=$(detect_platform)
 
+# Select device config
+if [ -z "$DEVICE_CONFIG" ]; then
+    DEVICE_CONFIG=$(auto_detect_device)
+fi
+
+DEVICE_CONF_FILE="$DEVICES_DIR/$DEVICE_CONFIG.conf"
+if [ ! -f "$DEVICE_CONF_FILE" ]; then
+    error "Device config not found: $DEVICE_CONF_FILE\nRun --list-devices to see available configs"
+fi
+
+# Load device config
+source "$DEVICE_CONF_FILE"
+
+echo ""
 echo "========================================"
 echo "  Flick Installation Script"
 echo "========================================"
 echo ""
-echo "Platform detected: $PLATFORM"
-echo "Install directory: $SCRIPT_DIR"
+log "Platform: $PLATFORM"
+log "Device: $DEVICE_NAME ($DEVICE_CODENAME)"
+log "Install directory: $SCRIPT_DIR"
 echo ""
 
+# Validate we have the required config values
+[ -z "$DEVICE_USER" ] && error "DEVICE_USER not set in config"
+[ -z "$DEVICE_UID" ] && error "DEVICE_UID not set in config"
+[ -z "$DEVICE_HOME" ] && error "DEVICE_HOME not set in config"
+
+# Set install variables from config
+INSTALL_USER="$DEVICE_USER"
+INSTALL_UID="$DEVICE_UID"
+INSTALL_HOME="$DEVICE_HOME"
+
 # Check if running as correct user
-if [ "$PLATFORM" = "droidian" ]; then
+if [ "$DEVICE_PLATFORM" = "droidian" ]; then
     if [ "$EUID" -ne 0 ]; then
-        echo "On Droidian, please run as root: sudo $0"
-        exit 1
+        error "On Droidian/hwcomposer systems, please run as root: sudo $0 $*"
     fi
-    INSTALL_USER="droidian"
-    INSTALL_UID=$(id -u droidian 2>/dev/null || echo "32011")
-    INSTALL_HOME=$(getent passwd droidian | cut -d: -f6)
 else
     if [ "$EUID" -eq 0 ]; then
-        echo "Please run as a regular user (not root)"
-        echo "The script will use sudo when needed"
-        exit 1
+        error "Please run as a regular user (not root)\nThe script will use sudo when needed"
     fi
-    INSTALL_USER="$USER"
-    INSTALL_UID=$(id -u)
-    INSTALL_HOME="$HOME"
 fi
 
-echo "User: $INSTALL_USER (UID: $INSTALL_UID)"
-echo "Home: $INSTALL_HOME"
+# Check if target user exists
+if ! id "$INSTALL_USER" &>/dev/null; then
+    warn "User '$INSTALL_USER' does not exist"
+    info "Creating user or using current user..."
+    if [ "$EUID" -eq 0 ]; then
+        INSTALL_USER=$(who | head -1 | awk '{print $1}')
+        [ -z "$INSTALL_USER" ] && INSTALL_USER="root"
+    else
+        INSTALL_USER="$USER"
+    fi
+    INSTALL_UID=$(id -u "$INSTALL_USER")
+    INSTALL_HOME=$(getent passwd "$INSTALL_USER" | cut -d: -f6)
+    warn "Using user: $INSTALL_USER (UID: $INSTALL_UID)"
+fi
+
+log "User: $INSTALL_USER (UID: $INSTALL_UID)"
+log "Home: $INSTALL_HOME"
 echo ""
 
 #######################################
 # Step 1: Install Dependencies
 #######################################
-echo "[1/5] Installing dependencies..."
+log "[1/6] Installing system dependencies..."
 
-if [ "$PLATFORM" = "droidian" ]; then
-    # Droidian uses hwcomposer, minimal deps needed
+if [ "$DEVICE_PLATFORM" = "droidian" ]; then
     apt update
     apt install -y \
         python3 \
@@ -87,7 +190,6 @@ if [ "$PLATFORM" = "droidian" ]; then
         libxkbcommon-dev \
         libpixman-1-dev
 else
-    # Mobian/Debian needs DRM/seatd dependencies
     sudo apt update
     sudo apt install -y \
         git \
@@ -110,27 +212,52 @@ else
 fi
 
 #######################################
-# Step 2: Install Rust
+# Step 2: Install Rust/Cargo
 #######################################
 echo ""
-echo "[2/5] Checking Rust toolchain..."
+log "[2/6] Checking Rust/Cargo toolchain..."
 
-# For Droidian, check as the droidian user
-if [ "$PLATFORM" = "droidian" ]; then
-    if sudo -u droidian bash -c 'source ~/.cargo/env 2>/dev/null; command -v rustc' &>/dev/null; then
-        RUST_VER=$(sudo -u droidian bash -c 'source ~/.cargo/env; rustc --version')
-        echo "Rust is already installed: $RUST_VER"
+install_rust() {
+    local target_user="$1"
+    local target_home="$2"
+
+    log "Installing Rust for $target_user..."
+    if [ "$target_user" = "root" ] || [ "$EUID" -eq 0 ] && [ "$target_user" != "$USER" ]; then
+        sudo -u "$target_user" bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
     else
-        echo "Installing Rust for droidian user..."
-        sudo -u droidian bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
-    fi
-else
-    if command -v rustc &>/dev/null; then
-        echo "Rust is already installed: $(rustc --version)"
-    else
-        echo "Installing Rust..."
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
         source "$HOME/.cargo/env"
+    fi
+}
+
+check_rust() {
+    local target_user="$1"
+    local target_home="$2"
+
+    if [ "$target_user" = "root" ] || ([ "$EUID" -eq 0 ] && [ "$target_user" != "root" ]); then
+        sudo -u "$target_user" bash -c "source $target_home/.cargo/env 2>/dev/null; command -v cargo" &>/dev/null
+    else
+        command -v cargo &>/dev/null || ([ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env" && command -v cargo &>/dev/null)
+    fi
+}
+
+# Check and install Rust
+if [ "$DEVICE_PLATFORM" = "droidian" ]; then
+    if check_rust "$INSTALL_USER" "$INSTALL_HOME"; then
+        RUST_VER=$(sudo -u "$INSTALL_USER" bash -c "source $INSTALL_HOME/.cargo/env 2>/dev/null; rustc --version")
+        log "Rust already installed: $RUST_VER"
+    else
+        warn "Cargo not found for $INSTALL_USER"
+        install_rust "$INSTALL_USER" "$INSTALL_HOME"
+        log "Rust installed successfully"
+    fi
+else
+    if check_rust "$USER" "$HOME"; then
+        log "Rust already installed: $(rustc --version)"
+    else
+        warn "Cargo not found"
+        install_rust "$USER" "$HOME"
+        log "Rust installed successfully"
     fi
 fi
 
@@ -138,105 +265,133 @@ fi
 # Step 3: Build Flick
 #######################################
 echo ""
-echo "[3/5] Building Flick shell..."
+log "[3/6] Building Flick shell..."
 
 if [ "$NO_BUILD" = true ]; then
-    echo "Skipping build (--no-build specified)"
+    info "Skipping build (--no-build specified)"
     if [ ! -f "$SCRIPT_DIR/shell/target/release/flick" ]; then
-        echo "ERROR: No existing binary found at $SCRIPT_DIR/shell/target/release/flick"
-        exit 1
+        error "No existing binary found at $SCRIPT_DIR/shell/target/release/flick"
     fi
 else
     cd "$SCRIPT_DIR/shell"
-    if [ "$PLATFORM" = "droidian" ]; then
-        echo "Building as droidian user (this may take 30+ minutes)..."
-        sudo -u droidian bash -c 'source ~/.cargo/env && cargo build --release'
+    if [ "$DEVICE_PLATFORM" = "droidian" ]; then
+        log "Building as $INSTALL_USER (this may take 30+ minutes on ARM)..."
+        sudo -u "$INSTALL_USER" bash -c "source $INSTALL_HOME/.cargo/env && cargo build --release"
     else
         export PATH="$HOME/.cargo/bin:$PATH"
-        echo "Building (this may take 30+ minutes on ARM)..."
+        log "Building (this may take 30+ minutes on ARM)..."
         cargo build --release
     fi
 fi
 
 cd "$SCRIPT_DIR"
 
-# Verify binary exists
 if [ ! -f "$SCRIPT_DIR/shell/target/release/flick" ]; then
-    echo "ERROR: Build failed - binary not found"
-    exit 1
+    error "Build failed - binary not found"
 fi
-echo "Binary built: $SCRIPT_DIR/shell/target/release/flick"
+log "Binary built: $SCRIPT_DIR/shell/target/release/flick"
 
 #######################################
 # Step 4: Setup Permissions & State
 #######################################
 echo ""
-echo "[4/5] Setting up permissions..."
+log "[4/6] Setting up permissions and state directories..."
 
-# Create and fix state directory
+# Create state directory
 STATE_DIR="$INSTALL_HOME/.local/state/flick"
-if [ "$PLATFORM" = "droidian" ]; then
-    mkdir -p "$STATE_DIR"
-    chown -R droidian:droidian "$STATE_DIR" 2>/dev/null || true
-    chown -R droidian:droidian "$INSTALL_HOME/.local/state" 2>/dev/null || true
+DATA_DIR="$INSTALL_HOME/.local/share/flick"
+
+if [ "$DEVICE_PLATFORM" = "droidian" ]; then
+    mkdir -p "$STATE_DIR" "$DATA_DIR/logs"
+    chown -R "$INSTALL_USER:$INSTALL_USER" "$STATE_DIR" 2>/dev/null || true
+    chown -R "$INSTALL_USER:$INSTALL_USER" "$DATA_DIR" 2>/dev/null || true
+    chown -R "$INSTALL_USER:$INSTALL_USER" "$INSTALL_HOME/.local/state" 2>/dev/null || true
+    chown -R "$INSTALL_USER:$INSTALL_USER" "$INSTALL_HOME/.local/share" 2>/dev/null || true
 else
-    mkdir -p "$STATE_DIR"
-    # Add user to video group for DRM access
+    mkdir -p "$STATE_DIR" "$DATA_DIR/logs"
     if ! groups "$INSTALL_USER" | grep -q video; then
         sudo usermod -aG video "$INSTALL_USER"
-        echo "Added $INSTALL_USER to video group"
+        log "Added $INSTALL_USER to video group"
+    fi
+fi
+
+# Install device config to /etc/flick
+if [ "$DEVICE_PLATFORM" = "droidian" ]; then
+    mkdir -p "$CONFIG_INSTALL_DIR"
+    cp "$DEVICE_CONF_FILE" "$CONFIG_INSTALL_DIR/device.conf"
+    log "Device config installed to $CONFIG_INSTALL_DIR/device.conf"
+else
+    sudo mkdir -p "$CONFIG_INSTALL_DIR"
+    sudo cp "$DEVICE_CONF_FILE" "$CONFIG_INSTALL_DIR/device.conf"
+    log "Device config installed to $CONFIG_INSTALL_DIR/device.conf"
+fi
+
+#######################################
+# Step 5: Stop Phosh (don't disable)
+#######################################
+echo ""
+log "[5/6] Preparing display environment..."
+
+# Only stop Phosh, don't disable or mask it
+# This keeps Phosh available as a fallback
+if systemctl is-active --quiet phosh 2>/dev/null; then
+    info "Stopping Phosh (keeping it available as fallback)..."
+    if [ "$DEVICE_PLATFORM" = "droidian" ]; then
+        systemctl stop phosh 2>/dev/null || true
+    else
+        sudo systemctl stop phosh 2>/dev/null || true
     fi
 fi
 
 #######################################
-# Step 5: Install Systemd Services
+# Step 6: Install Systemd Services
 #######################################
 echo ""
-echo "[5/5] Installing systemd services..."
+log "[6/6] Installing systemd services..."
 
-if [ "$PLATFORM" = "droidian" ]; then
+if [ "$DEVICE_PLATFORM" = "droidian" ]; then
     # Droidian: hwcomposer backend, multiple services
-    mkdir -p "$SERVICE_DIR"
 
     # Create flick.service
     cat > /etc/systemd/system/flick.service << EOF
 [Unit]
 Description=Flick Mobile Shell
-Documentation=https://github.com/user/flick
+Documentation=https://github.com/ruapotato/Flick
 After=phosh.service
 After=lxc@android.service
 After=dbus.socket
+# Conflict but don't disable - allows easy switching back
 Conflicts=phosh.service
 
 [Service]
 Type=simple
-# Run as root - compositor needs root for hwcomposer, drops privileges for spawned apps
 User=root
 Group=root
 
-# Use our own runtime dir (not /run/user/UID which gets cleaned up by logind)
 RuntimeDirectory=flick
 RuntimeDirectoryMode=0755
-Environment=XDG_RUNTIME_DIR=/run/flick
+Environment=XDG_RUNTIME_DIR=$FLICK_RUNTIME_DIR
 Environment=XDG_SESSION_TYPE=wayland
 Environment=XDG_CURRENT_DESKTOP=Flick
-Environment=EGL_PLATFORM=hwcomposer
+Environment=EGL_PLATFORM=$EGL_PLATFORM
 Environment=HOME=$INSTALL_HOME
+Environment=FLICK_DEVICE=$DEVICE_CODENAME
+Environment=FLICK_USER=$INSTALL_USER
 
-# Wait for Android container to be fully ready
-ExecStartPre=/bin/sh -c 'for i in \$(seq 1 30); do if [ "\$(getprop sys.boot_completed)" = "1" ]; then exit 0; fi; sleep 1; done; echo "Android container not ready, continuing anyway"'
+# Wait for Android container if required
+ExecStartPre=/bin/sh -c '[ "$ANDROID_CONTAINER" != "true" ] && exit 0; for i in \$(seq 1 $ANDROID_BOOT_WAIT); do if [ "\$(getprop sys.boot_completed)" = "1" ]; then exit 0; fi; sleep 1; done; echo "Android container not ready, continuing anyway"'
 
-# Kill any lingering Wayland clients from previous session
+# Kill any lingering Wayland clients
 ExecStartPre=-/usr/bin/pkill -9 qmlscene
 ExecStartPre=-/usr/bin/pkill -9 Xwayland
 ExecStartPre=/bin/sleep 1
 
-# Ensure state directory exists and has correct permissions
+# Ensure state directory exists
 ExecStartPre=/bin/mkdir -p $INSTALL_HOME/.local/state/flick
-ExecStartPre=/bin/chown -R droidian:droidian $INSTALL_HOME/.local/state/flick
+ExecStartPre=/bin/chown -R $INSTALL_USER:$INSTALL_USER $INSTALL_HOME/.local/state/flick
 
-# Start hwcomposer (don't stop first - stopping causes it to become unstable)
-ExecStartPre=/bin/sh -c 'ANDROID_SERVICE="(vendor.hwcomposer-.*|vendor.qti.hardware.display.composer)" /usr/lib/halium-wrappers/android-service.sh hwcomposer start'
+# Start hwcomposer
+ExecStartPre=/bin/sh -c '[ "$ANDROID_CONTAINER" != "true" ] && exit 0; ANDROID_SERVICE="$HWCOMPOSER_SERVICE" /usr/lib/halium-wrappers/android-service.sh hwcomposer start || true'
 ExecStartPre=/bin/sleep 2
 
 ExecStart=$SCRIPT_DIR/shell/target/release/flick
@@ -257,7 +412,7 @@ EOF
     cat > /etc/systemd/system/flick-phone-helper.service << EOF
 [Unit]
 Description=Flick Phone Helper Daemon
-Documentation=https://github.com/user/flick
+Documentation=https://github.com/ruapotato/Flick
 After=ofono.service
 BindsTo=flick.service
 After=flick.service
@@ -266,9 +421,12 @@ After=flick.service
 Type=simple
 User=root
 
+Environment=FLICK_USER=$INSTALL_USER
+Environment=FLICK_HOME=$INSTALL_HOME
+Environment=FLICK_DEVICE=$DEVICE_CODENAME
+
 ExecStartPre=/bin/rm -f /tmp/flick_phone_status /tmp/flick_phone_cmd
-# Force 2G mode for voice calls (VoLTE not supported on most Droidian devices)
-ExecStartPre=-/bin/sh -c 'sleep 5 && mmcli -m 0 --set-allowed-modes="2g" || true'
+ExecStartPre=-/bin/sh -c '[ "$MODEM_FORCE_2G_CALLS" = "true" ] && sleep 5 && mmcli -m 0 --set-allowed-modes="2g" || true'
 ExecStart=/usr/bin/python3 $SCRIPT_DIR/apps/phone/phone_helper.py daemon
 
 StandardOutput=journal
@@ -286,18 +444,20 @@ EOF
     cat > /etc/systemd/system/flick-messaging.service << EOF
 [Unit]
 Description=Flick Messaging Daemon
-Documentation=https://github.com/user/flick
+Documentation=https://github.com/ruapotato/Flick
 After=dbus.socket
 BindsTo=flick.service
 After=flick.service
 
 [Service]
 Type=simple
-User=droidian
-Group=droidian
+User=$INSTALL_USER
+Group=$INSTALL_USER
 
-Environment=XDG_RUNTIME_DIR=/run/user/$INSTALL_UID
-Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$INSTALL_UID/bus
+Environment=XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+Environment=FLICK_USER=$INSTALL_USER
+Environment=FLICK_HOME=$INSTALL_HOME
 
 ExecStart=/usr/bin/python3 $SCRIPT_DIR/apps/messages/messaging_daemon.py daemon
 
@@ -312,8 +472,9 @@ RestartSec=5
 WantedBy=flick.service
 EOF
 
-    # Create flick-audio-keepalive.service
-    cat > /etc/systemd/system/flick-audio-keepalive.service << EOF
+    # Create flick-audio-keepalive.service (only if needed)
+    if [ "$AUDIO_KEEPALIVE" = "true" ]; then
+        cat > /etc/systemd/system/flick-audio-keepalive.service << EOF
 [Unit]
 Description=Flick Audio Keepalive
 After=pulseaudio.service user@$INSTALL_UID.service
@@ -323,11 +484,11 @@ After=flick.service
 
 [Service]
 Type=simple
-User=droidian
-Group=droidian
-Environment=XDG_RUNTIME_DIR=/run/user/$INSTALL_UID
-# Wait for PulseAudio socket to exist (up to 60 seconds)
-ExecStartPre=/bin/sh -c 'for i in \$(seq 1 60); do [ -S /run/user/$INSTALL_UID/pulse/native ] && exit 0; sleep 1; done; echo "PulseAudio not ready"; exit 1'
+User=$INSTALL_USER
+Group=$INSTALL_USER
+Environment=XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR
+
+ExecStartPre=/bin/sh -c 'for i in \$(seq 1 60); do [ -S $XDG_RUNTIME_DIR/pulse/native ] && exit 0; sleep 1; done; echo "PulseAudio not ready"; exit 1'
 ExecStart=/usr/bin/pacat --playback /dev/zero --rate=44100 --channels=2 --format=s16le --latency-msec=1000
 Restart=on-failure
 RestartSec=5
@@ -335,8 +496,9 @@ RestartSec=5
 [Install]
 WantedBy=flick.service
 EOF
+    fi
 
-    # Disable PulseAudio suspend-on-idle (causes audio to cut out on Droidian)
+    # Disable PulseAudio suspend-on-idle
     mkdir -p /etc/pulse/default.pa.d
     cat > /etc/pulse/default.pa.d/no-suspend.pa << EOF
 # Disable suspend-on-idle for Droidian audio stability
@@ -347,35 +509,33 @@ EOF
     systemctl daemon-reload
 
     if [ "$NO_ENABLE" = false ]; then
-        echo "Enabling Flick services..."
-        systemctl disable phosh 2>/dev/null || true
-        systemctl mask phosh 2>/dev/null || true
-        systemctl enable flick flick-phone-helper flick-messaging flick-audio-keepalive
+        log "Enabling Flick services..."
+        # Don't disable phosh - just enable flick
+        systemctl enable flick flick-phone-helper flick-messaging
+        [ "$AUDIO_KEEPALIVE" = "true" ] && systemctl enable flick-audio-keepalive
     fi
 
     echo ""
     echo "========================================"
-    echo "  Installation Complete (Droidian)"
+    echo "  Installation Complete ($DEVICE_NAME)"
     echo "========================================"
     echo ""
-    echo "Services installed:"
+    log "Services installed:"
     echo "  - flick.service (main compositor)"
     echo "  - flick-phone-helper.service (phone daemon)"
     echo "  - flick-messaging.service (SMS daemon)"
-    echo "  - flick-audio-keepalive.service (audio fix)"
+    [ "$AUDIO_KEEPALIVE" = "true" ] && echo "  - flick-audio-keepalive.service (audio fix)"
     echo ""
     if [ "$NO_ENABLE" = false ]; then
-        echo "Flick is enabled and will start on next boot."
+        info "Flick is enabled and will start on next boot."
         echo ""
     fi
-    echo "To start Flick now:"
+    log "To start Flick now:"
     echo "  sudo systemctl stop phosh"
     echo "  sudo systemctl start flick flick-phone-helper flick-messaging"
     echo ""
-    echo "To switch back to Phosh:"
+    log "To switch back to Phosh:"
     echo "  sudo systemctl stop flick flick-phone-helper flick-messaging"
-    echo "  sudo systemctl disable flick flick-phone-helper flick-messaging"
-    echo "  sudo systemctl enable phosh"
     echo "  sudo systemctl start phosh"
 
 else
@@ -401,8 +561,10 @@ Environment=XDG_SEAT=seat0
 Environment=XDG_VTNR=2
 Environment=HOME=$INSTALL_HOME
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-Environment=XDG_RUNTIME_DIR=/run/user/$INSTALL_UID
+Environment=XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR
 Environment=LIBSEAT_BACKEND=seatd
+Environment=FLICK_DEVICE=$DEVICE_CODENAME
+Environment=FLICK_USER=$INSTALL_USER
 
 Restart=on-failure
 RestartSec=3
@@ -417,32 +579,30 @@ EOF
     sudo systemctl daemon-reload
 
     if [ "$NO_ENABLE" = false ]; then
-        echo "Enabling Flick and seatd..."
-        sudo systemctl disable greetd 2>/dev/null || true
+        log "Enabling Flick and seatd..."
         sudo systemctl enable seatd
         sudo systemctl enable flick
     fi
 
     echo ""
     echo "========================================"
-    echo "  Installation Complete (Mobian/Debian)"
+    echo "  Installation Complete ($DEVICE_NAME)"
     echo "========================================"
     echo ""
     if [ "$NO_ENABLE" = false ]; then
-        echo "Flick is enabled and will start on next boot."
+        info "Flick is enabled and will start on next boot."
         echo ""
     fi
-    echo "To start Flick now:"
-    echo "  sudo systemctl stop greetd"
+    log "To start Flick now:"
+    echo "  sudo systemctl stop greetd phosh 2>/dev/null"
     echo "  sudo systemctl start flick"
     echo ""
-    echo "To switch back to Phosh/greetd:"
+    log "To switch back to Phosh/greetd:"
     echo "  sudo systemctl stop flick"
-    echo "  sudo systemctl disable flick"
-    echo "  sudo systemctl enable greetd"
-    echo "  sudo systemctl start greetd"
+    echo "  sudo systemctl start phosh"
 fi
 
 echo ""
-echo "View logs: journalctl -u flick -f"
+log "Device config: $CONFIG_INSTALL_DIR/device.conf"
+log "View logs: journalctl -u flick -f"
 echo ""

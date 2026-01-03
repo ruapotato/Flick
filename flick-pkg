@@ -33,17 +33,55 @@ from datetime import datetime
 # Configuration
 DEFAULT_REPO = "https://255.one"
 API_BASE = "/api"
+DEVICE_CONFIG_PATH = "/etc/flick/device.conf"
+
+def load_device_config():
+    """Load device configuration from /etc/flick/device.conf."""
+    config = {}
+    if os.path.exists(DEVICE_CONFIG_PATH):
+        try:
+            with open(DEVICE_CONFIG_PATH) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        # Remove quotes from value
+                        value = value.strip().strip('"').strip("'")
+                        config[key.strip()] = value
+        except Exception as e:
+            print(f"Warning: Could not load device config: {e}")
+    return config
 
 def get_home():
     """Get the real user's home directory."""
-    for env_var in ['FLICK_USER', 'SUDO_USER']:
-        user = os.environ.get(env_var, '')
-        if user and user != 'root':
-            home = f'/home/{user}'
-            if os.path.exists(home):
+    # First check environment variables (set by systemd services)
+    for env_var in ['FLICK_HOME', 'FLICK_USER', 'SUDO_USER']:
+        if env_var == 'FLICK_HOME':
+            home = os.environ.get(env_var, '')
+            if home and os.path.exists(home):
                 return Path(home)
+        else:
+            user = os.environ.get(env_var, '')
+            if user and user != 'root':
+                home = f'/home/{user}'
+                if os.path.exists(home):
+                    return Path(home)
+
+    # Check device config
+    config = load_device_config()
+    if config.get('DEVICE_HOME') and os.path.exists(config['DEVICE_HOME']):
+        return Path(config['DEVICE_HOME'])
+    if config.get('DEVICE_USER'):
+        home = f"/home/{config['DEVICE_USER']}"
+        if os.path.exists(home):
+            return Path(home)
+
+    # Fallbacks for known systems
+    if os.path.exists('/home/furios'):
+        return Path('/home/furios')
     if os.path.exists('/home/droidian'):
         return Path('/home/droidian')
+
     return Path(os.environ.get('HOME', '/root'))
 
 HOME = get_home()
