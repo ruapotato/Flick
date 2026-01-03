@@ -188,7 +188,14 @@ if [ "$DEVICE_PLATFORM" = "droidian" ]; then
         pkg-config \
         libpam0g-dev \
         libxkbcommon-dev \
-        libpixman-1-dev
+        libpixman-1-dev \
+        libudev-dev \
+        libseat-dev \
+        libinput-dev \
+        libgbm-dev \
+        libegl-dev \
+        libdrm-dev \
+        libdisplay-info-dev
 else
     sudo apt update
     sudo apt install -y \

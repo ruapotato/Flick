@@ -259,7 +259,7 @@ impl Drop for HwcDisplay {
 
 /// Get display dimensions from environment or system (fallback before shim init)
 fn get_display_dimensions() -> (u32, u32) {
-    // Try environment variables first
+    // Try environment variables first (for manual override)
     if let (Ok(w), Ok(h)) = (
         std::env::var("FLICK_DISPLAY_WIDTH"),
         std::env::var("FLICK_DISPLAY_HEIGHT"),
@@ -270,12 +270,42 @@ fn get_display_dimensions() -> (u32, u32) {
         }
     }
 
-    // Try /sys/class/graphics/fb0
+    // Try DRM modes - first mode is usually the native resolution
+    if let Ok(entries) = std::fs::read_dir("/sys/class/drm") {
+        for entry in entries.flatten() {
+            let modes_path = entry.path().join("modes");
+            if let Ok(contents) = std::fs::read_to_string(&modes_path) {
+                if let Some(first_line) = contents.lines().next() {
+                    // Parse mode like "720x1600" or "1080x2340"
+                    let parts: Vec<&str> = first_line.trim().split('x').collect();
+                    if parts.len() == 2 {
+                        if let (Ok(w), Ok(h)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                            // Sanity check: reasonable phone resolution
+                            if w >= 360 && w <= 3000 && h >= 640 && h <= 4000 {
+                                info!("Display size from DRM modes: {}x{}", w, h);
+                                return (w, h);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Try /sys/class/graphics/fb0 with smart handling for triple buffering
     if let Ok(contents) = std::fs::read_to_string("/sys/class/graphics/fb0/virtual_size") {
         let parts: Vec<&str> = contents.trim().split(',').collect();
         if parts.len() >= 2 {
-            if let (Ok(w), Ok(h)) = (parts[0].parse(), parts[1].parse()) {
-                info!("Display size from fb0: {}x{}", w, h);
+            if let (Ok(w), Ok(mut h)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                // Detect triple buffering: if height is roughly 3x the expected screen height
+                // (screen height is typically 1.5-2.5x width for phones)
+                if h > w * 4 {
+                    // Likely triple-buffered, divide by 3
+                    h = h / 3;
+                    info!("Display size from fb0 (corrected for triple buffering): {}x{}", w, h);
+                } else {
+                    info!("Display size from fb0: {}x{}", w, h);
+                }
                 return (w, h);
             }
         }
