@@ -195,7 +195,11 @@ if [ "$DEVICE_PLATFORM" = "droidian" ]; then
         libgbm-dev \
         libegl-dev \
         libdrm-dev \
-        libdisplay-info-dev
+        libdisplay-info-dev \
+        qmlscene \
+        qml-module-qtquick2 \
+        qml-module-qtquick-window2 \
+        qml-module-qtquick-controls2
 else
     sudo apt update
     sudo apt install -y \
