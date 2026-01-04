@@ -25,11 +25,12 @@ RESCAN_SIGNAL = "/tmp/flick_rescan_apps"
 
 def find_flick_pkg():
     """Find the flick-pkg script."""
+    home = str(Path.home())
     candidates = [
         os.environ.get("FLICK_PKG"),
-        Theme.homeDir + "/Flick/flick-pkg",
+        home + "/Flick/flick-pkg",
         str(Path.home() / "Flick" / "flick-pkg"),
-        "/home/david/Flick/flick-pkg",
+        "/home/furios/Flick/flick-pkg",
     ]
     for path in candidates:
         if path and os.path.isfile(path):

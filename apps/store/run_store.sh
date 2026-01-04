@@ -12,9 +12,19 @@ mkdir -p "$STATE_DIR/store_cache"
 
 echo "=== Flick Store started at $(date) ===" >> "$LOG_FILE"
 
+# Start install server if not already running
+if ! pgrep -f "install_server.py" > /dev/null; then
+    python3 "$SCRIPT_DIR/install_server.py" >> "$LOG_FILE" 2>&1 &
+    sleep 0.5
+fi
+
 # Set Wayland environment
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+
+# Allow file read/write for local config
+export QML_XHR_ALLOW_FILE_READ=1
+export QML_XHR_ALLOW_FILE_WRITE=1
 
 # Hardware acceleration enabled
 # export QT_QUICK_BACKEND=software  # Uncomment for software rendering
