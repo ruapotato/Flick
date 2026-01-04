@@ -496,6 +496,41 @@ pub fn run() -> Result<()> {
         // Dispatch client requests and flush responses
         state.dispatch_clients();
 
+        // Check for power button hold (3+ seconds = emergency restart)
+        if let Some(pressed_at) = state.power_button_pressed_at {
+            let held_duration = pressed_at.elapsed();
+            let held_secs = held_duration.as_secs();
+
+            // Vibrate every second while holding (short pulse)
+            if held_secs > 0 && held_secs < 3 {
+                let should_vibe = match state.power_button_last_vibe {
+                    None => true,
+                    Some(last) => last.elapsed().as_secs() >= 1,
+                };
+                if should_vibe {
+                    if let Some(ref vib) = state.system.vibrator {
+                        vib.vibrate(50); // Short 50ms pulse
+                    }
+                    state.power_button_last_vibe = Some(std::time::Instant::now());
+                }
+            }
+
+            if held_secs >= 3 {
+                warn!("Power button held for 3+ seconds - restarting flick service!");
+                // Long vibration to confirm restart
+                if let Some(ref vib) = state.system.vibrator {
+                    vib.vibrate(200); // Long 200ms vibration
+                }
+                // Use systemctl to restart ourselves
+                let _ = std::process::Command::new("systemctl")
+                    .args(["restart", "flick.service"])
+                    .spawn();
+                // Clear the timer in case restart fails
+                state.power_button_pressed_at = None;
+                state.power_button_last_vibe = None;
+            }
+        }
+
         // Update window list for shell (throttled to avoid excessive I/O)
         state.update_window_list();
 
@@ -2432,13 +2467,23 @@ fn handle_input_event(
             }
 
             // Power button (evdev keycode 116) locks the screen
-            if evdev_keycode == 116 && pressed {
-                if state.shell.view != crate::shell::ShellView::LockScreen {
-                    info!("Power button pressed, locking screen");
-                    state.shell.lock();
-                    if let Some(socket) = state.socket_name.to_str() {
-                        state.shell.launch_lock_screen_app(socket);
+            // Also track hold duration for emergency restart (3+ seconds)
+            if evdev_keycode == 116 {
+                if pressed {
+                    // Start tracking power button hold time
+                    state.power_button_pressed_at = Some(std::time::Instant::now());
+
+                    if state.shell.view != crate::shell::ShellView::LockScreen {
+                        info!("Power button pressed, locking screen");
+                        state.shell.lock();
+                        if let Some(socket) = state.socket_name.to_str() {
+                            state.shell.launch_lock_screen_app(socket);
+                        }
                     }
+                } else {
+                    // Power button released - clear the hold timer
+                    state.power_button_pressed_at = None;
+                    state.power_button_last_vibe = None;
                 }
                 return;
             }

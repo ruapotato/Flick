@@ -559,28 +559,38 @@ fn handle_input_event(
             }
 
             // Power button (evdev keycode 116) - toggle blank/wake on lock screen, or lock
-            if evdev_keycode == 116 && pressed {
-                if state.shell.lock_screen_active {
-                    if state.shell.display_blanked || state.shell.lock_screen_dimmed {
-                        // Wake the blanked/dimmed lock screen
-                        info!("Power button pressed, waking lock screen");
-                        state.shell.wake_lock_screen();
+            // Also track hold duration for emergency restart (3+ seconds)
+            if evdev_keycode == 116 {
+                if pressed {
+                    // Start tracking power button hold time
+                    state.power_button_pressed_at = Some(std::time::Instant::now());
+
+                    if state.shell.lock_screen_active {
+                        if state.shell.display_blanked || state.shell.lock_screen_dimmed {
+                            // Wake the blanked/dimmed lock screen
+                            info!("Power button pressed, waking lock screen");
+                            state.shell.wake_lock_screen();
+                        } else {
+                            // Blank the display immediately (skip dimming)
+                            info!("Power button pressed, blanking display");
+                            state.shell.lock_screen_dimmed = true;
+                            state.shell.display_blanked = true;
+                        }
                     } else {
-                        // Blank the display immediately (skip dimming)
-                        info!("Power button pressed, blanking display");
+                        // Lock the screen and blank display
+                        info!("Power button pressed, locking screen");
+                        state.shell.lock();
                         state.shell.lock_screen_dimmed = true;
                         state.shell.display_blanked = true;
+                        // Launch lock screen app
+                        if let Some(socket) = state.socket_name.to_str() {
+                            state.shell.launch_lock_screen_app(socket);
+                        }
                     }
                 } else {
-                    // Lock the screen and blank display
-                    info!("Power button pressed, locking screen");
-                    state.shell.lock();
-                    state.shell.lock_screen_dimmed = true;
-                    state.shell.display_blanked = true;
-                    // Launch lock screen app
-                    if let Some(socket) = state.socket_name.to_str() {
-                        state.shell.launch_lock_screen_app(socket);
-                    }
+                    // Power button released - clear the hold timer
+                    state.power_button_pressed_at = None;
+                    state.power_button_last_vibe = None;
                 }
                 return;
             }
@@ -2941,6 +2951,42 @@ pub fn run() -> Result<()> {
             // Play ringtone and vibrate for incoming call
             state.system.play_ringtone();
             state.system.haptic_heavy();
+        }
+
+        // Check for power button hold (3+ seconds = emergency restart)
+        // This must run even when display is blanked
+        if let Some(pressed_at) = state.power_button_pressed_at {
+            let held_duration = pressed_at.elapsed();
+            let held_secs = held_duration.as_secs();
+
+            // Vibrate every second while holding (short pulse)
+            if held_secs > 0 && held_secs < 3 {
+                let should_vibe = match state.power_button_last_vibe {
+                    None => true,
+                    Some(last) => last.elapsed().as_secs() >= 1,
+                };
+                if should_vibe {
+                    if let Some(ref vib) = state.system.vibrator {
+                        vib.vibrate(50); // Short 50ms pulse
+                    }
+                    state.power_button_last_vibe = Some(std::time::Instant::now());
+                }
+            }
+
+            if held_secs >= 3 {
+                warn!("Power button held for 3+ seconds - restarting flick service!");
+                // Long vibration to confirm restart
+                if let Some(ref vib) = state.system.vibrator {
+                    vib.vibrate(200); // Long 200ms vibration
+                }
+                // Use systemctl to restart ourselves
+                let _ = std::process::Command::new("systemctl")
+                    .args(["restart", "flick.service"])
+                    .spawn();
+                // Clear the timer in case restart fails
+                state.power_button_pressed_at = None;
+                state.power_button_last_vibe = None;
+            }
         }
 
         // Skip rendering if display is blanked

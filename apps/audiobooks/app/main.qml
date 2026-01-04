@@ -55,7 +55,9 @@ Window {
                 if (currentBook && currentChapterIndex < currentBook.chapters.length - 1) {
                     currentChapterIndex++
                     loadChapter(currentChapterIndex)
-                    audioPlayer.play()
+                    // Don't call play() directly - audio isn't loaded yet
+                    // Use playAfterSeek to play once loading/seeking is complete
+                    playAfterSeek = true
                 } else {
                     console.log("End of audiobook reached")
                     saveProgress()

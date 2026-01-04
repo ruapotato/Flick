@@ -232,6 +232,11 @@ pub struct Flick {
 
     // System status (hardware integration)
     pub system: SystemStatus,
+
+    // Power button hold tracking (for emergency restart)
+    pub power_button_pressed_at: Option<Instant>,
+    // Last vibration time for power button hold feedback
+    pub power_button_last_vibe: Option<Instant>,
 }
 
 impl Flick {
@@ -379,6 +384,8 @@ impl Flick {
             active_window: None,
             shell: Shell::new(screen_size),
             system: SystemStatus::new(),
+            power_button_pressed_at: None,
+            power_button_last_vibe: None,
         }
     }
 
