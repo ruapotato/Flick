@@ -748,224 +748,62 @@ impl RotationLock {
 
 /// Flashlight controller
 ///
-/// Uses the io.furios.Flashlightd dbus service when available (required for MediaTek devices),
-/// falls back to direct sysfs control for standard LED interfaces.
+/// Uses a helper script that runs as the user to control flashlightd via dbus.
+/// This is needed because the shell runs as root but flashlightd runs as a user service.
 pub struct Flashlight;
 
 impl Flashlight {
-    /// Dbus service for flashlight control
-    const DBUS_SERVICE: &'static str = "io.furios.Flashlightd";
-    const DBUS_PATH: &'static str = "/io/furios/Flashlightd";
-    const DBUS_INTERFACE: &'static str = "io.furios.Flashlightd";
+    /// Path to the flashlight toggle helper script
+    fn get_helper_script() -> String {
+        // Try to find the script relative to the executable or use absolute path
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                let script = parent.join("../scripts/flashlight-toggle.sh");
+                if script.exists() {
+                    return script.to_string_lossy().to_string();
+                }
+            }
+        }
+        // Fallback to absolute path
+        "/home/furios/Flick/shell/scripts/flashlight-toggle.sh".to_string()
+    }
 
-    /// Get the dbus session address for the flick user
-    /// The shell runs as root but flashlightd runs as the user
-    fn get_user_dbus_address() -> Option<String> {
-        // Get user from FLICK_USER env var (set in systemd service)
+    /// Run the helper script as the flick user
+    fn run_helper(action: &str) -> Option<String> {
         let user = std::env::var("FLICK_USER").unwrap_or_else(|_| "furios".to_string());
+        let script = Self::get_helper_script();
 
-        // Get UID for user
-        let output = Command::new("id")
-            .args(["-u", &user])
+        let output = Command::new("sudo")
+            .args(["-u", &user, &script, action])
             .output()
             .ok()?;
 
         if output.status.success() {
-            let uid = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let bus_path = format!("/run/user/{}/bus", uid);
-            if std::path::Path::new(&bus_path).exists() {
-                return Some(format!("unix:path={}", bus_path));
-            }
-        }
-        None
-    }
-
-    /// Run busctl command with user's dbus session
-    fn run_busctl(args: &[&str]) -> Option<std::process::Output> {
-        let mut cmd = Command::new("busctl");
-
-        // Set DBUS_SESSION_BUS_ADDRESS to connect to user's session
-        if let Some(dbus_addr) = Self::get_user_dbus_address() {
-            cmd.env("DBUS_SESSION_BUS_ADDRESS", &dbus_addr);
-        }
-
-        cmd.args(args).output().ok()
-    }
-
-    /// Start flashlightd daemon if not running
-    fn ensure_flashlightd_running() {
-        // Check if already running
-        if Self::run_busctl(&["--user", "status", Self::DBUS_SERVICE])
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-        {
-            return;
-        }
-
-        tracing::info!("Starting flashlightd daemon");
-
-        // Get user from FLICK_USER env var
-        let user = std::env::var("FLICK_USER").unwrap_or_else(|_| "furios".to_string());
-
-        // Start flashlightd as the user
-        let _ = Command::new("sudo")
-            .args(["-u", &user, "/usr/libexec/flashlightd"])
-            .env("DBUS_SESSION_BUS_ADDRESS", Self::get_user_dbus_address().unwrap_or_default())
-            .spawn();
-
-        // Give it time to start
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
-
-    /// Check if flashlightd dbus service is available
-    fn has_dbus_service() -> bool {
-        Self::run_busctl(&["--user", "status", Self::DBUS_SERVICE])
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    }
-
-    /// Get current brightness via dbus
-    fn get_dbus_brightness() -> Option<u32> {
-        let output = Self::run_busctl(&[
-            "--user", "get-property",
-            Self::DBUS_SERVICE,
-            Self::DBUS_PATH,
-            Self::DBUS_INTERFACE,
-            "Brightness",
-        ])?;
-
-        if output.status.success() {
-            // Output format: "u 31" or "u 0"
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            stdout.split_whitespace()
-                .nth(1)
-                .and_then(|s| s.parse().ok())
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
         } else {
+            tracing::error!("Flashlight helper failed: {}", String::from_utf8_lossy(&output.stderr));
             None
         }
     }
 
-    /// Get max brightness via dbus
-    fn get_dbus_max_brightness() -> u32 {
-        let output = Self::run_busctl(&[
-            "--user", "get-property",
-            Self::DBUS_SERVICE,
-            Self::DBUS_PATH,
-            Self::DBUS_INTERFACE,
-            "MaxBrightness",
-        ]);
-
-        if let Some(output) = output {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                return stdout.split_whitespace()
-                    .nth(1)
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(31);
-            }
-        }
-        31 // Default
-    }
-
-    /// Set brightness via dbus
-    fn set_dbus_brightness(brightness: u32) -> bool {
-        let brightness_str = brightness.to_string();
-        let result = Self::run_busctl(&[
-            "--user", "call",
-            Self::DBUS_SERVICE,
-            Self::DBUS_PATH,
-            Self::DBUS_INTERFACE,
-            "SetBrightness",
-            "u",
-            &brightness_str,
-        ]);
-
-        match result {
-            Some(output) => {
-                if output.status.success() {
-                    tracing::info!("Flashlight set to {} via dbus", brightness);
-                    true
-                } else {
-                    tracing::error!("Dbus call failed: {}", String::from_utf8_lossy(&output.stderr));
-                    false
-                }
-            }
-            None => {
-                tracing::error!("Failed to call busctl");
-                false
-            }
-        }
-    }
-
-    /// Fallback: find LED sysfs path for direct control
-    fn find_sysfs_led() -> Option<String> {
-        // Search /sys/class/leds for torch LEDs
-        let leds_dir = "/sys/class/leds";
-        if let Ok(entries) = fs::read_dir(leds_dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.contains("torch") {
-                    return Some(entry.path().to_string_lossy().to_string());
-                }
-            }
-        }
-        None
-    }
-
     /// Check if flashlight is on
     pub fn is_on() -> bool {
-        // Try dbus first
-        if Self::has_dbus_service() {
-            return Self::get_dbus_brightness().unwrap_or(0) > 0;
-        }
-
-        // Fallback to sysfs
-        Self::find_sysfs_led()
-            .and_then(|led| fs::read_to_string(format!("{}/brightness", led)).ok())
-            .map(|s| s.trim().parse::<u32>().unwrap_or(0) > 0)
+        Self::run_helper("status")
+            .map(|s| s == "on")
             .unwrap_or(false)
     }
 
     /// Toggle flashlight
     pub fn toggle() -> bool {
-        // Ensure flashlightd is running (required for MediaTek devices)
-        Self::ensure_flashlightd_running();
-
-        let is_on = Self::is_on();
-
-        // Try dbus first (required for MediaTek devices)
-        if Self::has_dbus_service() {
-            let brightness = if is_on {
-                0
-            } else {
-                Self::get_dbus_max_brightness()
-            };
-            return Self::set_dbus_brightness(brightness);
-        }
-
-        // Fallback to sysfs for standard LED interface
-        if let Some(led_path) = Self::find_sysfs_led() {
-            let max_brightness: u32 = fs::read_to_string(format!("{}/max_brightness", led_path))
-                .ok()
-                .and_then(|s| s.trim().parse().ok())
-                .unwrap_or(255);
-
-            let brightness = if is_on { 0 } else { max_brightness };
-            let brightness_path = format!("{}/brightness", led_path);
-
-            match fs::write(&brightness_path, brightness.to_string()) {
-                Ok(_) => {
-                    tracing::info!("Flashlight set to {} at {}", brightness, brightness_path);
-                    true
-                }
-                Err(e) => {
-                    tracing::error!("Failed to set flashlight: {} at {}", e, brightness_path);
-                    false
-                }
+        match Self::run_helper("toggle") {
+            Some(result) => {
+                tracing::info!("Flashlight toggled: {}", result);
+                true
             }
-        } else {
-            tracing::warn!("No flashlight found (no dbus service and no sysfs LED)");
-            false
+            None => {
+                tracing::error!("Failed to toggle flashlight");
+                false
+            }
         }
     }
 }
