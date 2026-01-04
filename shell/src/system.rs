@@ -758,27 +758,56 @@ impl Flashlight {
     const DBUS_PATH: &'static str = "/io/furios/Flashlightd";
     const DBUS_INTERFACE: &'static str = "io.furios.Flashlightd";
 
+    /// Get the dbus session address for the flick user
+    /// The shell runs as root but flashlightd runs as the user
+    fn get_user_dbus_address() -> Option<String> {
+        // Get user from FLICK_USER env var (set in systemd service)
+        let user = std::env::var("FLICK_USER").unwrap_or_else(|_| "furios".to_string());
+
+        // Get UID for user
+        let output = Command::new("id")
+            .args(["-u", &user])
+            .output()
+            .ok()?;
+
+        if output.status.success() {
+            let uid = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let bus_path = format!("/run/user/{}/bus", uid);
+            if std::path::Path::new(&bus_path).exists() {
+                return Some(format!("unix:path={}", bus_path));
+            }
+        }
+        None
+    }
+
+    /// Run busctl command with user's dbus session
+    fn run_busctl(args: &[&str]) -> Option<std::process::Output> {
+        let mut cmd = Command::new("busctl");
+
+        // Set DBUS_SESSION_BUS_ADDRESS to connect to user's session
+        if let Some(dbus_addr) = Self::get_user_dbus_address() {
+            cmd.env("DBUS_SESSION_BUS_ADDRESS", &dbus_addr);
+        }
+
+        cmd.args(args).output().ok()
+    }
+
     /// Check if flashlightd dbus service is available
     fn has_dbus_service() -> bool {
-        Command::new("busctl")
-            .args(["--user", "status", Self::DBUS_SERVICE])
-            .output()
+        Self::run_busctl(&["--user", "status", Self::DBUS_SERVICE])
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
 
     /// Get current brightness via dbus
     fn get_dbus_brightness() -> Option<u32> {
-        let output = Command::new("busctl")
-            .args([
-                "--user", "get-property",
-                Self::DBUS_SERVICE,
-                Self::DBUS_PATH,
-                Self::DBUS_INTERFACE,
-                "Brightness",
-            ])
-            .output()
-            .ok()?;
+        let output = Self::run_busctl(&[
+            "--user", "get-property",
+            Self::DBUS_SERVICE,
+            Self::DBUS_PATH,
+            Self::DBUS_INTERFACE,
+            "Brightness",
+        ])?;
 
         if output.status.success() {
             // Output format: "u 31" or "u 0"
@@ -793,16 +822,13 @@ impl Flashlight {
 
     /// Get max brightness via dbus
     fn get_dbus_max_brightness() -> u32 {
-        let output = Command::new("busctl")
-            .args([
-                "--user", "get-property",
-                Self::DBUS_SERVICE,
-                Self::DBUS_PATH,
-                Self::DBUS_INTERFACE,
-                "MaxBrightness",
-            ])
-            .output()
-            .ok();
+        let output = Self::run_busctl(&[
+            "--user", "get-property",
+            Self::DBUS_SERVICE,
+            Self::DBUS_PATH,
+            Self::DBUS_INTERFACE,
+            "MaxBrightness",
+        ]);
 
         if let Some(output) = output {
             if output.status.success() {
@@ -818,20 +844,19 @@ impl Flashlight {
 
     /// Set brightness via dbus
     fn set_dbus_brightness(brightness: u32) -> bool {
-        let result = Command::new("busctl")
-            .args([
-                "--user", "call",
-                Self::DBUS_SERVICE,
-                Self::DBUS_PATH,
-                Self::DBUS_INTERFACE,
-                "SetBrightness",
-                "u",
-                &brightness.to_string(),
-            ])
-            .output();
+        let brightness_str = brightness.to_string();
+        let result = Self::run_busctl(&[
+            "--user", "call",
+            Self::DBUS_SERVICE,
+            Self::DBUS_PATH,
+            Self::DBUS_INTERFACE,
+            "SetBrightness",
+            "u",
+            &brightness_str,
+        ]);
 
         match result {
-            Ok(output) => {
+            Some(output) => {
                 if output.status.success() {
                     tracing::info!("Flashlight set to {} via dbus", brightness);
                     true
@@ -840,8 +865,8 @@ impl Flashlight {
                     false
                 }
             }
-            Err(e) => {
-                tracing::error!("Failed to call busctl: {}", e);
+            None => {
+                tracing::error!("Failed to call busctl");
                 false
             }
         }
