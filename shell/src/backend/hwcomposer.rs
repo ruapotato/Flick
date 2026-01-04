@@ -2147,9 +2147,11 @@ fn handle_input_event(
                     crate::shell::ShellView::App | crate::shell::ShellView::LockScreen => {
                         // Forward to Slint when system menu is showing
                         if system_menu_showing {
-                            info!("System menu TouchDown at ({}, {})", touch_pos.x, touch_pos.y);
-                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.dispatch_pointer_pressed(touch_pos.x as f32, touch_pos.y as f32);
+                            if let Some(pos) = last_pos {
+                                info!("System menu TouchUp at ({}, {})", pos.x, pos.y);
+                                if let Some(ref slint_ui) = state.shell.slint_ui {
+                                    slint_ui.dispatch_pointer_released(pos.x as f32, pos.y as f32);
+                                }
                             }
                         } else if touch_on_keyboard {
                         // Touch up on keyboard overlay

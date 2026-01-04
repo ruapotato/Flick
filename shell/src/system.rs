@@ -360,15 +360,30 @@ pub struct VolumeManager;
 impl VolumeManager {
     /// Find the username that owns PulseAudio/PipeWire (from /run/user/*)
     fn get_audio_user() -> Option<(u32, String)> {
-        // Find first user runtime directory
+        // First, check if FLICK_USER is set (from systemd service)
+        if let Ok(flick_user) = std::env::var("FLICK_USER") {
+            if let Ok(contents) = std::fs::read_to_string("/etc/passwd") {
+                for line in contents.lines() {
+                    let parts: Vec<&str> = line.split(':').collect();
+                    if parts.len() >= 3 && parts[0] == flick_user {
+                        if let Ok(uid) = parts[2].parse::<u32>() {
+                            tracing::info!("Using FLICK_USER audio user: uid={} username={}", uid, flick_user);
+                            return Some((uid, flick_user));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: Find first user runtime directory with audio socket
         if let Ok(entries) = std::fs::read_dir("/run/user") {
             for entry in entries.flatten() {
                 if let Ok(name) = entry.file_name().into_string() {
                     if let Ok(uid) = name.parse::<u32>() {
-                        // Check if this user has a pulse/pipewire socket
-                        let pulse_path = format!("/run/user/{}/pulse", uid);
+                        // Check if this user has a pulse/pipewire socket (check actual socket, not just directory)
+                        let pulse_socket = format!("/run/user/{}/pulse/native", uid);
                         let pipewire_path = format!("/run/user/{}/pipewire-0", uid);
-                        if std::path::Path::new(&pulse_path).exists()
+                        if std::path::Path::new(&pulse_socket).exists()
                             || std::path::Path::new(&pipewire_path).exists() {
                             // Look up username from uid via /etc/passwd
                             if let Some(username) = Self::uid_to_username(uid) {
@@ -1374,13 +1389,28 @@ impl SoundConfig {
 
     /// Find the audio user (same logic as VolumeManager)
     fn get_audio_user() -> Option<(u32, String)> {
+        // First, check if FLICK_USER is set (from systemd service)
+        if let Ok(flick_user) = std::env::var("FLICK_USER") {
+            if let Ok(contents) = fs::read_to_string("/etc/passwd") {
+                for line in contents.lines() {
+                    let parts: Vec<&str> = line.split(':').collect();
+                    if parts.len() >= 3 && parts[0] == flick_user {
+                        if let Ok(uid) = parts[2].parse::<u32>() {
+                            return Some((uid, flick_user));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: scan /run/user for audio sockets
         if let Ok(entries) = fs::read_dir("/run/user") {
             for entry in entries.flatten() {
                 if let Ok(name) = entry.file_name().into_string() {
                     if let Ok(uid) = name.parse::<u32>() {
-                        let pulse_path = format!("/run/user/{}/pulse", uid);
+                        let pulse_socket = format!("/run/user/{}/pulse/native", uid);
                         let pipewire_path = format!("/run/user/{}/pipewire-0", uid);
-                        if std::path::Path::new(&pulse_path).exists()
+                        if std::path::Path::new(&pulse_socket).exists()
                             || std::path::Path::new(&pipewire_path).exists() {
                             // Look up username
                             if let Ok(contents) = fs::read_to_string("/etc/passwd") {
