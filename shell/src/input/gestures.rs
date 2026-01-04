@@ -133,7 +133,7 @@ pub struct GestureConfig {
 impl Default for GestureConfig {
     fn default() -> Self {
         Self {
-            edge_threshold: 80.0,  // 80px edge zone for easier touch on phone screens
+            edge_threshold: 40.0,  // 40px edge zone - smaller to allow app buttons near edges
             swipe_threshold: 300.0, // 300px for smooth finger-following animation
             swipe_complete_threshold: 100.0, // 100px to trigger/complete the action
             edge_swipe_min_distance: 30.0, // 30px minimum drag before edge swipe activates

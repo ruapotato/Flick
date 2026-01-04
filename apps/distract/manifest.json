@@ -1,0 +1,50 @@
+{
+  "format_version": 1,
+  "id": "com.flick.distract",
+  "name": "Distract",
+  "version": "1.0.0",
+  "description": "Focus timer with Pomodoro technique, ambient sounds, and distraction blocking.",
+  "long_description": "Distract helps you stay focused with:\n\n- Pomodoro timer (25/5 or custom intervals)\n- Ambient background sounds\n- Session tracking and statistics\n- Break reminders\n- Focus mode with notification blocking",
+  "author": {
+    "name": "Flick Project",
+    "email": "flick@example.com",
+    "url": "https://github.com/ruapotato/Flick"
+  },
+  "license": "AGPL-3.0",
+  "categories": ["Productivity", "Tools"],
+  "keywords": ["focus", "timer", "pomodoro", "productivity", "distraction"],
+  "homepage": "https://github.com/ruapotato/Flick",
+  "repository": "https://github.com/ruapotato/Flick",
+
+  "app": {
+    "type": "qml",
+    "entry": "main.qml",
+    "min_flick_version": "1.0.0"
+  },
+
+  "dependencies": {
+    "apt": [
+      "qml-module-qtmultimedia"
+    ],
+    "pip": {
+      "enabled": false,
+      "packages": []
+    }
+  },
+
+  "permissions": [
+    "audio",
+    "notifications"
+  ],
+
+  "ai_generated": {
+    "is_ai_generated": false
+  },
+
+  "store": {
+    "maturity_rating": "everyone",
+    "price": "free",
+    "testing_status": "stable",
+    "featured": false
+  }
+}

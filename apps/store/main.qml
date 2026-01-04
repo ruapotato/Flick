@@ -46,6 +46,13 @@ Window {
     property var installedApps: []
     property var myReviews: []
 
+    // Default apps that come preinstalled with Flick (core system apps only)
+    property var defaultApps: [
+        "calculator", "calendar", "clock", "contacts", "email",
+        "files", "maps", "messages", "music", "notes", "phone",
+        "photos", "terminal", "video", "weather", "web"
+    ]
+
     // Selected states
     property var selectedApp: null
     property string selectedCategory: ""
@@ -730,7 +737,15 @@ Window {
         xhr.send()
     }
 
+    function isDefaultApp(appId) {
+        // Check if app is a default/preinstalled app
+        return defaultApps.indexOf(appId) !== -1
+    }
+
     function isAppInstalled(appId) {
+        // First check if it's a default app (always installed)
+        if (isDefaultApp(appId)) return true
+
         // Check the installed apps list
         // The list is synced with actual filesystem by flick-pkg
         for (var i = 0; i < installedApps.length; i++) {
@@ -1969,23 +1984,42 @@ Window {
 
                             Row {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                spacing: 6
+                                spacing: 8
 
                                 Text {
                                     text: modelData.name
-                                    font.pixelSize: 15 * textScale
-                                    font.weight: Font.Medium
+                                    font.pixelSize: 18 * textScale
+                                    font.weight: Font.Bold
                                     color: "#ffffff"
                                     elide: Text.ElideRight
                                 }
 
                                 Rectangle {
                                     visible: isWildWest
-                                    width: 8
-                                    height: 8
-                                    radius: 4
+                                    width: 10
+                                    height: 10
+                                    radius: 5
                                     color: "#ff9800"
                                     anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                // Installed/Default indicator
+                                Rectangle {
+                                    visible: isAppInstalled(modelData.slug || modelData.id)
+                                    width: installedLabel.width + 12
+                                    height: 22
+                                    radius: 11
+                                    color: isDefaultApp(modelData.slug || modelData.id) ? "#2a5a2a" : "#3a5a3a"
+                                    anchors.verticalCenter: parent.verticalCenter
+
+                                    Text {
+                                        id: installedLabel
+                                        anchors.centerIn: parent
+                                        text: isDefaultApp(modelData.slug || modelData.id) ? "Default" : "Installed"
+                                        font.pixelSize: 12
+                                        font.weight: Font.Bold
+                                        color: "#aaffaa"
+                                    }
                                 }
                             }
 
@@ -2532,10 +2566,14 @@ Window {
                     anchors.horizontalCenter: parent.horizontalCenter
                     radius: 28
                     color: {
-                        if (isDownloading && downloadingApp === (selectedApp ? getAppSlug(selectedApp) : "")) {
+                        var slug = selectedApp ? getAppSlug(selectedApp) : ""
+                        if (isDownloading && downloadingApp === slug) {
                             return "#333344"
                         }
-                        if (selectedApp && isAppInstalled(getAppSlug(selectedApp))) {
+                        if (selectedApp && isDefaultApp(slug)) {
+                            return "#2a5a2a"  // Green for default/preinstalled
+                        }
+                        if (selectedApp && isAppInstalled(slug)) {
                             return installMouse.pressed ? "#8b2a2a" : "#a33"  // Red for uninstall
                         }
                         return installMouse.pressed ? accentPressed : accentColor
@@ -2558,10 +2596,14 @@ Window {
 
                         Text {
                             text: {
-                                if (isDownloading && downloadingApp === (selectedApp ? getAppSlug(selectedApp) : "")) {
+                                var slug = selectedApp ? getAppSlug(selectedApp) : ""
+                                if (isDownloading && downloadingApp === slug) {
                                     return "hourglass_empty"
                                 }
-                                if (selectedApp && isAppInstalled(getAppSlug(selectedApp))) {
+                                if (selectedApp && isDefaultApp(slug)) {
+                                    return "check_circle"
+                                }
+                                if (selectedApp && isAppInstalled(slug)) {
                                     return "delete"
                                 }
                                 return "download"
@@ -2574,10 +2616,14 @@ Window {
 
                         Text {
                             text: {
-                                if (isDownloading && downloadingApp === (selectedApp ? getAppSlug(selectedApp) : "")) {
+                                var slug = selectedApp ? getAppSlug(selectedApp) : ""
+                                if (isDownloading && downloadingApp === slug) {
                                     return "Installing... " + Math.round(downloadProgress * 100) + "%"
                                 }
-                                if (selectedApp && isAppInstalled(getAppSlug(selectedApp))) {
+                                if (selectedApp && isDefaultApp(slug)) {
+                                    return "Default App - Preinstalled"
+                                }
+                                if (selectedApp && isAppInstalled(slug)) {
                                     return "Remove from device"
                                 }
                                 return "Install from 255.one"
@@ -2596,6 +2642,10 @@ Window {
                             if (isDownloading) return
                             if (!selectedApp) return
                             var slug = getAppSlug(selectedApp)
+                            // Don't allow uninstall of default apps
+                            if (isDefaultApp(slug)) {
+                                return
+                            }
                             if (isAppInstalled(slug)) {
                                 uninstallApp(slug)
                                 Haptic.click()
@@ -5200,14 +5250,15 @@ Window {
     }
 
     // Floating back button (bottom right) for non-home views
+    // Positioned at 48px from edge to stay outside the 40px edge gesture zone
     Rectangle {
         id: floatingBackBtn
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.margins: 24
-        width: 56
-        height: 56
-        radius: 28
+        anchors.margins: 48
+        width: 72
+        height: 72
+        radius: 36
         color: floatingBackMouse.pressed ? accentPressed : accentColor
         visible: currentView !== "home"
         z: 900
@@ -5215,7 +5266,7 @@ Window {
         Text {
             anchors.centerIn: parent
             text: "←"
-            font.pixelSize: 24
+            font.pixelSize: 32
             font.weight: Font.Bold
             color: "#ffffff"
         }
@@ -5229,10 +5280,10 @@ Window {
         // Drop shadow effect
         Rectangle {
             anchors.fill: parent
-            anchors.margins: -2
+            anchors.margins: -3
             z: -1
-            radius: parent.radius + 2
-            color: "#40000000"
+            radius: parent.radius + 3
+            color: "#50000000"
         }
     }
 }
