@@ -20,12 +20,14 @@ pub struct Backlight {
 impl Backlight {
     /// Find and initialize backlight control
     pub fn new() -> Option<Self> {
+        // Try /sys/class/backlight first
         let backlight_dir = "/sys/class/backlight";
         if let Ok(entries) = fs::read_dir(backlight_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if let Ok(max) = fs::read_to_string(path.join("max_brightness")) {
                     if let Ok(max_brightness) = max.trim().parse() {
+                        tracing::info!("Found backlight at {}", path.display());
                         return Some(Self {
                             path: path.to_string_lossy().to_string(),
                             max_brightness,
@@ -34,6 +36,20 @@ impl Backlight {
                 }
             }
         }
+
+        // Fallback: check /sys/class/leds/lcd-backlight (common on mobile devices)
+        let led_backlight = "/sys/class/leds/lcd-backlight";
+        if let Ok(max) = fs::read_to_string(format!("{}/max_brightness", led_backlight)) {
+            if let Ok(max_brightness) = max.trim().parse() {
+                tracing::info!("Found LED backlight at {}", led_backlight);
+                return Some(Self {
+                    path: led_backlight.to_string(),
+                    max_brightness,
+                });
+            }
+        }
+
+        tracing::warn!("No backlight control found");
         None
     }
 
@@ -51,13 +67,29 @@ impl Backlight {
     pub fn set(&self, value: f32) {
         let clamped = value.clamp(0.05, 1.0); // Minimum 5% to avoid black screen
         let raw_value = (clamped * self.max_brightness as f32) as u32;
+        self.set_raw(raw_value);
+    }
+
+    /// Set brightness to 0 (for display blanking)
+    pub fn set_off(&self) {
+        tracing::info!("Turning backlight off");
+        self.set_raw(0);
+    }
+
+    /// Set raw brightness value
+    fn set_raw(&self, raw_value: u32) {
         let brightness_path = format!("{}/brightness", self.path);
 
         // Try writing directly (requires permissions)
         if fs::write(&brightness_path, raw_value.to_string()).is_err() {
-            // Fallback: try with brightnessctl or pkexec
+            // Fallback: try with brightnessctl
+            let percent = if self.max_brightness > 0 {
+                (raw_value as f32 / self.max_brightness as f32 * 100.0) as u32
+            } else {
+                0
+            };
             let _ = Command::new("brightnessctl")
-                .args(["set", &format!("{}%", (clamped * 100.0) as u32)])
+                .args(["set", &format!("{}%", percent)])
                 .output();
         }
     }
@@ -1108,6 +1140,13 @@ impl SystemStatus {
     pub fn set_brightness(&self, value: f32) {
         if let Some(ref backlight) = self.backlight {
             backlight.set(value);
+        }
+    }
+
+    /// Turn backlight completely off (for display blanking)
+    pub fn backlight_off(&self) {
+        if let Some(ref backlight) = self.backlight {
+            backlight.set_off();
         }
     }
 

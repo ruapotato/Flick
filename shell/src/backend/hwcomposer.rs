@@ -2878,17 +2878,22 @@ pub fn run() -> Result<()> {
 
         // Handle display power state transitions
         if !was_blanked && state.shell.display_blanked {
-            // Transition to blanked - turn off display
+            // Transition to blanked - turn off display and backlight
             info!("Blanking display (power off)");
+            state.system.backlight_off();
             if let Err(e) = hwc_display.hwc_ctx.set_power(false) {
                 error!("Failed to blank display: {}", e);
             }
         } else if was_blanked && !state.shell.display_blanked {
-            // Transition to unblanked - turn on display
+            // Transition to unblanked - turn on display and restore backlight
             info!("Unblanking display (power on)");
             if let Err(e) = hwc_display.hwc_ctx.set_power(true) {
                 error!("Failed to unblank display: {}", e);
             }
+            // Restore brightness from quick settings
+            let brightness = state.shell.quick_settings.brightness;
+            state.system.set_brightness(brightness);
+            info!("Restored backlight to {:.0}%", brightness * 100.0);
         }
         was_blanked = state.shell.display_blanked;
 
