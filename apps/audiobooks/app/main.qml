@@ -49,6 +49,18 @@ Window {
             } else if (status === Audio.Loaded && !isLoadingChapter) {
                 writeMediaStatus()
             }
+            // Handle end of media - auto-advance to next chapter
+            if (status === Audio.EndOfMedia) {
+                console.log("End of media detected, advancing to next chapter")
+                if (currentBook && currentChapterIndex < currentBook.chapters.length - 1) {
+                    currentChapterIndex++
+                    loadChapter(currentChapterIndex)
+                    audioPlayer.play()
+                } else {
+                    console.log("End of audiobook reached")
+                    saveProgress()
+                }
+            }
         }
 
         onPositionChanged: {
@@ -70,12 +82,9 @@ Window {
             // Ignore stops during loading/seeking
             if (isLoadingChapter) return
 
-            // Auto-advance to next chapter if at end
-            if (position >= duration - 1000 && currentChapterIndex < currentBook.chapters.length - 1) {
-                currentChapterIndex++
-                loadChapter(currentChapterIndex)
-                audioPlayer.play()
-            }
+            // Note: End-of-media auto-advance is now handled in onStatusChanged
+            // This handler is kept for other stop events (user pause, etc.)
+            console.log("Audio stopped, position: " + position + ", duration: " + duration)
         }
     }
 
