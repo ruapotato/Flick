@@ -123,6 +123,7 @@ Window {
     }
 
     // Timer to periodically update media status and check for commands
+    property int pausedStatusCounter: 0
     Timer {
         id: mediaStatusTimer
         interval: 1000
@@ -131,6 +132,14 @@ Window {
         onTriggered: {
             if (audioPlayer.playbackState === Audio.PlayingState) {
                 writeMediaStatus()
+                pausedStatusCounter = 0
+            } else if (audioPlayer.playbackState === Audio.PausedState) {
+                // Write status every 10 seconds when paused for lock screen controls
+                pausedStatusCounter++
+                if (pausedStatusCounter >= 10) {
+                    writeMediaStatus()
+                    pausedStatusCounter = 0
+                }
             }
             checkMediaCommand()
         }

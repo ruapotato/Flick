@@ -46,11 +46,13 @@ Item {
                 if (xhr.status === 200 || xhr.status === 0) {
                     try {
                         var status = JSON.parse(xhr.responseText)
-                        // Check if status is recent (within last 10 seconds) AND playing
+                        // Check if status is recent (within 60 seconds for paused, 10 for playing)
                         var now = Date.now()
                         var age = now - status.timestamp
-                        console.log("MediaControls: timestamp age=" + age + "ms, playing=" + status.playing)
-                        if (status.timestamp && age < 10000 && status.playing) {
+                        // Allow longer timeout when paused (60s) vs playing (10s)
+                        var maxAge = status.playing ? 10000 : 60000
+                        console.log("MediaControls: timestamp age=" + age + "ms, playing=" + status.playing + ", maxAge=" + maxAge)
+                        if (status.timestamp && age < maxAge && status.title) {
                             hasMedia = true
                             isPlaying = status.playing || false
                             title = status.title || ""
@@ -61,7 +63,7 @@ Item {
                             console.log("MediaControls: hasMedia=true, title=" + title)
                         } else {
                             hasMedia = false
-                            console.log("MediaControls: status too old, age=" + age)
+                            console.log("MediaControls: no media - age=" + age + "ms, title=" + status.title)
                         }
                     } catch (e) {
                         hasMedia = false

@@ -746,108 +746,172 @@ impl RotationLock {
     }
 }
 
-/// Flashlight (if available via camera flash LED)
+/// Flashlight controller
+///
+/// Uses the io.furios.Flashlightd dbus service when available (required for MediaTek devices),
+/// falls back to direct sysfs control for standard LED interfaces.
 pub struct Flashlight;
 
-/// Flashlight type (different interfaces)
-enum FlashlightType {
-    /// Standard LED interface (/sys/class/leds) with brightness file
-    Led(String),
-    /// MediaTek flashlight interface (/sys/class/flashlight) with torch_brightness file
-    MediaTek(String),
-}
-
 impl Flashlight {
-    /// Primary torch LED path (Pixel 3a and similar devices)
-    const PRIMARY_TORCH: &'static str = "/sys/class/leds/led:torch_0";
-    /// MediaTek flashlight path
-    const MTK_FLASHLIGHT: &'static str = "/sys/class/flashlight/mt-flash-led1";
+    /// Dbus service for flashlight control
+    const DBUS_SERVICE: &'static str = "io.furios.Flashlightd";
+    const DBUS_PATH: &'static str = "/io/furios/Flashlightd";
+    const DBUS_INTERFACE: &'static str = "io.furios.Flashlightd";
 
-    /// Find flashlight LED path - check multiple interfaces
-    fn find_led() -> Option<FlashlightType> {
-        // First try MediaTek flashlight interface (common on MTK devices)
-        if std::path::Path::new(Self::MTK_FLASHLIGHT).exists() {
-            return Some(FlashlightType::MediaTek(Self::MTK_FLASHLIGHT.to_string()));
+    /// Check if flashlightd dbus service is available
+    fn has_dbus_service() -> bool {
+        Command::new("busctl")
+            .args(["--user", "status", Self::DBUS_SERVICE])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    /// Get current brightness via dbus
+    fn get_dbus_brightness() -> Option<u32> {
+        let output = Command::new("busctl")
+            .args([
+                "--user", "get-property",
+                Self::DBUS_SERVICE,
+                Self::DBUS_PATH,
+                Self::DBUS_INTERFACE,
+                "Brightness",
+            ])
+            .output()
+            .ok()?;
+
+        if output.status.success() {
+            // Output format: "u 31" or "u 0"
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            stdout.split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse().ok())
+        } else {
+            None
         }
+    }
 
-        // Try primary torch LED (Pixel and similar)
-        if std::path::Path::new(Self::PRIMARY_TORCH).exists() {
-            return Some(FlashlightType::Led(Self::PRIMARY_TORCH.to_string()));
-        }
+    /// Get max brightness via dbus
+    fn get_dbus_max_brightness() -> u32 {
+        let output = Command::new("busctl")
+            .args([
+                "--user", "get-property",
+                Self::DBUS_SERVICE,
+                Self::DBUS_PATH,
+                Self::DBUS_INTERFACE,
+                "MaxBrightness",
+            ])
+            .output()
+            .ok();
 
-        // Search /sys/class/flashlight for any MediaTek flashlight
-        let flashlight_dir = "/sys/class/flashlight";
-        if let Ok(entries) = fs::read_dir(flashlight_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.join("torch_brightness").exists() {
-                    return Some(FlashlightType::MediaTek(path.to_string_lossy().to_string()));
-                }
+        if let Some(output) = output {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                return stdout.split_whitespace()
+                    .nth(1)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(31);
             }
         }
+        31 // Default
+    }
 
+    /// Set brightness via dbus
+    fn set_dbus_brightness(brightness: u32) -> bool {
+        let result = Command::new("busctl")
+            .args([
+                "--user", "call",
+                Self::DBUS_SERVICE,
+                Self::DBUS_PATH,
+                Self::DBUS_INTERFACE,
+                "SetBrightness",
+                "u",
+                &brightness.to_string(),
+            ])
+            .output();
+
+        match result {
+            Ok(output) => {
+                if output.status.success() {
+                    tracing::info!("Flashlight set to {} via dbus", brightness);
+                    true
+                } else {
+                    tracing::error!("Dbus call failed: {}", String::from_utf8_lossy(&output.stderr));
+                    false
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to call busctl: {}", e);
+                false
+            }
+        }
+    }
+
+    /// Fallback: find LED sysfs path for direct control
+    fn find_sysfs_led() -> Option<String> {
         // Search /sys/class/leds for torch LEDs
         let leds_dir = "/sys/class/leds";
         if let Ok(entries) = fs::read_dir(leds_dir) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
                 if name.contains("torch") {
-                    return Some(FlashlightType::Led(entry.path().to_string_lossy().to_string()));
+                    return Some(entry.path().to_string_lossy().to_string());
                 }
             }
         }
         None
     }
 
-    /// Get max brightness for the LED
-    fn get_max_brightness(led_type: &FlashlightType) -> u32 {
-        let path = match led_type {
-            FlashlightType::Led(p) => format!("{}/max_brightness", p),
-            FlashlightType::MediaTek(p) => format!("{}/torch_max_brightness", p),
-        };
-        fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(31) // Default for MTK LEDs
-    }
-
-    /// Get brightness file path
-    fn brightness_path(led_type: &FlashlightType) -> String {
-        match led_type {
-            FlashlightType::Led(p) => format!("{}/brightness", p),
-            FlashlightType::MediaTek(p) => format!("{}/torch_brightness", p),
-        }
-    }
-
     /// Check if flashlight is on
     pub fn is_on() -> bool {
-        Self::find_led()
-            .and_then(|led| fs::read_to_string(Self::brightness_path(&led)).ok())
+        // Try dbus first
+        if Self::has_dbus_service() {
+            return Self::get_dbus_brightness().unwrap_or(0) > 0;
+        }
+
+        // Fallback to sysfs
+        Self::find_sysfs_led()
+            .and_then(|led| fs::read_to_string(format!("{}/brightness", led)).ok())
             .map(|s| s.trim().parse::<u32>().unwrap_or(0) > 0)
             .unwrap_or(false)
     }
 
     /// Toggle flashlight
     pub fn toggle() -> bool {
-        if let Some(led_type) = Self::find_led() {
-            let brightness = if Self::is_on() {
-                "0".to_string()
+        let is_on = Self::is_on();
+
+        // Try dbus first (required for MediaTek devices)
+        if Self::has_dbus_service() {
+            let brightness = if is_on {
+                0
             } else {
-                Self::get_max_brightness(&led_type).to_string()
+                Self::get_dbus_max_brightness()
             };
-            let path = Self::brightness_path(&led_type);
-            match fs::write(&path, &brightness) {
+            return Self::set_dbus_brightness(brightness);
+        }
+
+        // Fallback to sysfs for standard LED interface
+        if let Some(led_path) = Self::find_sysfs_led() {
+            let max_brightness: u32 = fs::read_to_string(format!("{}/max_brightness", led_path))
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+                .unwrap_or(255);
+
+            let brightness = if is_on { 0 } else { max_brightness };
+            let brightness_path = format!("{}/brightness", led_path);
+
+            match fs::write(&brightness_path, brightness.to_string()) {
                 Ok(_) => {
-                    tracing::info!("Flashlight set to {} at {}", brightness, path);
+                    tracing::info!("Flashlight set to {} at {}", brightness, brightness_path);
                     true
                 }
                 Err(e) => {
-                    tracing::error!("Failed to set flashlight: {} at {}", e, path);
+                    tracing::error!("Failed to set flashlight: {} at {}", e, brightness_path);
                     false
                 }
             }
         } else {
-            tracing::warn!("No flashlight LED found");
+            tracing::warn!("No flashlight found (no dbus service and no sysfs LED)");
             false
         }
     }
