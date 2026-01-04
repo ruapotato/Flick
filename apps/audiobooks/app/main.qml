@@ -1142,16 +1142,16 @@ Window {
             // Book cover placeholder
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 320
-                height: 320
-                radius: 24
+                width: 360
+                height: 360
+                radius: 32
                 color: accentColor
                 opacity: 0.3
 
                 Text {
                     anchors.centerIn: parent
                     text: "📚"
-                    font.pixelSize: 128
+                    font.pixelSize: 160
                 }
             }
 
@@ -1159,7 +1159,7 @@ Window {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: currentBook ? currentBook.title : ""
-                font.pixelSize: 28 * textScale
+                font.pixelSize: 36 * textScale
                 font.weight: Font.Bold
                 color: "#ffffff"
                 elide: Text.ElideRight
@@ -1171,7 +1171,7 @@ Window {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: currentBook && currentBook.chapters && currentBook.chapters[currentChapterIndex] ? currentBook.chapters[currentChapterIndex].title : ""
-                font.pixelSize: 18 * textScale
+                font.pixelSize: 24 * textScale
                 color: "#888899"
                 elide: Text.ElideRight
                 width: parent.width
@@ -1181,7 +1181,7 @@ Window {
             // Progress bar
             Column {
                 width: parent.width
-                spacing: 12
+                spacing: 16
 
                 Slider {
                     id: progressSlider
@@ -1198,14 +1198,14 @@ Window {
                         x: progressSlider.leftPadding
                         y: progressSlider.topPadding + progressSlider.availableHeight / 2 - height / 2
                         width: progressSlider.availableWidth
-                        height: 4
-                        radius: 2
+                        height: 8
+                        radius: 4
                         color: "#333344"
 
                         Rectangle {
                             width: progressSlider.visualPosition * parent.width
                             height: parent.height
-                            radius: 2
+                            radius: 4
                             color: accentColor
                         }
                     }
@@ -1213,9 +1213,9 @@ Window {
                     handle: Rectangle {
                         x: progressSlider.leftPadding + progressSlider.visualPosition * (progressSlider.availableWidth - width)
                         y: progressSlider.topPadding + progressSlider.availableHeight / 2 - height / 2
-                        width: 32
-                        height: 32
-                        radius: 16
+                        width: 48
+                        height: 48
+                        radius: 24
                         color: accentColor
                     }
                 }
@@ -1225,7 +1225,7 @@ Window {
 
                     Text {
                         text: formatTime(audioPlayer.position)
-                        font.pixelSize: 16 * textScale
+                        font.pixelSize: 20 * textScale
                         color: "#888899"
                     }
 
@@ -1233,7 +1233,7 @@ Window {
 
                     Text {
                         text: formatTime(audioPlayer.duration)
-                        font.pixelSize: 16 * textScale
+                        font.pixelSize: 20 * textScale
                         color: "#888899"
                     }
                 }
@@ -1242,27 +1242,27 @@ Window {
             // Playback controls
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 48
+                spacing: 40
 
                 // Skip back 30s
                 Rectangle {
-                    width: 80
-                    height: 80
-                    radius: 40
+                    width: 100
+                    height: 100
+                    radius: 50
                     color: skipBackMouse.pressed ? "#333344" : "#252530"
 
                     Text {
                         anchors.centerIn: parent
                         text: "⏪"
-                        font.pixelSize: 36
+                        font.pixelSize: 48
                         color: "#ffffff"
                     }
 
                     Text {
                         anchors.centerIn: parent
-                        anchors.verticalCenterOffset: 20
+                        anchors.verticalCenterOffset: 26
                         text: "30"
-                        font.pixelSize: 14 * textScale
+                        font.pixelSize: 18 * textScale
                         color: "#888899"
                     }
 
@@ -1278,9 +1278,9 @@ Window {
 
                 // Play/Pause
                 Rectangle {
-                    width: 112
-                    height: 112
-                    radius: 56
+                    width: 140
+                    height: 140
+                    radius: 70
                     color: playPauseMouse.pressed ? accentPressed : accentColor
 
                     Behavior on color { ColorAnimation { duration: 150 } }
@@ -1288,7 +1288,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: audioPlayer.playbackState === Audio.PlayingState ? "⏸" : "▶"
-                        font.pixelSize: 48
+                        font.pixelSize: 64
                         color: "#ffffff"
                     }
 
@@ -1308,23 +1308,23 @@ Window {
 
                 // Skip forward 30s
                 Rectangle {
-                    width: 80
-                    height: 80
-                    radius: 40
+                    width: 100
+                    height: 100
+                    radius: 50
                     color: skipForwardMouse.pressed ? "#333344" : "#252530"
 
                     Text {
                         anchors.centerIn: parent
                         text: "⏩"
-                        font.pixelSize: 36
+                        font.pixelSize: 48
                         color: "#ffffff"
                     }
 
                     Text {
                         anchors.centerIn: parent
-                        anchors.verticalCenterOffset: 20
+                        anchors.verticalCenterOffset: 26
                         text: "30"
-                        font.pixelSize: 14 * textScale
+                        font.pixelSize: 18 * textScale
                         color: "#888899"
                     }
 
@@ -1342,30 +1342,30 @@ Window {
             // Chapter navigation
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 32
+                spacing: 24
 
                 // Previous chapter
                 Rectangle {
-                    width: 120
-                    height: 48
-                    radius: 24
+                    width: 140
+                    height: 60
+                    radius: 30
                     color: prevChapterMouse.pressed ? "#333344" : "#252530"
                     opacity: currentChapterIndex > 0 ? 1.0 : 0.3
 
                     Row {
                         anchors.centerIn: parent
-                        spacing: 8
+                        spacing: 10
 
                         Text {
                             text: "⏮"
-                            font.pixelSize: 20
+                            font.pixelSize: 28
                             color: "#ffffff"
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
                         Text {
                             text: "Prev"
-                            font.pixelSize: 16 * textScale
+                            font.pixelSize: 22 * textScale
                             color: "#ffffff"
                             anchors.verticalCenter: parent.verticalCenter
                         }
@@ -1386,33 +1386,33 @@ Window {
                 // Chapter indicator
                 Text {
                     text: (currentChapterIndex + 1) + " / " + (currentBook ? currentBook.chapters.length : 0)
-                    font.pixelSize: 18 * textScale
+                    font.pixelSize: 24 * textScale
                     color: "#888899"
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
                 // Next chapter
                 Rectangle {
-                    width: 120
-                    height: 48
-                    radius: 24
+                    width: 140
+                    height: 60
+                    radius: 30
                     color: nextChapterMouse.pressed ? "#333344" : "#252530"
                     opacity: currentBook && currentChapterIndex < currentBook.chapters.length - 1 ? 1.0 : 0.3
 
                     Row {
                         anchors.centerIn: parent
-                        spacing: 8
+                        spacing: 10
 
                         Text {
                             text: "Next"
-                            font.pixelSize: 16 * textScale
+                            font.pixelSize: 22 * textScale
                             color: "#ffffff"
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
                         Text {
                             text: "⏭"
-                            font.pixelSize: 20
+                            font.pixelSize: 28
                             color: "#ffffff"
                             anchors.verticalCenter: parent.verticalCenter
                         }

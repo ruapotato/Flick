@@ -619,7 +619,7 @@ Window {
         anchors.top: headerArea.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 320
+        height: 380
         color: "transparent"
 
         // Album art placeholder
@@ -628,18 +628,18 @@ Window {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 20
-            width: 220
-            height: 220
-            radius: 16
+            width: 280
+            height: 280
+            radius: 20
             color: "#1a1a2e"
             border.color: accentColor
-            border.width: 2
+            border.width: 3
 
             // Music note icon
             Text {
                 anchors.centerIn: parent
                 text: "♪"
-                font.pixelSize: 100
+                font.pixelSize: 120
                 color: accentColor
                 opacity: 0.3
             }
@@ -658,14 +658,14 @@ Window {
         Column {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: albumArt.bottom
-            anchors.topMargin: 16
-            spacing: 4
+            anchors.topMargin: 20
+            spacing: 8
             width: parent.width - 40
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: currentTrackIndex >= 0 ? musicFiles[currentTrackIndex].title : "No track selected"
-                font.pixelSize: 18 * textScale
+                font.pixelSize: 26 * textScale
                 font.weight: Font.Medium
                 color: "#ffffff"
                 elide: Text.ElideRight
@@ -676,7 +676,7 @@ Window {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: currentTrackIndex >= 0 ? musicFiles[currentTrackIndex].artist : "Select a track to play"
-                font.pixelSize: 14 * textScale
+                font.pixelSize: 20 * textScale
                 color: "#888899"
                 elide: Text.ElideRight
                 width: parent.width
@@ -691,34 +691,34 @@ Window {
         anchors.top: nowPlayingArea.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 180
+        height: 200
         color: "transparent"
 
         Column {
             anchors.centerIn: parent
-            spacing: 20
+            spacing: 24
             width: parent.width - 40
 
             // Progress bar
             Item {
                 width: parent.width
-                height: 40
+                height: 50
 
                 // Time labels
                 Row {
                     anchors.fill: parent
-                    anchors.bottomMargin: 20
+                    anchors.bottomMargin: 26
 
                     Text {
                         text: formatTime(audioPlayer.position)
-                        font.pixelSize: 12 * textScale
+                        font.pixelSize: 18 * textScale
                         color: "#666677"
                         width: parent.width / 2
                     }
 
                     Text {
                         text: formatTime(audioPlayer.duration)
-                        font.pixelSize: 12 * textScale
+                        font.pixelSize: 18 * textScale
                         color: "#666677"
                         width: parent.width / 2
                         horizontalAlignment: Text.AlignRight
@@ -731,8 +731,8 @@ Window {
                     anchors.bottom: parent.bottom
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    height: 6
-                    radius: 3
+                    height: 10
+                    radius: 5
                     color: "#222233"
 
                     // Progress fill
@@ -742,7 +742,7 @@ Window {
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
                         width: parent.width * value
-                        radius: 3
+                        radius: 5
                         color: accentColor
 
                         property real value: 0
@@ -761,23 +761,23 @@ Window {
             // Control buttons
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 32
+                spacing: 40
 
                 // Previous button
                 Rectangle {
-                    width: 64
-                    height: 64
-                    radius: 32
+                    width: 80
+                    height: 80
+                    radius: 40
                     color: prevMouse.pressed ? "#333344" : "#222233"
                     border.color: "#444455"
-                    border.width: 1
+                    border.width: 2
 
                     Behavior on color { ColorAnimation { duration: 150 } }
 
                     Text {
                         anchors.centerIn: parent
                         text: "⏮"
-                        font.pixelSize: 32
+                        font.pixelSize: 40
                         color: "#ffffff"
                     }
 
@@ -790,9 +790,9 @@ Window {
 
                 // Play/Pause button
                 Rectangle {
-                    width: 88
-                    height: 88
-                    radius: 44
+                    width: 120
+                    height: 120
+                    radius: 60
                     color: playMouse.pressed ? accentPressed : accentColor
 
                     Behavior on color { ColorAnimation { duration: 150 } }
@@ -800,7 +800,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: isPlaying ? "⏸" : "▶"
-                        font.pixelSize: 40
+                        font.pixelSize: 56
                         color: "#ffffff"
                     }
 
@@ -813,19 +813,19 @@ Window {
 
                 // Next button
                 Rectangle {
-                    width: 64
-                    height: 64
-                    radius: 32
+                    width: 80
+                    height: 80
+                    radius: 40
                     color: nextMouse.pressed ? "#333344" : "#222233"
                     border.color: "#444455"
-                    border.width: 1
+                    border.width: 2
 
                     Behavior on color { ColorAnimation { duration: 150 } }
 
                     Text {
                         anchors.centerIn: parent
                         text: "⏭"
-                        font.pixelSize: 32
+                        font.pixelSize: 40
                         color: "#ffffff"
                     }
 
@@ -848,15 +848,15 @@ Window {
         anchors.bottom: parent.bottom
         anchors.margins: 16
         anchors.bottomMargin: 120
-        spacing: 8
+        spacing: 10
         clip: true
 
         model: musicListModel
 
         delegate: Rectangle {
             width: musicListView.width
-            height: 54
-            radius: 12
+            height: 72
+            radius: 16
             color: trackMouse.pressed ? "#1a1a2e" : (currentTrackIndex === index ? "#2a2a3e" : "#15151f")
             border.color: currentTrackIndex === index ? accentColor : "#222233"
             border.width: currentTrackIndex === index ? 2 : 1
@@ -866,20 +866,20 @@ Window {
             Row {
                 anchors.fill: parent
                 anchors.margins: 12
-                spacing: 12
+                spacing: 16
 
                 // Mini album art
                 Rectangle {
-                    width: 56
-                    height: 56
-                    radius: 8
+                    width: 48
+                    height: 48
+                    radius: 10
                     color: "#1a1a2e"
                     anchors.verticalCenter: parent.verticalCenter
 
                     Text {
                         anchors.centerIn: parent
                         text: "♪"
-                        font.pixelSize: 20
+                        font.pixelSize: 24
                         color: accentColor
                         opacity: 0.3
                     }
@@ -888,12 +888,12 @@ Window {
                 // Track info
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - 68
-                    spacing: 4
+                    width: parent.width - 80
+                    spacing: 6
 
                     Text {
                         text: model.title
-                        font.pixelSize: 16 * textScale
+                        font.pixelSize: 20 * textScale
                         font.weight: Font.Medium
                         color: "#ffffff"
                         elide: Text.ElideRight
@@ -902,7 +902,7 @@ Window {
 
                     Text {
                         text: model.artist
-                        font.pixelSize: 13 * textScale
+                        font.pixelSize: 16 * textScale
                         color: "#888899"
                         elide: Text.ElideRight
                         width: parent.width
