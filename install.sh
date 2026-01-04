@@ -207,6 +207,7 @@ if [ "$DEVICE_PLATFORM" = "droidian" ]; then
         qml-module-qtwebengine \
         qml-module-qt-labs-folderlistmodel \
         qml-module-qt-labs-platform \
+        qml-module-termwidget \
         gstreamer1.0-plugins-base \
         gstreamer1.0-plugins-good \
         gstreamer1.0-plugins-bad \
