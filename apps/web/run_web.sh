@@ -2,11 +2,11 @@
 # Flick Web - Mobile web browser for Flick shell
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STATE_DIR=Theme.stateDir + ""
+STATE_DIR="$HOME/.local/state/flick"
 LOG_FILE="${STATE_DIR}/web.log"
 
 mkdir -p "$STATE_DIR"
-mkdir -p Theme.homeDir + "/Downloads"
+mkdir -p "$HOME/Downloads"
 
 echo "=== Flick Web started at $(date) ===" >> "$LOG_FILE"
 
