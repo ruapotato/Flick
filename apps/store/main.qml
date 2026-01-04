@@ -5198,7 +5198,6 @@ Window {
             }
         }
     }
-}
 
     // Floating back button (bottom right) for non-home views
     Rectangle {
