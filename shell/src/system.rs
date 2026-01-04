@@ -773,16 +773,30 @@ impl Flashlight {
         let user = std::env::var("FLICK_USER").unwrap_or_else(|_| "furios".to_string());
         let script = Self::get_helper_script();
 
-        let output = Command::new("sudo")
-            .args(["-u", &user, &script, action])
-            .output()
-            .ok()?;
+        tracing::info!("Flashlight: running helper script {} as user {} with action {}", script, user, action);
 
-        if output.status.success() {
-            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
-        } else {
-            tracing::error!("Flashlight helper failed: {}", String::from_utf8_lossy(&output.stderr));
-            None
+        let result = Command::new("sudo")
+            .args(["-u", &user, &script, action])
+            .output();
+
+        match result {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                tracing::info!("Flashlight helper: exit={}, stdout='{}', stderr='{}'",
+                    output.status.code().unwrap_or(-1), stdout, stderr);
+
+                if output.status.success() {
+                    Some(stdout)
+                } else {
+                    tracing::error!("Flashlight helper failed: {}", stderr);
+                    None
+                }
+            }
+            Err(e) => {
+                tracing::error!("Flashlight: failed to spawn helper: {}", e);
+                None
+            }
         }
     }
 
