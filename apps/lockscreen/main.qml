@@ -23,6 +23,53 @@ Window {
     property int callDuration: 0
     property bool isMuted: false
     property bool isSpeaker: false
+    // Media playback state
+    property bool hasMedia: false
+    property bool mediaPlaying: false
+    property string mediaTitle: ""
+    property string mediaArtist: ""
+    property string mediaApp: ""
+
+    // Poll for media status
+    Timer {
+        interval: 1000
+        running: true
+        repeat: true
+        onTriggered: checkMediaStatus()
+    }
+
+    function checkMediaStatus() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + stateDir + "/media_status.json", false)
+        try {
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var status = JSON.parse(xhr.responseText)
+                // Only show if status is recent (within last 30 seconds)
+                var age = Date.now() - (status.timestamp || 0)
+                if (age < 30000) {
+                    hasMedia = true
+                    mediaPlaying = status.playing || false
+                    mediaTitle = status.title || "Unknown"
+                    mediaArtist = status.artist || ""
+                    mediaApp = status.app || ""
+                } else {
+                    hasMedia = false
+                }
+            }
+        } catch (e) {
+            hasMedia = false
+        }
+    }
+
+    function sendMediaCommand(cmd, arg) {
+        triggerHaptic()
+        var cmdStr = cmd + (arg ? ":" + arg : "") + ":" + Date.now()
+        var xhr = new XMLHttpRequest()
+        xhr.open("PUT", "file://" + stateDir + "/media_command")
+        xhr.send(cmdStr)
+    }
+
 
     Component.onCompleted: {
         console.log("Lock screen started")
@@ -205,6 +252,132 @@ Window {
     }
 
     // Incoming call overlay
+
+    // Media controls widget (bottom of lock screen)
+    Rectangle {
+        id: mediaWidget
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16
+        anchors.bottomMargin: 32
+        height: 100
+        radius: 20
+        color: "#cc1a1a2e"
+        visible: hasMedia && !hasIncomingCall && !hasActiveCall
+        z: 500
+
+        Row {
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 12
+
+            // Album art placeholder
+            Rectangle {
+                width: 76
+                height: 76
+                radius: 12
+                color: "#333355"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: mediaApp === "audiobooks" ? "📚" : "🎵"
+                    font.pixelSize: 32
+                }
+            }
+
+            // Title and artist
+            Column {
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - 200
+                spacing: 4
+
+                Text {
+                    text: mediaTitle
+                    font.pixelSize: 16
+                    font.bold: true
+                    color: "#ffffff"
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+
+                Text {
+                    text: mediaArtist
+                    font.pixelSize: 14
+                    color: "#888899"
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            // Play controls
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 8
+
+                // Rewind 10s
+                Rectangle {
+                    width: 40
+                    height: 40
+                    radius: 20
+                    color: rwMouse.pressed ? "#444466" : "#333355"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⏪"
+                        font.pixelSize: 18
+                    }
+
+                    MouseArea {
+                        id: rwMouse
+                        anchors.fill: parent
+                        onClicked: sendMediaCommand("seek", "-10000")
+                    }
+                }
+
+                // Play/Pause
+                Rectangle {
+                    width: 48
+                    height: 48
+                    radius: 24
+                    color: playMouse.pressed ? "#e94560" : "#333355"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: mediaPlaying ? "⏸" : "▶"
+                        font.pixelSize: 22
+                    }
+
+                    MouseArea {
+                        id: playMouse
+                        anchors.fill: parent
+                        onClicked: sendMediaCommand(mediaPlaying ? "pause" : "play")
+                    }
+                }
+
+                // Forward 10s
+                Rectangle {
+                    width: 40
+                    height: 40
+                    radius: 20
+                    color: ffMouse.pressed ? "#444466" : "#333355"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⏩"
+                        font.pixelSize: 18
+                    }
+
+                    MouseArea {
+                        id: ffMouse
+                        anchors.fill: parent
+                        onClicked: sendMediaCommand("seek", "10000")
+                    }
+                }
+            }
+        }
+    }
+
     Rectangle {
         id: incomingCallOverlay
         anchors.fill: parent

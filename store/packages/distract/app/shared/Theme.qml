@@ -8,8 +8,28 @@ QtObject {
     property color accentColor: "#e94560"
     property color accentPressed: Qt.darker(accentColor, 1.2)
 
-    // Config file path
-    property string configPath: "/home/droidian/.local/state/flick/display_config.json"
+    // Dynamic state directory detection
+    readonly property string stateDir: {
+        var paths = [
+            "/home/furios/.local/state/flick",
+            "/home/droidian/.local/state/flick"
+        ]
+        for (var i = 0; i < paths.length; i++) {
+            var xhr = new XMLHttpRequest()
+            xhr.open("HEAD", "file://" + paths[i] + "/display_config.json", false)
+            try {
+                xhr.send()
+                if (xhr.status === 200 || xhr.status === 0) {
+                    return paths[i]
+                }
+            } catch (e) {}
+        }
+        return "/home/furios/.local/state/flick"
+    }
+
+    // Derived paths
+    readonly property string configPath: stateDir + "/display_config.json"
+    readonly property string homeDir: stateDir.replace("/.local/state/flick", "")
 
     // Load accent color from config
     function loadConfig() {

@@ -24,8 +24,8 @@ Window {
     property bool isScanning: false
 
     // Music folders to scan
-    property var musicPaths: ["/home/droidian/Music"]
-    property string cacheFile: "/home/droidian/.local/state/flick/music_cache.json"
+    property var musicPaths: [Theme.homeDir + "/Music"]
+    property string cacheFile: Theme.stateDir + "/music_cache.json"
 
     Component.onCompleted: {
         loadConfig()
@@ -34,7 +34,7 @@ Window {
     }
 
     function loadConfig() {
-        var configPath = "/home/droidian/.local/state/flick/display_config.json"
+        var configPath = Theme.stateDir + "/display_config.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + configPath, false)
         try {
@@ -429,7 +429,7 @@ Window {
             timestamp: Date.now()
         }
         var xhr = new XMLHttpRequest()
-        xhr.open("PUT", "file:///home/droidian/.local/state/flick/media_status.json")
+        xhr.open("PUT", "file://" + Theme.stateDir + "/media_status.json")
         xhr.send(JSON.stringify(status))
     }
 
@@ -451,7 +451,7 @@ Window {
 
     function checkMediaCommand() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/media_command")
+        xhr.open("GET", "file://" + Theme.stateDir + "/media_command")
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
                 if (xhr.status === 200 || xhr.status === 0) {

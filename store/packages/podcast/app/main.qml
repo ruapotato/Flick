@@ -15,7 +15,7 @@ Window {
     property real textScale: 2.0
     property color accentColor: Theme.accentColor
     property color accentPressed: Qt.darker(accentColor, 1.2)
-    property string configFile: "/home/droidian/.local/state/flick/podcasts.json"
+    property string configFile: Theme.stateDir + "/podcasts.json"
     property string currentView: "library"  // library, episodes, player, add
     property int selectedPodcast: -1
     property bool isPlaying: false
@@ -32,7 +32,7 @@ Window {
 
     function loadConfig() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json", false)
+        xhr.open("GET", "file://" + Theme.stateDir + "/display_config.json", false)
         try {
             xhr.send()
             if (xhr.status === 200 || xhr.status === 0) {

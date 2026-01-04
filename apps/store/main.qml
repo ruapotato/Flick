@@ -2084,6 +2084,7 @@ Window {
         anchors.fill: parent
         color: "#0a0a0f"
         visible: currentView === "search"
+        onVisibleChanged: if (visible) searchInput.forceActiveFocus()
 
         Column {
             anchors.fill: parent
@@ -5195,6 +5196,44 @@ Window {
                     }
                 }
             }
+        }
+    }
+}
+
+    // Floating back button (bottom right) for non-home views
+    Rectangle {
+        id: floatingBackBtn
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 24
+        width: 56
+        height: 56
+        radius: 28
+        color: floatingBackMouse.pressed ? accentPressed : accentColor
+        visible: currentView !== "home"
+        z: 900
+
+        Text {
+            anchors.centerIn: parent
+            text: "←"
+            font.pixelSize: 24
+            font.weight: Font.Bold
+            color: "#ffffff"
+        }
+
+        MouseArea {
+            id: floatingBackMouse
+            anchors.fill: parent
+            onClicked: goBack()
+        }
+
+        // Drop shadow effect
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -2
+            z: -1
+            radius: parent.radius + 2
+            color: "#40000000"
         }
     }
 }

@@ -45,7 +45,7 @@ Window {
             xhr.send()
             stateDir = xhr.responseText.trim()
         } catch(e) {
-            stateDir = "/home/droidian/.local/state/flick/passwordsafe"
+            stateDir = Theme.stateDir + "/passwordsafe"
         }
         loadVaultList()
     }
@@ -715,7 +715,7 @@ Window {
 
                         createBusy.running = true
                         errorMessage = ""
-                        var vaultPath = "/home/droidian/Documents/" + newVaultName.text + ".kdbx"
+                        var vaultPath = Theme.homeDir + "/Documents/" + newVaultName.text + ".kdbx"
 
                         runHelper("create", [vaultPath, newVaultPassword.text], function(success, result) {
                             createBusy.running = false
@@ -769,8 +769,8 @@ Window {
                 id: existingVaultPath
                 width: parent.width
                 height: 56
-                placeholderText: "/home/droidian/Documents/vault.kdbx"
-                text: "/home/droidian/Documents/"
+                placeholderText: Theme.homeDir + "/Documents/vault.kdbx"
+                text: Theme.homeDir + "/Documents/"
                 color: "white"
                 font.pixelSize: 16
 

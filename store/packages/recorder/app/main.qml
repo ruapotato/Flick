@@ -19,7 +19,7 @@ Window {
     property string recordingTime: "00:00"
     property int recordingSeconds: 0
     property string currentRecordingFile: ""
-    property string recordingsDir: "/home/droidian/Recordings"
+    property string recordingsDir: Theme.homeDir + "/Recordings"
     property int audioLevel: 0
     property bool isPlaying: false
     property string playingFile: ""
@@ -29,7 +29,7 @@ Window {
     }
 
     function loadConfig() {
-        var configPath = "/home/droidian/.local/state/flick/display_config.json"
+        var configPath = Theme.stateDir + "/display_config.json"
         var xhr = new XMLHttpRequest()
         xhr.open("GET", "file://" + configPath, false)
         try {

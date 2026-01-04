@@ -23,7 +23,7 @@ Window {
     property int currentPage: 0
     property real fontSize: 22
     property var positions: ({})
-    property string positionsFile: "/home/droidian/.local/state/flick/ebook_positions.json"
+    property string positionsFile: Theme.stateDir + "/ebook_positions.json"
     property int pageDirection: 0
     property string theme: "dark"  // "dark", "sepia", "light"
     property bool serifFont: true
@@ -57,7 +57,7 @@ Window {
 
     function loadConfig() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json", false)
+        xhr.open("GET", "file://" + Theme.stateDir + "/display_config.json", false)
         try {
             xhr.send()
             if (xhr.status === 200 || xhr.status === 0) {
@@ -95,9 +95,9 @@ Window {
 
     function scanBooks() {
         booksList = []
-        scanFolder("/home/droidian/Books")
-        scanFolder("/home/droidian/Documents")
-        scanFolder("/home/droidian/Downloads")
+        scanFolder(Theme.homeDir + "/Books")
+        scanFolder(Theme.homeDir + "/Documents")
+        scanFolder(Theme.homeDir + "/Downloads")
     }
 
     function scanFolder(path) {

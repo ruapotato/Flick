@@ -24,9 +24,9 @@ Window {
     property int currentChapterIndex: 0
 
     // Settings
-    property var libraryPaths: ["/home/droidian/Audiobooks"]
-    property string settingsFile: "/home/droidian/.local/state/flick/audiobooks_settings.json"
-    property string cacheFile: "/home/droidian/.local/state/flick/audiobooks_cache.json"
+    property var libraryPaths: [Theme.homeDir + "/Audiobooks"]
+    property string settingsFile: Theme.stateDir + "/audiobooks_settings.json"
+    property string cacheFile: Theme.stateDir + "/audiobooks_cache.json"
 
     // Flag to prevent state changes during loading/seeking
     property bool isLoadingChapter: false
@@ -109,7 +109,7 @@ Window {
             timestamp: Date.now()
         }
         var xhr = new XMLHttpRequest()
-        xhr.open("PUT", "file:///home/droidian/.local/state/flick/media_status.json")
+        xhr.open("PUT", "file://" + Theme.stateDir + "/media_status.json")
         xhr.send(JSON.stringify(status))
     }
 
@@ -145,7 +145,7 @@ Window {
 
     function checkMediaCommand() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/media_command")
+        xhr.open("GET", "file://" + Theme.stateDir + "/media_command")
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
                 if (xhr.status === 200 || xhr.status === 0) {
@@ -249,7 +249,7 @@ Window {
 
     function loadTextScale() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/display_config.json")
+        xhr.open("GET", "file://" + Theme.stateDir + "/display_config.json")
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
                 if (xhr.status === 200 || xhr.status === 0) {
@@ -267,7 +267,7 @@ Window {
 
     function loadProgress() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///home/droidian/.local/state/flick/audiobook_progress.json")
+        xhr.open("GET", "file://" + Theme.stateDir + "/audiobook_progress.json")
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
                 if (xhr.status === 200 || xhr.status === 0) {
@@ -351,7 +351,7 @@ Window {
         lastPlayedBookPath = bookId
 
         var xhr = new XMLHttpRequest()
-        xhr.open("PUT", "file:///home/droidian/.local/state/flick/audiobook_progress.json")
+        xhr.open("PUT", "file://" + Theme.stateDir + "/audiobook_progress.json")
         xhr.send(JSON.stringify(progressData, null, 2))
     }
 
@@ -906,7 +906,7 @@ Window {
                     anchors.fill: parent
                     onClicked: {
                         // Log command for shell to create folder
-                        console.log("CREATE_DIR:/home/droidian/Audiobooks")
+                        console.log("CREATE_DIR:" + Theme.homeDir + "/Audiobooks")
                         // Rescan after a delay
                         rescanTimer.start()
                     }
@@ -1673,9 +1673,9 @@ Window {
                         font.pixelSize: 16
                         verticalAlignment: TextInput.AlignVCenter
                         clip: true
-                        text: "/home/droidian/"
+                        text: Theme.homeDir + "/"
 
-                        property string placeholderText: "/home/droidian/MyAudiobooks"
+                        property string placeholderText: Theme.homeDir + "/MyAudiobooks"
                     }
 
                     Text {
@@ -1715,7 +1715,7 @@ Window {
                         MouseArea {
                             id: quickPath1Mouse
                             anchors.fill: parent
-                            onClicked: addLibraryPath("/home/droidian/Audiobooks")
+                            onClicked: addLibraryPath(Theme.homeDir + "/Audiobooks")
                         }
                     }
 
@@ -1735,7 +1735,7 @@ Window {
                         MouseArea {
                             id: quickPath2Mouse
                             anchors.fill: parent
-                            onClicked: addLibraryPath("/home/droidian/Music")
+                            onClicked: addLibraryPath(Theme.homeDir + "/Music")
                         }
                     }
                 }
@@ -1762,7 +1762,7 @@ Window {
                         onClicked: {
                             if (newPathInput.text.length > 0) {
                                 addLibraryPath(newPathInput.text)
-                                newPathInput.text = "/home/droidian/"
+                                newPathInput.text = Theme.homeDir + "/"
                             }
                         }
                     }
