@@ -792,6 +792,31 @@ impl Flashlight {
         cmd.args(args).output().ok()
     }
 
+    /// Start flashlightd daemon if not running
+    fn ensure_flashlightd_running() {
+        // Check if already running
+        if Self::run_busctl(&["--user", "status", Self::DBUS_SERVICE])
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return;
+        }
+
+        tracing::info!("Starting flashlightd daemon");
+
+        // Get user from FLICK_USER env var
+        let user = std::env::var("FLICK_USER").unwrap_or_else(|_| "furios".to_string());
+
+        // Start flashlightd as the user
+        let _ = Command::new("sudo")
+            .args(["-u", &user, "/usr/libexec/flashlightd"])
+            .env("DBUS_SESSION_BUS_ADDRESS", Self::get_user_dbus_address().unwrap_or_default())
+            .spawn();
+
+        // Give it time to start
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+
     /// Check if flashlightd dbus service is available
     fn has_dbus_service() -> bool {
         Self::run_busctl(&["--user", "status", Self::DBUS_SERVICE])
@@ -903,6 +928,9 @@ impl Flashlight {
 
     /// Toggle flashlight
     pub fn toggle() -> bool {
+        // Ensure flashlightd is running (required for MediaTek devices)
+        Self::ensure_flashlightd_running();
+
         let is_on = Self::is_on();
 
         // Try dbus first (required for MediaTek devices)
