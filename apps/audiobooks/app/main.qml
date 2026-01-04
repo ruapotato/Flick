@@ -9,8 +9,8 @@ Window {
     id: root
     visible: true
     visibility: Window.FullScreen
-    width: 1080
-    height: 2400
+    width: 720
+    height: 1600
     title: "Audiobooks"
     color: "#0a0a0f"
 
@@ -1213,9 +1213,9 @@ Window {
                     handle: Rectangle {
                         x: progressSlider.leftPadding + progressSlider.visualPosition * (progressSlider.availableWidth - width)
                         y: progressSlider.topPadding + progressSlider.availableHeight / 2 - height / 2
-                        width: 20
-                        height: 20
-                        radius: 10
+                        width: 32
+                        height: 32
+                        radius: 16
                         color: accentColor
                     }
                 }
@@ -1246,23 +1246,23 @@ Window {
 
                 // Skip back 30s
                 Rectangle {
-                    width: 64
-                    height: 64
-                    radius: 32
+                    width: 80
+                    height: 80
+                    radius: 40
                     color: skipBackMouse.pressed ? "#333344" : "#252530"
 
                     Text {
                         anchors.centerIn: parent
                         text: "⏪"
-                        font.pixelSize: 28
+                        font.pixelSize: 36
                         color: "#ffffff"
                     }
 
                     Text {
                         anchors.centerIn: parent
-                        anchors.verticalCenterOffset: 16
+                        anchors.verticalCenterOffset: 20
                         text: "30"
-                        font.pixelSize: 12 * textScale
+                        font.pixelSize: 14 * textScale
                         color: "#888899"
                     }
 
@@ -1278,9 +1278,9 @@ Window {
 
                 // Play/Pause
                 Rectangle {
-                    width: 96
-                    height: 96
-                    radius: 48
+                    width: 112
+                    height: 112
+                    radius: 56
                     color: playPauseMouse.pressed ? accentPressed : accentColor
 
                     Behavior on color { ColorAnimation { duration: 150 } }
@@ -1288,7 +1288,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: audioPlayer.playbackState === Audio.PlayingState ? "⏸" : "▶"
-                        font.pixelSize: 40
+                        font.pixelSize: 48
                         color: "#ffffff"
                     }
 
@@ -1308,23 +1308,23 @@ Window {
 
                 // Skip forward 30s
                 Rectangle {
-                    width: 64
-                    height: 64
-                    radius: 32
+                    width: 80
+                    height: 80
+                    radius: 40
                     color: skipForwardMouse.pressed ? "#333344" : "#252530"
 
                     Text {
                         anchors.centerIn: parent
                         text: "⏩"
-                        font.pixelSize: 28
+                        font.pixelSize: 36
                         color: "#ffffff"
                     }
 
                     Text {
                         anchors.centerIn: parent
-                        anchors.verticalCenterOffset: 16
+                        anchors.verticalCenterOffset: 20
                         text: "30"
-                        font.pixelSize: 12 * textScale
+                        font.pixelSize: 14 * textScale
                         color: "#888899"
                     }
 

@@ -761,13 +761,13 @@ Window {
             // Control buttons
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 20
+                spacing: 32
 
                 // Previous button
                 Rectangle {
-                    width: 40
-                    height: 40
-                    radius: 30
+                    width: 64
+                    height: 64
+                    radius: 32
                     color: prevMouse.pressed ? "#333344" : "#222233"
                     border.color: "#444455"
                     border.width: 1
@@ -777,7 +777,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: "⏮"
-                        font.pixelSize: 24
+                        font.pixelSize: 32
                         color: "#ffffff"
                     }
 
@@ -790,9 +790,9 @@ Window {
 
                 // Play/Pause button
                 Rectangle {
-                    width: 54
-                    height: 54
-                    radius: 40
+                    width: 88
+                    height: 88
+                    radius: 44
                     color: playMouse.pressed ? accentPressed : accentColor
 
                     Behavior on color { ColorAnimation { duration: 150 } }
@@ -800,7 +800,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: isPlaying ? "⏸" : "▶"
-                        font.pixelSize: 22
+                        font.pixelSize: 40
                         color: "#ffffff"
                     }
 
@@ -813,9 +813,9 @@ Window {
 
                 // Next button
                 Rectangle {
-                    width: 40
-                    height: 40
-                    radius: 30
+                    width: 64
+                    height: 64
+                    radius: 32
                     color: nextMouse.pressed ? "#333344" : "#222233"
                     border.color: "#444455"
                     border.width: 1
@@ -825,7 +825,7 @@ Window {
                     Text {
                         anchors.centerIn: parent
                         text: "⏭"
-                        font.pixelSize: 24
+                        font.pixelSize: 32
                         color: "#ffffff"
                     }
 
