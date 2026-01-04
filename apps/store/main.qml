@@ -1251,31 +1251,6 @@ Window {
                         onClicked: navigateTo(isLoggedIn ? "profile" : "login")
                     }
                 }
-
-                // Back button
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: 20
-                    width: 48
-                    height: 48
-                    radius: 24
-                    color: homeBackBtnMouse.pressed ? "#333344" : "#222233"
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "arrow_back"
-                        font.family: iconFont.name
-                        font.pixelSize: 24
-                        color: "#888899"
-                    }
-
-                    MouseArea {
-                        id: homeBackBtnMouse
-                        anchors.fill: parent
-                        onClicked: Qt.quit()
-                    }
-                }
             }
 
             // Tab bar
@@ -1982,43 +1957,49 @@ Window {
                                 }
                             }
 
-                            Row {
+                            Column {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                spacing: 8
+                                spacing: 4
 
                                 Text {
                                     text: modelData.name
-                                    font.pixelSize: 18 * textScale
+                                    font.pixelSize: 24 * textScale
                                     font.weight: Font.Bold
                                     color: "#ffffff"
                                     elide: Text.ElideRight
+                                    anchors.horizontalCenter: parent.horizontalCenter
                                 }
 
-                                Rectangle {
-                                    visible: isWildWest
-                                    width: 10
-                                    height: 10
-                                    radius: 5
-                                    color: "#ff9800"
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
+                                Row {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    spacing: 8
+                                    visible: isWildWest || isAppInstalled(modelData.slug || modelData.id)
 
-                                // Installed/Default indicator
-                                Rectangle {
-                                    visible: isAppInstalled(modelData.slug || modelData.id)
-                                    width: installedLabel.width + 12
-                                    height: 22
-                                    radius: 11
-                                    color: isDefaultApp(modelData.slug || modelData.id) ? "#2a5a2a" : "#3a5a3a"
-                                    anchors.verticalCenter: parent.verticalCenter
+                                    Rectangle {
+                                        visible: isWildWest
+                                        width: 14
+                                        height: 14
+                                        radius: 7
+                                        color: "#ff9800"
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
 
-                                    Text {
-                                        id: installedLabel
-                                        anchors.centerIn: parent
-                                        text: isDefaultApp(modelData.slug || modelData.id) ? "Default" : "Installed"
-                                        font.pixelSize: 12
-                                        font.weight: Font.Bold
-                                        color: "#aaffaa"
+                                    // Installed/Default indicator
+                                    Rectangle {
+                                        visible: isAppInstalled(modelData.slug || modelData.id)
+                                        width: installedLabel.paintedWidth + 16
+                                        height: installedLabel.paintedHeight + 8
+                                        radius: height / 2
+                                        color: isDefaultApp(modelData.slug || modelData.id) ? "#2a5a2a" : "#3a5a3a"
+
+                                        Text {
+                                            id: installedLabel
+                                            anchors.centerIn: parent
+                                            text: isDefaultApp(modelData.slug || modelData.id) ? "Default" : "Installed"
+                                            font.pixelSize: 18
+                                            font.weight: Font.Bold
+                                            color: "#aaffaa"
+                                        }
                                     }
                                 }
                             }
@@ -2427,49 +2408,6 @@ Window {
                 id: detailColumn
                 width: parent.width
                 spacing: 24
-
-                // Header with back button
-                Rectangle {
-                    width: parent.width
-                    height: 54
-                    color: "#1a1a2e"
-
-                    Row {
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        anchors.topMargin: 30
-                        spacing: 16
-
-                        Rectangle {
-                            width: 44
-                            height: 44
-                            radius: 22
-                            color: detailBackMouse.pressed ? "#3a3a4e" : "transparent"
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "←"
-                                font.pixelSize: 20
-                                font.weight: Font.Medium
-                                color: "#ffffff"
-                            }
-
-                            MouseArea {
-                                id: detailBackMouse
-                                anchors.fill: parent
-                                onClicked: goBack()
-                            }
-                        }
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "App Details"
-                            font.pixelSize: 20 * textScale
-                            font.weight: Font.Medium
-                            color: "#ffffff"
-                        }
-                    }
-                }
 
                 // App info header
                 Rectangle {
