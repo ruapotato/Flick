@@ -107,7 +107,7 @@ Item {
         anchors.topMargin: 40
         anchors.horizontalCenter: parent.horizontalCenter
         opacity: showingUnlock ? 0 : (1 - swipeProgress * 1.5)
-        visible: opacity > 0 && hasMedia
+        visible: opacity > 0 && clockMediaControls.hasMedia
         stateDir: lockScreen.stateDir
         accentColor: lockScreen.accentColor
 
