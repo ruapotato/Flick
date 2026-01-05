@@ -14,10 +14,49 @@ Item {
     property bool hasWallpaper: false
     property color accentColor: "#e94560"  // Default accent color
 
+    // Battery status
+    property int batteryPercent: 0
+    property bool batteryCharging: false
+    property string batteryStatus: ""
+
     signal unlocked()
 
     // Load accent color from config
-    Component.onCompleted: loadAccentColor()
+    Component.onCompleted: {
+        loadAccentColor()
+        loadBatteryStatus()
+    }
+
+    // Battery status polling
+    Timer {
+        interval: 10000  // Update every 10 seconds
+        running: true
+        repeat: true
+        onTriggered: loadBatteryStatus()
+    }
+
+    function loadBatteryStatus() {
+        // Read battery capacity
+        var xhrCap = new XMLHttpRequest()
+        xhrCap.open("GET", "file:///sys/class/power_supply/battery/capacity", false)
+        try {
+            xhrCap.send()
+            if (xhrCap.status === 200 || xhrCap.status === 0) {
+                batteryPercent = parseInt(xhrCap.responseText.trim()) || 0
+            }
+        } catch (e) {}
+
+        // Read battery status (Charging/Discharging/Full)
+        var xhrStatus = new XMLHttpRequest()
+        xhrStatus.open("GET", "file:///sys/class/power_supply/battery/status", false)
+        try {
+            xhrStatus.send()
+            if (xhrStatus.status === 200 || xhrStatus.status === 0) {
+                batteryStatus = xhrStatus.responseText.trim()
+                batteryCharging = (batteryStatus === "Charging" || batteryStatus === "Full")
+            }
+        } catch (e) {}
+    }
 
     function loadAccentColor() {
         var xhr = new XMLHttpRequest()
@@ -53,7 +92,7 @@ Item {
         anchors.centerIn: parent
         anchors.verticalCenterOffset: -parent.height * 0.12
         width: parent.width
-        height: timeText.height + dateText.height + 24
+        height: timeText.height + dateText.height + batteryRow.height + 48
         opacity: 1 - swipeProgress * 1.5
         scale: 1 - swipeProgress * 0.1
 
@@ -95,6 +134,63 @@ Item {
                 running: true
                 repeat: true
                 onTriggered: dateText.text = Qt.formatDate(new Date(), "dddd, MMMM d").toUpperCase()
+            }
+        }
+
+        // Battery indicator
+        Row {
+            id: batteryRow
+            anchors.top: dateText.bottom
+            anchors.topMargin: 16
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 8
+
+            // Battery icon with fill level
+            Item {
+                width: 32
+                height: 16
+                anchors.verticalCenter: parent.verticalCenter
+
+                // Battery outline
+                Rectangle {
+                    anchors.left: parent.left
+                    width: 28
+                    height: 14
+                    radius: 3
+                    color: "transparent"
+                    border.color: batteryPercent <= 20 ? "#ff4444" : "#8888aa"
+                    border.width: 1.5
+
+                    // Battery fill
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        anchors.margins: 2
+                        width: Math.max(0, (parent.width - 4) * batteryPercent / 100)
+                        radius: 1.5
+                        color: batteryCharging ? "#4ade80" : (batteryPercent <= 20 ? "#ff4444" : "#8888aa")
+                    }
+                }
+
+                // Battery tip
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 3
+                    height: 6
+                    radius: 1
+                    color: batteryPercent <= 20 ? "#ff4444" : "#8888aa"
+                }
+            }
+
+            // Battery percentage and status
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                font.pixelSize: 18
+                font.weight: Font.Light
+                color: batteryCharging ? "#4ade80" : (batteryPercent <= 20 ? "#ff4444" : "#8888aa")
+                text: batteryPercent + "%" + (batteryCharging ? " ⚡" : "")
             }
         }
     }
