@@ -519,7 +519,8 @@ Window {
                 }
                 if (chapters.length > 0) {
                     chapters.sort(function(a, b) {
-                        return a.title.localeCompare(b.title)
+                        // Use numeric-aware sorting so 2.mp3 comes before 10.mp3
+                        return a.title.localeCompare(b.title, undefined, {numeric: true, sensitivity: 'base'})
                     })
                     scanningBooksList.push({
                         title: folderName,
