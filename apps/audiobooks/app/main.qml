@@ -518,12 +518,23 @@ Window {
                     }
                 }
                 if (chapters.length > 0) {
+                    // Check if most files start with numbers
+                    var numericCount = 0
+                    for (var j = 0; j < chapters.length; j++) {
+                        if (/^\d+/.test(chapters[j].title)) numericCount++
+                    }
+                    var useNumericSort = (numericCount > chapters.length / 2)
+
                     chapters.sort(function(a, b) {
-                        // Natural sort: extract leading numbers and compare numerically
-                        var numA = parseInt(a.title.match(/^\d+/) || "0")
-                        var numB = parseInt(b.title.match(/^\d+/) || "0")
-                        if (numA !== numB) return numA - numB
-                        // Fall back to string compare if no numbers or same number
+                        if (useNumericSort) {
+                            // Extract numbers anywhere in filename for numeric sort
+                            var matchA = a.title.match(/\d+/)
+                            var matchB = b.title.match(/\d+/)
+                            var numA = matchA ? parseInt(matchA[0]) : 0
+                            var numB = matchB ? parseInt(matchB[0]) : 0
+                            if (numA !== numB) return numA - numB
+                        }
+                        // Alphabetic fallback
                         return a.title < b.title ? -1 : (a.title > b.title ? 1 : 0)
                     })
                     scanningBooksList.push({
