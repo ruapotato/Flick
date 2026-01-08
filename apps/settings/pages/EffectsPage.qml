@@ -131,7 +131,7 @@ Page {
 
         // Stars preview (if enabled)
         Repeater {
-            model: starryNightEnabled ? 20 : 0
+            model: livingPixels ? 20 : 0
             Rectangle {
                 x: Math.random() * heroSection.width
                 y: Math.random() * heroSection.height
