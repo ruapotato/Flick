@@ -1,4 +1,4 @@
-import "../../shared"
+import "../shared"
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -6,20 +6,12 @@ import QtQuick.Layouts 1.15
 Page {
     id: effectsPage
 
-    // Touch effect settings
-    property bool touchEffectsEnabled: true
-    property int touchEffectStyle: 0     // 0=water, 1=snow, 2=CRT, 3=terminal_ripple
-    property real fisheyeSize: 0.16
-    property real fisheyeStrength: 0.13
-    property real rippleSize: 0.30
-    property real rippleStrength: 0.07
-    property real rippleDuration: 0.5
-    property real asciiDensity: 8.0      // ASCII character density (4-16)
-    property bool livingPixels: false    // Stars in black, eyes in white
-    // Living pixels sub-toggles
-    property bool lpStars: true          // Twinkling stars in dark areas
-    property bool lpShootingStars: true  // Occasional shooting stars
-    property bool rainEffectEnabled: false // Compiz-style rain ripples
+    // Config properties matching Rust effects app
+    property bool fireTouchEnabled: true
+    property bool livingPixelsEnabled: false
+    property bool lpStars: true
+    property bool lpShootingStars: true
+    property bool lpFireflies: true
 
     property string configPath: Theme.stateDir + "/effects_config.json"
 
@@ -34,20 +26,11 @@ Page {
             xhr.send()
             if (xhr.status === 200) {
                 var config = JSON.parse(xhr.responseText)
-                // Touch effects
-                if (config.touch_effects_enabled !== undefined) touchEffectsEnabled = config.touch_effects_enabled
-                if (config.touch_effect_style !== undefined) touchEffectStyle = config.touch_effect_style
-                if (config.fisheye_size !== undefined) fisheyeSize = config.fisheye_size
-                if (config.fisheye_strength !== undefined) fisheyeStrength = config.fisheye_strength
-                if (config.ripple_size !== undefined) rippleSize = config.ripple_size
-                if (config.ripple_strength !== undefined) rippleStrength = config.ripple_strength
-                if (config.ripple_duration !== undefined) rippleDuration = config.ripple_duration
-                if (config.ascii_density !== undefined) asciiDensity = config.ascii_density
-                if (config.living_pixels !== undefined) livingPixels = config.living_pixels
-                // Living pixels sub-toggles
+                if (config.fire_touch_enabled !== undefined) fireTouchEnabled = config.fire_touch_enabled
+                if (config.living_pixels_enabled !== undefined) livingPixelsEnabled = config.living_pixels_enabled
                 if (config.lp_stars !== undefined) lpStars = config.lp_stars
                 if (config.lp_shooting_stars !== undefined) lpShootingStars = config.lp_shooting_stars
-                if (config.rain_effect_enabled !== undefined) rainEffectEnabled = config.rain_effect_enabled
+                if (config.lp_fireflies !== undefined) lpFireflies = config.lp_fireflies
             }
         } catch (e) {
             console.log("Using default effects config")
@@ -56,20 +39,11 @@ Page {
 
     function saveConfig() {
         var config = {
-            // Touch effects
-            touch_effects_enabled: touchEffectsEnabled,
-            touch_effect_style: touchEffectStyle,
-            fisheye_size: fisheyeSize,
-            fisheye_strength: fisheyeStrength,
-            ripple_size: rippleSize,
-            ripple_strength: rippleStrength,
-            ripple_duration: rippleDuration,
-            ascii_density: asciiDensity,
-            living_pixels: livingPixels,
-            // Living pixels sub-toggles
+            fire_touch_enabled: fireTouchEnabled,
+            living_pixels_enabled: livingPixelsEnabled,
             lp_stars: lpStars,
             lp_shooting_stars: lpShootingStars,
-            rain_effect_enabled: rainEffectEnabled
+            lp_fireflies: lpFireflies
         }
 
         var xhr = new XMLHttpRequest()
@@ -85,57 +59,40 @@ Page {
         color: "#0a0a0f"
     }
 
-    // Hero section with animated preview
+    // Hero section
     Rectangle {
         id: heroSection
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 220
+        height: 200
         color: "transparent"
 
-        // Animated orbs
+        // Fire preview
         Rectangle {
-            id: orb1
             anchors.centerIn: parent
-            anchors.horizontalCenterOffset: -50
-            width: 180
-            height: 180
-            radius: 90
-            color: Theme.accentColor
-            opacity: 0.12
+            anchors.horizontalCenterOffset: -40
+            width: 100
+            height: 100
+            radius: 50
+            color: "#ff6600"
+            opacity: fireTouchEnabled ? 0.3 : 0.1
 
             SequentialAnimation on opacity {
                 loops: Animation.Infinite
-                NumberAnimation { to: 0.20; duration: 2000; easing.type: Easing.InOutSine }
-                NumberAnimation { to: 0.12; duration: 2000; easing.type: Easing.InOutSine }
+                running: fireTouchEnabled
+                NumberAnimation { to: 0.5; duration: 300; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 0.2; duration: 300; easing.type: Easing.InOutSine }
             }
         }
 
-        Rectangle {
-            anchors.centerIn: parent
-            anchors.horizontalCenterOffset: 50
-            anchors.verticalCenterOffset: -20
-            width: 120
-            height: 120
-            radius: 60
-            color: "#4a9eff"
-            opacity: 0.10
-
-            SequentialAnimation on opacity {
-                loops: Animation.Infinite
-                NumberAnimation { to: 0.18; duration: 1500; easing.type: Easing.InOutSine }
-                NumberAnimation { to: 0.10; duration: 1500; easing.type: Easing.InOutSine }
-            }
-        }
-
-        // Stars preview (if enabled)
+        // Stars preview
         Repeater {
-            model: livingPixels ? 20 : 0
+            model: livingPixelsEnabled ? 15 : 0
             Rectangle {
                 x: Math.random() * heroSection.width
-                y: Math.random() * heroSection.height
-                width: 2 + Math.random() * 3
+                y: Math.random() * heroSection.height * 0.7
+                width: 2 + Math.random() * 2
                 height: width
                 radius: width / 2
                 color: "#ffffff"
@@ -155,12 +112,6 @@ Page {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "✨"
-                font.pixelSize: 38
-            }
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
                 text: "Effects"
                 font.pixelSize: 38
                 font.weight: Font.ExtraLight
@@ -170,7 +121,7 @@ Page {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "NEXT-GEN VISUALS"
+                text: "VISUAL ENHANCEMENTS"
                 font.pixelSize: 11
                 font.letterSpacing: 3
                 color: "#555566"
@@ -193,7 +144,7 @@ Page {
             id: settingsColumn
             anchors.left: parent.left
             anchors.right: parent.right
-            spacing: 12
+            spacing: 16
 
             // ===== TOUCH EFFECTS =====
             Text {
@@ -204,220 +155,55 @@ Page {
                 leftPadding: 8
             }
 
-            // Master toggle
+            // Fire touch toggle
             EffectToggle {
                 width: settingsColumn.width
-                title: "Touch Distortion"
-                subtitle: "Fisheye lens & ripple effects"
-                icon: ["💧", "❄️", "📺", "📟"][touchEffectStyle] || "💧"
-                checked: touchEffectsEnabled
-                accentColor: ["#4a9eff", "#88ddff", "#ff6600", "#00ff00"][touchEffectStyle] || "#4a9eff"
+                title: "Fire on Touch"
+                subtitle: "Flame particles follow your finger"
+                icon: "🔥"
+                checked: fireTouchEnabled
+                accentColor: "#ff6600"
                 onToggled: {
-                    touchEffectsEnabled = !touchEffectsEnabled
+                    fireTouchEnabled = !fireTouchEnabled
                     saveConfig()
                 }
             }
 
-            // Effect style selector
-            Rectangle {
-                width: settingsColumn.width
-                height: 120
-                radius: 20
-                color: "#14141e"
-                border.color: "#1a1a2e"
-                visible: touchEffectsEnabled
+            Item { height: 16 }
 
-                Column {
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 12
-
-                    Text {
-                        text: "Effect Style"
-                        font.pixelSize: 14
-                        color: "#888899"
-                    }
-
-                    Grid {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        columns: 3
-                        spacing: 12
-
-                        Repeater {
-                            model: [
-                                { icon: "💧", label: "Water", color: "#4a9eff", style: 0 },
-                                { icon: "📺", label: "CRT", color: "#ff6600", style: 2 },
-                                { icon: "📟", label: "Terminal", color: "#00ff00", style: 3 }
-                            ]
-
-                            Rectangle {
-                                width: 40
-                                height: 56
-                                radius: 14
-                                color: touchEffectStyle === modelData.style ? Qt.darker(modelData.color, 2) : "#1a1a28"
-                                border.color: touchEffectStyle === modelData.style ? modelData.color : "#2a2a3e"
-                                border.width: touchEffectStyle === modelData.style ? 2 : 1
-
-                                Column {
-                                    anchors.centerIn: parent
-                                    spacing: 4
-
-                                    Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: modelData.icon
-                                        font.pixelSize: 20
-                                    }
-
-                                    Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: modelData.label
-                                        font.pixelSize: 10
-                                        color: touchEffectStyle === modelData.style ? "#ffffff" : "#666677"
-                                    }
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        touchEffectStyle = modelData.style
-                                        saveConfig()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            // ===== AMBIENT EFFECTS =====
+            Text {
+                text: "AMBIENT EFFECTS"
+                font.pixelSize: 11
+                font.letterSpacing: 2
+                color: "#555566"
+                leftPadding: 8
             }
 
-            // Fisheye settings
-            Rectangle {
-                width: settingsColumn.width
-                height: fisheyeColumn.height + 32
-                radius: 20
-                color: "#14141e"
-                border.color: "#1a1a2e"
-                visible: touchEffectsEnabled
-
-                Column {
-                    id: fisheyeColumn
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: 16
-                    spacing: 16
-
-                    Row {
-                        spacing: 10
-                        Text { text: "🔍"; font.pixelSize: 20 }
-                        Text { text: "Fisheye Lens"; font.pixelSize: 16; font.weight: Font.Medium; color: "#ffffff" }
-                    }
-
-                    // Size slider
-                    EffectSlider {
-                        width: parent.width - 32
-                        label: "Size"
-                        value: fisheyeSize
-                        minVal: 0.05
-                        maxVal: 0.30
-                        accentColor: Theme.accentColor
-                        onValueChanged: { fisheyeSize = value; saveConfig() }
-                    }
-
-                    // Strength slider
-                    EffectSlider {
-                        width: parent.width - 32
-                        label: "Strength"
-                        value: fisheyeStrength
-                        minVal: 0.0
-                        maxVal: 0.5
-                        accentColor: Theme.accentColor
-                        onValueChanged: { fisheyeStrength = value; saveConfig() }
-                    }
-                }
-            }
-
-            // Ripple settings
-            Rectangle {
-                width: settingsColumn.width
-                height: rippleColumn.height + 32
-                radius: 20
-                color: "#14141e"
-                border.color: "#1a1a2e"
-                visible: touchEffectsEnabled
-
-                Column {
-                    id: rippleColumn
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: 16
-                    spacing: 16
-
-                    Row {
-                        spacing: 10
-                        Text { text: "🌊"; font.pixelSize: 20 }
-                        Text { text: "Water Ripple"; font.pixelSize: 16; font.weight: Font.Medium; color: "#ffffff" }
-                    }
-
-                    // Size slider
-                    EffectSlider {
-                        width: parent.width - 32
-                        label: "Size"
-                        value: rippleSize
-                        minVal: 0.1
-                        maxVal: 0.5
-                        accentColor: "#4a9eff"
-                        onValueChanged: { rippleSize = value; saveConfig() }
-                    }
-
-                    // Strength slider
-                    EffectSlider {
-                        width: parent.width - 32
-                        label: "Strength"
-                        value: rippleStrength
-                        minVal: 0.0
-                        maxVal: 0.3
-                        accentColor: "#4a9eff"
-                        onValueChanged: { rippleStrength = value; saveConfig() }
-                    }
-
-                    // Duration slider
-                    EffectSlider {
-                        width: parent.width - 32
-                        label: "Duration"
-                        value: rippleDuration
-                        minVal: 0.2
-                        maxVal: 1.0
-                        accentColor: "#4a9eff"
-                        suffix: "s"
-                        onValueChanged: { rippleDuration = value; saveConfig() }
-                    }
-                }
-            }
-
-            // Living Pixels toggle - Always visible (not tied to touch distortion)
+            // Living pixels master toggle
             EffectToggle {
                 width: settingsColumn.width
                 title: "Living Pixels"
-                subtitle: "Stars, sprites, rain ripples on screen"
-                icon: "👁️"
-                checked: livingPixels
+                subtitle: "Stars, shooting stars, fireflies on screen"
+                icon: "✨"
+                checked: livingPixelsEnabled
                 accentColor: "#ffaa00"
                 onToggled: {
-                    livingPixels = !livingPixels
+                    livingPixelsEnabled = !livingPixelsEnabled
                     saveConfig()
                 }
             }
 
-            // Living Pixels sub-toggles card
+            // Sub-toggles card
             Rectangle {
                 width: settingsColumn.width
                 height: lpSubColumn.height + 24
                 radius: 20
                 color: "#14141e"
-                border.color: "#ffaa00"
+                border.color: livingPixelsEnabled ? "#ffaa00" : "#1a1a2e"
                 border.width: 1
-                visible: livingPixels
+                visible: livingPixelsEnabled
+                opacity: livingPixelsEnabled ? 1.0 : 0.5
 
                 Column {
                     id: lpSubColumn
@@ -425,101 +211,77 @@ Page {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: 12
-                    spacing: 0
+                    spacing: 8
 
-                    // Header
-                    Row {
-                        spacing: 8
+                    Text {
+                        text: "Effect Types"
+                        font.pixelSize: 13
+                        color: "#888899"
                         leftPadding: 4
-                        bottomPadding: 8
-                        Text {
-                            text: "✨"
-                            font.pixelSize: 14
-                        }
-                        Text {
-                            text: "Effect Types"
-                            font.pixelSize: 13
-                            color: "#888899"
-                        }
                     }
 
-                    // Sub-toggles in a grid
                     Grid {
                         width: parent.width
                         columns: 2
                         spacing: 8
 
-                        // Stars
-                        LivingPixelSubToggle {
+                        SubToggle {
                             width: (lpSubColumn.width - 8) / 2
                             icon: "⭐"
                             label: "Stars"
                             checked: lpStars
-                            onToggled: {
-                                lpStars = !lpStars
-                                saveConfig()
-                            }
+                            onToggled: { lpStars = !lpStars; saveConfig() }
                         }
 
-                        // Shooting Stars
-                        LivingPixelSubToggle {
+                        SubToggle {
                             width: (lpSubColumn.width - 8) / 2
                             icon: "💫"
-                            label: "Shooting"
+                            label: "Shooting Stars"
                             checked: lpShootingStars
-                            onToggled: {
-                                lpShootingStars = !lpShootingStars
-                                saveConfig()
-                            }
+                            onToggled: { lpShootingStars = !lpShootingStars; saveConfig() }
                         }
 
-                        // Rain ripples
-                        LivingPixelSubToggle {
+                        SubToggle {
                             width: (lpSubColumn.width - 8) / 2
-                            icon: "💧"
-                            label: "Ripples"
-                            checked: rainEffectEnabled
-                            onToggled: {
-                                rainEffectEnabled = !rainEffectEnabled
-                                saveConfig()
-                            }
+                            icon: "🌟"
+                            label: "Fireflies"
+                            checked: lpFireflies
+                            onToggled: { lpFireflies = !lpFireflies; saveConfig() }
                         }
                     }
                 }
             }
 
-            // ASCII density slider (only shown when Terminal Ripple mode is selected)
+            Item { height: 16 }
+
+            // Info text
             Rectangle {
                 width: settingsColumn.width
-                height: termColumn.height + 32
-                radius: 20
+                height: infoCol.height + 24
+                radius: 16
                 color: "#14141e"
                 border.color: "#1a1a2e"
-                visible: touchEffectsEnabled && touchEffectStyle === 3
 
                 Column {
-                    id: termColumn
+                    id: infoCol
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: 16
-                    spacing: 16
+                    anchors.margins: 12
+                    spacing: 8
 
                     Row {
-                        spacing: 10
-                        Text { text: "📟"; font.pixelSize: 20 }
-                        Text { text: "Terminal Settings"; font.pixelSize: 16; font.weight: Font.Medium; color: "#ffffff" }
+                        spacing: 8
+                        Text { text: "ℹ️"; font.pixelSize: 16 }
+                        Text { text: "Note"; font.pixelSize: 14; color: "#888899"; font.weight: Font.Medium }
                     }
 
-                    EffectSlider {
-                        width: parent.width - 32
-                        label: "Density"
-                        value: asciiDensity
-                        minVal: 4.0
-                        maxVal: 16.0
-                        accentColor: "#00ff00"
-                        suffix: "x"
-                        onValueChanged: { asciiDensity = value; saveConfig() }
+                    Text {
+                        width: parent.width
+                        text: "Changes apply after restarting flick-effects service. Living pixels may impact battery life."
+                        font.pixelSize: 12
+                        color: "#666677"
+                        wrapMode: Text.WordWrap
                     }
                 }
             }
@@ -553,7 +315,7 @@ Page {
         }
     }
 
-    // Reusable toggle component
+    // Toggle component
     component EffectToggle: Rectangle {
         property string title
         property string subtitle
@@ -631,8 +393,8 @@ Page {
         }
     }
 
-    // Sub-toggle for living pixels effects
-    component LivingPixelSubToggle: Rectangle {
+    // Sub-toggle component
+    component SubToggle: Rectangle {
         property string icon
         property string label
         property bool checked
@@ -640,11 +402,9 @@ Page {
 
         height: 48
         radius: 12
-        color: lpSubMouse.pressed ? "#2a2a3e" : (checked ? "#2a2a38" : "#1a1a28")
+        color: subMouse.pressed ? "#2a2a3e" : (checked ? "#2a2a38" : "#1a1a28")
         border.color: checked ? "#ffaa00" : "#2a2a3e"
         border.width: checked ? 1 : 0
-
-        Behavior on color { ColorAnimation { duration: 150 } }
 
         Row {
             anchors.centerIn: parent
@@ -662,103 +422,27 @@ Page {
                 color: checked ? "#ffffff" : "#666677"
             }
 
-            // Small check indicator
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
-                width: 18
-                height: 18
-                radius: 9
-                color: checked ? "#ffaa00" : "#2a2a3e"
+                width: 16
+                height: 16
+                radius: 8
+                color: checked ? "#ffaa00" : "transparent"
                 visible: checked
 
                 Text {
                     anchors.centerIn: parent
                     text: "✓"
-                    font.pixelSize: 11
+                    font.pixelSize: 10
                     color: "#000000"
                 }
             }
         }
 
         MouseArea {
-            id: lpSubMouse
+            id: subMouse
             anchors.fill: parent
             onClicked: toggled()
-        }
-    }
-
-    // Individual slider with proper binding
-    component EffectSlider: Column {
-        property string label
-        property real value
-        property real minVal: 0.0
-        property real maxVal: 1.0
-        property color accentColor: Theme.accentColor
-        property string suffix: "%"
-
-        spacing: 6
-
-        Row {
-            width: parent.width
-            Text {
-                text: label
-                font.pixelSize: 13
-                color: "#888899"
-            }
-            Item { width: parent.width - 80; height: 1 }
-            Text {
-                text: {
-                    if (suffix === "s" || suffix === "x") {
-                        return value.toFixed(2) + suffix
-                    } else {
-                        return (value * 100).toFixed(0) + suffix
-                    }
-                }
-                font.pixelSize: 13
-                font.weight: Font.Bold
-                color: accentColor
-            }
-        }
-
-        Item {
-            width: parent.width
-            height: 32
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: parent.width
-                height: 6
-                radius: 3
-                color: "#1a1a28"
-
-                Rectangle {
-                    width: parent.width * ((value - minVal) / (maxVal - minVal))
-                    height: parent.height
-                    radius: 3
-                    color: accentColor
-                }
-            }
-
-            Rectangle {
-                x: (parent.width - 24) * ((value - minVal) / (maxVal - minVal))
-                anchors.verticalCenter: parent.verticalCenter
-                width: 24
-                height: 24
-                radius: 12
-                color: "#ffffff"
-                border.color: accentColor
-                border.width: 2
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                onPressed: updateSlider(mouse)
-                onPositionChanged: if (pressed) updateSlider(mouse)
-                function updateSlider(mouse) {
-                    var r = Math.max(0, Math.min(1, mouse.x / parent.width))
-                    value = minVal + r * (maxVal - minVal)
-                }
-            }
         }
     }
 }
