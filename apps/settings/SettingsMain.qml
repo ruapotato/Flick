@@ -167,6 +167,13 @@ Page {
                 pageName: "SecurityPage"
             }
             ListElement {
+                title: "Apps"
+                icon: "📱"
+                gradStart: "#1a4a2a"
+                gradEnd: "#0d2515"
+                pageName: "IconManagerPage"
+            }
+            ListElement {
                 title: "About"
                 icon: "⚡"
                 gradStart: "#3a1a4a"
