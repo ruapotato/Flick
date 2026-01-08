@@ -313,7 +313,7 @@ impl AppManager {
         false
     }
 
-    /// Scan for apps in ~/Flick/apps/ and other locations
+    /// Scan for apps in ~/Flick/apps/ and system locations
     pub fn scan_apps(&mut self) {
         self.apps.clear();
         let home = get_real_user_home();
@@ -333,6 +333,9 @@ impl AppManager {
             }
         }
 
+        // Scan system apps from /usr/share/applications/
+        self.scan_system_apps();
+
         // Ensure grid_order contains all discovered apps
         let all_ids: Vec<String> = self.apps.keys().cloned().collect();
         for id in &all_ids {
@@ -343,7 +346,144 @@ impl AppManager {
         // Remove apps that no longer exist
         self.config.grid_order.retain(|id| all_ids.contains(id));
 
-        tracing::info!("Discovered {} apps", self.apps.len());
+        tracing::info!("Discovered {} apps ({} Flick + system)", self.apps.len(),
+            self.apps.values().filter(|a| a.path.to_string_lossy().contains("Flick/apps")).count());
+    }
+
+    /// Scan system .desktop files for additional apps
+    fn scan_system_apps(&mut self) {
+        let desktop_dirs = [
+            PathBuf::from("/usr/share/applications"),
+            PathBuf::from("/usr/local/share/applications"),
+        ];
+
+        // Apps we want to include (allowlist approach for clean grid)
+        let wanted_apps = [
+            "furios-camera",
+            "org.gnome.Usage",
+            "org.gnome.clocks",
+            "org.gnome.Calculator",
+            "org.gnome.Contacts",
+            "org.gnome.Calendar",
+            "org.gnome.Weather",
+            "org.gnome.Maps",
+            "org.gnome.Music",
+            "org.gnome.Photos",
+            "org.gnome.Geary",
+            "org.gnome.Epiphany",
+            "org.gnome.Nautilus",
+            "org.gnome.TextEditor",
+            "org.gnome.Totem",
+            "org.gnome.Cheese",
+            "org.gnome.Podcasts",
+            "org.gnome.Fractal",
+            "org.gnome.Calls",
+            "sm.puri.Chatty",
+            "sm.puri.Calls",
+            "org.sigxcpu.Livi",
+            "org.postmarketos.Megapixels",
+            "megapixels",
+        ];
+
+        for dir in &desktop_dirs {
+            if !dir.exists() { continue; }
+
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "desktop").unwrap_or(false) {
+                        if let Some(app) = self.parse_desktop_file(&path, &wanted_apps) {
+                            // Don't override Flick apps
+                            if !self.apps.contains_key(&app.id) {
+                                self.apps.insert(app.id.clone(), app);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Parse a .desktop file into an AppDef
+    fn parse_desktop_file(&self, path: &PathBuf, wanted: &[&str]) -> Option<AppDef> {
+        let content = fs::read_to_string(path).ok()?;
+
+        let mut name = None;
+        let mut exec = None;
+        let mut icon = None;
+        let mut no_display = false;
+        let mut terminal = false;
+        let mut app_type = String::new();
+
+        for line in content.lines() {
+            let line = line.trim();
+            if line.starts_with("Name=") && name.is_none() {
+                name = Some(line[5..].to_string());
+            } else if line.starts_with("Exec=") {
+                // Clean up exec - remove %u %U %f %F etc
+                let raw = &line[5..];
+                let clean = raw.split_whitespace()
+                    .filter(|s| !s.starts_with('%'))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                exec = Some(clean);
+            } else if line.starts_with("Icon=") {
+                icon = Some(line[5..].to_string());
+            } else if line.starts_with("NoDisplay=true") {
+                no_display = true;
+            } else if line.starts_with("Terminal=true") {
+                terminal = true;
+            } else if line.starts_with("Type=") {
+                app_type = line[5..].to_string();
+            }
+        }
+
+        // Must be an Application
+        if app_type != "Application" { return None; }
+
+        // Skip terminal apps and hidden apps
+        if terminal || no_display { return None; }
+
+        let name = name?;
+        let exec = exec?;
+
+        // Get ID from filename
+        let id = path.file_stem()?.to_str()?.to_string();
+
+        // Only include wanted apps
+        if !wanted.iter().any(|w| id.contains(w) || w.contains(&id.as_str())) {
+            return None;
+        }
+
+        // Map icon names to Flick icons where possible
+        let flick_icon = match id.as_str() {
+            s if s.contains("camera") || s.contains("Megapixels") => "camera",
+            s if s.contains("Calculator") => "calculator",
+            s if s.contains("Calendar") => "calendar",
+            s if s.contains("Contacts") => "contacts",
+            s if s.contains("Weather") => "weather",
+            s if s.contains("Maps") => "maps",
+            s if s.contains("Music") => "music",
+            s if s.contains("Photos") => "photos",
+            s if s.contains("Geary") => "email",
+            s if s.contains("Epiphany") => "web",
+            s if s.contains("Nautilus") => "files",
+            s if s.contains("Totem") || s.contains("Livi") => "video",
+            s if s.contains("Calls") => "phone",
+            s if s.contains("Chatty") || s.contains("Fractal") => "messages",
+            s if s.contains("Usage") => "settings",
+            s if s.contains("clocks") => "clock",
+            _ => &id,
+        };
+
+        Some(AppDef {
+            id: id.clone(),
+            name,
+            icon: flick_icon.to_string(),
+            color: generate_color_from_id(&id),
+            exec,
+            path: path.clone(),
+        })
     }
 
     /// Rebuild the cached app info
