@@ -519,8 +519,12 @@ Window {
                 }
                 if (chapters.length > 0) {
                     chapters.sort(function(a, b) {
-                        // Use numeric-aware sorting so 2.mp3 comes before 10.mp3
-                        return a.title.localeCompare(b.title, undefined, {numeric: true, sensitivity: 'base'})
+                        // Natural sort: extract leading numbers and compare numerically
+                        var numA = parseInt(a.title.match(/^\d+/) || "0")
+                        var numB = parseInt(b.title.match(/^\d+/) || "0")
+                        if (numA !== numB) return numA - numB
+                        // Fall back to string compare if no numbers or same number
+                        return a.title < b.title ? -1 : (a.title > b.title ? 1 : 0)
                     })
                     scanningBooksList.push({
                         title: folderName,
