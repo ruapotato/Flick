@@ -3019,6 +3019,9 @@ pub fn run() -> Result<()> {
         // Check for haptic requests from apps (via /tmp/flick_haptic)
         state.system.check_app_haptic();
 
+        // Check for media status updates from player apps
+        state.system.check_media();
+
         // Check for dismiss requests from lock screen
         crate::shell::quick_settings::check_dismiss_requests();
         // Export notifications for lock screen display
