@@ -997,6 +997,105 @@ impl ProcessStatsCollector {
     }
 }
 
+/// Media playback status (read from apps via file-based IPC)
+#[derive(Debug, Clone, Default)]
+pub struct MediaStatus {
+    pub has_media: bool,
+    pub is_playing: bool,
+    pub title: String,
+    pub artist: String,
+    pub app: String,  // "music", "audiobooks", "podcast", etc.
+    pub position: u64,  // milliseconds
+    pub duration: u64,  // milliseconds
+    pub timestamp: u64,
+}
+
+impl MediaStatus {
+    /// Read media status from the state file
+    pub fn read() -> Self {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/droidian".to_string());
+        let status_path = format!("{}/.local/state/flick/media_status.json", home);
+
+        let content = match fs::read_to_string(&status_path) {
+            Ok(c) => c,
+            Err(_) => return Self::default(),
+        };
+
+        #[derive(serde::Deserialize)]
+        struct MediaFile {
+            #[serde(default)]
+            title: String,
+            #[serde(default)]
+            artist: String,
+            #[serde(default)]
+            app: String,
+            #[serde(default)]
+            playing: bool,
+            #[serde(default)]
+            position: u64,
+            #[serde(default)]
+            duration: u64,
+            #[serde(default)]
+            timestamp: u64,
+        }
+
+        let file_data: MediaFile = match serde_json::from_str(&content) {
+            Ok(d) => d,
+            Err(_) => return Self::default(),
+        };
+
+        // Check if status is stale
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        let age = now.saturating_sub(file_data.timestamp);
+        // Allow longer timeout when paused (60s) vs playing (10s)
+        let max_age = if file_data.playing { 10000 } else { 60000 };
+
+        if file_data.timestamp == 0 || age > max_age || file_data.title.is_empty() {
+            return Self::default();
+        }
+
+        Self {
+            has_media: true,
+            is_playing: file_data.playing,
+            title: file_data.title,
+            artist: file_data.artist,
+            app: file_data.app,
+            position: file_data.position,
+            duration: file_data.duration,
+            timestamp: file_data.timestamp,
+        }
+    }
+
+    /// Send a media command
+    pub fn send_command(cmd: &str) {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/droidian".to_string());
+        let cmd_path = format!("{}/.local/state/flick/media_command", home);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let _ = fs::write(&cmd_path, format!("{}:{}", cmd, now));
+    }
+
+    /// Format time as M:SS or H:MM:SS
+    pub fn format_time(ms: u64) -> String {
+        let seconds = ms / 1000;
+        let hours = seconds / 3600;
+        let minutes = (seconds % 3600) / 60;
+        let secs = seconds % 60;
+
+        if hours > 0 {
+            format!("{}:{:02}:{:02}", hours, minutes, secs)
+        } else {
+            format!("{}:{:02}", minutes, secs)
+        }
+    }
+}
+
 /// System status aggregator
 pub struct SystemStatus {
     pub backlight: Option<Backlight>,
@@ -1027,6 +1126,10 @@ pub struct SystemStatus {
     pub sound_config: SoundConfig,
     /// Whether device is in 2G mode for voice calls (no LTE data)
     pub voice_2g_enabled: bool,
+    /// Current media playback status
+    pub media: MediaStatus,
+    /// Last time we checked media status
+    media_last_check: std::time::Instant,
 }
 
 impl SystemStatus {
@@ -1055,7 +1158,18 @@ impl SystemStatus {
             volume_key_last_repeat: None,
             sound_config: SoundConfig::load(),
             voice_2g_enabled: check_voice_2g_mode(),
+            media: MediaStatus::default(),
+            media_last_check: std::time::Instant::now(),
         }
+    }
+
+    /// Check media status (rate limited to every 1s)
+    pub fn check_media(&mut self) {
+        if self.media_last_check.elapsed().as_millis() < 1000 {
+            return;
+        }
+        self.media_last_check = std::time::Instant::now();
+        self.media = MediaStatus::read();
     }
 
     /// Set volume key held state
@@ -1249,28 +1363,66 @@ impl SystemStatus {
         self.haptic_heavy();
     }
 
-    /// Check for haptic feedback requests from apps (via /tmp/flick_haptic)
-    /// Apps can write "tap", "click", or "heavy" to request haptic feedback
+    /// Check for haptic feedback requests from apps
+    /// Apps can write "tap", "click", "heavy", or custom ms duration
+    /// Supports patterns like "success" (double tap), "error" (long buzz)
     pub fn check_app_haptic(&mut self) {
-        const HAPTIC_FILE: &str = "/tmp/flick_haptic";
-        if let Ok(content) = fs::read_to_string(HAPTIC_FILE) {
-            let cmd = content.trim();
-            if !cmd.is_empty() {
-                match cmd {
-                    "tap" => self.haptic_tap(),
-                    "click" => self.haptic_click(),
-                    "heavy" => self.haptic_heavy(),
-                    _ => {
-                        // Try to parse as duration in ms
-                        if let Ok(ms) = cmd.parse::<u32>() {
+        // Check both legacy location and new state directory
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/droidian".to_string());
+        let haptic_paths = [
+            "/tmp/flick_haptic".to_string(),
+            format!("{}/.local/state/flick/haptic_command", home),
+        ];
+
+        for haptic_file in &haptic_paths {
+            if let Ok(content) = fs::read_to_string(haptic_file) {
+                // Parse command (format: "cmd:timestamp" or just "cmd")
+                let cmd = content.split(':').next().unwrap_or("").trim();
+                if !cmd.is_empty() {
+                    self.process_haptic_command(cmd);
+                    // Clear the file after processing
+                    let _ = fs::write(haptic_file, "");
+                }
+            }
+        }
+    }
+
+    /// Process a haptic command
+    fn process_haptic_command(&self, cmd: &str) {
+        match cmd {
+            "tap" => self.haptic_tap(),
+            "click" => self.haptic_click(),
+            "heavy" => self.haptic_heavy(),
+            "success" => {
+                // Double tap for success
+                self.haptic_tap();
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                self.haptic_tap();
+            }
+            "error" => {
+                // Long vibration for error
+                if let Some(ref vib) = self.vibrator {
+                    vib.vibrate(80);
+                }
+            }
+            _ => {
+                // Check for pattern command: "pattern:15,50,15,50,15"
+                if cmd.starts_with("pattern:") {
+                    let pattern_str = &cmd[8..];
+                    for part in pattern_str.split(',') {
+                        if let Ok(ms) = part.trim().parse::<u32>() {
                             if let Some(ref vib) = self.vibrator {
-                                vib.vibrate(ms.min(100)); // Cap at 100ms for safety
+                                vib.vibrate(ms.min(100));
                             }
+                            std::thread::sleep(std::time::Duration::from_millis(ms as u64 + 20));
                         }
                     }
+                } else if let Ok(ms) = cmd.parse::<u32>() {
+                    // Custom duration in ms
+                    if let Some(ref vib) = self.vibrator {
+                        vib.vibrate(ms.min(100)); // Cap at 100ms for safety
+                    }
                 }
-                // Clear the file after processing
-                let _ = fs::write(HAPTIC_FILE, "");
             }
         }
     }

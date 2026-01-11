@@ -175,6 +175,14 @@ pub struct QuickSettingsPanel {
     pub battery_charging: bool,
     pub wifi_connected: bool,
     pub wifi_ssid: Option<String>,
+    // Media status
+    pub media_has_media: bool,
+    pub media_is_playing: bool,
+    pub media_title: String,
+    pub media_artist: String,
+    pub media_app: String,
+    pub media_position: u64,
+    pub media_duration: u64,
 }
 
 impl QuickSettingsPanel {
@@ -190,6 +198,13 @@ impl QuickSettingsPanel {
             battery_charging: false,
             wifi_connected: false,
             wifi_ssid: None,
+            media_has_media: false,
+            media_is_playing: false,
+            media_title: String::new(),
+            media_artist: String::new(),
+            media_app: String::new(),
+            media_position: 0,
+            media_duration: 0,
         }
     }
 
@@ -204,6 +219,15 @@ impl QuickSettingsPanel {
         // Update WiFi status
         self.wifi_connected = system.wifi_enabled;
         self.wifi_ssid = system.wifi_ssid.clone();
+
+        // Update media status
+        self.media_has_media = system.media.has_media;
+        self.media_is_playing = system.media.is_playing;
+        self.media_title = system.media.title.clone();
+        self.media_artist = system.media.artist.clone();
+        self.media_app = system.media.app.clone();
+        self.media_position = system.media.position;
+        self.media_duration = system.media.duration;
 
         // Update toggles to reflect real system state
         for toggle in &mut self.toggles {
@@ -458,8 +482,139 @@ impl QuickSettingsPanel {
             rects.extend(vol_pct_rects);
         }
 
+        // ============ MEDIA CONTROLS ============
+        let media_y = volume_y + 90.0;
+        let media_height = if self.media_has_media { 120.0 } else { 0.0 };
+
+        if self.media_has_media && media_y < screen_h && media_y + media_height > 0.0 {
+            // Media card background
+            let media_card = Rect::new(padding, media_y, screen_w - padding * 2.0, media_height);
+            rects.push((media_card, [0.15, 0.15, 0.2, 1.0]));
+
+            // App icon / type indicator
+            let icon_size = 48.0;
+            let icon_x = padding + 12.0;
+            let icon_y = media_y + (media_height - icon_size) / 2.0;
+            let icon_bg = Rect::new(icon_x, icon_y, icon_size, icon_size);
+            let icon_color = if self.media_app == "audiobooks" {
+                [0.9, 0.3, 0.4, 0.4]  // Accent for audiobooks
+            } else {
+                [0.3, 0.6, 1.0, 0.4]  // Blue for music
+            };
+            rects.push((icon_bg, icon_color));
+
+            // App icon text
+            let icon_text = if self.media_app == "audiobooks" { "B" } else { "M" };
+            let icon_rects = text::render_text_centered(
+                icon_text,
+                icon_x + icon_size / 2.0,
+                icon_y + icon_size / 2.0 - 8.0,
+                4.0,
+                [1.0, 1.0, 1.0, 1.0],
+            );
+            rects.extend(icon_rects);
+
+            // Track info section
+            let info_x = icon_x + icon_size + 12.0;
+            let info_width = screen_w - info_x - padding - 12.0;
+
+            // Title (truncate if too long)
+            let title = if self.media_title.len() > 25 {
+                format!("{}...", &self.media_title[..22])
+            } else {
+                self.media_title.clone()
+            };
+            let title_rects = text::render_text(
+                &title,
+                info_x,
+                media_y + 16.0,
+                2.8,
+                [1.0, 1.0, 1.0, 1.0],
+            );
+            rects.extend(title_rects);
+
+            // Artist
+            let artist = if self.media_artist.len() > 30 {
+                format!("{}...", &self.media_artist[..27])
+            } else {
+                self.media_artist.clone()
+            };
+            let artist_rects = text::render_text(
+                &artist,
+                info_x,
+                media_y + 40.0,
+                2.2,
+                [0.7, 0.7, 0.8, 1.0],
+            );
+            rects.extend(artist_rects);
+
+            // Control buttons row
+            let controls_y = media_y + 70.0;
+            let btn_size = 40.0;
+            let btn_spacing = 16.0;
+            let controls_width = btn_size * 3.0 + btn_spacing * 2.0;
+            let controls_x = info_x + (info_width - controls_width) / 2.0;
+
+            // Previous / Skip back button
+            let prev_x = controls_x;
+            let prev_btn = Rect::new(prev_x, controls_y, btn_size, btn_size);
+            rects.push((prev_btn, [0.25, 0.25, 0.3, 1.0]));
+            let prev_text = if self.media_app == "music" { "<" } else { "<<" };
+            let prev_rects = text::render_text_centered(
+                prev_text,
+                prev_x + btn_size / 2.0,
+                controls_y + btn_size / 2.0 - 6.0,
+                2.5,
+                [0.9, 0.9, 1.0, 1.0],
+            );
+            rects.extend(prev_rects);
+
+            // Play/Pause button
+            let play_x = controls_x + btn_size + btn_spacing;
+            let play_btn = Rect::new(play_x, controls_y, btn_size, btn_size);
+            rects.push((play_btn, [0.9, 0.3, 0.4, 1.0]));  // Accent color
+            let play_text = if self.media_is_playing { "||" } else { ">" };
+            let play_rects = text::render_text_centered(
+                play_text,
+                play_x + btn_size / 2.0,
+                controls_y + btn_size / 2.0 - 6.0,
+                2.5,
+                [1.0, 1.0, 1.0, 1.0],
+            );
+            rects.extend(play_rects);
+
+            // Next / Skip forward button
+            let next_x = controls_x + (btn_size + btn_spacing) * 2.0;
+            let next_btn = Rect::new(next_x, controls_y, btn_size, btn_size);
+            rects.push((next_btn, [0.25, 0.25, 0.3, 1.0]));
+            let next_text = if self.media_app == "music" { ">" } else { ">>" };
+            let next_rects = text::render_text_centered(
+                next_text,
+                next_x + btn_size / 2.0,
+                controls_y + btn_size / 2.0 - 6.0,
+                2.5,
+                [0.9, 0.9, 1.0, 1.0],
+            );
+            rects.extend(next_rects);
+
+            // Time display
+            let time_str = format!(
+                "{} / {}",
+                crate::system::MediaStatus::format_time(self.media_position),
+                crate::system::MediaStatus::format_time(self.media_duration)
+            );
+            let time_rects = text::render_text(
+                &time_str,
+                controls_x + controls_width + 8.0,
+                controls_y + 12.0,
+                2.0,
+                [0.6, 0.6, 0.7, 1.0],
+            );
+            rects.extend(time_rects);
+        }
+
         // ============ NOTIFICATIONS ============
-        let notif_start_y = volume_y + 90.0;
+        let notif_start_y = media_y + media_height + 16.0;
 
         if notif_start_y < screen_h {
             let notif_header = text::render_text(
@@ -654,6 +809,76 @@ impl QuickSettingsPanel {
         None
     }
 
+    /// Hit test for media controls - returns "prev", "play", or "next"
+    pub fn hit_test_media(&self, x: f64, y: f64) -> Option<&'static str> {
+        if !self.media_has_media {
+            return None;
+        }
+
+        let padding = 20.0;
+        let screen_w = self.screen_size.w as f64;
+        let toggle_size = 56.0;
+        let row_height = toggle_size + 22.0;
+        let toggles_per_row = 4;
+        let rows = (self.toggles.len() + toggles_per_row - 1) / toggles_per_row;
+        let toggles_grid_y = 56.0 + 20.0 + 28.0 - self.scroll_offset;
+        let brightness_y = toggles_grid_y + rows as f64 * row_height + 16.0;
+        let volume_y = brightness_y + 90.0;
+        let media_y = volume_y + 90.0;
+
+        // Control button layout (must match render code)
+        let media_height = 120.0;
+        let controls_y = media_y + 70.0;
+        let btn_size = 40.0;
+        let btn_spacing = 16.0;
+        let controls_width = btn_size * 3.0 + btn_spacing * 2.0;
+
+        let icon_size = 48.0;
+        let icon_x = padding + 12.0;
+        let info_x = icon_x + icon_size + 12.0;
+        let info_width = screen_w - info_x - padding - 12.0;
+        let controls_x = info_x + (info_width - controls_width) / 2.0;
+
+        // Check if within media card area
+        if y < media_y || y > media_y + media_height {
+            return None;
+        }
+
+        // Check control buttons
+        if y >= controls_y && y < controls_y + btn_size {
+            // Previous button
+            let prev_x = controls_x;
+            if x >= prev_x && x < prev_x + btn_size {
+                return Some("prev");
+            }
+
+            // Play/Pause button
+            let play_x = controls_x + btn_size + btn_spacing;
+            if x >= play_x && x < play_x + btn_size {
+                return Some("play");
+            }
+
+            // Next button
+            let next_x = controls_x + (btn_size + btn_spacing) * 2.0;
+            if x >= next_x && x < next_x + btn_size {
+                return Some("next");
+            }
+        }
+
+        None
+    }
+
+    /// Handle media control action
+    pub fn handle_media_action(&self, action: &str) {
+        let cmd = match action {
+            "prev" => if self.media_app == "music" { "prev" } else { "seek:-30000" },
+            "play" => if self.media_is_playing { "pause" } else { "play" },
+            "next" => if self.media_app == "music" { "next" } else { "seek:30000" },
+            _ => return,
+        };
+        crate::system::MediaStatus::send_command(cmd);
+    }
+
     /// Toggle a quick setting - returns the toggle ID for system action
     pub fn toggle(&mut self, index: usize) -> Option<String> {
         if let Some(toggle) = self.toggles.get_mut(index) {
@@ -694,6 +919,9 @@ impl QuickSettingsPanel {
         let card_height = 80.0;
         let card_spacing = 12.0;
 
+        // Media controls height (only if media is playing)
+        let media_height = if self.media_has_media { 120.0 + 16.0 } else { 0.0 };
+
         // Calculate total content height
         56.0  // status bar
             + 20.0  // padding
@@ -701,6 +929,7 @@ impl QuickSettingsPanel {
             + rows as f64 * row_height  // toggles
             + 16.0 + 32.0 + 40.0  // brightness section
             + 90.0  // volume section
+            + media_height  // media controls (if present)
             + 32.0  // notifications header
             + notifications.max(1) as f64 * (card_height + card_spacing)
             + 100.0  // bottom padding

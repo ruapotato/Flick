@@ -2,11 +2,15 @@
 # Wrapper script for QML lockscreen that handles unlock signal file creation
 # and pattern/PIN verification
 
+SCRIPT_DIR="$(dirname "$0")"
 STATE_DIR="${FLICK_STATE_DIR:-$HOME/.local/state/flick}"
 LOG_FILE="$STATE_DIR/qml_lockscreen.log"
 SETTINGS_CTL="$HOME/Flick/apps/settings/flick-settings-ctl"
 # Use main.qml for production
-QML_FILE="$(dirname "$0")/main.qml"
+QML_FILE="${SCRIPT_DIR}/main.qml"
+
+# FlickBackend library path
+FLICK_LIB_DIR="${SCRIPT_DIR}/../../lib"
 
 # Ensure state directory exists
 mkdir -p "$STATE_DIR"
@@ -16,6 +20,7 @@ mkdir -p "$STATE_DIR"
 
 echo "Starting QML lockscreen, state_dir=$STATE_DIR" >> "$LOG_FILE"
 echo "QML_FILE=$QML_FILE" >> "$LOG_FILE"
+echo "FLICK_LIB_DIR=$FLICK_LIB_DIR" >> "$LOG_FILE"
 
 # Write state dir to a file that QML can read (Qt5 doesn't have Qt.getenv)
 echo "$STATE_DIR" > "$STATE_DIR/state_dir.txt"
@@ -25,11 +30,12 @@ export FLICK_STATE_DIR="$STATE_DIR"
 export QML_XHR_ALLOW_FILE_READ=1
 export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false;qt.accessibility.*=false"
 export QT_MESSAGE_PATTERN=""
-# export QT_QUICK_BACKEND=software  # Using hardware accel
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
-# Hardware acceleration enabled
 export QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=wayland-egl
+
+# Add FlickBackend library to QML import path
+export QML2_IMPORT_PATH="${FLICK_LIB_DIR}:${QML2_IMPORT_PATH}"
 
 # Verification result file
 VERIFY_RESULT="$STATE_DIR/verify_result"
