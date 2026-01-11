@@ -289,7 +289,7 @@ pub struct RegisteredItem {
 }
 
 /// Registry of all app-registered menu items
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct FanMenuRegistry {
     /// Registered apps, keyed by app_id
     pub apps: HashMap<String, AppRegistration>,
