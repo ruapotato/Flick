@@ -419,13 +419,13 @@ impl Flick {
     pub fn handle_gesture_complete(&mut self, action: &GestureAction) {
         // Handle window management based on gesture
         match action {
-            GestureAction::AppDrawer | GestureAction::Home => {
-                // Bring shell to front for home gestures
+            GestureAction::AppSelector | GestureAction::Home => {
+                // Bring shell to front for home/app selector gestures
                 self.bring_shell_to_front();
             }
-            GestureAction::AppSwitcher => {
-                // Don't bring shell to front - the shell shows its own app switcher overlay
-                // which appears on top of everything. Changing focus here causes timing issues.
+            GestureAction::FanMenuLeft | GestureAction::FanMenuRight => {
+                // Fan menu is an overlay - bring shell to front
+                self.bring_shell_to_front();
             }
             GestureAction::CloseApp => {
                 // Close gesture is handled by end_close_gesture() in udev.rs
