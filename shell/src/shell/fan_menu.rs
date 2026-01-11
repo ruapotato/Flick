@@ -211,9 +211,9 @@ pub fn default_category_items(category: FanCategory) -> Vec<FanMenuItem> {
             FanMenuItem { name: "Email".into(), icon: "✉️".into(), exec: "geary".into(), is_recent: false },
         ],
         FanCategory::Media => vec![
-            FanMenuItem { name: "Music".into(), icon: "🎵".into(), exec: "lollypop".into(), is_recent: false },
+            FanMenuItem { name: "Music".into(), icon: "🎵".into(), exec: "__flick_music__".into(), is_recent: false },
+            FanMenuItem { name: "Audiobooks".into(), icon: "📚".into(), exec: "__flick_audiobooks__".into(), is_recent: false },
             FanMenuItem { name: "Photos".into(), icon: "🖼️".into(), exec: "shotwell".into(), is_recent: false },
-            FanMenuItem { name: "Videos".into(), icon: "🎬".into(), exec: "totem".into(), is_recent: false },
             FanMenuItem { name: "Camera".into(), icon: "📷".into(), exec: "megapixels".into(), is_recent: false },
         ],
         FanCategory::Tools => vec![
