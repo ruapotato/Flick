@@ -46,13 +46,8 @@ Page {
             lp_fireflies: lpFireflies
         }
 
-        var xhr = new XMLHttpRequest()
-        xhr.open("PUT", "file://" + configPath, false)
-        try {
-            xhr.send(JSON.stringify(config, null, 2))
-        } catch (e) {
-            console.error("Failed to save effects config:", e)
-        }
+        // Output to console for shell script to capture and save
+        console.log("SAVE_EFFECTS:" + JSON.stringify(config))
     }
 
     background: Rectangle {

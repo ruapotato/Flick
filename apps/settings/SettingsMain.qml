@@ -54,7 +54,7 @@ Page {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "FLICK SYSTEM"
+                text: "FLICK PHOSH"
                 font.pixelSize: 14
                 font.weight: Font.Medium
                 font.letterSpacing: 4
@@ -97,27 +97,6 @@ Page {
 
         model: ListModel {
             ListElement {
-                title: "WiFi"
-                icon: "📶"
-                gradStart: "#1a3a5c"
-                gradEnd: "#0d1f30"
-                pageName: "WiFiPage"
-            }
-            ListElement {
-                title: "Bluetooth"
-                icon: "🔷"
-                gradStart: "#2a2a5c"
-                gradEnd: "#151530"
-                pageName: "BluetoothPage"
-            }
-            ListElement {
-                title: "Display"
-                icon: "☀"
-                gradStart: "#4a3a1a"
-                gradEnd: "#251d0d"
-                pageName: "DisplayPage"
-            }
-            ListElement {
                 title: "Effects"
                 icon: "✨"
                 gradStart: "#4a1a4a"
@@ -125,60 +104,11 @@ Page {
                 pageName: "EffectsPage"
             }
             ListElement {
-                title: "Sound"
-                icon: "🔊"
-                gradStart: "#1a4a3a"
-                gradEnd: "#0d251d"
-                pageName: "SoundPage"
-            }
-            ListElement {
-                title: "Battery"
-                icon: "🔋"
-                gradStart: "#2a4a1a"
-                gradEnd: "#15250d"
-                pageName: "BatteryPage"
-            }
-            ListElement {
-                title: "Storage"
-                icon: "💾"
-                gradStart: "#1a3a4a"
-                gradEnd: "#0d1d25"
-                pageName: "StoragePage"
-            }
-            ListElement {
-                title: "Notify"
-                icon: "🔔"
-                gradStart: "#4a3a2a"
-                gradEnd: "#251d15"
-                pageName: "NotificationsPage"
-            }
-            ListElement {
-                title: "Time"
-                icon: "🕐"
-                gradStart: "#2a2a4a"
-                gradEnd: "#151525"
-                pageName: "DateTimePage"
-            }
-            ListElement {
-                title: "Security"
-                icon: "🔐"
-                gradStart: "#4a1a3a"
-                gradEnd: "#250d1d"
-                pageName: "SecurityPage"
-            }
-            ListElement {
                 title: "Apps"
                 icon: "📱"
                 gradStart: "#1a4a2a"
                 gradEnd: "#0d2515"
                 pageName: "IconManagerPage"
-            }
-            ListElement {
-                title: "About"
-                icon: "⚡"
-                gradStart: "#3a1a4a"
-                gradEnd: "#1d0d25"
-                pageName: "AboutPage"
             }
         }
 

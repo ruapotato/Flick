@@ -22,14 +22,8 @@ QtObject {
         writeHaptic(String(Math.min(ms, 100)));
     }
 
-    // Internal function to write to the haptic file
+    // Internal function to trigger haptic - uses console.log for shell script to capture
     function writeHaptic(cmd) {
-        var xhr = new XMLHttpRequest();
-        xhr.open("PUT", "file:///tmp/flick_haptic", false);
-        try {
-            xhr.send(cmd);
-        } catch (e) {
-            // Ignore errors - haptic is non-critical
-        }
+        console.log("HAPTIC:" + cmd);
     }
 }

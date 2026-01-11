@@ -50,17 +50,17 @@ QtObject {
         if (envDir >= 0 && envDir + 1 < Qt.application.arguments.length) {
             return Qt.application.arguments[envDir + 1]
         }
-        // Try common locations
+        // Try common locations - use GET instead of HEAD (HEAD not supported by QML XMLHttpRequest)
         var paths = [
             "/home/furios/.local/state/flick",
             "/home/droidian/.local/state/flick"
         ]
         for (var i = 0; i < paths.length; i++) {
             var xhr = new XMLHttpRequest()
-            xhr.open("HEAD", "file://" + paths[i] + "/display_config.json", false)
+            xhr.open("GET", "file://" + paths[i] + "/display_config.json", false)
             try {
                 xhr.send()
-                if (xhr.status === 200 || xhr.status === 0) {
+                if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText) {
                     return paths[i]
                 }
             } catch (e) {}

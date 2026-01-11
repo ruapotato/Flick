@@ -7,66 +7,93 @@ Page {
     id: iconManagerPage
 
     property string stateDir: Theme.stateDir.replace("/flick", "/flick-phosh")
-    property var curatedApps: []
+    property string userAppsDir: Theme.homeDir + "/.local/share/applications"
+    property string systemAppsDir: "/usr/share/applications"
+
+    // Apps excluded from Other Apps folder (shown on main phosh grid)
+    property var excludedApps: []
+
+    // All discovered system apps
     property var allApps: []
 
+    // Default excluded apps (core apps that stay on main screen)
+    property var defaultExcluded: [
+        "furios-camera",
+        "org.gnome.Calls",
+        "firefox",
+        "sm.puri.Chatty"
+    ]
+
     Component.onCompleted: {
-        loadCuratedApps()
-        scanSystemApps()
+        loadExcludedApps()
+        scanAllApps()
     }
 
-    function loadCuratedApps() {
+    function loadExcludedApps() {
         var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + stateDir + "/curated_other_apps.json", false)
+        xhr.open("GET", "file://" + stateDir + "/excluded_apps.json", false)
         try {
             xhr.send()
-            if (xhr.status === 200) {
-                curatedApps = JSON.parse(xhr.responseText)
+            if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText && xhr.responseText.trim().length > 2) {
+                excludedApps = JSON.parse(xhr.responseText)
+            } else {
+                // First run - use defaults (don't save yet, will save on first toggle)
+                excludedApps = defaultExcluded.slice()
             }
         } catch (e) {
-            curatedApps = []
+            // First run - use defaults
+            excludedApps = defaultExcluded.slice()
         }
-        updateModel()
     }
 
-    function saveCuratedApps() {
+    function saveExcludedApps() {
+        // Output to console for shell script to capture and save
+        console.log("SAVE_EXCLUDED:" + JSON.stringify(excludedApps))
+
+        // Also update the curated_other_apps.json (inverse of excluded)
+        updateOtherApps()
+    }
+
+    function updateOtherApps() {
+        // Other Apps = all apps that are NOT excluded
+        var otherApps = []
+        for (var i = 0; i < allApps.length; i++) {
+            var appId = allApps[i].id
+            if (excludedApps.indexOf(appId) < 0) {
+                otherApps.push(appId)
+            }
+        }
+
+        // Output to console for shell script to capture and save
+        console.log("SAVE_OTHER_APPS:" + JSON.stringify(otherApps))
+    }
+
+    function scanAllApps() {
+        allApps = []
+
+        // Load from pre-generated discovered_apps.json (created by scan-apps script)
         var xhr = new XMLHttpRequest()
-        xhr.open("PUT", "file://" + stateDir + "/curated_other_apps.json", false)
+        xhr.open("GET", "file://" + stateDir + "/discovered_apps.json", false)
         try {
-            xhr.send(JSON.stringify(curatedApps, null, 2))
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) {
+                var discovered = JSON.parse(xhr.responseText)
+                for (var i = 0; i < discovered.length; i++) {
+                    var app = discovered[i]
+                    // Skip Flick apps - they're managed separately
+                    if (app.id.indexOf("flick-") !== 0) {
+                        allApps.push({
+                            id: app.id,
+                            name: app.name,
+                            icon: app.icon
+                        })
+                    }
+                }
+            }
         } catch (e) {
-            console.error("Failed to save:", e)
+            console.log("Could not load discovered apps: " + e)
         }
-    }
 
-    function scanSystemApps() {
-        // Common useful apps to show
-        var knownApps = [
-            {id: "furios-camera", name: "Camera", icon: "camera"},
-            {id: "org.gnome.Usage", name: "Usage", icon: "utilities-system-monitor"},
-            {id: "org.gnome.clocks", name: "Clocks", icon: "clock"},
-            {id: "org.gnome.Calls", name: "Calls", icon: "phone"},
-            {id: "sm.puri.Chatty", name: "Chats", icon: "chat"},
-            {id: "org.gnome.Contacts", name: "Contacts", icon: "contacts"},
-            {id: "org.gnome.Geary", name: "Geary", icon: "mail"},
-            {id: "org.gnome.Console", name: "Console", icon: "terminal"},
-            {id: "firefox", name: "Firefox", icon: "firefox"},
-            {id: "Andromeda", name: "Andromeda", icon: "android"},
-            {id: "android.org.fdroid.fdroid", name: "F-Droid", icon: "fdroid"},
-            {id: "org.gnome.Nautilus", name: "Files", icon: "folder"},
-            {id: "org.gnome.TextEditor", name: "Text Editor", icon: "text-editor"},
-            {id: "org.gnome.Calculator", name: "Calculator", icon: "calculator"},
-            {id: "org.gnome.Calendar", name: "Calendar", icon: "calendar"},
-            {id: "org.gnome.Weather", name: "Weather", icon: "weather"},
-            {id: "org.gnome.Maps", name: "Maps", icon: "map"},
-            {id: "org.gnome.Music", name: "Music", icon: "music"},
-            {id: "org.gnome.Photos", name: "Photos", icon: "photo"},
-            {id: "org.gnome.Totem", name: "Videos", icon: "video"},
-            {id: "org.sigxcpu.Livi", name: "Livi", icon: "video"},
-            {id: "org.gnome.Cheese", name: "Cheese", icon: "camera"},
-            {id: "com.github.geigi.cozy", name: "Cozy", icon: "audiobook"},
-        ]
-        allApps = knownApps
         updateModel()
     }
 
@@ -74,32 +101,26 @@ Page {
         appsModel.clear()
         for (var i = 0; i < allApps.length; i++) {
             var app = allApps[i]
-            var isCurated = curatedApps.indexOf(app.id) >= 0
+            var isExcluded = excludedApps.indexOf(app.id) >= 0
             appsModel.append({
                 appId: app.id,
                 name: app.name,
                 icon: app.icon,
-                curated: isCurated
+                excluded: isExcluded  // true = stays on main screen, false = goes to Other Apps
             })
         }
     }
 
     function toggleApp(appId) {
-        var idx = curatedApps.indexOf(appId)
+        var idx = excludedApps.indexOf(appId)
         if (idx >= 0) {
-            curatedApps.splice(idx, 1)
+            // Remove from excluded = goes to Other Apps folder
+            excludedApps.splice(idx, 1)
         } else {
-            curatedApps.push(appId)
+            // Add to excluded = stays on main screen
+            excludedApps.push(appId)
         }
-        saveCuratedApps()
-        updateModel()
-    }
-
-    function moveApp(from, to) {
-        if (from < 0 || to < 0 || from >= curatedApps.length || to >= curatedApps.length) return
-        var app = curatedApps.splice(from, 1)[0]
-        curatedApps.splice(to, 0, app)
-        saveCuratedApps()
+        saveExcludedApps()
         updateModel()
     }
 
@@ -131,7 +152,7 @@ Page {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "PHOSH ICONS"
+                text: "OTHER APPS FOLDER"
                 font.pixelSize: 11
                 font.letterSpacing: 3
                 color: "#555566"
@@ -151,10 +172,10 @@ Page {
         spacing: 16
 
         Repeater {
-            model: ["Curated", "All Apps"]
+            model: ["Main Screen", "Other Apps"]
 
             Rectangle {
-                width: 100
+                width: 110
                 height: 36
                 radius: 18
                 color: tabIndex === index ? Theme.accentColor : "#1a1a28"
@@ -164,7 +185,7 @@ Page {
                 Text {
                     anchors.centerIn: parent
                     text: modelData
-                    font.pixelSize: 13
+                    font.pixelSize: 12
                     color: tabIndex === tabsRow.currentTab ? "#ffffff" : "#888899"
                 }
 
@@ -198,7 +219,32 @@ Page {
             anchors.right: parent.right
             spacing: 8
 
-            // Show curated or all based on tab
+            // Tab description
+            Rectangle {
+                width: contentCol.width
+                height: descText.height + 24
+                radius: 12
+                color: "#14141e"
+                border.color: "#1a1a2e"
+
+                Text {
+                    id: descText
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 12
+                    text: tabs.currentTab === 0
+                        ? "Apps shown here stay on the main phosh grid. Toggle OFF to move them to the Other Apps folder."
+                        : "Apps shown here appear in the Other Apps folder. Toggle ON to move them to the main screen."
+                    font.pixelSize: 12
+                    color: "#666677"
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            Item { height: 8 }
+
+            // Show apps based on tab
             Repeater {
                 model: appsModel
 
@@ -206,23 +252,15 @@ Page {
                     width: contentCol.width
                     height: 64
                     radius: 16
-                    color: model.curated ? "#1a2a1a" : "#14141e"
-                    border.color: model.curated ? "#2a4a2a" : "#1a1a2e"
-                    visible: tabs.currentTab === 1 || model.curated
+                    color: model.excluded ? "#1a2a1a" : "#14141e"
+                    border.color: model.excluded ? "#2a4a2a" : "#1a1a2e"
+                    // Tab 0 = Main Screen (excluded apps), Tab 1 = Other Apps (non-excluded)
+                    visible: (tabs.currentTab === 0 && model.excluded) || (tabs.currentTab === 1 && !model.excluded)
 
                     RowLayout {
                         anchors.fill: parent
                         anchors.margins: 12
                         spacing: 12
-
-                        // Drag handle (for curated items)
-                        Text {
-                            text: "≡"
-                            font.pixelSize: 20
-                            color: "#444455"
-                            visible: model.curated && tabs.currentTab === 0
-                            Layout.preferredWidth: visible ? 24 : 0
-                        }
 
                         // Icon placeholder
                         Rectangle {
@@ -265,10 +303,10 @@ Page {
                             Layout.preferredWidth: 52
                             Layout.preferredHeight: 28
                             radius: 14
-                            color: model.curated ? "#4CAF50" : "#2a2a3e"
+                            color: model.excluded ? "#4CAF50" : "#2a2a3e"
 
                             Rectangle {
-                                x: model.curated ? parent.width - width - 3 : 3
+                                x: model.excluded ? parent.width - width - 3 : 3
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 22
                                 height: 22
@@ -287,10 +325,21 @@ Page {
                 }
             }
 
-            // Empty state for curated tab
+            // Empty state
             Text {
-                visible: tabs.currentTab === 0 && curatedApps.length === 0
-                text: "No apps curated.\nSwitch to 'All Apps' to add some."
+                visible: {
+                    var count = 0
+                    for (var i = 0; i < appsModel.count; i++) {
+                        var item = appsModel.get(i)
+                        if ((tabs.currentTab === 0 && item.excluded) || (tabs.currentTab === 1 && !item.excluded)) {
+                            count++
+                        }
+                    }
+                    return count === 0
+                }
+                text: tabs.currentTab === 0
+                    ? "No apps on main screen.\nSwitch to 'Other Apps' and toggle some ON."
+                    : "All apps are on main screen.\nToggle some OFF to move here."
                 color: "#555566"
                 font.pixelSize: 14
                 horizontalAlignment: Text.AlignHCenter
@@ -317,13 +366,13 @@ Page {
 
                     Row {
                         spacing: 8
-                        Text { text: "ℹ️"; font.pixelSize: 14 }
+                        Text { text: "ℹ"; font.pixelSize: 14; color: "#4a9eff" }
                         Text { text: "How it works"; font.pixelSize: 13; color: "#888899" }
                     }
 
                     Text {
                         width: parent.width
-                        text: "Curated apps appear in the 'Other Apps' folder on your home screen. Toggle apps on/off to show or hide them."
+                        text: "Toggle ON = App stays on main phosh screen\nToggle OFF = App goes to 'Other Apps' folder\n\nFlick apps are always on the main screen."
                         font.pixelSize: 12
                         color: "#666677"
                         wrapMode: Text.WordWrap
