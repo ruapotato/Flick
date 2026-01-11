@@ -1,4 +1,0 @@
-module FlickComponents
-SwipeBackArea 1.0 SwipeBackArea.qml
-singleton Haptic 1.0 Haptic.qml
-singleton Theme 1.0 Theme.qml

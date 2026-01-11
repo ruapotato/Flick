@@ -586,14 +586,14 @@ impl GestureRecognizer {
 /// Actions that can be triggered by gestures
 #[derive(Debug, Clone)]
 pub enum GestureAction {
-    /// Open app switcher (swipe from right edge to left)
-    AppSwitcher,
+    /// Open fan menu anchored to left (swipe from left edge)
+    FanMenuLeft,
+    /// Open fan menu anchored to right (swipe from right edge)
+    FanMenuRight,
     /// Close current app (swipe from top edge down)
     CloseApp,
-    /// Open app drawer/grid (swipe from bottom edge up)
-    AppDrawer,
-    /// Open quick settings panel (swipe from left edge to right)
-    QuickSettings,
+    /// Open app selector (swipe from bottom edge up) - radial layout
+    AppSelector,
     /// Go home
     Home,
     /// Zoom viewport
@@ -605,23 +605,23 @@ pub enum GestureAction {
 }
 
 /// Map gestures to actions based on Flick UX:
-/// - Swipe up from bottom -> App drawer/grid
+/// - Swipe up from bottom -> App selector (radial)
 /// - Swipe down from top -> Close current app
-/// - Swipe right from left edge -> Quick settings panel
-/// - Swipe left from right edge -> App switcher
+/// - Swipe in from left edge -> Fan menu (anchored bottom-left)
+/// - Swipe in from right edge -> Fan menu (anchored bottom-right, mirrored)
 pub fn gesture_to_action(event: &GestureEvent) -> GestureAction {
     match event {
-        // Left edge swipe right = Quick Settings
+        // Left edge swipe = Fan menu anchored left
         GestureEvent::EdgeSwipeEnd { edge: Edge::Left, completed: true, .. } => {
-            GestureAction::QuickSettings
+            GestureAction::FanMenuLeft
         }
-        // Right edge swipe left = App Switcher
+        // Right edge swipe = Fan menu anchored right (mirrored)
         GestureEvent::EdgeSwipeEnd { edge: Edge::Right, completed: true, .. } => {
-            GestureAction::AppSwitcher
+            GestureAction::FanMenuRight
         }
-        // Bottom edge swipe up = App Drawer
+        // Bottom edge swipe up = App Selector (radial)
         GestureEvent::EdgeSwipeEnd { edge: Edge::Bottom, completed: true, .. } => {
-            GestureAction::AppDrawer
+            GestureAction::AppSelector
         }
         // Top edge swipe down = Close App
         GestureEvent::EdgeSwipeEnd { edge: Edge::Top, completed: true, .. } => {
