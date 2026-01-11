@@ -30,7 +30,7 @@ export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 export QML_XHR_ALLOW_FILE_READ=1
 
 # Run the calendar and capture save events
-stdbuf -oL -eL qmlscene "$SCRIPT_DIR/main.qml" 2>> "$LOG_FILE" | tee -a "$LOG_FILE" | while IFS= read -r line; do
+stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$SCRIPT_DIR/main.qml" 2>> "$LOG_FILE" | tee -a "$LOG_FILE" | while IFS= read -r line; do
     # Check for event save messages
     if [[ "$line" == *"SAVE_EVENTS:"* ]]; then
         EVENTS_JSON=$(echo "$line" | sed 's/.*SAVE_EVENTS://')

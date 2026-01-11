@@ -19,7 +19,7 @@ fi
 
 # Run the welcome app and capture output for config changes
 cd "$SCRIPT_DIR"
-OUTPUT=$(QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1 qmlscene main.qml 2>&1)
+OUTPUT=$(QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1 /usr/lib/qt5/bin/qmlscene main.qml 2>&1)
 
 # Check if we need to save config
 if echo "$OUTPUT" | grep -q "WELCOME_CONFIG:"; then

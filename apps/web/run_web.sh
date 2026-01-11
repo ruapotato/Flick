@@ -30,4 +30,4 @@ export QTWEBENGINE_DICTIONARIES_PATH="$STATE_DIR/webengine/dictionaries"
 mkdir -p "$STATE_DIR/webengine"
 
 # Run the browser (pass any URL argument)
-exec qmlscene "$SCRIPT_DIR/main.qml" "$@" 2>> "$LOG_FILE"
+exec /usr/lib/qt5/bin/qmlscene "$SCRIPT_DIR/main.qml" "$@" 2>> "$LOG_FILE"

@@ -78,7 +78,7 @@ process_qml_output() {
     done
 }
 
-# Run qmlscene and process output
+# Run /usr/lib/qt5/bin/qmlscene and process output
 /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | process_qml_output
 
 echo "Settings exited" >> "$LOG_FILE"

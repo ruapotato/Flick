@@ -46,7 +46,7 @@ export QT_SCALE_FACTOR="$TEXT_SCALE"
 export QT_FONT_DPI=$(echo "$TEXT_SCALE * 96" | bc)
 export QT_AUTO_SCREEN_SCALE_FACTOR=0
 
-# Run qmlscene and capture output (use stdbuf to prevent buffering)
+# Run /usr/lib/qt5/bin/qmlscene and capture output (use stdbuf to prevent buffering)
 stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$QML_FILE" 2>&1 | tee -a "$LOG_FILE" | while IFS= read -r line; do
     # Check for notes directory initialization
     if [[ "$line" == *"NOTES_INIT:"* ]]; then

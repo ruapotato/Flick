@@ -54,8 +54,8 @@ export FLICK_PICKER_FILTER="$FILTER_TYPE"
 export FLICK_PICKER_START_DIR="$START_DIR"
 export FLICK_PICKER_RESULT_FILE="$RESULT_FILE"
 
-# Run qmlscene and capture output for file commands
-stdbuf -oL -eL qmlscene "$SCRIPT_DIR/main.qml" 2>&1 | tee -a "$LOG_FILE" | while IFS= read -r line; do
+# Run /usr/lib/qt5/bin/qmlscene and capture output for file commands
+stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$SCRIPT_DIR/main.qml" 2>&1 | tee -a "$LOG_FILE" | while IFS= read -r line; do
     # Check for picker result
     if [[ "$line" == *"PICKER_RESULT:"* ]]; then
         PICKED_PATH="${line#*PICKER_RESULT:}"

@@ -26,7 +26,7 @@ rm -f /tmp/flick_launch_settings
 WATCHER_PID=$!
 
 # Run the weather app
-qmlscene "$SCRIPT_DIR/main.qml"
+/usr/lib/qt5/bin/qmlscene "$SCRIPT_DIR/main.qml"
 
 # Clean up watcher
 kill $WATCHER_PID 2>/dev/null

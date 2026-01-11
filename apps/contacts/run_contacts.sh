@@ -11,8 +11,8 @@ mkdir -p ~/.local/state/flick
 
 echo "Starting Contacts app" >> "$LOG_FILE"
 
-# Run qmlscene and capture output for picker commands
-stdbuf -oL -eL qmlscene "$SCRIPT_DIR/main.qml" 2>&1 | tee -a "$LOG_FILE" | while IFS= read -r line; do
+# Run /usr/lib/qt5/bin/qmlscene and capture output for picker commands
+stdbuf -oL -eL /usr/lib/qt5/bin/qmlscene "$SCRIPT_DIR/main.qml" 2>&1 | tee -a "$LOG_FILE" | while IFS= read -r line; do
     # Check for picker clear command
     if [[ "$line" == *"PICKER_CLEAR:"* ]]; then
         RESULT_FILE=$(echo "$line" | sed 's/.*PICKER_CLEAR://')

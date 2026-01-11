@@ -8,4 +8,4 @@ export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 
 mkdir -p ~/.local/state/flick
 
-qmlscene "$SCRIPT_DIR/main.qml"
+/usr/lib/qt5/bin/qmlscene "$SCRIPT_DIR/main.qml"

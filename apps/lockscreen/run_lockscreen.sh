@@ -53,7 +53,7 @@ verify_pattern() {
 # Use a temp file to capture exit code (pipes lose it in subshells)
 EXIT_CODE_FILE=$(mktemp)
 
-# Run qmlscene and process its output using process substitution
+# Run /usr/lib/qt5/bin/qmlscene and process its output using process substitution
 # This keeps the main script in the parent shell so we can get exit code
 while IFS= read -r line; do
     echo "$line" >> "$LOG_FILE"
@@ -70,7 +70,7 @@ rm -f "$EXIT_CODE_FILE"
 
 echo "QML lockscreen exited with code $EXIT_CODE" >> "$LOG_FILE"
 
-# If qmlscene exited normally (code 0), create unlock signal
+# If /usr/lib/qt5/bin/qmlscene exited normally (code 0), create unlock signal
 # Qt.quit() exits with 0, crashes/errors exit with non-zero
 if [ "$EXIT_CODE" -eq 0 ]; then
     SIGNAL_FILE="$STATE_DIR/unlock_signal"

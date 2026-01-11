@@ -20,4 +20,4 @@ export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 # export QT_QUICK_BACKEND=software  # Using hardware accel
 
 # Run the calculator
-exec qmlscene "$SCRIPT_DIR/main.qml" 2>> "$LOG_FILE"
+exec /usr/lib/qt5/bin/qmlscene "$SCRIPT_DIR/main.qml" 2>> "$LOG_FILE"

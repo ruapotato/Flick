@@ -51,4 +51,4 @@ speech_daemon &
 SPEECH_PID=$!
 
 # Run the maps app
-qmlscene "$SCRIPT_DIR/main.qml"
+/usr/lib/qt5/bin/qmlscene "$SCRIPT_DIR/main.qml"

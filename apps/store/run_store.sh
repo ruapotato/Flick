@@ -30,4 +30,4 @@ export QML_XHR_ALLOW_FILE_WRITE=1
 # export QT_QUICK_BACKEND=software  # Uncomment for software rendering
 
 # Run the store app
-exec qmlscene "$SCRIPT_DIR/main.qml" 2>> "$LOG_FILE"
+exec /usr/lib/qt5/bin/qmlscene "$SCRIPT_DIR/main.qml" 2>> "$LOG_FILE"

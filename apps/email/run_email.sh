@@ -31,7 +31,7 @@ echo "Backend started with PID: $BACKEND_PID" >> "$LOG_FILE"
 sleep 0.3
 
 # Run the QML frontend
-qmlscene "$SCRIPT_DIR/main.qml" 2>> "$LOG_FILE"
+/usr/lib/qt5/bin/qmlscene "$SCRIPT_DIR/main.qml" 2>> "$LOG_FILE"
 QML_EXIT=$?
 
 # Stop the backend when QML exits

@@ -15,4 +15,4 @@ export GST_GL_PLATFORM=egl
 # Create video directories if they don't exist
 mkdir -p ~/Videos ~/Movies
 
-qmlscene "$SCRIPT_DIR/main.qml"
+/usr/lib/qt5/bin/qmlscene "$SCRIPT_DIR/main.qml"
