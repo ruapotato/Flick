@@ -1,23 +1,13 @@
 #!/bin/bash
-# Flick Calculator - First-party calculator for Flick shell
-# Reads text_scale from Flick settings
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Support running from any user - default to droidian
+SCRIPT_DIR="/home/furios/flick-phosh/Flick/apps/calculator"
 STATE_DIR="$HOME/.local/state/flick"
 LOG_FILE="${STATE_DIR}/calculator.log"
 
 mkdir -p "$STATE_DIR"
-
 echo "=== Flick Calculator started at $(date) ===" >> "$LOG_FILE"
 
-# Set Wayland environment
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+export QML_XHR_ALLOW_FILE_READ=1
 
-# Force software rendering for hwcomposer compatibility
-# Hardware acceleration enabled
-# export QT_QUICK_BACKEND=software  # Using hardware accel
-
-# Run the calculator
 exec /usr/lib/qt5/bin/qmlscene "$SCRIPT_DIR/main.qml" 2>> "$LOG_FILE"

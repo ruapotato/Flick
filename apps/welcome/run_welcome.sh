@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run the Welcome tutorial app
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="/home/furios/flick-phosh/Flick/apps/welcome"
 CONFIG_DIR="$HOME/.local/state/flick"
 CONFIG_FILE="$CONFIG_DIR/welcome_config.json"
 

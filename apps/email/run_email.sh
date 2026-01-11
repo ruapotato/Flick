@@ -1,7 +1,7 @@
 #!/bin/bash
 # Flick Email - Mobile email client for Flick shell
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="/home/furios/flick-phosh/Flick/apps/email"
 STATE_DIR="$HOME/.local/state/flick/email"
 LOG_FILE="${STATE_DIR}/email.log"
 

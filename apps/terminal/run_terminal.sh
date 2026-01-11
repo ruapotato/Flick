@@ -2,7 +2,7 @@
 # Flick Terminal - First-party terminal for Flick shell
 # Reads text_scale from Flick settings
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="/home/furios/flick-phosh/Flick/apps/terminal"
 # Support running from any user - default to droidian
 STATE_DIR="$HOME/.local/state/flick"
 LOG_FILE="${STATE_DIR}/terminal.log"
