@@ -1500,26 +1500,14 @@ fn handle_input_event(
                             state.switcher_return_progress = 0.0;
                             state.shell.home_push_offset = 0.0;
                         } else if *completed && state.qs_gesture_active {
-                            // Cancel touch sequences before leaving App view
+                            // TODO: Open Fan Menu (anchored left) instead of Quick Settings
+                            // For now, just go home until fan menu UI is implemented
                             if let Some(touch) = state.seat.get_touch() {
                                 touch.cancel(state);
-                                info!("Quick Settings gesture: cancelled pending touch sequences");
                             }
-                            // Open Quick Settings
-                            state.shell.view = crate::shell::ShellView::QuickSettings;
-                            state.system.refresh();
-                            state.shell.sync_quick_settings(&state.system);
-                            // Load and set UI icons if not yet done
-                            if !state.shell.ui_icons_loaded.get() {
-                                let ui_icons = state.shell.load_ui_icons();
-                                if let Some(ref slint_ui) = state.shell.slint_ui {
-                                    slint_ui.set_ui_icons(ui_icons);
-                                    state.shell.ui_icons_loaded.set(true);
-                                    info!("UI icons loaded and set to Slint");
-                                }
-                            }
+                            state.shell.set_view(crate::shell::ShellView::Home);
                             state.shell.home_push_offset = 0.0;
-                            info!("Quick Settings OPENED via gesture");
+                            info!("Left edge swipe: Fan Menu not yet implemented, going home");
                         } else {
                             // Gesture cancelled
                             state.shell.home_push_offset = 0.0;
@@ -1539,134 +1527,14 @@ fn handle_input_event(
                             state.qs_return_progress = 0.0;
                             state.shell.home_push_offset = 0.0;
                         } else if *completed && state.switcher_gesture_active {
-                            // Cancel touch sequences before leaving App view
+                            // TODO: Open Fan Menu (anchored right) instead of App Switcher
+                            // For now, just go home until fan menu UI is implemented
                             if let Some(touch) = state.seat.get_touch() {
                                 touch.cancel(state);
-                                info!("Switcher gesture: cancelled pending touch sequences");
                             }
-                            // Open App Switcher with proper initialization
-                            let num_windows = state.space.elements().count();
-                            let screen_w = state.screen_size.w as f64;
-                            let card_width = screen_w * 0.80;
-                            let card_spacing = card_width * 0.35;
-                            state.shell.open_switcher(num_windows, card_spacing);
-                            switcher_opened_by_gesture = true;
-                            info!("App Switcher OPENED via gesture, {} windows", num_windows);
-
-                            // Update Slint UI with window list
-                            if let Some(ref slint_ui) = state.shell.slint_ui {
-                                // Calculate visibility bounds for preview culling
-                                let scroll = state.shell.switcher_scroll;
-                                let visible_margin = screen_w * 1.5; // Extra margin for partially visible cards
-
-                                let windows: Vec<_> = state.space.elements()
-                                    .enumerate()
-                                    .map(|(i, window)| {
-                                        // Check if this window is visible in the fanout
-                                        let window_pos = (i as f64) * card_spacing - scroll;
-                                        let is_visible = window_pos > -visible_margin && window_pos < screen_w + visible_margin;
-
-                                        // Try X11 surface first, then Wayland toplevel, fall back to generic name
-                                        let title = if let Some(x11) = window.x11_surface() {
-                                            let t = x11.title();
-                                            if !t.is_empty() { t } else { x11.class() }
-                                        } else if let Some(toplevel) = window.toplevel() {
-                                            // Get title from Wayland toplevel
-                                            compositor::with_states(toplevel.wl_surface(), |states| {
-                                                states
-                                                    .data_map
-                                                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
-                                                    .and_then(|data| {
-                                                        let data = data.lock().unwrap();
-                                                        let title = data.title.clone();
-                                                        if title.as_ref().map(|t| !t.is_empty()).unwrap_or(false) {
-                                                            title
-                                                        } else {
-                                                            data.app_id.clone()
-                                                        }
-                                                    })
-                                            }).unwrap_or_else(|| format!("Window {}", i + 1))
-                                        } else {
-                                            format!("Window {}", i + 1)
-                                        };
-
-                                        let app_class = if let Some(x11) = window.x11_surface() {
-                                            x11.class()
-                                        } else if let Some(toplevel) = window.toplevel() {
-                                            compositor::with_states(toplevel.wl_surface(), |states| {
-                                                states
-                                                    .data_map
-                                                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
-                                                    .and_then(|data| data.lock().unwrap().app_id.clone())
-                                            }).unwrap_or_else(|| "app".to_string())
-                                        } else {
-                                            "app".to_string()
-                                        };
-
-                                        // Capture window preview from SHM buffer or EGL texture
-                                        // Only capture preview if window is visible (performance optimization)
-                                        let preview: Option<slint::Image> = if !is_visible {
-                                            // Skip expensive texture read for off-screen windows
-                                            None
-                                        } else if let Some(toplevel) = window.toplevel() {
-                                            compositor::with_states(toplevel.wl_surface(), |states| {
-                                                use std::cell::RefCell;
-                                                use crate::state::SurfaceBufferData;
-                                                if let Some(buffer_data) = states.data_map.get::<RefCell<SurfaceBufferData>>() {
-                                                    let bd = buffer_data.borrow();
-                                                    // First try SHM buffer (software rendered apps)
-                                                    if let Some(ref buffer) = bd.buffer {
-                                                        let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
-                                                            &buffer.pixels,
-                                                            buffer.width,
-                                                            buffer.height,
-                                                        );
-                                                        Some(slint::Image::from_rgba8(pixel_buffer))
-                                                    } else if let Some(ref egl_tex) = bd.egl_texture {
-                                                        // Try reading from EGL texture (hardware rendered apps)
-                                                        unsafe {
-                                                            if let Some(pixels) = gl::read_texture_pixels(egl_tex.texture_id, egl_tex.width, egl_tex.height) {
-                                                                let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
-                                                                    &pixels,
-                                                                    egl_tex.width,
-                                                                    egl_tex.height,
-                                                                );
-                                                                Some(slint::Image::from_rgba8(pixel_buffer))
-                                                            } else {
-                                                                None
-                                                            }
-                                                        }
-                                                    } else {
-                                                        None
-                                                    }
-                                                } else {
-                                                    None
-                                                }
-                                            })
-                                        } else {
-                                            None
-                                        };
-
-                                        (i as i32, title, app_class, i as i32, preview)
-                                    })
-                                    .collect();
-
-                                // Sort by render order: furthest from center first, center last
-                                // This ensures center card renders on top
-                                let scroll = state.shell.switcher_scroll;
-                                let mut windows = windows;
-                                windows.sort_by(|a, b| {
-                                    let dist_a = ((a.3 as f64) * card_spacing - scroll).abs();
-                                    let dist_b = ((b.3 as f64) * card_spacing - scroll).abs();
-                                    // Reverse order: larger distance first (renders behind)
-                                    dist_b.partial_cmp(&dist_a).unwrap_or(std::cmp::Ordering::Equal)
-                                });
-
-                                slint_ui.set_switcher_windows(windows);
-                                // Immediately hide HomeScreen to prevent 1-frame overlap
-                                slint_ui.set_forward_gesture_active(false);
-                            }
+                            state.shell.set_view(crate::shell::ShellView::Home);
                             state.shell.home_push_offset = 0.0;
+                            info!("Right edge swipe: Fan Menu not yet implemented, going home");
                         } else if !state.qs_return_active {
                             // Gesture cancelled, reset push offset
                             state.shell.home_push_offset = 0.0;
