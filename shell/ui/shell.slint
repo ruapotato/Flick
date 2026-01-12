@@ -2102,396 +2102,394 @@ component FanSubMenuItem inherits Rectangle {
     }
 }
 
-// Arc segment for fan menu - curved wedge shape
-component FanArcSegment inherits Rectangle {
-    in property <string> icon;
-    in property <string> label;
-    in property <bool> highlighted: false;
-    in property <bool> selected: false;
-    in property <float> progress: 1.0;
-    in property <float> start-angle: 0;  // Starting angle in degrees
-    in property <float> end-angle: 17;   // Ending angle in degrees
-
-    callback tapped();
-
-    width: 140px;
-    height: 80px;
-    border-radius: 12px;
-    background: selected ? Theme.primary : (highlighted ? Theme.accent : #1a1a28dd);
-    opacity: progress;
-    border-width: highlighted || selected ? 3px : 1px;
-    border-color: highlighted || selected ? Theme.accent : #444466;
-
-    // Glow effect when highlighted
-    Rectangle {
-        visible: highlighted || selected;
-        x: -8px;
-        y: -8px;
-        width: parent.width + 16px;
-        height: parent.height + 16px;
-        border-radius: 16px;
-        background: Theme.accent;
-        opacity: 0.25;
-    }
-
-    // Icon
-    Text {
-        x: (parent.width - self.width) / 2;
-        y: 12px;
-        text: icon;
-        font-size: 32px;
-        horizontal-alignment: center;
-    }
-
-    // Label
-    Text {
-        x: 0;
-        y: parent.height - 24px;
-        width: parent.width;
-        text: label;
-        color: highlighted || selected ? #ffffff : Theme.on-surface-variant;
-        font-size: 12px;
-        font-weight: 600;
-        horizontal-alignment: center;
-    }
-
-    touch := TouchArea {
-        clicked => { tapped(); }
-    }
-}
-
-// Sub-menu item for fan menu
-component FanSubItem inherits Rectangle {
-    in property <string> icon;
-    in property <string> label;
-    in property <bool> highlighted: false;
-    in property <float> progress: 1.0;
-
-    callback tapped();
-
-    width: 100px;
-    height: 100px;
-    border-radius: 16px;
-    background: highlighted ? Theme.accent : #1a1a28dd;
-    opacity: progress;
-    border-width: highlighted ? 3px : 1px;
-    border-color: highlighted ? Theme.accent : #444466;
-
-    // Glow when highlighted
-    Rectangle {
-        visible: highlighted;
-        x: -6px;
-        y: -6px;
-        width: parent.width + 12px;
-        height: parent.height + 12px;
-        border-radius: 20px;
-        background: Theme.accent;
-        opacity: 0.3;
-    }
-
-    // Icon
-    Text {
-        x: (parent.width - self.width) / 2;
-        y: 16px;
-        text: icon;
-        font-size: 36px;
-        horizontal-alignment: center;
-    }
-
-    // Label
-    Text {
-        x: 0;
-        y: parent.height - 26px;
-        width: parent.width;
-        text: label;
-        color: highlighted ? #ffffff : Theme.on-surface-variant;
-        font-size: 11px;
-        font-weight: 500;
-        horizontal-alignment: center;
-    }
-
-    touch := TouchArea {
-        clicked => { tapped(); }
-    }
-}
-
-// Fan Menu Panel - arc-based category menu anchored at touch position
+// Fan Menu Panel - large arc with wedge segments
 component FanMenuPanel inherits Rectangle {
     in property <bool> is-left: true;  // true = left edge, false = right edge
-    in property <float> progress: 1.0;  // Animation progress 0-1 (used for fade/scale)
+    in property <float> progress: 1.0;  // Animation progress 0-1
     in property <int> highlighted-category: -1;  // -1 = none, 0-4 = category index
     in property <int> selected-category: -1;     // Category showing submenu
     in property <int> highlighted-item: -1;      // Item in submenu
     in property <float> submenu-progress: 0.0;   // Submenu animation
-    in property <float> touch-y: 800;            // Y position of the swipe (for anchor)
+    in property <float> touch-y: 800;            // Y position of the swipe
 
     callback category-tapped(int);
-    callback item-tapped(int, string);  // category, exec
+    callback item-tapped(int, string);
     callback dismiss();
 
-    // Full screen with semi-transparent background
     width: 100%;
     height: 100%;
     background: #000000;
-    opacity: 0.6 * progress;
+    opacity: 0.5 * progress;
 
-    // Dismiss on tap outside menu
     TouchArea {
         clicked => { dismiss(); }
     }
 
-    // Anchor point at touch Y position on the appropriate edge
-    property <length> anchor-x: is-left ? 20px : root.width - 20px;
-    property <length> anchor-y: max(200px, min(touch-y * 1px, root.height - 200px));
-    property <length> arc-radius: 180px * progress;
-    property <length> sub-radius: 320px * progress;
+    // Anchor at touch Y, clamped to screen
+    property <length> anchor-x: is-left ? 0px : root.width;
+    property <length> anchor-y: max(300px, min(touch-y * 1px, root.height - 300px));
 
-    // New angle layout: 70° to -15° spread across 5 categories
-    // 70°=Talk, 48.75°=Media, 27.5°=Tools, 6.25°=Apps, -15°=System
-    // cos/sin values for each position:
-    // 62° (Talk): cos=0.469, sin=0.883
-    // 44.5° (Media): cos=0.713, sin=0.700
-    // 27° (Tools): cos=0.891, sin=0.454
-    // 9.5° (Apps): cos=0.986, sin=0.165
-    // -8° (System): cos=0.990, sin=-0.139
+    // Large arc dimensions
+    property <length> inner-radius: 120px * progress;
+    property <length> outer-radius: 380px * progress;
+    property <length> arc-width: outer-radius - inner-radius;  // 260px band
 
-    // Connecting arc visual (decorative curve)
+    // The main arc background - a large semi-circle clipped
     Rectangle {
-        x: anchor-x - 10px;
-        y: anchor-y - arc-radius - 50px;
-        width: arc-radius + 80px;
-        height: arc-radius * 1.5;
-        border-radius: 150px;
-        border-width: 3px;
-        border-color: Theme.accent;
-        opacity: 0.3 * progress;
-        background: transparent;
+        x: is-left ? anchor-x - 50px : anchor-x - outer-radius - arc-width + 50px;
+        y: anchor-y - outer-radius;
+        width: outer-radius + arc-width;
+        height: outer-radius * 2;
+        border-radius: outer-radius;
+        background: #1a1a2acc;
+        opacity: progress;
         clip: true;
-    }
 
-    // Top level categories (when no category selected)
-    if selected-category < 0 : Rectangle {
-        // Category 0: Talk (62°)
-        FanArcSegment {
-            x: anchor-x + (is-left ? 0.469 : -0.469) * arc-radius - self.width / 2;
-            y: anchor-y - 0.883 * arc-radius - self.height / 2;
-            icon: "📱";
-            label: "Talk";
-            highlighted: highlighted-category == 0;
-            progress: root.progress;
-            tapped => { category-tapped(0); }
-        }
-
-        // Category 1: Media (44.5°)
-        FanArcSegment {
-            x: anchor-x + (is-left ? 0.713 : -0.713) * arc-radius - self.width / 2;
-            y: anchor-y - 0.700 * arc-radius - self.height / 2;
-            icon: "🎵";
-            label: "Media";
-            highlighted: highlighted-category == 1;
-            progress: root.progress;
-            tapped => { category-tapped(1); }
-        }
-
-        // Category 2: Tools (27°)
-        FanArcSegment {
-            x: anchor-x + (is-left ? 0.891 : -0.891) * arc-radius - self.width / 2;
-            y: anchor-y - 0.454 * arc-radius - self.height / 2;
-            icon: "🔧";
-            label: "Tools";
-            highlighted: highlighted-category == 2;
-            progress: root.progress;
-            tapped => { category-tapped(2); }
-        }
-
-        // Category 3: Apps (9.5°)
-        FanArcSegment {
-            x: anchor-x + (is-left ? 0.986 : -0.986) * arc-radius - self.width / 2;
-            y: anchor-y - 0.165 * arc-radius - self.height / 2;
-            icon: "📲";
-            label: "Apps";
-            highlighted: highlighted-category == 3;
-            progress: root.progress;
-            tapped => { category-tapped(3); }
-        }
-
-        // Category 4: System (-8°)
-        FanArcSegment {
-            x: anchor-x + (is-left ? 0.990 : -0.990) * arc-radius - self.width / 2;
-            y: anchor-y + 0.139 * arc-radius - self.height / 2;
-            icon: "⚙";
-            label: "System";
-            highlighted: highlighted-category == 4;
-            progress: root.progress;
-            tapped => { category-tapped(4); }
-        }
-    }
-
-    // Sub-menu items (when category selected)
-    // Talk sub-items: phone, messages, contacts, email
-    if selected-category == 0 : Rectangle {
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.50 : -0.50) * sub-radius - self.width / 2;
-            y: anchor-y - 0.866 * sub-radius - self.height / 2;
-            icon: "📞";
-            label: "Phone";
-            highlighted: highlighted-item == 0;
-            progress: root.progress;
-            tapped => { item-tapped(0, "phone"); }
-        }
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.707 : -0.707) * sub-radius - self.width / 2;
-            y: anchor-y - 0.707 * sub-radius - self.height / 2;
-            icon: "💬";
-            label: "Messages";
-            highlighted: highlighted-item == 1;
-            progress: root.progress;
-            tapped => { item-tapped(0, "messages"); }
-        }
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.866 : -0.866) * sub-radius - self.width / 2;
-            y: anchor-y - 0.50 * sub-radius - self.height / 2;
-            icon: "👤";
-            label: "Contacts";
-            highlighted: highlighted-item == 2;
-            progress: root.progress;
-            tapped => { item-tapped(0, "contacts"); }
-        }
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.966 : -0.966) * sub-radius - self.width / 2;
-            y: anchor-y - 0.259 * sub-radius - self.height / 2;
-            icon: "📧";
-            label: "Email";
-            highlighted: highlighted-item == 3;
-            progress: root.progress;
-            tapped => { item-tapped(0, "email"); }
-        }
-    }
-
-    // Media sub-items: music, video, photos, recorder
-    if selected-category == 1 : Rectangle {
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.50 : -0.50) * sub-radius - self.width / 2;
-            y: anchor-y - 0.866 * sub-radius - self.height / 2;
-            icon: "🎵";
-            label: "Music";
-            highlighted: highlighted-item == 0;
-            progress: root.progress;
-            tapped => { item-tapped(1, "music"); }
-        }
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.707 : -0.707) * sub-radius - self.width / 2;
-            y: anchor-y - 0.707 * sub-radius - self.height / 2;
-            icon: "🎬";
-            label: "Video";
-            highlighted: highlighted-item == 1;
-            progress: root.progress;
-            tapped => { item-tapped(1, "video"); }
-        }
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.866 : -0.866) * sub-radius - self.width / 2;
-            y: anchor-y - 0.50 * sub-radius - self.height / 2;
-            icon: "📷";
-            label: "Photos";
-            highlighted: highlighted-item == 2;
-            progress: root.progress;
-            tapped => { item-tapped(1, "photos"); }
-        }
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.966 : -0.966) * sub-radius - self.width / 2;
-            y: anchor-y - 0.259 * sub-radius - self.height / 2;
-            icon: "🎙";
-            label: "Recorder";
-            highlighted: highlighted-item == 3;
-            progress: root.progress;
-            tapped => { item-tapped(1, "recorder"); }
-        }
-    }
-
-    // Tools sub-items: files, calculator, notes, calendar
-    if selected-category == 2 : Rectangle {
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.50 : -0.50) * sub-radius - self.width / 2;
-            y: anchor-y - 0.866 * sub-radius - self.height / 2;
-            icon: "📁";
-            label: "Files";
-            highlighted: highlighted-item == 0;
-            progress: root.progress;
-            tapped => { item-tapped(2, "files"); }
-        }
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.707 : -0.707) * sub-radius - self.width / 2;
-            y: anchor-y - 0.707 * sub-radius - self.height / 2;
-            icon: "🔢";
-            label: "Calculator";
-            highlighted: highlighted-item == 1;
-            progress: root.progress;
-            tapped => { item-tapped(2, "calculator"); }
-        }
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.866 : -0.866) * sub-radius - self.width / 2;
-            y: anchor-y - 0.50 * sub-radius - self.height / 2;
-            icon: "📝";
-            label: "Notes";
-            highlighted: highlighted-item == 2;
-            progress: root.progress;
-            tapped => { item-tapped(2, "notes"); }
-        }
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.966 : -0.966) * sub-radius - self.width / 2;
-            y: anchor-y - 0.259 * sub-radius - self.height / 2;
-            icon: "📅";
-            label: "Calendar";
-            highlighted: highlighted-item == 3;
-            progress: root.progress;
-            tapped => { item-tapped(2, "calendar"); }
-        }
-    }
-
-    // System sub-items: settings, store
-    if selected-category == 4 : Rectangle {
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.60 : -0.60) * sub-radius - self.width / 2;
-            y: anchor-y - 0.80 * sub-radius - self.height / 2;
-            icon: "⚙";
-            label: "Settings";
-            highlighted: highlighted-item == 0;
-            progress: root.progress;
-            tapped => { item-tapped(4, "settings"); }
-        }
-        FanSubItem {
-            x: anchor-x + (is-left ? 0.866 : -0.866) * sub-radius - self.width / 2;
-            y: anchor-y - 0.50 * sub-radius - self.height / 2;
-            icon: "🏪";
-            label: "Store";
-            highlighted: highlighted-item == 1;
-            progress: root.progress;
-            tapped => { item-tapped(4, "store"); }
-        }
-    }
-
-    // Anchor indicator (glowing dot at touch point)
-    Rectangle {
-        x: anchor-x - 16px;
-        y: anchor-y - 16px;
-        width: 32px;
-        height: 32px;
-        border-radius: 16px;
-        background: Theme.accent;
-        opacity: 0.9 * progress;
-
-        // Pulsing ring
+        // Inner cutout to create arc band
         Rectangle {
-            x: -8px;
-            y: -8px;
-            width: parent.width + 16px;
-            height: parent.height + 16px;
-            border-radius: 24px;
-            border-width: 2px;
-            border-color: Theme.accent;
-            background: transparent;
-            opacity: 0.5;
+            x: is-left ? -inner-radius : parent.width - outer-radius + inner-radius - arc-width;
+            y: (parent.height - inner-radius * 2) / 2;
+            width: inner-radius * 2;
+            height: inner-radius * 2;
+            border-radius: inner-radius;
+            background: #000000;
         }
+    }
+
+    // Category wedge highlights (shown when highlighted)
+    // Each wedge is a trapezoid-like shape positioned on the arc
+    // Angles: 62°, 44°, 27°, 9°, -8° (top to bottom)
+
+    // Wedge 0: Talk (62°) - cos=0.469, sin=0.883
+    Rectangle {
+        visible: highlighted-category == 0 || selected-category == 0;
+        x: anchor-x + (is-left ? 0.469 : -0.469) * ((inner-radius + outer-radius) / 2) - 70px;
+        y: anchor-y - 0.883 * ((inner-radius + outer-radius) / 2) - 55px;
+        width: 140px;
+        height: 110px;
+        border-radius: 20px;
+        background: selected-category == 0 ? Theme.primary : Theme.accent;
+        opacity: 0.85 * progress;
+    }
+
+    // Wedge 1: Media (44°) - cos=0.719, sin=0.695
+    Rectangle {
+        visible: highlighted-category == 1 || selected-category == 1;
+        x: anchor-x + (is-left ? 0.719 : -0.719) * ((inner-radius + outer-radius) / 2) - 70px;
+        y: anchor-y - 0.695 * ((inner-radius + outer-radius) / 2) - 55px;
+        width: 140px;
+        height: 110px;
+        border-radius: 20px;
+        background: selected-category == 1 ? Theme.primary : Theme.accent;
+        opacity: 0.85 * progress;
+    }
+
+    // Wedge 2: Tools (27°) - cos=0.891, sin=0.454
+    Rectangle {
+        visible: highlighted-category == 2 || selected-category == 2;
+        x: anchor-x + (is-left ? 0.891 : -0.891) * ((inner-radius + outer-radius) / 2) - 70px;
+        y: anchor-y - 0.454 * ((inner-radius + outer-radius) / 2) - 55px;
+        width: 140px;
+        height: 110px;
+        border-radius: 20px;
+        background: selected-category == 2 ? Theme.primary : Theme.accent;
+        opacity: 0.85 * progress;
+    }
+
+    // Wedge 3: Apps (9°) - cos=0.988, sin=0.156
+    Rectangle {
+        visible: highlighted-category == 3 || selected-category == 3;
+        x: anchor-x + (is-left ? 0.988 : -0.988) * ((inner-radius + outer-radius) / 2) - 70px;
+        y: anchor-y - 0.156 * ((inner-radius + outer-radius) / 2) - 55px;
+        width: 140px;
+        height: 110px;
+        border-radius: 20px;
+        background: selected-category == 3 ? Theme.primary : Theme.accent;
+        opacity: 0.85 * progress;
+    }
+
+    // Wedge 4: System (-8°) - cos=0.990, sin=-0.139
+    Rectangle {
+        visible: highlighted-category == 4 || selected-category == 4;
+        x: anchor-x + (is-left ? 0.990 : -0.990) * ((inner-radius + outer-radius) / 2) - 70px;
+        y: anchor-y + 0.139 * ((inner-radius + outer-radius) / 2) - 55px;
+        width: 140px;
+        height: 110px;
+        border-radius: 20px;
+        background: selected-category == 4 ? Theme.primary : Theme.accent;
+        opacity: 0.85 * progress;
+    }
+
+    // Category icons and labels on the arc (always visible at top level)
+    if selected-category < 0 : Rectangle {
+        // Talk icon (62°)
+        Text {
+            x: anchor-x + (is-left ? 0.469 : -0.469) * ((inner-radius + outer-radius) / 2) - 30px;
+            y: anchor-y - 0.883 * ((inner-radius + outer-radius) / 2) - 30px;
+            text: "📱";
+            font-size: 48px;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.469 : -0.469) * ((inner-radius + outer-radius) / 2) - 30px;
+            y: anchor-y - 0.883 * ((inner-radius + outer-radius) / 2) + 25px;
+            width: 60px;
+            text: "Talk";
+            font-size: 14px;
+            font-weight: 600;
+            color: highlighted-category == 0 ? #ffffff : #aaaacc;
+            horizontal-alignment: center;
+        }
+
+        // Media icon (44°)
+        Text {
+            x: anchor-x + (is-left ? 0.719 : -0.719) * ((inner-radius + outer-radius) / 2) - 30px;
+            y: anchor-y - 0.695 * ((inner-radius + outer-radius) / 2) - 30px;
+            text: "🎵";
+            font-size: 48px;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.719 : -0.719) * ((inner-radius + outer-radius) / 2) - 30px;
+            y: anchor-y - 0.695 * ((inner-radius + outer-radius) / 2) + 25px;
+            width: 60px;
+            text: "Media";
+            font-size: 14px;
+            font-weight: 600;
+            color: highlighted-category == 1 ? #ffffff : #aaaacc;
+            horizontal-alignment: center;
+        }
+
+        // Tools icon (27°)
+        Text {
+            x: anchor-x + (is-left ? 0.891 : -0.891) * ((inner-radius + outer-radius) / 2) - 30px;
+            y: anchor-y - 0.454 * ((inner-radius + outer-radius) / 2) - 30px;
+            text: "🔧";
+            font-size: 48px;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.891 : -0.891) * ((inner-radius + outer-radius) / 2) - 30px;
+            y: anchor-y - 0.454 * ((inner-radius + outer-radius) / 2) + 25px;
+            width: 60px;
+            text: "Tools";
+            font-size: 14px;
+            font-weight: 600;
+            color: highlighted-category == 2 ? #ffffff : #aaaacc;
+            horizontal-alignment: center;
+        }
+
+        // Apps icon (9°)
+        Text {
+            x: anchor-x + (is-left ? 0.988 : -0.988) * ((inner-radius + outer-radius) / 2) - 30px;
+            y: anchor-y - 0.156 * ((inner-radius + outer-radius) / 2) - 30px;
+            text: "📲";
+            font-size: 48px;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.988 : -0.988) * ((inner-radius + outer-radius) / 2) - 30px;
+            y: anchor-y - 0.156 * ((inner-radius + outer-radius) / 2) + 25px;
+            width: 60px;
+            text: "Apps";
+            font-size: 14px;
+            font-weight: 600;
+            color: highlighted-category == 3 ? #ffffff : #aaaacc;
+            horizontal-alignment: center;
+        }
+
+        // System icon (-8°)
+        Text {
+            x: anchor-x + (is-left ? 0.990 : -0.990) * ((inner-radius + outer-radius) / 2) - 30px;
+            y: anchor-y + 0.139 * ((inner-radius + outer-radius) / 2) - 30px;
+            text: "⚙";
+            font-size: 48px;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.990 : -0.990) * ((inner-radius + outer-radius) / 2) - 30px;
+            y: anchor-y + 0.139 * ((inner-radius + outer-radius) / 2) + 25px;
+            width: 60px;
+            text: "System";
+            font-size: 14px;
+            font-weight: 600;
+            color: highlighted-category == 4 ? #ffffff : #aaaacc;
+            horizontal-alignment: center;
+        }
+    }
+
+    // Sub-menu arc (shown when category selected) - larger outer arc
+    property <length> sub-inner: outer-radius + 20px;
+    property <length> sub-outer: outer-radius + 200px;
+
+    // Talk sub-menu
+    if selected-category == 0 : Rectangle {
+        // Sub-arc background
+        Rectangle {
+            x: is-left ? anchor-x - 50px : anchor-x - sub-outer - 150px + 50px;
+            y: anchor-y - sub-outer;
+            width: sub-outer + 150px;
+            height: sub-outer * 2;
+            border-radius: sub-outer;
+            background: #1a1a2a99;
+            opacity: progress;
+        }
+
+        // Phone (65°)
+        Rectangle {
+            visible: highlighted-item == 0;
+            x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 55px;
+            y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) - 55px;
+            width: 110px; height: 110px; border-radius: 55px;
+            background: Theme.accent; opacity: 0.8;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 30px;
+            y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) - 30px;
+            text: "📞"; font-size: 48px;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 40px;
+            y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) + 30px;
+            width: 80px; text: "Phone"; font-size: 13px; font-weight: 600;
+            color: highlighted-item == 0 ? #ffffff : #aaaacc; horizontal-alignment: center;
+        }
+
+        // Messages (50°)
+        Rectangle {
+            visible: highlighted-item == 1;
+            x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 55px;
+            y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) - 55px;
+            width: 110px; height: 110px; border-radius: 55px;
+            background: Theme.accent; opacity: 0.8;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 30px;
+            y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) - 30px;
+            text: "💬"; font-size: 48px;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 40px;
+            y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) + 30px;
+            width: 80px; text: "Messages"; font-size: 13px; font-weight: 600;
+            color: highlighted-item == 1 ? #ffffff : #aaaacc; horizontal-alignment: center;
+        }
+
+        // Contacts (35°)
+        Rectangle {
+            visible: highlighted-item == 2;
+            x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 55px;
+            y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) - 55px;
+            width: 110px; height: 110px; border-radius: 55px;
+            background: Theme.accent; opacity: 0.8;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 30px;
+            y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) - 30px;
+            text: "👤"; font-size: 48px;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 40px;
+            y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) + 30px;
+            width: 80px; text: "Contacts"; font-size: 13px; font-weight: 600;
+            color: highlighted-item == 2 ? #ffffff : #aaaacc; horizontal-alignment: center;
+        }
+
+        // Email (20°)
+        Rectangle {
+            visible: highlighted-item == 3;
+            x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 55px;
+            y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) - 55px;
+            width: 110px; height: 110px; border-radius: 55px;
+            background: Theme.accent; opacity: 0.8;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 30px;
+            y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) - 30px;
+            text: "📧"; font-size: 48px;
+        }
+        Text {
+            x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 40px;
+            y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) + 30px;
+            width: 80px; text: "Email"; font-size: 13px; font-weight: 600;
+            color: highlighted-item == 3 ? #ffffff : #aaaacc; horizontal-alignment: center;
+        }
+    }
+
+    // Media sub-menu
+    if selected-category == 1 : Rectangle {
+        Rectangle {
+            x: is-left ? anchor-x - 50px : anchor-x - sub-outer - 150px + 50px;
+            y: anchor-y - sub-outer;
+            width: sub-outer + 150px; height: sub-outer * 2;
+            border-radius: sub-outer; background: #1a1a2a99; opacity: progress;
+        }
+        // Music, Video, Photos, Recorder at 65°, 50°, 35°, 20°
+        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) - 30px; text: "🎵"; font-size: 48px; }
+        Text { x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Music"; font-size: 13px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+
+        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) - 30px; text: "🎬"; font-size: 48px; }
+        Text { x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Video"; font-size: 13px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+
+        Rectangle { visible: highlighted-item == 2; x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) - 30px; text: "📷"; font-size: 48px; }
+        Text { x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Photos"; font-size: 13px; font-weight: 600; color: highlighted-item == 2 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+
+        Rectangle { visible: highlighted-item == 3; x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) - 30px; text: "🎙"; font-size: 48px; }
+        Text { x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Recorder"; font-size: 13px; font-weight: 600; color: highlighted-item == 3 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+    }
+
+    // Tools sub-menu
+    if selected-category == 2 : Rectangle {
+        Rectangle {
+            x: is-left ? anchor-x - 50px : anchor-x - sub-outer - 150px + 50px;
+            y: anchor-y - sub-outer;
+            width: sub-outer + 150px; height: sub-outer * 2;
+            border-radius: sub-outer; background: #1a1a2a99; opacity: progress;
+        }
+        // Files, Calculator, Notes, Calendar
+        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) - 30px; text: "📁"; font-size: 48px; }
+        Text { x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Files"; font-size: 13px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+
+        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) - 30px; text: "🔢"; font-size: 48px; }
+        Text { x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Calc"; font-size: 13px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+
+        Rectangle { visible: highlighted-item == 2; x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) - 30px; text: "📝"; font-size: 48px; }
+        Text { x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Notes"; font-size: 13px; font-weight: 600; color: highlighted-item == 2 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+
+        Rectangle { visible: highlighted-item == 3; x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) - 30px; text: "📅"; font-size: 48px; }
+        Text { x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Calendar"; font-size: 13px; font-weight: 600; color: highlighted-item == 3 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+    }
+
+    // System sub-menu (only 2 items)
+    if selected-category == 4 : Rectangle {
+        Rectangle {
+            x: is-left ? anchor-x - 50px : anchor-x - sub-outer - 150px + 50px;
+            y: anchor-y - sub-outer;
+            width: sub-outer + 150px; height: sub-outer * 2;
+            border-radius: sub-outer; background: #1a1a2a99; opacity: progress;
+        }
+        // Settings, Store
+        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 0.50 : -0.50) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.87 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 0.50 : -0.50) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.87 * ((sub-inner + sub-outer) / 2) - 30px; text: "⚙"; font-size: 48px; }
+        Text { x: anchor-x + (is-left ? 0.50 : -0.50) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.87 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Settings"; font-size: 13px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+
+        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 0.77 : -0.77) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.64 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 0.77 : -0.77) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.64 * ((sub-inner + sub-outer) / 2) - 30px; text: "🏪"; font-size: 48px; }
+        Text { x: anchor-x + (is-left ? 0.77 : -0.77) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.64 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Store"; font-size: 13px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+    }
+
+    // Anchor dot
+    Rectangle {
+        x: anchor-x - 20px;
+        y: anchor-y - 20px;
+        width: 40px;
+        height: 40px;
+        border-radius: 20px;
+        background: Theme.accent;
+        opacity: 0.95 * progress;
     }
 }
 
