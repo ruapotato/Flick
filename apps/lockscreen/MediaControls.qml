@@ -10,6 +10,7 @@ Item {
     visible: MediaController.hasMedia
 
     property color accentColor: Theme.accentColor
+    property string stateDir: Theme.stateDir
 
     Behavior on height { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
 
