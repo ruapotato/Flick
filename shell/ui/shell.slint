@@ -2102,15 +2102,15 @@ component FanSubMenuItem inherits Rectangle {
     }
 }
 
-// Fan Menu Panel - large arc with wedge segments
+// Fan Menu Panel - pie wedge segments forming an arc
 component FanMenuPanel inherits Rectangle {
-    in property <bool> is-left: true;  // true = left edge, false = right edge
-    in property <float> progress: 1.0;  // Animation progress 0-1
-    in property <int> highlighted-category: -1;  // -1 = none, 0-4 = category index
-    in property <int> selected-category: -1;     // Category showing submenu
-    in property <int> highlighted-item: -1;      // Item in submenu
-    in property <float> submenu-progress: 0.0;   // Submenu animation
-    in property <float> touch-y: 800;            // Y position of the swipe
+    in property <bool> is-left: true;
+    in property <float> progress: 1.0;
+    in property <int> highlighted-category: -1;
+    in property <int> selected-category: -1;
+    in property <int> highlighted-item: -1;
+    in property <float> submenu-progress: 0.0;
+    in property <float> touch-y: 800;
 
     callback category-tapped(int);
     callback item-tapped(int, string);
@@ -2121,375 +2121,417 @@ component FanMenuPanel inherits Rectangle {
     background: #000000;
     opacity: 0.5 * progress;
 
-    TouchArea {
-        clicked => { dismiss(); }
-    }
+    TouchArea { clicked => { dismiss(); } }
 
-    // Anchor at touch Y, clamped to screen
     property <length> anchor-x: is-left ? 0px : root.width;
-    property <length> anchor-y: max(300px, min(touch-y * 1px, root.height - 300px));
+    property <length> anchor-y: max(350px, min(touch-y * 1px, root.height - 350px));
+    property <length> menu-radius: 400px * progress;
 
-    // Large arc dimensions
-    property <length> inner-radius: 120px * progress;
-    property <length> outer-radius: 380px * progress;
-    property <length> arc-width: outer-radius - inner-radius;  // 260px band
+    // The arc is made of 5 wedge segments, each ~17° wide
+    // Total span: 85° (from 70° down to -15°)
+    // Wedge centers: 62°, 45°, 28°, 11°, -6°
 
-    // The main arc background - a large semi-circle clipped
+    // Base arc - outer ring that all wedges sit on
     Rectangle {
-        x: is-left ? anchor-x - 50px : anchor-x - outer-radius - arc-width + 50px;
-        y: anchor-y - outer-radius;
-        width: outer-radius + arc-width;
-        height: outer-radius * 2;
-        border-radius: outer-radius;
-        background: #1a1a2acc;
-        opacity: progress;
+        x: is-left ? anchor-x - menu-radius : anchor-x;
+        y: anchor-y - menu-radius;
+        width: menu-radius * 2;
+        height: menu-radius * 2;
+        border-radius: menu-radius;
+        background: #1a1a2a;
+        opacity: 0.9 * progress;
         clip: true;
 
-        // Inner cutout to create arc band
+        // Inner circle cutout (creates the ring)
         Rectangle {
-            x: is-left ? -inner-radius : parent.width - outer-radius + inner-radius - arc-width;
-            y: (parent.height - inner-radius * 2) / 2;
-            width: inner-radius * 2;
-            height: inner-radius * 2;
-            border-radius: inner-radius;
+            x: (parent.width - menu-radius) / 2;
+            y: (parent.height - menu-radius) / 2;
+            width: menu-radius;
+            height: menu-radius;
+            border-radius: menu-radius / 2;
             background: #000000;
         }
     }
 
-    // Category wedge highlights (shown when highlighted)
-    // Each wedge is a trapezoid-like shape positioned on the arc
-    // Angles: 62°, 44°, 27°, 9°, -8° (top to bottom)
-
-    // Wedge 0: Talk (62°) - cos=0.469, sin=0.883
+    // Wedge divider lines (radial lines from center)
+    // Line between Talk and Media (53.5°) - cos=0.594, sin=0.804
     Rectangle {
-        visible: highlighted-category == 0 || selected-category == 0;
-        x: anchor-x + (is-left ? 0.469 : -0.469) * ((inner-radius + outer-radius) / 2) - 70px;
-        y: anchor-y - 0.883 * ((inner-radius + outer-radius) / 2) - 55px;
-        width: 140px;
-        height: 110px;
-        border-radius: 20px;
+        x: is-left ? anchor-x : anchor-x - 4px;
+        y: anchor-y - 4px;
+        width: menu-radius;
+        height: 4px;
+        background: #333355;
+        opacity: progress;
+        // Rotate to 53.5° - approximate with position
+    }
+
+    // Highlighted wedge overlays (colored arc sections)
+    // Each wedge is a large rectangle clipped to show only the wedge portion
+
+    // Wedge 0: Talk (62°) - highlighted section
+    Rectangle {
+        visible: (highlighted-category == 0 || selected-category == 0) && selected-category < 0;
+        x: is-left ? anchor-x - menu-radius : anchor-x;
+        y: anchor-y - menu-radius;
+        width: menu-radius * 2;
+        height: menu-radius * 2;
+        border-radius: menu-radius;
         background: selected-category == 0 ? Theme.primary : Theme.accent;
-        opacity: 0.85 * progress;
+        opacity: 0.7 * progress;
+        clip: true;
+
+        // Mask out other sections - inner cutout
+        Rectangle {
+            x: (parent.width - menu-radius) / 2;
+            y: (parent.height - menu-radius) / 2;
+            width: menu-radius;
+            height: menu-radius;
+            border-radius: menu-radius / 2;
+            background: #000000;
+        }
+        // Mask: only show top-right quadrant upper portion
+        Rectangle {
+            x: is-left ? 0 : parent.width / 2;
+            y: parent.height * 0.35;
+            width: parent.width / 2;
+            height: parent.height * 0.65;
+            background: #000000;
+        }
+        Rectangle {
+            x: is-left ? parent.width * 0.15 : 0;
+            y: 0;
+            width: parent.width * 0.85;
+            height: parent.height * 0.35;
+            background: #000000;
+        }
     }
 
-    // Wedge 1: Media (44°) - cos=0.719, sin=0.695
+    // Wedge 1: Media (45°)
     Rectangle {
-        visible: highlighted-category == 1 || selected-category == 1;
-        x: anchor-x + (is-left ? 0.719 : -0.719) * ((inner-radius + outer-radius) / 2) - 70px;
-        y: anchor-y - 0.695 * ((inner-radius + outer-radius) / 2) - 55px;
-        width: 140px;
-        height: 110px;
-        border-radius: 20px;
+        visible: (highlighted-category == 1 || selected-category == 1) && selected-category < 0;
+        x: is-left ? anchor-x - menu-radius : anchor-x;
+        y: anchor-y - menu-radius;
+        width: menu-radius * 2;
+        height: menu-radius * 2;
+        border-radius: menu-radius;
         background: selected-category == 1 ? Theme.primary : Theme.accent;
-        opacity: 0.85 * progress;
+        opacity: 0.7 * progress;
+        clip: true;
+
+        Rectangle {
+            x: (parent.width - menu-radius) / 2;
+            y: (parent.height - menu-radius) / 2;
+            width: menu-radius;
+            height: menu-radius;
+            border-radius: menu-radius / 2;
+            background: #000000;
+        }
+        Rectangle {
+            x: is-left ? 0 : parent.width / 2;
+            y: parent.height * 0.5;
+            width: parent.width / 2;
+            height: parent.height * 0.5;
+            background: #000000;
+        }
+        Rectangle {
+            x: is-left ? 0 : parent.width / 2;
+            y: 0;
+            width: parent.width / 2;
+            height: parent.height * 0.35;
+            background: #000000;
+        }
     }
 
-    // Wedge 2: Tools (27°) - cos=0.891, sin=0.454
+    // Wedge 2: Tools (28°)
     Rectangle {
-        visible: highlighted-category == 2 || selected-category == 2;
-        x: anchor-x + (is-left ? 0.891 : -0.891) * ((inner-radius + outer-radius) / 2) - 70px;
-        y: anchor-y - 0.454 * ((inner-radius + outer-radius) / 2) - 55px;
-        width: 140px;
-        height: 110px;
-        border-radius: 20px;
+        visible: (highlighted-category == 2 || selected-category == 2) && selected-category < 0;
+        x: is-left ? anchor-x - menu-radius : anchor-x;
+        y: anchor-y - menu-radius;
+        width: menu-radius * 2;
+        height: menu-radius * 2;
+        border-radius: menu-radius;
         background: selected-category == 2 ? Theme.primary : Theme.accent;
-        opacity: 0.85 * progress;
+        opacity: 0.7 * progress;
+        clip: true;
+
+        Rectangle {
+            x: (parent.width - menu-radius) / 2;
+            y: (parent.height - menu-radius) / 2;
+            width: menu-radius;
+            height: menu-radius;
+            border-radius: menu-radius / 2;
+            background: #000000;
+        }
+        Rectangle {
+            x: is-left ? 0 : parent.width / 2;
+            y: parent.height * 0.6;
+            width: parent.width / 2;
+            height: parent.height * 0.4;
+            background: #000000;
+        }
+        Rectangle {
+            x: is-left ? 0 : parent.width / 2;
+            y: 0;
+            width: parent.width / 2;
+            height: parent.height * 0.5;
+            background: #000000;
+        }
     }
 
-    // Wedge 3: Apps (9°) - cos=0.988, sin=0.156
+    // Wedge 3: Apps (11°)
     Rectangle {
-        visible: highlighted-category == 3 || selected-category == 3;
-        x: anchor-x + (is-left ? 0.988 : -0.988) * ((inner-radius + outer-radius) / 2) - 70px;
-        y: anchor-y - 0.156 * ((inner-radius + outer-radius) / 2) - 55px;
-        width: 140px;
-        height: 110px;
-        border-radius: 20px;
+        visible: (highlighted-category == 3 || selected-category == 3) && selected-category < 0;
+        x: is-left ? anchor-x - menu-radius : anchor-x;
+        y: anchor-y - menu-radius;
+        width: menu-radius * 2;
+        height: menu-radius * 2;
+        border-radius: menu-radius;
         background: selected-category == 3 ? Theme.primary : Theme.accent;
-        opacity: 0.85 * progress;
+        opacity: 0.7 * progress;
+        clip: true;
+
+        Rectangle {
+            x: (parent.width - menu-radius) / 2;
+            y: (parent.height - menu-radius) / 2;
+            width: menu-radius;
+            height: menu-radius;
+            border-radius: menu-radius / 2;
+            background: #000000;
+        }
+        Rectangle {
+            x: is-left ? 0 : parent.width / 2;
+            y: parent.height * 0.55;
+            width: parent.width / 2;
+            height: parent.height * 0.45;
+            background: #000000;
+        }
+        Rectangle {
+            x: is-left ? 0 : parent.width / 2;
+            y: 0;
+            width: parent.width / 2;
+            height: parent.height * 0.45;
+            background: #000000;
+        }
     }
 
-    // Wedge 4: System (-8°) - cos=0.990, sin=-0.139
+    // Wedge 4: System (-6°)
     Rectangle {
-        visible: highlighted-category == 4 || selected-category == 4;
-        x: anchor-x + (is-left ? 0.990 : -0.990) * ((inner-radius + outer-radius) / 2) - 70px;
-        y: anchor-y + 0.139 * ((inner-radius + outer-radius) / 2) - 55px;
-        width: 140px;
-        height: 110px;
-        border-radius: 20px;
+        visible: (highlighted-category == 4 || selected-category == 4) && selected-category < 0;
+        x: is-left ? anchor-x - menu-radius : anchor-x;
+        y: anchor-y - menu-radius;
+        width: menu-radius * 2;
+        height: menu-radius * 2;
+        border-radius: menu-radius;
         background: selected-category == 4 ? Theme.primary : Theme.accent;
-        opacity: 0.85 * progress;
+        opacity: 0.7 * progress;
+        clip: true;
+
+        Rectangle {
+            x: (parent.width - menu-radius) / 2;
+            y: (parent.height - menu-radius) / 2;
+            width: menu-radius;
+            height: menu-radius;
+            border-radius: menu-radius / 2;
+            background: #000000;
+        }
+        Rectangle {
+            x: is-left ? 0 : parent.width / 2;
+            y: 0;
+            width: parent.width / 2;
+            height: parent.height * 0.55;
+            background: #000000;
+        }
     }
 
-    // Category icons and labels on the arc (always visible at top level)
+    // Category icons positioned on the arc (mid-radius)
+    property <length> icon-radius: menu-radius * 0.75;
+
     if selected-category < 0 : Rectangle {
-        // Talk icon (62°)
+        // Talk (62°): cos=0.469, sin=0.883
         Text {
-            x: anchor-x + (is-left ? 0.469 : -0.469) * ((inner-radius + outer-radius) / 2) - 30px;
-            y: anchor-y - 0.883 * ((inner-radius + outer-radius) / 2) - 30px;
-            text: "📱";
-            font-size: 48px;
+            x: anchor-x + (is-left ? 1 : -1) * 0.469 * icon-radius - 32px;
+            y: anchor-y - 0.883 * icon-radius - 32px;
+            text: "📱"; font-size: 56px;
         }
         Text {
-            x: anchor-x + (is-left ? 0.469 : -0.469) * ((inner-radius + outer-radius) / 2) - 30px;
-            y: anchor-y - 0.883 * ((inner-radius + outer-radius) / 2) + 25px;
-            width: 60px;
-            text: "Talk";
-            font-size: 14px;
-            font-weight: 600;
-            color: highlighted-category == 0 ? #ffffff : #aaaacc;
+            x: anchor-x + (is-left ? 1 : -1) * 0.469 * icon-radius - 32px;
+            y: anchor-y - 0.883 * icon-radius + 30px;
+            width: 64px; text: "Talk"; font-size: 16px; font-weight: 700;
+            color: highlighted-category == 0 ? #ffffff : #ccccee;
             horizontal-alignment: center;
         }
 
-        // Media icon (44°)
+        // Media (45°): cos=0.707, sin=0.707
         Text {
-            x: anchor-x + (is-left ? 0.719 : -0.719) * ((inner-radius + outer-radius) / 2) - 30px;
-            y: anchor-y - 0.695 * ((inner-radius + outer-radius) / 2) - 30px;
-            text: "🎵";
-            font-size: 48px;
+            x: anchor-x + (is-left ? 1 : -1) * 0.707 * icon-radius - 32px;
+            y: anchor-y - 0.707 * icon-radius - 32px;
+            text: "🎵"; font-size: 56px;
         }
         Text {
-            x: anchor-x + (is-left ? 0.719 : -0.719) * ((inner-radius + outer-radius) / 2) - 30px;
-            y: anchor-y - 0.695 * ((inner-radius + outer-radius) / 2) + 25px;
-            width: 60px;
-            text: "Media";
-            font-size: 14px;
-            font-weight: 600;
-            color: highlighted-category == 1 ? #ffffff : #aaaacc;
+            x: anchor-x + (is-left ? 1 : -1) * 0.707 * icon-radius - 32px;
+            y: anchor-y - 0.707 * icon-radius + 30px;
+            width: 64px; text: "Media"; font-size: 16px; font-weight: 700;
+            color: highlighted-category == 1 ? #ffffff : #ccccee;
             horizontal-alignment: center;
         }
 
-        // Tools icon (27°)
+        // Tools (28°): cos=0.883, sin=0.469
         Text {
-            x: anchor-x + (is-left ? 0.891 : -0.891) * ((inner-radius + outer-radius) / 2) - 30px;
-            y: anchor-y - 0.454 * ((inner-radius + outer-radius) / 2) - 30px;
-            text: "🔧";
-            font-size: 48px;
+            x: anchor-x + (is-left ? 1 : -1) * 0.883 * icon-radius - 32px;
+            y: anchor-y - 0.469 * icon-radius - 32px;
+            text: "🔧"; font-size: 56px;
         }
         Text {
-            x: anchor-x + (is-left ? 0.891 : -0.891) * ((inner-radius + outer-radius) / 2) - 30px;
-            y: anchor-y - 0.454 * ((inner-radius + outer-radius) / 2) + 25px;
-            width: 60px;
-            text: "Tools";
-            font-size: 14px;
-            font-weight: 600;
-            color: highlighted-category == 2 ? #ffffff : #aaaacc;
+            x: anchor-x + (is-left ? 1 : -1) * 0.883 * icon-radius - 32px;
+            y: anchor-y - 0.469 * icon-radius + 30px;
+            width: 64px; text: "Tools"; font-size: 16px; font-weight: 700;
+            color: highlighted-category == 2 ? #ffffff : #ccccee;
             horizontal-alignment: center;
         }
 
-        // Apps icon (9°)
+        // Apps (11°): cos=0.982, sin=0.191
         Text {
-            x: anchor-x + (is-left ? 0.988 : -0.988) * ((inner-radius + outer-radius) / 2) - 30px;
-            y: anchor-y - 0.156 * ((inner-radius + outer-radius) / 2) - 30px;
-            text: "📲";
-            font-size: 48px;
+            x: anchor-x + (is-left ? 1 : -1) * 0.982 * icon-radius - 32px;
+            y: anchor-y - 0.191 * icon-radius - 32px;
+            text: "📲"; font-size: 56px;
         }
         Text {
-            x: anchor-x + (is-left ? 0.988 : -0.988) * ((inner-radius + outer-radius) / 2) - 30px;
-            y: anchor-y - 0.156 * ((inner-radius + outer-radius) / 2) + 25px;
-            width: 60px;
-            text: "Apps";
-            font-size: 14px;
-            font-weight: 600;
-            color: highlighted-category == 3 ? #ffffff : #aaaacc;
+            x: anchor-x + (is-left ? 1 : -1) * 0.982 * icon-radius - 32px;
+            y: anchor-y - 0.191 * icon-radius + 30px;
+            width: 64px; text: "Apps"; font-size: 16px; font-weight: 700;
+            color: highlighted-category == 3 ? #ffffff : #ccccee;
             horizontal-alignment: center;
         }
 
-        // System icon (-8°)
+        // System (-6°): cos=0.995, sin=-0.105
         Text {
-            x: anchor-x + (is-left ? 0.990 : -0.990) * ((inner-radius + outer-radius) / 2) - 30px;
-            y: anchor-y + 0.139 * ((inner-radius + outer-radius) / 2) - 30px;
-            text: "⚙";
-            font-size: 48px;
+            x: anchor-x + (is-left ? 1 : -1) * 0.995 * icon-radius - 32px;
+            y: anchor-y + 0.105 * icon-radius - 32px;
+            text: "⚙"; font-size: 56px;
         }
         Text {
-            x: anchor-x + (is-left ? 0.990 : -0.990) * ((inner-radius + outer-radius) / 2) - 30px;
-            y: anchor-y + 0.139 * ((inner-radius + outer-radius) / 2) + 25px;
-            width: 60px;
-            text: "System";
-            font-size: 14px;
-            font-weight: 600;
-            color: highlighted-category == 4 ? #ffffff : #aaaacc;
+            x: anchor-x + (is-left ? 1 : -1) * 0.995 * icon-radius - 32px;
+            y: anchor-y + 0.105 * icon-radius + 30px;
+            width: 64px; text: "System"; font-size: 16px; font-weight: 700;
+            color: highlighted-category == 4 ? #ffffff : #ccccee;
             horizontal-alignment: center;
         }
     }
 
-    // Sub-menu arc (shown when category selected) - larger outer arc
-    property <length> sub-inner: outer-radius + 20px;
-    property <length> sub-outer: outer-radius + 200px;
+    // Sub-menu: outer arc extending from selected category
+    property <length> sub-radius: menu-radius + 180px * progress;
+    property <length> sub-icon-radius: (menu-radius + sub-radius) / 2;
 
     // Talk sub-menu
     if selected-category == 0 : Rectangle {
-        // Sub-arc background
         Rectangle {
-            x: is-left ? anchor-x - 50px : anchor-x - sub-outer - 150px + 50px;
-            y: anchor-y - sub-outer;
-            width: sub-outer + 150px;
-            height: sub-outer * 2;
-            border-radius: sub-outer;
-            background: #1a1a2a99;
-            opacity: progress;
+            x: is-left ? anchor-x - sub-radius : anchor-x;
+            y: anchor-y - sub-radius;
+            width: sub-radius * 2; height: sub-radius * 2;
+            border-radius: sub-radius;
+            background: #1a1a2a88; opacity: progress;
+            clip: true;
+            Rectangle {
+                x: (parent.width - menu-radius * 2) / 2;
+                y: (parent.height - menu-radius * 2) / 2;
+                width: menu-radius * 2; height: menu-radius * 2;
+                border-radius: menu-radius; background: #000000;
+            }
         }
+        // Phone, Messages, Contacts, Email at 65°, 50°, 35°, 20°
+        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 60px; y: anchor-y - 0.91 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 32px; y: anchor-y - 0.91 * sub-icon-radius - 32px; text: "📞"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 40px; y: anchor-y - 0.91 * sub-icon-radius + 35px; width: 80px; text: "Phone"; font-size: 14px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #ccccee; horizontal-alignment: center; }
 
-        // Phone (65°)
-        Rectangle {
-            visible: highlighted-item == 0;
-            x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 55px;
-            y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) - 55px;
-            width: 110px; height: 110px; border-radius: 55px;
-            background: Theme.accent; opacity: 0.8;
-        }
-        Text {
-            x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 30px;
-            y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) - 30px;
-            text: "📞"; font-size: 48px;
-        }
-        Text {
-            x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 40px;
-            y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) + 30px;
-            width: 80px; text: "Phone"; font-size: 13px; font-weight: 600;
-            color: highlighted-item == 0 ? #ffffff : #aaaacc; horizontal-alignment: center;
-        }
+        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 60px; y: anchor-y - 0.77 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 32px; y: anchor-y - 0.77 * sub-icon-radius - 32px; text: "💬"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 40px; y: anchor-y - 0.77 * sub-icon-radius + 35px; width: 80px; text: "Messages"; font-size: 14px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #ccccee; horizontal-alignment: center; }
 
-        // Messages (50°)
-        Rectangle {
-            visible: highlighted-item == 1;
-            x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 55px;
-            y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) - 55px;
-            width: 110px; height: 110px; border-radius: 55px;
-            background: Theme.accent; opacity: 0.8;
-        }
-        Text {
-            x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 30px;
-            y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) - 30px;
-            text: "💬"; font-size: 48px;
-        }
-        Text {
-            x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 40px;
-            y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) + 30px;
-            width: 80px; text: "Messages"; font-size: 13px; font-weight: 600;
-            color: highlighted-item == 1 ? #ffffff : #aaaacc; horizontal-alignment: center;
-        }
+        Rectangle { visible: highlighted-item == 2; x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 60px; y: anchor-y - 0.57 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 32px; y: anchor-y - 0.57 * sub-icon-radius - 32px; text: "👤"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 40px; y: anchor-y - 0.57 * sub-icon-radius + 35px; width: 80px; text: "Contacts"; font-size: 14px; font-weight: 600; color: highlighted-item == 2 ? #ffffff : #ccccee; horizontal-alignment: center; }
 
-        // Contacts (35°)
-        Rectangle {
-            visible: highlighted-item == 2;
-            x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 55px;
-            y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) - 55px;
-            width: 110px; height: 110px; border-radius: 55px;
-            background: Theme.accent; opacity: 0.8;
-        }
-        Text {
-            x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 30px;
-            y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) - 30px;
-            text: "👤"; font-size: 48px;
-        }
-        Text {
-            x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 40px;
-            y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) + 30px;
-            width: 80px; text: "Contacts"; font-size: 13px; font-weight: 600;
-            color: highlighted-item == 2 ? #ffffff : #aaaacc; horizontal-alignment: center;
-        }
-
-        // Email (20°)
-        Rectangle {
-            visible: highlighted-item == 3;
-            x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 55px;
-            y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) - 55px;
-            width: 110px; height: 110px; border-radius: 55px;
-            background: Theme.accent; opacity: 0.8;
-        }
-        Text {
-            x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 30px;
-            y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) - 30px;
-            text: "📧"; font-size: 48px;
-        }
-        Text {
-            x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 40px;
-            y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) + 30px;
-            width: 80px; text: "Email"; font-size: 13px; font-weight: 600;
-            color: highlighted-item == 3 ? #ffffff : #aaaacc; horizontal-alignment: center;
-        }
+        Rectangle { visible: highlighted-item == 3; x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 60px; y: anchor-y - 0.34 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 32px; y: anchor-y - 0.34 * sub-icon-radius - 32px; text: "📧"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 40px; y: anchor-y - 0.34 * sub-icon-radius + 35px; width: 80px; text: "Email"; font-size: 14px; font-weight: 600; color: highlighted-item == 3 ? #ffffff : #ccccee; horizontal-alignment: center; }
     }
 
     // Media sub-menu
     if selected-category == 1 : Rectangle {
         Rectangle {
-            x: is-left ? anchor-x - 50px : anchor-x - sub-outer - 150px + 50px;
-            y: anchor-y - sub-outer;
-            width: sub-outer + 150px; height: sub-outer * 2;
-            border-radius: sub-outer; background: #1a1a2a99; opacity: progress;
+            x: is-left ? anchor-x - sub-radius : anchor-x; y: anchor-y - sub-radius;
+            width: sub-radius * 2; height: sub-radius * 2; border-radius: sub-radius;
+            background: #1a1a2a88; opacity: progress; clip: true;
+            Rectangle { x: (parent.width - menu-radius * 2) / 2; y: (parent.height - menu-radius * 2) / 2; width: menu-radius * 2; height: menu-radius * 2; border-radius: menu-radius; background: #000000; }
         }
-        // Music, Video, Photos, Recorder at 65°, 50°, 35°, 20°
-        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) - 30px; text: "🎵"; font-size: 48px; }
-        Text { x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Music"; font-size: 13px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 60px; y: anchor-y - 0.91 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 32px; y: anchor-y - 0.91 * sub-icon-radius - 32px; text: "🎵"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 40px; y: anchor-y - 0.91 * sub-icon-radius + 35px; width: 80px; text: "Music"; font-size: 14px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #ccccee; horizontal-alignment: center; }
 
-        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) - 30px; text: "🎬"; font-size: 48px; }
-        Text { x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Video"; font-size: 13px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 60px; y: anchor-y - 0.77 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 32px; y: anchor-y - 0.77 * sub-icon-radius - 32px; text: "🎬"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 40px; y: anchor-y - 0.77 * sub-icon-radius + 35px; width: 80px; text: "Video"; font-size: 14px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #ccccee; horizontal-alignment: center; }
 
-        Rectangle { visible: highlighted-item == 2; x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) - 30px; text: "📷"; font-size: 48px; }
-        Text { x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Photos"; font-size: 13px; font-weight: 600; color: highlighted-item == 2 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+        Rectangle { visible: highlighted-item == 2; x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 60px; y: anchor-y - 0.57 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 32px; y: anchor-y - 0.57 * sub-icon-radius - 32px; text: "📷"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 40px; y: anchor-y - 0.57 * sub-icon-radius + 35px; width: 80px; text: "Photos"; font-size: 14px; font-weight: 600; color: highlighted-item == 2 ? #ffffff : #ccccee; horizontal-alignment: center; }
 
-        Rectangle { visible: highlighted-item == 3; x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) - 30px; text: "🎙"; font-size: 48px; }
-        Text { x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Recorder"; font-size: 13px; font-weight: 600; color: highlighted-item == 3 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+        Rectangle { visible: highlighted-item == 3; x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 60px; y: anchor-y - 0.34 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 32px; y: anchor-y - 0.34 * sub-icon-radius - 32px; text: "🎙"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 40px; y: anchor-y - 0.34 * sub-icon-radius + 35px; width: 80px; text: "Recorder"; font-size: 14px; font-weight: 600; color: highlighted-item == 3 ? #ffffff : #ccccee; horizontal-alignment: center; }
     }
 
     // Tools sub-menu
     if selected-category == 2 : Rectangle {
         Rectangle {
-            x: is-left ? anchor-x - 50px : anchor-x - sub-outer - 150px + 50px;
-            y: anchor-y - sub-outer;
-            width: sub-outer + 150px; height: sub-outer * 2;
-            border-radius: sub-outer; background: #1a1a2a99; opacity: progress;
+            x: is-left ? anchor-x - sub-radius : anchor-x; y: anchor-y - sub-radius;
+            width: sub-radius * 2; height: sub-radius * 2; border-radius: sub-radius;
+            background: #1a1a2a88; opacity: progress; clip: true;
+            Rectangle { x: (parent.width - menu-radius * 2) / 2; y: (parent.height - menu-radius * 2) / 2; width: menu-radius * 2; height: menu-radius * 2; border-radius: menu-radius; background: #000000; }
         }
-        // Files, Calculator, Notes, Calendar
-        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) - 30px; text: "📁"; font-size: 48px; }
-        Text { x: anchor-x + (is-left ? 0.42 : -0.42) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.91 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Files"; font-size: 13px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 60px; y: anchor-y - 0.91 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 32px; y: anchor-y - 0.91 * sub-icon-radius - 32px; text: "📁"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 40px; y: anchor-y - 0.91 * sub-icon-radius + 35px; width: 80px; text: "Files"; font-size: 14px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #ccccee; horizontal-alignment: center; }
 
-        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) - 30px; text: "🔢"; font-size: 48px; }
-        Text { x: anchor-x + (is-left ? 0.64 : -0.64) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.77 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Calc"; font-size: 13px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 60px; y: anchor-y - 0.77 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 32px; y: anchor-y - 0.77 * sub-icon-radius - 32px; text: "🔢"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 40px; y: anchor-y - 0.77 * sub-icon-radius + 35px; width: 80px; text: "Calc"; font-size: 14px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #ccccee; horizontal-alignment: center; }
 
-        Rectangle { visible: highlighted-item == 2; x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) - 30px; text: "📝"; font-size: 48px; }
-        Text { x: anchor-x + (is-left ? 0.82 : -0.82) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.57 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Notes"; font-size: 13px; font-weight: 600; color: highlighted-item == 2 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+        Rectangle { visible: highlighted-item == 2; x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 60px; y: anchor-y - 0.57 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 32px; y: anchor-y - 0.57 * sub-icon-radius - 32px; text: "📝"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 40px; y: anchor-y - 0.57 * sub-icon-radius + 35px; width: 80px; text: "Notes"; font-size: 14px; font-weight: 600; color: highlighted-item == 2 ? #ffffff : #ccccee; horizontal-alignment: center; }
 
-        Rectangle { visible: highlighted-item == 3; x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) - 30px; text: "📅"; font-size: 48px; }
-        Text { x: anchor-x + (is-left ? 0.94 : -0.94) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.34 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Calendar"; font-size: 13px; font-weight: 600; color: highlighted-item == 3 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+        Rectangle { visible: highlighted-item == 3; x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 60px; y: anchor-y - 0.34 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 32px; y: anchor-y - 0.34 * sub-icon-radius - 32px; text: "📅"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 40px; y: anchor-y - 0.34 * sub-icon-radius + 35px; width: 80px; text: "Calendar"; font-size: 14px; font-weight: 600; color: highlighted-item == 3 ? #ffffff : #ccccee; horizontal-alignment: center; }
     }
 
-    // System sub-menu (only 2 items)
+    // System sub-menu
     if selected-category == 4 : Rectangle {
         Rectangle {
-            x: is-left ? anchor-x - 50px : anchor-x - sub-outer - 150px + 50px;
-            y: anchor-y - sub-outer;
-            width: sub-outer + 150px; height: sub-outer * 2;
-            border-radius: sub-outer; background: #1a1a2a99; opacity: progress;
+            x: is-left ? anchor-x - sub-radius : anchor-x; y: anchor-y - sub-radius;
+            width: sub-radius * 2; height: sub-radius * 2; border-radius: sub-radius;
+            background: #1a1a2a88; opacity: progress; clip: true;
+            Rectangle { x: (parent.width - menu-radius * 2) / 2; y: (parent.height - menu-radius * 2) / 2; width: menu-radius * 2; height: menu-radius * 2; border-radius: menu-radius; background: #000000; }
         }
-        // Settings, Store
-        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 0.50 : -0.50) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.87 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 0.50 : -0.50) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.87 * ((sub-inner + sub-outer) / 2) - 30px; text: "⚙"; font-size: 48px; }
-        Text { x: anchor-x + (is-left ? 0.50 : -0.50) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.87 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Settings"; font-size: 13px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 1 : -1) * 0.50 * sub-icon-radius - 60px; y: anchor-y - 0.87 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.50 * sub-icon-radius - 32px; y: anchor-y - 0.87 * sub-icon-radius - 32px; text: "⚙"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.50 * sub-icon-radius - 40px; y: anchor-y - 0.87 * sub-icon-radius + 35px; width: 80px; text: "Settings"; font-size: 14px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #ccccee; horizontal-alignment: center; }
 
-        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 0.77 : -0.77) * ((sub-inner + sub-outer) / 2) - 55px; y: anchor-y - 0.64 * ((sub-inner + sub-outer) / 2) - 55px; width: 110px; height: 110px; border-radius: 55px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 0.77 : -0.77) * ((sub-inner + sub-outer) / 2) - 30px; y: anchor-y - 0.64 * ((sub-inner + sub-outer) / 2) - 30px; text: "🏪"; font-size: 48px; }
-        Text { x: anchor-x + (is-left ? 0.77 : -0.77) * ((sub-inner + sub-outer) / 2) - 40px; y: anchor-y - 0.64 * ((sub-inner + sub-outer) / 2) + 30px; width: 80px; text: "Store"; font-size: 13px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #aaaacc; horizontal-alignment: center; }
+        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 1 : -1) * 0.77 * sub-icon-radius - 60px; y: anchor-y - 0.64 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.77 * sub-icon-radius - 32px; y: anchor-y - 0.64 * sub-icon-radius - 32px; text: "🏪"; font-size: 56px; }
+        Text { x: anchor-x + (is-left ? 1 : -1) * 0.77 * sub-icon-radius - 40px; y: anchor-y - 0.64 * sub-icon-radius + 35px; width: 80px; text: "Store"; font-size: 14px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #ccccee; horizontal-alignment: center; }
     }
 
     // Anchor dot
     Rectangle {
-        x: anchor-x - 20px;
-        y: anchor-y - 20px;
-        width: 40px;
-        height: 40px;
-        border-radius: 20px;
+        x: anchor-x - 24px;
+        y: anchor-y - 24px;
+        width: 48px;
+        height: 48px;
+        border-radius: 24px;
         background: Theme.accent;
-        opacity: 0.95 * progress;
+        opacity: progress;
     }
 }
 
