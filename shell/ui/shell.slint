@@ -2022,7 +2022,6 @@ component FanCategoryButton inherits Rectangle {
     in property <string> label;
     in property <bool> highlighted: false;
     in property <float> progress: 1.0;  // Animation progress 0-1
-    in property <float> angle: 0;       // Angle in degrees for positioning
 
     callback tapped();
 
@@ -2122,16 +2121,21 @@ component FanMenuPanel inherits Rectangle {
     }
 
     // Anchor point at bottom corner
-    property <length> anchor-x: is-left ? 40px : parent.width - 40px;
-    property <length> anchor-y: parent.height - 40px;
-    property <float> fan-radius: 180.0;
+    property <length> anchor-x: is-left ? 40px : root.width - 40px;
+    property <length> anchor-y: root.height - 40px;
+    property <length> fan-radius: 180px;
 
-    // Category: Communicate (📱)
+    // Precomputed positions for fan layout (cos/sin at various angles)
+    // 70deg: cos=0.342, sin=0.940  |  110deg: cos=-0.342, sin=0.940
+    // 55deg: cos=0.574, sin=0.819  |  125deg: cos=-0.574, sin=0.819
+    // 40deg: cos=0.766, sin=0.643  |  140deg: cos=-0.766, sin=0.643
+    // 25deg: cos=0.906, sin=0.423  |  155deg: cos=-0.906, sin=0.423
+    // 10deg: cos=0.985, sin=0.174  |  170deg: cos=-0.985, sin=0.174
+
+    // Category: Communicate (📱) - 70deg left, 110deg right
     FanCategoryButton {
-        property <float> angle: is-left ? 70 : 110;
-        property <float> rad: angle * 3.14159 / 180.0;
-        x: anchor-x + (is-left ? 1 : -1) * fan-radius * cos(rad) * 1px - self.width / 2;
-        y: anchor-y - fan-radius * sin(rad) * 1px - self.height / 2;
+        x: anchor-x + (is-left ? 0.342 : -0.342) * fan-radius - self.width / 2;
+        y: anchor-y - 0.940 * fan-radius - self.height / 2;
         icon: "📱";
         label: "Talk";
         highlighted: highlighted-category == 0;
@@ -2139,12 +2143,10 @@ component FanMenuPanel inherits Rectangle {
         tapped => { category-tapped(0); }
     }
 
-    // Category: Media (🎵)
+    // Category: Media (🎵) - 55deg left, 125deg right
     FanCategoryButton {
-        property <float> angle: is-left ? 55 : 125;
-        property <float> rad: angle * 3.14159 / 180.0;
-        x: anchor-x + (is-left ? 1 : -1) * fan-radius * cos(rad) * 1px - self.width / 2;
-        y: anchor-y - fan-radius * sin(rad) * 1px - self.height / 2;
+        x: anchor-x + (is-left ? 0.574 : -0.574) * fan-radius - self.width / 2;
+        y: anchor-y - 0.819 * fan-radius - self.height / 2;
         icon: "🎵";
         label: "Media";
         highlighted: highlighted-category == 1;
@@ -2152,12 +2154,10 @@ component FanMenuPanel inherits Rectangle {
         tapped => { category-tapped(1); }
     }
 
-    // Category: Tools (🔧)
+    // Category: Tools (🔧) - 40deg left, 140deg right
     FanCategoryButton {
-        property <float> angle: is-left ? 40 : 140;
-        property <float> rad: angle * 3.14159 / 180.0;
-        x: anchor-x + (is-left ? 1 : -1) * fan-radius * cos(rad) * 1px - self.width / 2;
-        y: anchor-y - fan-radius * sin(rad) * 1px - self.height / 2;
+        x: anchor-x + (is-left ? 0.766 : -0.766) * fan-radius - self.width / 2;
+        y: anchor-y - 0.643 * fan-radius - self.height / 2;
         icon: "🔧";
         label: "Tools";
         highlighted: highlighted-category == 2;
@@ -2165,12 +2165,10 @@ component FanMenuPanel inherits Rectangle {
         tapped => { category-tapped(2); }
     }
 
-    // Category: Apps (📲)
+    // Category: Apps (📲) - 25deg left, 155deg right
     FanCategoryButton {
-        property <float> angle: is-left ? 25 : 155;
-        property <float> rad: angle * 3.14159 / 180.0;
-        x: anchor-x + (is-left ? 1 : -1) * fan-radius * cos(rad) * 1px - self.width / 2;
-        y: anchor-y - fan-radius * sin(rad) * 1px - self.height / 2;
+        x: anchor-x + (is-left ? 0.906 : -0.906) * fan-radius - self.width / 2;
+        y: anchor-y - 0.423 * fan-radius - self.height / 2;
         icon: "📲";
         label: "Apps";
         highlighted: highlighted-category == 3;
@@ -2178,12 +2176,10 @@ component FanMenuPanel inherits Rectangle {
         tapped => { category-tapped(3); }
     }
 
-    // Category: System (⚙)
+    // Category: System (⚙) - 10deg left, 170deg right
     FanCategoryButton {
-        property <float> angle: is-left ? 10 : 170;
-        property <float> rad: angle * 3.14159 / 180.0;
-        x: anchor-x + (is-left ? 1 : -1) * fan-radius * cos(rad) * 1px - self.width / 2;
-        y: anchor-y - fan-radius * sin(rad) * 1px - self.height / 2;
+        x: anchor-x + (is-left ? 0.985 : -0.985) * fan-radius - self.width / 2;
+        y: anchor-y - 0.174 * fan-radius - self.height / 2;
         icon: "⚙";
         label: "System";
         highlighted: highlighted-category == 4;
