@@ -2732,52 +2732,61 @@ pub fn run() -> Result<()> {
             }
         }
 
-        // Handle fan menu actions from Slint
-        if let Some(ref slint_ui) = state.shell.slint_ui {
-            // Check for dismiss
-            if slint_ui.poll_fan_dismiss() {
+        // Handle fan menu actions from Slint (collect actions first to avoid borrow conflicts)
+        let (fan_dismiss, fan_category, fan_item) = if let Some(ref slint_ui) = state.shell.slint_ui {
+            (slint_ui.poll_fan_dismiss(), slint_ui.poll_fan_category(), slint_ui.poll_fan_item())
+        } else {
+            (false, None, None)
+        };
+
+        if fan_dismiss {
+            if let Some(ref slint_ui) = state.shell.slint_ui {
                 slint_ui.set_fan_menu_visible(false);
-                info!("Fan menu dismissed");
             }
-            // Check for category tap
-            if let Some(cat_idx) = slint_ui.poll_fan_category() {
-                info!("Fan menu category tapped: {}", cat_idx);
-                // For now, just launch an app based on category
-                let exec_and_id: Option<(&str, &str)> = match cat_idx {
-                    0 => Some(("gnome-calls", "phone")),           // Communicate -> Phone
-                    1 => Some(("flick-music", "flick-music")),     // Media -> Music
-                    2 => Some(("nautilus", "files")),              // Tools -> Files
-                    3 => None,  // Apps -> Show app grid (TODO)
-                    4 => Some(("gnome-control-center", "settings")), // System -> Settings
-                    _ => None,
-                };
-                if let Some((cmd, app_id)) = exec_and_id {
-                    slint_ui.set_fan_menu_visible(false);
-                    let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
-                    let text_scale = state.shell.text_scale as f64;
-                    if let Err(e) = crate::spawn_user::spawn_app_with_logging(cmd, app_id, socket_name, text_scale) {
-                        error!("Failed to launch app from fan menu: {}", e);
-                    } else {
-                        state.shell.view = crate::shell::ShellView::App;
-                    }
-                } else if cat_idx == 3 {
-                    // Apps category - go to home screen (app grid)
-                    slint_ui.set_fan_menu_visible(false);
-                    state.shell.set_view(crate::shell::ShellView::Home);
-                }
-            }
-            // Check for item tap
-            if let Some((cat, exec)) = slint_ui.poll_fan_item() {
-                info!("Fan menu item tapped: cat={}, exec={}", cat, exec);
+            info!("Fan menu dismissed");
+        }
+
+        if let Some(cat_idx) = fan_category {
+            info!("Fan menu category tapped: {}", cat_idx);
+            // Hide fan menu first
+            if let Some(ref slint_ui) = state.shell.slint_ui {
                 slint_ui.set_fan_menu_visible(false);
-                let app_id = exec.split('/').last().unwrap_or(&exec);
+            }
+            // Launch app based on category
+            let exec_and_id: Option<(&str, &str)> = match cat_idx {
+                0 => Some(("gnome-calls", "phone")),           // Communicate -> Phone
+                1 => Some(("flick-music", "flick-music")),     // Media -> Music
+                2 => Some(("nautilus", "files")),              // Tools -> Files
+                3 => None,  // Apps -> Show app grid
+                4 => Some(("gnome-control-center", "settings")), // System -> Settings
+                _ => None,
+            };
+            if let Some((cmd, app_id)) = exec_and_id {
                 let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
                 let text_scale = state.shell.text_scale as f64;
-                if let Err(e) = crate::spawn_user::spawn_app_with_logging(&exec, app_id, socket_name, text_scale) {
+                if let Err(e) = crate::spawn_user::spawn_app_with_logging(cmd, app_id, socket_name, text_scale) {
                     error!("Failed to launch app from fan menu: {}", e);
                 } else {
                     state.shell.view = crate::shell::ShellView::App;
                 }
+            } else if cat_idx == 3 {
+                // Apps category - go to home screen (app grid)
+                state.shell.set_view(crate::shell::ShellView::Home);
+            }
+        }
+
+        if let Some((cat, exec)) = fan_item {
+            info!("Fan menu item tapped: cat={}, exec={}", cat, exec);
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                slint_ui.set_fan_menu_visible(false);
+            }
+            let app_id = exec.split('/').last().unwrap_or(&exec);
+            let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
+            let text_scale = state.shell.text_scale as f64;
+            if let Err(e) = crate::spawn_user::spawn_app_with_logging(&exec, app_id, socket_name, text_scale) {
+                error!("Failed to launch app from fan menu: {}", e);
+            } else {
+                state.shell.view = crate::shell::ShellView::App;
             }
         }
 
