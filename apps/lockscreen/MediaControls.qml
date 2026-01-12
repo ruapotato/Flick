@@ -11,6 +11,7 @@ Item {
 
     property color accentColor: Theme.accentColor
     property string stateDir: Theme.stateDir
+    property bool hasMedia: MediaController.hasMedia
 
     Behavior on height { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
 
