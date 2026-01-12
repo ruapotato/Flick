@@ -1500,14 +1500,19 @@ fn handle_input_event(
                             state.switcher_return_progress = 0.0;
                             state.shell.home_push_offset = 0.0;
                         } else if *completed && state.qs_gesture_active {
-                            // TODO: Open Fan Menu (anchored left) instead of Quick Settings
-                            // For now, just go home until fan menu UI is implemented
+                            // Open Fan Menu (anchored left)
                             if let Some(touch) = state.seat.get_touch() {
                                 touch.cancel(state);
                             }
-                            state.shell.set_view(crate::shell::ShellView::Home);
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.set_fan_menu_left(true);
+                                slint_ui.set_fan_menu_visible(true);
+                                slint_ui.set_fan_menu_progress(1.0);
+                                slint_ui.set_fan_menu_highlighted(-1);
+                                slint_ui.set_fan_menu_selected(-1);
+                            }
                             state.shell.home_push_offset = 0.0;
-                            info!("Left edge swipe: Fan Menu not yet implemented, going home");
+                            info!("Fan Menu OPENED (left)");
                         } else {
                             // Gesture cancelled
                             state.shell.home_push_offset = 0.0;
@@ -1527,14 +1532,19 @@ fn handle_input_event(
                             state.qs_return_progress = 0.0;
                             state.shell.home_push_offset = 0.0;
                         } else if *completed && state.switcher_gesture_active {
-                            // TODO: Open Fan Menu (anchored right) instead of App Switcher
-                            // For now, just go home until fan menu UI is implemented
+                            // Open Fan Menu (anchored right)
                             if let Some(touch) = state.seat.get_touch() {
                                 touch.cancel(state);
                             }
-                            state.shell.set_view(crate::shell::ShellView::Home);
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.set_fan_menu_left(false);
+                                slint_ui.set_fan_menu_visible(true);
+                                slint_ui.set_fan_menu_progress(1.0);
+                                slint_ui.set_fan_menu_highlighted(-1);
+                                slint_ui.set_fan_menu_selected(-1);
+                            }
                             state.shell.home_push_offset = 0.0;
-                            info!("Right edge swipe: Fan Menu not yet implemented, going home");
+                            info!("Fan Menu OPENED (right)");
                         } else if !state.qs_return_active {
                             // Gesture cancelled, reset push offset
                             state.shell.home_push_offset = 0.0;
@@ -2719,6 +2729,38 @@ pub fn run() -> Result<()> {
         if let Some(ref slint_ui) = state.shell.slint_ui {
             if let Some(action) = slint_ui.take_pending_system_action() {
                 state.shell.execute_system_action(&action);
+            }
+        }
+
+        // Handle fan menu actions from Slint
+        if let Some(ref slint_ui) = state.shell.slint_ui {
+            // Check for dismiss
+            if slint_ui.poll_fan_dismiss() {
+                slint_ui.set_fan_menu_visible(false);
+                info!("Fan menu dismissed");
+            }
+            // Check for category tap
+            if let Some(cat_idx) = slint_ui.poll_fan_category() {
+                info!("Fan menu category tapped: {}", cat_idx);
+                // For now, just launch an app based on category
+                let exec = match cat_idx {
+                    0 => Some("gnome-calls"),      // Communicate -> Phone
+                    1 => Some("__flick_music__"),  // Media -> Music
+                    2 => Some("nautilus"),         // Tools -> Files
+                    3 => Some("__app_grid__"),     // Apps -> App launcher
+                    4 => Some("gnome-control-center"), // System -> Settings
+                    _ => None,
+                };
+                if let Some(cmd) = exec {
+                    slint_ui.set_fan_menu_visible(false);
+                    state.shell.launch_app(cmd);
+                }
+            }
+            // Check for item tap
+            if let Some((cat, exec)) = slint_ui.poll_fan_item() {
+                info!("Fan menu item tapped: cat={}, exec={}", cat, exec);
+                slint_ui.set_fan_menu_visible(false);
+                state.shell.launch_app(&exec);
             }
         }
 

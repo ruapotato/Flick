@@ -153,6 +153,12 @@ pub struct SlintShell {
     pending_phone_actions: Rc<RefCell<Vec<PhoneCallAction>>>,
     /// Pending system menu action (lock, reboot, shutdown)
     pending_system_action: Rc<RefCell<Option<String>>>,
+    /// Pending fan menu category tap (category index)
+    pending_fan_category: Rc<RefCell<Option<i32>>>,
+    /// Pending fan menu item tap (category, exec)
+    pending_fan_item: Rc<RefCell<Option<(i32, String)>>>,
+    /// Pending fan menu dismiss
+    pending_fan_dismiss: Rc<RefCell<bool>>,
 }
 
 impl SlintShell {
@@ -395,6 +401,29 @@ impl SlintShell {
             *back_clone.borrow_mut() = true;
         });
 
+        // Fan menu callbacks
+        let pending_fan_category = Rc::new(RefCell::new(None::<i32>));
+        let pending_fan_item = Rc::new(RefCell::new(None::<(i32, String)>));
+        let pending_fan_dismiss = Rc::new(RefCell::new(false));
+
+        let fan_cat_clone = pending_fan_category.clone();
+        shell.on_fan_menu_category_tapped(move |idx| {
+            info!("Fan menu category tapped: {}", idx);
+            *fan_cat_clone.borrow_mut() = Some(idx);
+        });
+
+        let fan_item_clone = pending_fan_item.clone();
+        shell.on_fan_menu_item_tapped(move |cat, exec| {
+            info!("Fan menu item tapped: cat={}, exec={}", cat, exec);
+            *fan_item_clone.borrow_mut() = Some((cat, exec.to_string()));
+        });
+
+        let fan_dismiss_clone = pending_fan_dismiss.clone();
+        shell.on_fan_menu_dismiss(move || {
+            info!("Fan menu dismiss");
+            *fan_dismiss_clone.borrow_mut() = true;
+        });
+
         Self {
             window,
             shell,
@@ -414,6 +443,9 @@ impl SlintShell {
             pending_lock_actions,
             pending_phone_actions,
             pending_system_action,
+            pending_fan_category,
+            pending_fan_item,
+            pending_fan_dismiss,
         }
     }
 
@@ -443,6 +475,50 @@ impl SlintShell {
     /// Poll for pending lock screen actions
     pub fn poll_lock_actions(&self) -> Vec<LockScreenAction> {
         self.pending_lock_actions.borrow_mut().drain(..).collect()
+    }
+
+    /// Poll for fan menu category tap
+    pub fn poll_fan_category(&self) -> Option<i32> {
+        self.pending_fan_category.borrow_mut().take()
+    }
+
+    /// Poll for fan menu item tap (returns category, exec)
+    pub fn poll_fan_item(&self) -> Option<(i32, String)> {
+        self.pending_fan_item.borrow_mut().take()
+    }
+
+    /// Poll for fan menu dismiss
+    pub fn poll_fan_dismiss(&self) -> bool {
+        let result = *self.pending_fan_dismiss.borrow();
+        if result {
+            *self.pending_fan_dismiss.borrow_mut() = false;
+        }
+        result
+    }
+
+    /// Show fan menu
+    pub fn set_fan_menu_visible(&self, visible: bool) {
+        self.shell.set_fan_menu_visible(visible);
+    }
+
+    /// Set fan menu side (true = left, false = right)
+    pub fn set_fan_menu_left(&self, left: bool) {
+        self.shell.set_fan_menu_left(left);
+    }
+
+    /// Set fan menu animation progress
+    pub fn set_fan_menu_progress(&self, progress: f32) {
+        self.shell.set_fan_menu_progress(progress);
+    }
+
+    /// Set highlighted category (-1 = none)
+    pub fn set_fan_menu_highlighted(&self, idx: i32) {
+        self.shell.set_fan_menu_highlighted(idx);
+    }
+
+    /// Set selected category for submenu (-1 = none)
+    pub fn set_fan_menu_selected(&self, idx: i32) {
+        self.shell.set_fan_menu_selected(idx);
     }
 
     /// Set brightness value (0.0 to 1.0)

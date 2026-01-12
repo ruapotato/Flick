@@ -2002,6 +2002,207 @@ component HomeScreen inherits Rectangle {
     }
 }
 
+// Fan menu item data
+struct FanMenuItem {
+    name: string,
+    icon: string,
+    exec: string,
+}
+
+// Fan menu category data
+struct FanCategory {
+    label: string,
+    icon: string,
+    items: [FanMenuItem],
+}
+
+// Fan menu category button
+component FanCategoryButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <bool> highlighted: false;
+    in property <float> progress: 1.0;  // Animation progress 0-1
+    in property <float> angle: 0;       // Angle in degrees for positioning
+
+    callback tapped();
+
+    width: 80px;
+    height: 80px;
+    border-radius: 40px;
+    background: highlighted ? Theme.accent : #1a1a28;
+    opacity: progress;
+
+    // Glow effect when highlighted
+    Rectangle {
+        visible: highlighted;
+        x: -10px;
+        y: -10px;
+        width: parent.width + 20px;
+        height: parent.height + 20px;
+        border-radius: 50px;
+        background: Theme.accent;
+        opacity: 0.3;
+    }
+
+    // Icon
+    Text {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2 - 8px;
+        text: icon;
+        font-size: 28px;
+        horizontal-alignment: center;
+    }
+
+    // Label below
+    Text {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - 20px;
+        width: parent.width;
+        text: label;
+        color: highlighted ? #ffffff : Theme.on-surface-variant;
+        font-size: 10px;
+        horizontal-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => { tapped(); }
+    }
+}
+
+// Fan menu submenu item button
+component FanSubMenuItem inherits Rectangle {
+    in property <string> icon;
+    in property <string> name;
+    in property <bool> highlighted: false;
+    in property <float> progress: 1.0;
+
+    callback tapped();
+
+    width: 64px;
+    height: 64px;
+    border-radius: 32px;
+    background: highlighted ? Theme.primary : #1a1a28;
+    opacity: progress;
+
+    // Icon
+    Text {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        text: icon;
+        font-size: 24px;
+        horizontal-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => { tapped(); }
+    }
+}
+
+// Fan Menu Panel - arc-based category menu from bottom corner
+component FanMenuPanel inherits Rectangle {
+    in property <bool> is-left: true;  // true = left edge, false = right edge
+    in property <float> progress: 1.0;  // Animation progress 0-1
+    in property <int> highlighted-category: -1;  // -1 = none, 0-4 = category index
+    in property <int> selected-category: -1;     // Category showing submenu
+    in property <int> highlighted-item: -1;      // Item in submenu
+    in property <float> submenu-progress: 0.0;   // Submenu animation
+
+    callback category-tapped(int);
+    callback item-tapped(int, string);  // category, exec
+    callback dismiss();
+
+    // Full screen with semi-transparent background
+    width: 100%;
+    height: 100%;
+    background: #000000aa;
+
+    // Dismiss on tap outside menu
+    TouchArea {
+        clicked => { dismiss(); }
+    }
+
+    // Anchor point at bottom corner
+    property <length> anchor-x: is-left ? 40px : parent.width - 40px;
+    property <length> anchor-y: parent.height - 40px;
+    property <float> fan-radius: 180.0;
+
+    // Category: Communicate (📱)
+    FanCategoryButton {
+        property <float> angle: is-left ? 70 : 110;
+        property <float> rad: angle * 3.14159 / 180.0;
+        x: anchor-x + (is-left ? 1 : -1) * fan-radius * cos(rad) * 1px - self.width / 2;
+        y: anchor-y - fan-radius * sin(rad) * 1px - self.height / 2;
+        icon: "📱";
+        label: "Talk";
+        highlighted: highlighted-category == 0;
+        progress: root.progress;
+        tapped => { category-tapped(0); }
+    }
+
+    // Category: Media (🎵)
+    FanCategoryButton {
+        property <float> angle: is-left ? 55 : 125;
+        property <float> rad: angle * 3.14159 / 180.0;
+        x: anchor-x + (is-left ? 1 : -1) * fan-radius * cos(rad) * 1px - self.width / 2;
+        y: anchor-y - fan-radius * sin(rad) * 1px - self.height / 2;
+        icon: "🎵";
+        label: "Media";
+        highlighted: highlighted-category == 1;
+        progress: root.progress;
+        tapped => { category-tapped(1); }
+    }
+
+    // Category: Tools (🔧)
+    FanCategoryButton {
+        property <float> angle: is-left ? 40 : 140;
+        property <float> rad: angle * 3.14159 / 180.0;
+        x: anchor-x + (is-left ? 1 : -1) * fan-radius * cos(rad) * 1px - self.width / 2;
+        y: anchor-y - fan-radius * sin(rad) * 1px - self.height / 2;
+        icon: "🔧";
+        label: "Tools";
+        highlighted: highlighted-category == 2;
+        progress: root.progress;
+        tapped => { category-tapped(2); }
+    }
+
+    // Category: Apps (📲)
+    FanCategoryButton {
+        property <float> angle: is-left ? 25 : 155;
+        property <float> rad: angle * 3.14159 / 180.0;
+        x: anchor-x + (is-left ? 1 : -1) * fan-radius * cos(rad) * 1px - self.width / 2;
+        y: anchor-y - fan-radius * sin(rad) * 1px - self.height / 2;
+        icon: "📲";
+        label: "Apps";
+        highlighted: highlighted-category == 3;
+        progress: root.progress;
+        tapped => { category-tapped(3); }
+    }
+
+    // Category: System (⚙)
+    FanCategoryButton {
+        property <float> angle: is-left ? 10 : 170;
+        property <float> rad: angle * 3.14159 / 180.0;
+        x: anchor-x + (is-left ? 1 : -1) * fan-radius * cos(rad) * 1px - self.width / 2;
+        y: anchor-y - fan-radius * sin(rad) * 1px - self.height / 2;
+        icon: "⚙";
+        label: "System";
+        highlighted: highlighted-category == 4;
+        progress: root.progress;
+        tapped => { category-tapped(4); }
+    }
+
+    // Anchor indicator (small dot at corner)
+    Rectangle {
+        x: anchor-x - 8px;
+        y: anchor-y - 8px;
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        background: Theme.accent;
+        opacity: 0.6 * progress;
+    }
+}
+
 // Quick settings panel - modern grid-based control center
 component QuickSettingsPanel inherits Rectangle {
     in property <float> brightness: 0.7;
@@ -3206,6 +3407,18 @@ export component FlickShell inherits Window {
     in property <bool> show-system-menu: false;
     callback system-menu-action(string);  // lock, reboot, shutdown
 
+    // Fan menu state
+    in property <bool> fan-menu-visible: false;
+    in property <bool> fan-menu-left: true;  // true = left edge, false = right edge
+    in property <float> fan-menu-progress: 1.0;
+    in property <int> fan-menu-highlighted: -1;
+    in property <int> fan-menu-selected: -1;
+    in property <int> fan-menu-item-highlighted: -1;
+    in property <float> fan-menu-submenu-progress: 0.0;
+    callback fan-menu-category-tapped(int);
+    callback fan-menu-item-tapped(int, string);
+    callback fan-menu-dismiss();
+
     // Volume overlay state (shown when hardware volume buttons pressed)
     in property <bool> show-volume-overlay: false;
 
@@ -3382,6 +3595,19 @@ export component FlickShell inherits Window {
         push-offset: switcher-push-offset;
         has-wallpaper: root.has-wallpaper;
         window-tapped(id) => { switcher-window-tapped(id); }
+    }
+
+    // Fan menu overlay - shown on left/right edge swipe
+    if fan-menu-visible: FanMenuPanel {
+        is-left: fan-menu-left;
+        progress: fan-menu-progress;
+        highlighted-category: fan-menu-highlighted;
+        selected-category: fan-menu-selected;
+        highlighted-item: fan-menu-item-highlighted;
+        submenu-progress: fan-menu-submenu-progress;
+        category-tapped(idx) => { fan-menu-category-tapped(idx); }
+        item-tapped(cat, exec) => { fan-menu-item-tapped(cat, exec); }
+        dismiss => { fan-menu-dismiss(); }
     }
 
     // Lock view - minimal debug message while QML lock screen loads
