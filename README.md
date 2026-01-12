@@ -181,18 +181,84 @@ Apps communicate with the shell via:
 - **Config files**: `~/.local/state/flick/lock_config.json` (credentials, settings)
 - **Wayland protocols**: Standard keyboard/input via Wayland
 
-## Gestures
+## Gestures & Orbital Launcher
+
+### The Problem with Traditional App Grids
+
+On large phones (720x1600 and bigger), the top-left corner of the screen is nearly unreachable with your thumb, while the bottom corners are easy. Traditional rectangular grids fight against how thumbs naturally move.
+
+### The Solution: Thumbs Move in Arcs
+
+Your thumb pivots from the base of your palm. Its natural movement traces an **arc**, not a straight line. The Orbital Launcher works *with* this biomechanics:
+
+```
+     Left-handed                    Right-handed
+     (left edge swipe)              (right edge swipe)
+
+          ╭───╮                          ╭───╮
+       ╱📷  📱  💬╲                    ╱💬  📱  📷╲
+     ╱               ╲                ╱               ╲
+    │ 🎵           📧 │              │ 📧           🎵 │
+    │      ╭───╮     │              │     ╭───╮      │
+    │ 📁  │ 🔍 │  📅 │              │ 📅 │ 🔍 │  📁 │
+    │      ╰───╯     │              │     ╰───╯      │
+    │ 📝           🎮 │              │ 🎮           📝 │
+     ╲               ╱                ╲               ╱
+       ╲🌐  📊  🔒╱                    ╲🔒  📊  🌐╱
+          ╰───╯                          ╰───╯
+         ●                                        ●
+    (thumb here)                            (thumb here)
+```
+
+**Every icon in a ring is equidistant from your thumb.** No more stretching for corners.
+
+### Ring Structure
+
+- **Center** = Search or most-used app
+- **Ring 1** (innermost, ~80px radius) = 6 favorite apps - closest to thumb
+- **Ring 2** (~140px radius) = 8-10 apps
+- **Ring 3** (~200px radius) = 12+ apps
+- Each ring can be **spun independently** to reveal more apps
+- Rings expand outward - outer rings have more circumference = more slots
+
+### Why This Works
+
+1. **Natural thumb arcs** - works WITH biomechanics, not against
+2. **Equal reach** - every icon in a ring is the same distance from your thumb
+3. **Ambidextrous** - left and right hand get identical mirrored experience
+4. **Icons = instant recognition** - no text menus to read
+5. **Spatial memory** - you remember where apps live in the rings
+6. **Unlimited apps** - spin rings to reveal more without shrinking icons
+
+### Complete Gesture Map
 
 | Gesture | Action |
 |---------|--------|
-| Swipe up from bottom | Go home / show keyboard (in apps) |
+| Swipe from left edge | Orbital launcher (anchored bottom-left, for left hand) |
+| Swipe from right edge | Orbital launcher (anchored bottom-right, for right hand) |
+| Swipe up from bottom | App switcher - horizontal card stack of open apps |
 | Swipe down from top | Close current app |
-| Swipe right from left edge | Quick Settings panel |
-| Swipe left from right edge | App switcher |
-| Swipe up from Quick Settings | Return to home |
-| Swipe up from App Switcher | Return to home |
+| Tap status bar | Quick settings dropdown |
 
-All gestures track 1:1 with your finger for responsive, natural feel.
+**Note:** The status bar is tap-only (no swipe gestures) since the top of the screen is hard to reach.
+
+### App Switcher (Swipe Up from Bottom)
+
+```
+┌─────┐  ┌─────┐  ┌─────┐
+│     │  │     │  │     │
+│ App │  │ App │  │ App │
+│  1  │  │  2  │  │  3  │
+│     │  │     │  │     │
+└─────┘  └─────┘  └─────┘
+    ← swipe to browse →
+    ↑ flick card up to close
+```
+
+- Horizontal scrolling card stack with app previews
+- Swipe left/right to browse open apps
+- Flick a card upward to close that app
+- Tap a card to switch to it
 
 ## Keyboard
 
