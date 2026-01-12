@@ -187,6 +187,9 @@ pub struct Flick {
     pub fan_menu_start_x: f64,  // X position where edge swipe started (for anchor)
     pub fan_menu_start_y: f64,  // Y position where edge swipe started (for anchor)
     pub fan_menu_highlighted: i32,  // Currently highlighted category (-1 = none)
+    pub fan_menu_selected: i32,     // Selected category showing sub-menu (-1 = none)
+    pub fan_menu_level: i32,        // 0 = top level, 1 = sub-menu
+    pub fan_menu_sub_highlighted: i32, // Highlighted sub-menu item (-1 = none)
 
     /// Per-slot keyboard touch tracking for multi-touch support
     /// Maps touch slot ID -> initial touch position
@@ -372,6 +375,9 @@ impl Flick {
             fan_menu_start_x: 0.0,
             fan_menu_start_y: 0.0,
             fan_menu_highlighted: -1,
+            fan_menu_selected: -1,
+            fan_menu_level: 0,
+            fan_menu_sub_highlighted: -1,
             keyboard_touch_initial: HashMap::new(),
             keyboard_touch_last: HashMap::new(),
             keyboard_dismiss_slot: None,

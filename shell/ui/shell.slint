@@ -2102,6 +2102,119 @@ component FanSubMenuItem inherits Rectangle {
     }
 }
 
+// Arc segment for fan menu - curved wedge shape
+component FanArcSegment inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <bool> highlighted: false;
+    in property <bool> selected: false;
+    in property <float> progress: 1.0;
+    in property <float> start-angle: 0;  // Starting angle in degrees
+    in property <float> end-angle: 17;   // Ending angle in degrees
+
+    callback tapped();
+
+    width: 140px;
+    height: 80px;
+    border-radius: 12px;
+    background: selected ? Theme.primary : (highlighted ? Theme.accent : #1a1a28dd);
+    opacity: progress;
+    border-width: highlighted || selected ? 3px : 1px;
+    border-color: highlighted || selected ? Theme.accent : #444466;
+
+    // Glow effect when highlighted
+    Rectangle {
+        visible: highlighted || selected;
+        x: -8px;
+        y: -8px;
+        width: parent.width + 16px;
+        height: parent.height + 16px;
+        border-radius: 16px;
+        background: Theme.accent;
+        opacity: 0.25;
+    }
+
+    // Icon
+    Text {
+        x: (parent.width - self.width) / 2;
+        y: 12px;
+        text: icon;
+        font-size: 32px;
+        horizontal-alignment: center;
+    }
+
+    // Label
+    Text {
+        x: 0;
+        y: parent.height - 24px;
+        width: parent.width;
+        text: label;
+        color: highlighted || selected ? #ffffff : Theme.on-surface-variant;
+        font-size: 12px;
+        font-weight: 600;
+        horizontal-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => { tapped(); }
+    }
+}
+
+// Sub-menu item for fan menu
+component FanSubItem inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <bool> highlighted: false;
+    in property <float> progress: 1.0;
+
+    callback tapped();
+
+    width: 100px;
+    height: 100px;
+    border-radius: 16px;
+    background: highlighted ? Theme.accent : #1a1a28dd;
+    opacity: progress;
+    border-width: highlighted ? 3px : 1px;
+    border-color: highlighted ? Theme.accent : #444466;
+
+    // Glow when highlighted
+    Rectangle {
+        visible: highlighted;
+        x: -6px;
+        y: -6px;
+        width: parent.width + 12px;
+        height: parent.height + 12px;
+        border-radius: 20px;
+        background: Theme.accent;
+        opacity: 0.3;
+    }
+
+    // Icon
+    Text {
+        x: (parent.width - self.width) / 2;
+        y: 16px;
+        text: icon;
+        font-size: 36px;
+        horizontal-alignment: center;
+    }
+
+    // Label
+    Text {
+        x: 0;
+        y: parent.height - 26px;
+        width: parent.width;
+        text: label;
+        color: highlighted ? #ffffff : Theme.on-surface-variant;
+        font-size: 11px;
+        font-weight: 500;
+        horizontal-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => { tapped(); }
+    }
+}
+
 // Fan Menu Panel - arc-based category menu anchored at touch position
 component FanMenuPanel inherits Rectangle {
     in property <bool> is-left: true;  // true = left edge, false = right edge
@@ -2116,11 +2229,11 @@ component FanMenuPanel inherits Rectangle {
     callback item-tapped(int, string);  // category, exec
     callback dismiss();
 
-    // Full screen with semi-transparent background that fades in
+    // Full screen with semi-transparent background
     width: 100%;
     height: 100%;
     background: #000000;
-    opacity: 0.7 * progress;
+    opacity: 0.6 * progress;
 
     // Dismiss on tap outside menu
     TouchArea {
@@ -2128,82 +2241,257 @@ component FanMenuPanel inherits Rectangle {
     }
 
     // Anchor point at touch Y position on the appropriate edge
-    // Clamp to ensure menu stays on screen (min 250px from top/bottom for arc)
-    property <length> anchor-x: is-left ? 60px : root.width - 60px;
-    property <length> anchor-y: max(280px, min(touch-y * 1px, root.height - 100px));
-    property <length> fan-radius: 220px * progress;  // Radius grows with progress
+    property <length> anchor-x: is-left ? 20px : root.width - 20px;
+    property <length> anchor-y: max(200px, min(touch-y * 1px, root.height - 200px));
+    property <length> arc-radius: 180px * progress;
+    property <length> sub-radius: 320px * progress;
 
-    // Precomputed positions for fan layout (cos/sin at various angles)
-    // 80deg: cos=0.174, sin=0.985  |  100deg: cos=-0.174, sin=0.985
-    // 60deg: cos=0.500, sin=0.866  |  120deg: cos=-0.500, sin=0.866
-    // 40deg: cos=0.766, sin=0.643  |  140deg: cos=-0.766, sin=0.643
-    // 20deg: cos=0.940, sin=0.342  |  160deg: cos=-0.940, sin=0.342
-    // 0deg:  cos=1.000, sin=0.000  |  180deg: cos=-1.000, sin=0.000
+    // New angle layout: 70° to -15° spread across 5 categories
+    // 70°=Talk, 48.75°=Media, 27.5°=Tools, 6.25°=Apps, -15°=System
+    // cos/sin values for each position:
+    // 62° (Talk): cos=0.469, sin=0.883
+    // 44.5° (Media): cos=0.713, sin=0.700
+    // 27° (Tools): cos=0.891, sin=0.454
+    // 9.5° (Apps): cos=0.986, sin=0.165
+    // -8° (System): cos=0.990, sin=-0.139
 
-    // Category: Communicate (📱) - 80deg left, 100deg right (top)
-    FanCategoryButton {
-        x: anchor-x + (is-left ? 0.174 : -0.174) * fan-radius - self.width / 2;
-        y: anchor-y - 0.985 * fan-radius - self.height / 2;
-        icon: "📱";
-        label: "Talk";
-        highlighted: highlighted-category == 0;
-        progress: root.progress;
-        tapped => { category-tapped(0); }
-    }
-
-    // Category: Media (🎵) - 60deg left, 120deg right
-    FanCategoryButton {
-        x: anchor-x + (is-left ? 0.500 : -0.500) * fan-radius - self.width / 2;
-        y: anchor-y - 0.866 * fan-radius - self.height / 2;
-        icon: "🎵";
-        label: "Media";
-        highlighted: highlighted-category == 1;
-        progress: root.progress;
-        tapped => { category-tapped(1); }
-    }
-
-    // Category: Tools (🔧) - 40deg left, 140deg right
-    FanCategoryButton {
-        x: anchor-x + (is-left ? 0.766 : -0.766) * fan-radius - self.width / 2;
-        y: anchor-y - 0.643 * fan-radius - self.height / 2;
-        icon: "🔧";
-        label: "Tools";
-        highlighted: highlighted-category == 2;
-        progress: root.progress;
-        tapped => { category-tapped(2); }
-    }
-
-    // Category: Apps (📲) - 20deg left, 160deg right
-    FanCategoryButton {
-        x: anchor-x + (is-left ? 0.940 : -0.940) * fan-radius - self.width / 2;
-        y: anchor-y - 0.342 * fan-radius - self.height / 2;
-        icon: "📲";
-        label: "Apps";
-        highlighted: highlighted-category == 3;
-        progress: root.progress;
-        tapped => { category-tapped(3); }
-    }
-
-    // Category: System (⚙) - 0deg left, 180deg right (horizontal)
-    FanCategoryButton {
-        x: anchor-x + (is-left ? 1.000 : -1.000) * fan-radius - self.width / 2;
-        y: anchor-y - self.height / 2;
-        icon: "⚙";
-        label: "System";
-        highlighted: highlighted-category == 4;
-        progress: root.progress;
-        tapped => { category-tapped(4); }
-    }
-
-    // Anchor indicator (dot at touch point)
+    // Connecting arc visual (decorative curve)
     Rectangle {
-        x: anchor-x - 12px;
-        y: anchor-y - 12px;
-        width: 24px;
-        height: 24px;
-        border-radius: 12px;
+        x: anchor-x - 10px;
+        y: anchor-y - arc-radius - 50px;
+        width: arc-radius + 80px;
+        height: arc-radius * 1.5;
+        border-radius: 50%;
+        border-width: 3px;
+        border-color: Theme.accent;
+        opacity: 0.3 * progress;
+        background: transparent;
+        clip: true;
+    }
+
+    // Top level categories (when no category selected)
+    if selected-category < 0 : Rectangle {
+        // Category 0: Talk (62°)
+        FanArcSegment {
+            x: anchor-x + (is-left ? 0.469 : -0.469) * arc-radius - self.width / 2;
+            y: anchor-y - 0.883 * arc-radius - self.height / 2;
+            icon: "📱";
+            label: "Talk";
+            highlighted: highlighted-category == 0;
+            progress: root.progress;
+            tapped => { category-tapped(0); }
+        }
+
+        // Category 1: Media (44.5°)
+        FanArcSegment {
+            x: anchor-x + (is-left ? 0.713 : -0.713) * arc-radius - self.width / 2;
+            y: anchor-y - 0.700 * arc-radius - self.height / 2;
+            icon: "🎵";
+            label: "Media";
+            highlighted: highlighted-category == 1;
+            progress: root.progress;
+            tapped => { category-tapped(1); }
+        }
+
+        // Category 2: Tools (27°)
+        FanArcSegment {
+            x: anchor-x + (is-left ? 0.891 : -0.891) * arc-radius - self.width / 2;
+            y: anchor-y - 0.454 * arc-radius - self.height / 2;
+            icon: "🔧";
+            label: "Tools";
+            highlighted: highlighted-category == 2;
+            progress: root.progress;
+            tapped => { category-tapped(2); }
+        }
+
+        // Category 3: Apps (9.5°)
+        FanArcSegment {
+            x: anchor-x + (is-left ? 0.986 : -0.986) * arc-radius - self.width / 2;
+            y: anchor-y - 0.165 * arc-radius - self.height / 2;
+            icon: "📲";
+            label: "Apps";
+            highlighted: highlighted-category == 3;
+            progress: root.progress;
+            tapped => { category-tapped(3); }
+        }
+
+        // Category 4: System (-8°)
+        FanArcSegment {
+            x: anchor-x + (is-left ? 0.990 : -0.990) * arc-radius - self.width / 2;
+            y: anchor-y + 0.139 * arc-radius - self.height / 2;
+            icon: "⚙";
+            label: "System";
+            highlighted: highlighted-category == 4;
+            progress: root.progress;
+            tapped => { category-tapped(4); }
+        }
+    }
+
+    // Sub-menu items (when category selected)
+    // Talk sub-items: phone, messages, contacts, email
+    if selected-category == 0 : Rectangle {
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.50 : -0.50) * sub-radius - self.width / 2;
+            y: anchor-y - 0.866 * sub-radius - self.height / 2;
+            icon: "📞";
+            label: "Phone";
+            highlighted: highlighted-item == 0;
+            progress: root.progress;
+            tapped => { item-tapped(0, "phone"); }
+        }
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.707 : -0.707) * sub-radius - self.width / 2;
+            y: anchor-y - 0.707 * sub-radius - self.height / 2;
+            icon: "💬";
+            label: "Messages";
+            highlighted: highlighted-item == 1;
+            progress: root.progress;
+            tapped => { item-tapped(0, "messages"); }
+        }
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.866 : -0.866) * sub-radius - self.width / 2;
+            y: anchor-y - 0.50 * sub-radius - self.height / 2;
+            icon: "👤";
+            label: "Contacts";
+            highlighted: highlighted-item == 2;
+            progress: root.progress;
+            tapped => { item-tapped(0, "contacts"); }
+        }
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.966 : -0.966) * sub-radius - self.width / 2;
+            y: anchor-y - 0.259 * sub-radius - self.height / 2;
+            icon: "📧";
+            label: "Email";
+            highlighted: highlighted-item == 3;
+            progress: root.progress;
+            tapped => { item-tapped(0, "email"); }
+        }
+    }
+
+    // Media sub-items: music, video, photos, recorder
+    if selected-category == 1 : Rectangle {
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.50 : -0.50) * sub-radius - self.width / 2;
+            y: anchor-y - 0.866 * sub-radius - self.height / 2;
+            icon: "🎵";
+            label: "Music";
+            highlighted: highlighted-item == 0;
+            progress: root.progress;
+            tapped => { item-tapped(1, "music"); }
+        }
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.707 : -0.707) * sub-radius - self.width / 2;
+            y: anchor-y - 0.707 * sub-radius - self.height / 2;
+            icon: "🎬";
+            label: "Video";
+            highlighted: highlighted-item == 1;
+            progress: root.progress;
+            tapped => { item-tapped(1, "video"); }
+        }
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.866 : -0.866) * sub-radius - self.width / 2;
+            y: anchor-y - 0.50 * sub-radius - self.height / 2;
+            icon: "📷";
+            label: "Photos";
+            highlighted: highlighted-item == 2;
+            progress: root.progress;
+            tapped => { item-tapped(1, "photos"); }
+        }
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.966 : -0.966) * sub-radius - self.width / 2;
+            y: anchor-y - 0.259 * sub-radius - self.height / 2;
+            icon: "🎙";
+            label: "Recorder";
+            highlighted: highlighted-item == 3;
+            progress: root.progress;
+            tapped => { item-tapped(1, "recorder"); }
+        }
+    }
+
+    // Tools sub-items: files, calculator, notes, calendar
+    if selected-category == 2 : Rectangle {
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.50 : -0.50) * sub-radius - self.width / 2;
+            y: anchor-y - 0.866 * sub-radius - self.height / 2;
+            icon: "📁";
+            label: "Files";
+            highlighted: highlighted-item == 0;
+            progress: root.progress;
+            tapped => { item-tapped(2, "files"); }
+        }
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.707 : -0.707) * sub-radius - self.width / 2;
+            y: anchor-y - 0.707 * sub-radius - self.height / 2;
+            icon: "🔢";
+            label: "Calculator";
+            highlighted: highlighted-item == 1;
+            progress: root.progress;
+            tapped => { item-tapped(2, "calculator"); }
+        }
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.866 : -0.866) * sub-radius - self.width / 2;
+            y: anchor-y - 0.50 * sub-radius - self.height / 2;
+            icon: "📝";
+            label: "Notes";
+            highlighted: highlighted-item == 2;
+            progress: root.progress;
+            tapped => { item-tapped(2, "notes"); }
+        }
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.966 : -0.966) * sub-radius - self.width / 2;
+            y: anchor-y - 0.259 * sub-radius - self.height / 2;
+            icon: "📅";
+            label: "Calendar";
+            highlighted: highlighted-item == 3;
+            progress: root.progress;
+            tapped => { item-tapped(2, "calendar"); }
+        }
+    }
+
+    // System sub-items: settings, store
+    if selected-category == 4 : Rectangle {
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.60 : -0.60) * sub-radius - self.width / 2;
+            y: anchor-y - 0.80 * sub-radius - self.height / 2;
+            icon: "⚙";
+            label: "Settings";
+            highlighted: highlighted-item == 0;
+            progress: root.progress;
+            tapped => { item-tapped(4, "settings"); }
+        }
+        FanSubItem {
+            x: anchor-x + (is-left ? 0.866 : -0.866) * sub-radius - self.width / 2;
+            y: anchor-y - 0.50 * sub-radius - self.height / 2;
+            icon: "🏪";
+            label: "Store";
+            highlighted: highlighted-item == 1;
+            progress: root.progress;
+            tapped => { item-tapped(4, "store"); }
+        }
+    }
+
+    // Anchor indicator (glowing dot at touch point)
+    Rectangle {
+        x: anchor-x - 16px;
+        y: anchor-y - 16px;
+        width: 32px;
+        height: 32px;
+        border-radius: 16px;
         background: Theme.accent;
-        opacity: 0.8 * progress;
+        opacity: 0.9 * progress;
+
+        // Pulsing ring
+        Rectangle {
+            x: -8px;
+            y: -8px;
+            width: parent.width + 16px;
+            height: parent.height + 16px;
+            border-radius: 24px;
+            border-width: 2px;
+            border-color: Theme.accent;
+            background: transparent;
+            opacity: 0.5;
+        }
     }
 }
 

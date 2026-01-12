@@ -521,6 +521,11 @@ impl SlintShell {
         self.shell.set_fan_menu_selected(idx);
     }
 
+    /// Set highlighted sub-menu item (-1 = none)
+    pub fn set_fan_menu_sub_highlighted(&self, idx: i32) {
+        self.shell.set_fan_menu_item_highlighted(idx);
+    }
+
     /// Set touch Y position for fan menu anchor
     pub fn set_fan_menu_touch_y(&self, y: f32) {
         self.shell.set_fan_menu_touch_y(y);
