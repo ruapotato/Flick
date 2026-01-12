@@ -291,6 +291,8 @@ component StatusBar inherits Rectangle {
     in property <bool> wifi: true;
     in property <float> text-scale: 2.0;
 
+    callback tapped();
+
     height: 54px * text-scale;
     background: transparent;
 
@@ -332,6 +334,11 @@ component StatusBar inherits Rectangle {
                 vertical-alignment: center;
             }
         }
+    }
+
+    // Tap to open quick settings
+    TouchArea {
+        clicked => { root.tapped(); }
     }
 }
 
@@ -1493,6 +1500,7 @@ component HomeScreen inherits Rectangle {
     callback drag-moved(int, float, float);
     callback drag-ended(int, float, float);
     callback new-category-clicked();
+    callback status-bar-tapped();
 
     width: 100%;
     height: 100%;
@@ -1521,6 +1529,7 @@ component HomeScreen inherits Rectangle {
         battery: root.battery;
         wifi: true;
         text-scale: root.text-scale;
+        tapped => { root.status-bar-tapped(); }
     }
 
     // Scrollable grid container with clipping
@@ -2002,536 +2011,354 @@ component HomeScreen inherits Rectangle {
     }
 }
 
-// Fan menu item data
-struct FanMenuItem {
-    name: string,
-    icon: string,
-    exec: string,
-}
+// Orbital Launcher - concentric rings of apps centered on thumb position
+// Designed for thumb-friendly navigation: apps arranged in arcs that follow natural thumb movement
+component OrbitalLauncher inherits Rectangle {
+    in property <bool> is-left: true;      // Left-handed (bottom-left anchor) or right-handed (bottom-right)
+    in property <float> progress: 0.0;      // Animation progress 0-1
+    in property <length> anchor-x: 50px;    // Anchor X position
+    in property <length> anchor-y: 1500px;  // Anchor Y position (near bottom for thumb reach)
+    in property <int> selected-app: -1;     // Currently selected app (-1 = none)
 
-// Fan menu category data
-struct FanCategory {
-    label: string,
-    icon: string,
-    items: [FanMenuItem],
-}
-
-// Fan menu category button - large touch targets for mobile
-component FanCategoryButton inherits Rectangle {
-    in property <string> icon;
-    in property <string> label;
-    in property <bool> highlighted: false;
-    in property <float> progress: 1.0;  // Animation progress 0-1
-
-    callback tapped();
-
-    width: 110px;
-    height: 110px;
-    border-radius: 55px;
-    background: highlighted ? Theme.accent : #1a1a28ee;
-    opacity: progress;
-
-    // Border for better visibility
-    border-width: 2px;
-    border-color: highlighted ? Theme.accent : #333355;
-
-    // Glow effect when highlighted
-    Rectangle {
-        visible: highlighted;
-        x: -15px;
-        y: -15px;
-        width: parent.width + 30px;
-        height: parent.height + 30px;
-        border-radius: 70px;
-        background: Theme.accent;
-        opacity: 0.3;
-    }
-
-    // Icon
-    Text {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2 - 12px;
-        text: icon;
-        font-size: 36px;
-        horizontal-alignment: center;
-    }
-
-    // Label below icon
-    Text {
-        x: 0;
-        y: parent.height - 28px;
-        width: parent.width;
-        text: label;
-        color: highlighted ? #ffffff : Theme.on-surface-variant;
-        font-size: 13px;
-        font-weight: 500;
-        horizontal-alignment: center;
-    }
-
-    touch := TouchArea {
-        clicked => { tapped(); }
-    }
-}
-
-// Fan menu submenu item button
-component FanSubMenuItem inherits Rectangle {
-    in property <string> icon;
-    in property <string> name;
-    in property <bool> highlighted: false;
-    in property <float> progress: 1.0;
-
-    callback tapped();
-
-    width: 64px;
-    height: 64px;
-    border-radius: 32px;
-    background: highlighted ? Theme.primary : #1a1a28;
-    opacity: progress;
-
-    // Icon
-    Text {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        text: icon;
-        font-size: 24px;
-        horizontal-alignment: center;
-    }
-
-    touch := TouchArea {
-        clicked => { tapped(); }
-    }
-}
-
-// Fan Menu Panel - pie wedge segments forming an arc
-component FanMenuPanel inherits Rectangle {
-    in property <bool> is-left: true;
-    in property <float> progress: 1.0;
-    in property <int> highlighted-category: -1;
-    in property <int> selected-category: -1;
-    in property <int> highlighted-item: -1;
-    in property <float> submenu-progress: 0.0;
-    in property <float> touch-y: 800;
-
-    callback category-tapped(int);
-    callback item-tapped(int, string);
+    callback app-tapped(int);
     callback dismiss();
 
     width: 100%;
     height: 100%;
     background: #000000;
-    opacity: 0.5 * progress;
+    opacity: 0.6 * progress;
 
+    // Dismiss on background tap
     TouchArea { clicked => { dismiss(); } }
 
-    property <length> anchor-x: is-left ? 0px : root.width;
-    property <length> anchor-y: max(350px, min(touch-y * 1px, root.height - 350px));
-    property <length> menu-radius: 400px * progress;
+    // Ring radii (scaled by progress)
+    property <length> ring1-radius: 100px * progress;   // Inner ring: 6 favorites
+    property <length> ring2-radius: 200px * progress;   // Outer ring: 8 apps
+    property <length> icon-size: 72px;
+    property <length> half-icon: 36px;
 
-    // The arc is made of 5 wedge segments, each ~17° wide
-    // Total span: 85° (from 70° down to -15°)
-    // Wedge centers: 62°, 45°, 28°, 11°, -6°
+    // Direction multiplier for left/right positioning
+    property <float> dir: is-left ? 1.0 : -1.0;
 
-    // Base arc - outer ring that all wedges sit on
+    // Ring 1 background arc (semi-transparent)
     Rectangle {
-        x: is-left ? anchor-x - menu-radius : anchor-x;
-        y: anchor-y - menu-radius;
-        width: menu-radius * 2;
-        height: menu-radius * 2;
-        border-radius: menu-radius;
+        x: anchor-x - ring1-radius - 30px;
+        y: anchor-y - ring1-radius - 30px;
+        width: (ring1-radius + 30px) * 2;
+        height: (ring1-radius + 30px) * 2;
+        border-radius: ring1-radius + 30px;
         background: #1a1a2a;
-        opacity: 0.9 * progress;
-        clip: true;
-
-        // Inner circle cutout (creates the ring)
-        Rectangle {
-            x: (parent.width - menu-radius) / 2;
-            y: (parent.height - menu-radius) / 2;
-            width: menu-radius;
-            height: menu-radius;
-            border-radius: menu-radius / 2;
-            background: #000000;
-        }
+        opacity: 0.8 * progress;
     }
 
-    // Wedge divider lines (radial lines from center)
-    // Line between Talk and Media (53.5°) - cos=0.594, sin=0.804
+    // Ring 2 background arc
     Rectangle {
-        x: is-left ? anchor-x : anchor-x - 4px;
-        y: anchor-y - 4px;
-        width: menu-radius;
-        height: 4px;
-        background: #333355;
-        opacity: progress;
-        // Rotate to 53.5° - approximate with position
+        x: anchor-x - ring2-radius - 30px;
+        y: anchor-y - ring2-radius - 30px;
+        width: (ring2-radius + 30px) * 2;
+        height: (ring2-radius + 30px) * 2;
+        border-radius: ring2-radius + 30px;
+        background: #1a1a2a;
+        opacity: 0.5 * progress;
     }
 
-    // Highlighted wedge overlays (colored arc sections)
-    // Each wedge is a large rectangle clipped to show only the wedge portion
-
-    // Wedge 0: Talk (62°) - highlighted section
+    // Anchor point indicator
     Rectangle {
-        visible: (highlighted-category == 0 || selected-category == 0) && selected-category < 0;
-        x: is-left ? anchor-x - menu-radius : anchor-x;
-        y: anchor-y - menu-radius;
-        width: menu-radius * 2;
-        height: menu-radius * 2;
-        border-radius: menu-radius;
-        background: selected-category == 0 ? Theme.primary : Theme.accent;
-        opacity: 0.7 * progress;
-        clip: true;
-
-        // Mask out other sections - inner cutout
-        Rectangle {
-            x: (parent.width - menu-radius) / 2;
-            y: (parent.height - menu-radius) / 2;
-            width: menu-radius;
-            height: menu-radius;
-            border-radius: menu-radius / 2;
-            background: #000000;
-        }
-        // Mask: only show top-right quadrant upper portion
-        Rectangle {
-            x: is-left ? 0 : parent.width / 2;
-            y: parent.height * 0.35;
-            width: parent.width / 2;
-            height: parent.height * 0.65;
-            background: #000000;
-        }
-        Rectangle {
-            x: is-left ? parent.width * 0.15 : 0;
-            y: 0;
-            width: parent.width * 0.85;
-            height: parent.height * 0.35;
-            background: #000000;
-        }
-    }
-
-    // Wedge 1: Media (45°)
-    Rectangle {
-        visible: (highlighted-category == 1 || selected-category == 1) && selected-category < 0;
-        x: is-left ? anchor-x - menu-radius : anchor-x;
-        y: anchor-y - menu-radius;
-        width: menu-radius * 2;
-        height: menu-radius * 2;
-        border-radius: menu-radius;
-        background: selected-category == 1 ? Theme.primary : Theme.accent;
-        opacity: 0.7 * progress;
-        clip: true;
-
-        Rectangle {
-            x: (parent.width - menu-radius) / 2;
-            y: (parent.height - menu-radius) / 2;
-            width: menu-radius;
-            height: menu-radius;
-            border-radius: menu-radius / 2;
-            background: #000000;
-        }
-        Rectangle {
-            x: is-left ? 0 : parent.width / 2;
-            y: parent.height * 0.5;
-            width: parent.width / 2;
-            height: parent.height * 0.5;
-            background: #000000;
-        }
-        Rectangle {
-            x: is-left ? 0 : parent.width / 2;
-            y: 0;
-            width: parent.width / 2;
-            height: parent.height * 0.35;
-            background: #000000;
-        }
-    }
-
-    // Wedge 2: Tools (28°)
-    Rectangle {
-        visible: (highlighted-category == 2 || selected-category == 2) && selected-category < 0;
-        x: is-left ? anchor-x - menu-radius : anchor-x;
-        y: anchor-y - menu-radius;
-        width: menu-radius * 2;
-        height: menu-radius * 2;
-        border-radius: menu-radius;
-        background: selected-category == 2 ? Theme.primary : Theme.accent;
-        opacity: 0.7 * progress;
-        clip: true;
-
-        Rectangle {
-            x: (parent.width - menu-radius) / 2;
-            y: (parent.height - menu-radius) / 2;
-            width: menu-radius;
-            height: menu-radius;
-            border-radius: menu-radius / 2;
-            background: #000000;
-        }
-        Rectangle {
-            x: is-left ? 0 : parent.width / 2;
-            y: parent.height * 0.6;
-            width: parent.width / 2;
-            height: parent.height * 0.4;
-            background: #000000;
-        }
-        Rectangle {
-            x: is-left ? 0 : parent.width / 2;
-            y: 0;
-            width: parent.width / 2;
-            height: parent.height * 0.5;
-            background: #000000;
-        }
-    }
-
-    // Wedge 3: Apps (11°)
-    Rectangle {
-        visible: (highlighted-category == 3 || selected-category == 3) && selected-category < 0;
-        x: is-left ? anchor-x - menu-radius : anchor-x;
-        y: anchor-y - menu-radius;
-        width: menu-radius * 2;
-        height: menu-radius * 2;
-        border-radius: menu-radius;
-        background: selected-category == 3 ? Theme.primary : Theme.accent;
-        opacity: 0.7 * progress;
-        clip: true;
-
-        Rectangle {
-            x: (parent.width - menu-radius) / 2;
-            y: (parent.height - menu-radius) / 2;
-            width: menu-radius;
-            height: menu-radius;
-            border-radius: menu-radius / 2;
-            background: #000000;
-        }
-        Rectangle {
-            x: is-left ? 0 : parent.width / 2;
-            y: parent.height * 0.55;
-            width: parent.width / 2;
-            height: parent.height * 0.45;
-            background: #000000;
-        }
-        Rectangle {
-            x: is-left ? 0 : parent.width / 2;
-            y: 0;
-            width: parent.width / 2;
-            height: parent.height * 0.45;
-            background: #000000;
-        }
-    }
-
-    // Wedge 4: System (-6°)
-    Rectangle {
-        visible: (highlighted-category == 4 || selected-category == 4) && selected-category < 0;
-        x: is-left ? anchor-x - menu-radius : anchor-x;
-        y: anchor-y - menu-radius;
-        width: menu-radius * 2;
-        height: menu-radius * 2;
-        border-radius: menu-radius;
-        background: selected-category == 4 ? Theme.primary : Theme.accent;
-        opacity: 0.7 * progress;
-        clip: true;
-
-        Rectangle {
-            x: (parent.width - menu-radius) / 2;
-            y: (parent.height - menu-radius) / 2;
-            width: menu-radius;
-            height: menu-radius;
-            border-radius: menu-radius / 2;
-            background: #000000;
-        }
-        Rectangle {
-            x: is-left ? 0 : parent.width / 2;
-            y: 0;
-            width: parent.width / 2;
-            height: parent.height * 0.55;
-            background: #000000;
-        }
-    }
-
-    // Category icons positioned on the arc (mid-radius)
-    property <length> icon-radius: menu-radius * 0.75;
-
-    if selected-category < 0 : Rectangle {
-        // Talk (62°): cos=0.469, sin=0.883
-        Text {
-            x: anchor-x + (is-left ? 1 : -1) * 0.469 * icon-radius - 32px;
-            y: anchor-y - 0.883 * icon-radius - 32px;
-            text: "📱"; font-size: 56px;
-        }
-        Text {
-            x: anchor-x + (is-left ? 1 : -1) * 0.469 * icon-radius - 32px;
-            y: anchor-y - 0.883 * icon-radius + 30px;
-            width: 64px; text: "Talk"; font-size: 16px; font-weight: 700;
-            color: highlighted-category == 0 ? #ffffff : #ccccee;
-            horizontal-alignment: center;
-        }
-
-        // Media (45°): cos=0.707, sin=0.707
-        Text {
-            x: anchor-x + (is-left ? 1 : -1) * 0.707 * icon-radius - 32px;
-            y: anchor-y - 0.707 * icon-radius - 32px;
-            text: "🎵"; font-size: 56px;
-        }
-        Text {
-            x: anchor-x + (is-left ? 1 : -1) * 0.707 * icon-radius - 32px;
-            y: anchor-y - 0.707 * icon-radius + 30px;
-            width: 64px; text: "Media"; font-size: 16px; font-weight: 700;
-            color: highlighted-category == 1 ? #ffffff : #ccccee;
-            horizontal-alignment: center;
-        }
-
-        // Tools (28°): cos=0.883, sin=0.469
-        Text {
-            x: anchor-x + (is-left ? 1 : -1) * 0.883 * icon-radius - 32px;
-            y: anchor-y - 0.469 * icon-radius - 32px;
-            text: "🔧"; font-size: 56px;
-        }
-        Text {
-            x: anchor-x + (is-left ? 1 : -1) * 0.883 * icon-radius - 32px;
-            y: anchor-y - 0.469 * icon-radius + 30px;
-            width: 64px; text: "Tools"; font-size: 16px; font-weight: 700;
-            color: highlighted-category == 2 ? #ffffff : #ccccee;
-            horizontal-alignment: center;
-        }
-
-        // Apps (11°): cos=0.982, sin=0.191
-        Text {
-            x: anchor-x + (is-left ? 1 : -1) * 0.982 * icon-radius - 32px;
-            y: anchor-y - 0.191 * icon-radius - 32px;
-            text: "📲"; font-size: 56px;
-        }
-        Text {
-            x: anchor-x + (is-left ? 1 : -1) * 0.982 * icon-radius - 32px;
-            y: anchor-y - 0.191 * icon-radius + 30px;
-            width: 64px; text: "Apps"; font-size: 16px; font-weight: 700;
-            color: highlighted-category == 3 ? #ffffff : #ccccee;
-            horizontal-alignment: center;
-        }
-
-        // System (-6°): cos=0.995, sin=-0.105
-        Text {
-            x: anchor-x + (is-left ? 1 : -1) * 0.995 * icon-radius - 32px;
-            y: anchor-y + 0.105 * icon-radius - 32px;
-            text: "⚙"; font-size: 56px;
-        }
-        Text {
-            x: anchor-x + (is-left ? 1 : -1) * 0.995 * icon-radius - 32px;
-            y: anchor-y + 0.105 * icon-radius + 30px;
-            width: 64px; text: "System"; font-size: 16px; font-weight: 700;
-            color: highlighted-category == 4 ? #ffffff : #ccccee;
-            horizontal-alignment: center;
-        }
-    }
-
-    // Sub-menu: outer arc extending from selected category
-    property <length> sub-radius: menu-radius + 180px * progress;
-    property <length> sub-icon-radius: (menu-radius + sub-radius) / 2;
-
-    // Talk sub-menu
-    if selected-category == 0 : Rectangle {
-        Rectangle {
-            x: is-left ? anchor-x - sub-radius : anchor-x;
-            y: anchor-y - sub-radius;
-            width: sub-radius * 2; height: sub-radius * 2;
-            border-radius: sub-radius;
-            background: #1a1a2a88; opacity: progress;
-            clip: true;
-            Rectangle {
-                x: (parent.width - menu-radius * 2) / 2;
-                y: (parent.height - menu-radius * 2) / 2;
-                width: menu-radius * 2; height: menu-radius * 2;
-                border-radius: menu-radius; background: #000000;
-            }
-        }
-        // Phone, Messages, Contacts, Email at 65°, 50°, 35°, 20°
-        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 60px; y: anchor-y - 0.91 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 32px; y: anchor-y - 0.91 * sub-icon-radius - 32px; text: "📞"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 40px; y: anchor-y - 0.91 * sub-icon-radius + 35px; width: 80px; text: "Phone"; font-size: 14px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #ccccee; horizontal-alignment: center; }
-
-        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 60px; y: anchor-y - 0.77 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 32px; y: anchor-y - 0.77 * sub-icon-radius - 32px; text: "💬"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 40px; y: anchor-y - 0.77 * sub-icon-radius + 35px; width: 80px; text: "Messages"; font-size: 14px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #ccccee; horizontal-alignment: center; }
-
-        Rectangle { visible: highlighted-item == 2; x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 60px; y: anchor-y - 0.57 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 32px; y: anchor-y - 0.57 * sub-icon-radius - 32px; text: "👤"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 40px; y: anchor-y - 0.57 * sub-icon-radius + 35px; width: 80px; text: "Contacts"; font-size: 14px; font-weight: 600; color: highlighted-item == 2 ? #ffffff : #ccccee; horizontal-alignment: center; }
-
-        Rectangle { visible: highlighted-item == 3; x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 60px; y: anchor-y - 0.34 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 32px; y: anchor-y - 0.34 * sub-icon-radius - 32px; text: "📧"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 40px; y: anchor-y - 0.34 * sub-icon-radius + 35px; width: 80px; text: "Email"; font-size: 14px; font-weight: 600; color: highlighted-item == 3 ? #ffffff : #ccccee; horizontal-alignment: center; }
-    }
-
-    // Media sub-menu
-    if selected-category == 1 : Rectangle {
-        Rectangle {
-            x: is-left ? anchor-x - sub-radius : anchor-x; y: anchor-y - sub-radius;
-            width: sub-radius * 2; height: sub-radius * 2; border-radius: sub-radius;
-            background: #1a1a2a88; opacity: progress; clip: true;
-            Rectangle { x: (parent.width - menu-radius * 2) / 2; y: (parent.height - menu-radius * 2) / 2; width: menu-radius * 2; height: menu-radius * 2; border-radius: menu-radius; background: #000000; }
-        }
-        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 60px; y: anchor-y - 0.91 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 32px; y: anchor-y - 0.91 * sub-icon-radius - 32px; text: "🎵"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 40px; y: anchor-y - 0.91 * sub-icon-radius + 35px; width: 80px; text: "Music"; font-size: 14px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #ccccee; horizontal-alignment: center; }
-
-        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 60px; y: anchor-y - 0.77 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 32px; y: anchor-y - 0.77 * sub-icon-radius - 32px; text: "🎬"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 40px; y: anchor-y - 0.77 * sub-icon-radius + 35px; width: 80px; text: "Video"; font-size: 14px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #ccccee; horizontal-alignment: center; }
-
-        Rectangle { visible: highlighted-item == 2; x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 60px; y: anchor-y - 0.57 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 32px; y: anchor-y - 0.57 * sub-icon-radius - 32px; text: "📷"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 40px; y: anchor-y - 0.57 * sub-icon-radius + 35px; width: 80px; text: "Photos"; font-size: 14px; font-weight: 600; color: highlighted-item == 2 ? #ffffff : #ccccee; horizontal-alignment: center; }
-
-        Rectangle { visible: highlighted-item == 3; x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 60px; y: anchor-y - 0.34 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 32px; y: anchor-y - 0.34 * sub-icon-radius - 32px; text: "🎙"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 40px; y: anchor-y - 0.34 * sub-icon-radius + 35px; width: 80px; text: "Recorder"; font-size: 14px; font-weight: 600; color: highlighted-item == 3 ? #ffffff : #ccccee; horizontal-alignment: center; }
-    }
-
-    // Tools sub-menu
-    if selected-category == 2 : Rectangle {
-        Rectangle {
-            x: is-left ? anchor-x - sub-radius : anchor-x; y: anchor-y - sub-radius;
-            width: sub-radius * 2; height: sub-radius * 2; border-radius: sub-radius;
-            background: #1a1a2a88; opacity: progress; clip: true;
-            Rectangle { x: (parent.width - menu-radius * 2) / 2; y: (parent.height - menu-radius * 2) / 2; width: menu-radius * 2; height: menu-radius * 2; border-radius: menu-radius; background: #000000; }
-        }
-        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 60px; y: anchor-y - 0.91 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 32px; y: anchor-y - 0.91 * sub-icon-radius - 32px; text: "📁"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.42 * sub-icon-radius - 40px; y: anchor-y - 0.91 * sub-icon-radius + 35px; width: 80px; text: "Files"; font-size: 14px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #ccccee; horizontal-alignment: center; }
-
-        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 60px; y: anchor-y - 0.77 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 32px; y: anchor-y - 0.77 * sub-icon-radius - 32px; text: "🔢"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.64 * sub-icon-radius - 40px; y: anchor-y - 0.77 * sub-icon-radius + 35px; width: 80px; text: "Calc"; font-size: 14px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #ccccee; horizontal-alignment: center; }
-
-        Rectangle { visible: highlighted-item == 2; x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 60px; y: anchor-y - 0.57 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 32px; y: anchor-y - 0.57 * sub-icon-radius - 32px; text: "📝"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.82 * sub-icon-radius - 40px; y: anchor-y - 0.57 * sub-icon-radius + 35px; width: 80px; text: "Notes"; font-size: 14px; font-weight: 600; color: highlighted-item == 2 ? #ffffff : #ccccee; horizontal-alignment: center; }
-
-        Rectangle { visible: highlighted-item == 3; x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 60px; y: anchor-y - 0.34 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 32px; y: anchor-y - 0.34 * sub-icon-radius - 32px; text: "📅"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.94 * sub-icon-radius - 40px; y: anchor-y - 0.34 * sub-icon-radius + 35px; width: 80px; text: "Calendar"; font-size: 14px; font-weight: 600; color: highlighted-item == 3 ? #ffffff : #ccccee; horizontal-alignment: center; }
-    }
-
-    // System sub-menu
-    if selected-category == 4 : Rectangle {
-        Rectangle {
-            x: is-left ? anchor-x - sub-radius : anchor-x; y: anchor-y - sub-radius;
-            width: sub-radius * 2; height: sub-radius * 2; border-radius: sub-radius;
-            background: #1a1a2a88; opacity: progress; clip: true;
-            Rectangle { x: (parent.width - menu-radius * 2) / 2; y: (parent.height - menu-radius * 2) / 2; width: menu-radius * 2; height: menu-radius * 2; border-radius: menu-radius; background: #000000; }
-        }
-        Rectangle { visible: highlighted-item == 0; x: anchor-x + (is-left ? 1 : -1) * 0.50 * sub-icon-radius - 60px; y: anchor-y - 0.87 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.50 * sub-icon-radius - 32px; y: anchor-y - 0.87 * sub-icon-radius - 32px; text: "⚙"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.50 * sub-icon-radius - 40px; y: anchor-y - 0.87 * sub-icon-radius + 35px; width: 80px; text: "Settings"; font-size: 14px; font-weight: 600; color: highlighted-item == 0 ? #ffffff : #ccccee; horizontal-alignment: center; }
-
-        Rectangle { visible: highlighted-item == 1; x: anchor-x + (is-left ? 1 : -1) * 0.77 * sub-icon-radius - 60px; y: anchor-y - 0.64 * sub-icon-radius - 60px; width: 120px; height: 120px; border-radius: 60px; background: Theme.accent; opacity: 0.8; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.77 * sub-icon-radius - 32px; y: anchor-y - 0.64 * sub-icon-radius - 32px; text: "🏪"; font-size: 56px; }
-        Text { x: anchor-x + (is-left ? 1 : -1) * 0.77 * sub-icon-radius - 40px; y: anchor-y - 0.64 * sub-icon-radius + 35px; width: 80px; text: "Store"; font-size: 14px; font-weight: 600; color: highlighted-item == 1 ? #ffffff : #ccccee; horizontal-alignment: center; }
-    }
-
-    // Anchor dot
-    Rectangle {
-        x: anchor-x - 24px;
-        y: anchor-y - 24px;
-        width: 48px;
-        height: 48px;
-        border-radius: 24px;
+        x: anchor-x - 20px;
+        y: anchor-y - 20px;
+        width: 40px;
+        height: 40px;
+        border-radius: 20px;
         background: Theme.accent;
         opacity: progress;
+    }
+
+    // === Ring 1: 6 Favorites (inner ring) ===
+    // Apps positioned at 30°, 60°, 90°, 120°, 150°, 180° from horizontal
+    // Using pre-calculated cos/sin values for each angle
+
+    // App 0: Phone (30°) - cos=0.866, sin=0.5
+    Rectangle {
+        visible: selected-app == 0;
+        x: anchor-x + dir * 0.866 * ring1-radius - half-icon - 4px;
+        y: anchor-y - 0.5 * ring1-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x + dir * 0.866 * ring1-radius - half-icon;
+        y: anchor-y - 0.5 * ring1-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #2d2d44;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(0); } }
+        Text { text: "📞"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // App 1: Messages (60°) - cos=0.5, sin=0.866
+    Rectangle {
+        visible: selected-app == 1;
+        x: anchor-x + dir * 0.5 * ring1-radius - half-icon - 4px;
+        y: anchor-y - 0.866 * ring1-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x + dir * 0.5 * ring1-radius - half-icon;
+        y: anchor-y - 0.866 * ring1-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #2d2d44;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(1); } }
+        Text { text: "💬"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // App 2: Music (90°) - cos=0, sin=1
+    Rectangle {
+        visible: selected-app == 2;
+        x: anchor-x - half-icon - 4px;
+        y: anchor-y - 1.0 * ring1-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x - half-icon;
+        y: anchor-y - 1.0 * ring1-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #2d2d44;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(2); } }
+        Text { text: "🎵"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // App 3: Photos (120°) - cos=-0.5, sin=0.866
+    Rectangle {
+        visible: selected-app == 3;
+        x: anchor-x - dir * 0.5 * ring1-radius - half-icon - 4px;
+        y: anchor-y - 0.866 * ring1-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x - dir * 0.5 * ring1-radius - half-icon;
+        y: anchor-y - 0.866 * ring1-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #2d2d44;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(3); } }
+        Text { text: "📷"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // App 4: Settings (150°) - cos=-0.866, sin=0.5
+    Rectangle {
+        visible: selected-app == 4;
+        x: anchor-x - dir * 0.866 * ring1-radius - half-icon - 4px;
+        y: anchor-y - 0.5 * ring1-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x - dir * 0.866 * ring1-radius - half-icon;
+        y: anchor-y - 0.5 * ring1-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #2d2d44;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(4); } }
+        Text { text: "⚙"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // App 5: Store (180°) - cos=-1, sin=0 (not visible - below anchor)
+    // Moved to 15° instead: cos=0.966, sin=0.259
+    Rectangle {
+        visible: selected-app == 5;
+        x: anchor-x + dir * 0.966 * ring1-radius - half-icon - 4px;
+        y: anchor-y - 0.259 * ring1-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x + dir * 0.966 * ring1-radius - half-icon;
+        y: anchor-y - 0.259 * ring1-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #2d2d44;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(5); } }
+        Text { text: "🏪"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // === Ring 2: 8 Secondary Apps (outer ring) ===
+    // Apps at 22.5°, 45°, 67.5°, 90°, 112.5°, 135°, 157.5°, 180° - but shifted up
+
+    // App 6: Contacts (22.5°) - cos=0.924, sin=0.383
+    Rectangle {
+        visible: selected-app == 6;
+        x: anchor-x + dir * 0.924 * ring2-radius - half-icon - 4px;
+        y: anchor-y - 0.383 * ring2-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x + dir * 0.924 * ring2-radius - half-icon;
+        y: anchor-y - 0.383 * ring2-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #252538;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(6); } }
+        Text { text: "👤"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // App 7: Email (45°) - cos=0.707, sin=0.707
+    Rectangle {
+        visible: selected-app == 7;
+        x: anchor-x + dir * 0.707 * ring2-radius - half-icon - 4px;
+        y: anchor-y - 0.707 * ring2-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x + dir * 0.707 * ring2-radius - half-icon;
+        y: anchor-y - 0.707 * ring2-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #252538;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(7); } }
+        Text { text: "📧"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // App 8: Video (67.5°) - cos=0.383, sin=0.924
+    Rectangle {
+        visible: selected-app == 8;
+        x: anchor-x + dir * 0.383 * ring2-radius - half-icon - 4px;
+        y: anchor-y - 0.924 * ring2-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x + dir * 0.383 * ring2-radius - half-icon;
+        y: anchor-y - 0.924 * ring2-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #252538;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(8); } }
+        Text { text: "🎬"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // App 9: Recorder (90°) - cos=0, sin=1
+    Rectangle {
+        visible: selected-app == 9;
+        x: anchor-x - half-icon - 4px;
+        y: anchor-y - 1.0 * ring2-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x - half-icon;
+        y: anchor-y - 1.0 * ring2-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #252538;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(9); } }
+        Text { text: "🎙"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // App 10: Files (112.5°) - cos=-0.383, sin=0.924
+    Rectangle {
+        visible: selected-app == 10;
+        x: anchor-x - dir * 0.383 * ring2-radius - half-icon - 4px;
+        y: anchor-y - 0.924 * ring2-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x - dir * 0.383 * ring2-radius - half-icon;
+        y: anchor-y - 0.924 * ring2-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #252538;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(10); } }
+        Text { text: "📁"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // App 11: Calculator (135°) - cos=-0.707, sin=0.707
+    Rectangle {
+        visible: selected-app == 11;
+        x: anchor-x - dir * 0.707 * ring2-radius - half-icon - 4px;
+        y: anchor-y - 0.707 * ring2-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x - dir * 0.707 * ring2-radius - half-icon;
+        y: anchor-y - 0.707 * ring2-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #252538;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(11); } }
+        Text { text: "🔢"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // App 12: Notes (157.5°) - cos=-0.924, sin=0.383
+    Rectangle {
+        visible: selected-app == 12;
+        x: anchor-x - dir * 0.924 * ring2-radius - half-icon - 4px;
+        y: anchor-y - 0.383 * ring2-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x - dir * 0.924 * ring2-radius - half-icon;
+        y: anchor-y - 0.383 * ring2-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #252538;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(12); } }
+        Text { text: "📝"; font-size: 40px; x: 16px; y: 12px; }
+    }
+
+    // App 13: Calendar (7.5° - filling the gap) - cos=0.991, sin=0.131
+    Rectangle {
+        visible: selected-app == 13;
+        x: anchor-x + dir * 0.991 * ring2-radius - half-icon - 4px;
+        y: anchor-y - 0.131 * ring2-radius - half-icon - 4px;
+        width: icon-size + 8px; height: icon-size + 8px;
+        border-radius: (icon-size + 8px) / 2;
+        background: Theme.accent; opacity: 0.9 * progress;
+    }
+    Rectangle {
+        x: anchor-x + dir * 0.991 * ring2-radius - half-icon;
+        y: anchor-y - 0.131 * ring2-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: icon-size / 2;
+        background: #252538;
+        opacity: progress;
+        TouchArea { clicked => { app-tapped(13); } }
+        Text { text: "📅"; font-size: 40px; x: 16px; y: 12px; }
     }
 }
 
@@ -3739,18 +3566,15 @@ export component FlickShell inherits Window {
     in property <bool> show-system-menu: false;
     callback system-menu-action(string);  // lock, reboot, shutdown
 
-    // Fan menu state
-    in property <bool> fan-menu-visible: false;
-    in property <bool> fan-menu-left: true;  // true = left edge, false = right edge
-    in property <float> fan-menu-progress: 1.0;
-    in property <int> fan-menu-highlighted: -1;
-    in property <int> fan-menu-selected: -1;
-    in property <int> fan-menu-item-highlighted: -1;
-    in property <float> fan-menu-submenu-progress: 0.0;
-    in property <float> fan-menu-touch-y: 800;  // Y position of touch for menu anchor
-    callback fan-menu-category-tapped(int);
-    callback fan-menu-item-tapped(int, string);
-    callback fan-menu-dismiss();
+    // Orbital launcher state
+    in property <bool> orbital-visible: false;
+    in property <bool> orbital-is-left: true;  // true = left-handed (anchor bottom-left), false = right-handed
+    in property <float> orbital-progress: 0.0;  // Animation progress 0-1
+    in property <float> orbital-anchor-x: 50;   // Anchor X position
+    in property <float> orbital-anchor-y: 1500; // Anchor Y position (near bottom)
+    in property <int> orbital-selected-app: -1; // Currently selected app index (-1 = none)
+    callback orbital-app-tapped(int);
+    callback orbital-dismiss();
 
     // Volume overlay state (shown when hardware volume buttons pressed)
     in property <bool> show-volume-overlay: false;
@@ -3814,6 +3638,7 @@ export component FlickShell inherits Window {
     callback notification-dismissed(int);
     callback notification-tapped(int);
     callback clear-all-notifications();
+    callback status-bar-tapped();  // Open quick settings
 
     // Callbacks for popup menu actions
     callback popup-pick-default();
@@ -3877,6 +3702,7 @@ export component FlickShell inherits Window {
         push-offset: root.home-push-offset;
         app-tapped(i) => { app-tapped(i); }
         new-category-clicked => { new-category-clicked(); }
+        status-bar-tapped => { status-bar-tapped(); }
     }
 
     // Quick settings - slides down as overlay on top of home
@@ -3930,18 +3756,15 @@ export component FlickShell inherits Window {
         window-tapped(id) => { switcher-window-tapped(id); }
     }
 
-    // Fan menu overlay - shown on left/right edge swipe
-    if fan-menu-visible: FanMenuPanel {
-        is-left: fan-menu-left;
-        progress: fan-menu-progress;
-        highlighted-category: fan-menu-highlighted;
-        selected-category: fan-menu-selected;
-        highlighted-item: fan-menu-item-highlighted;
-        submenu-progress: fan-menu-submenu-progress;
-        touch-y: fan-menu-touch-y;
-        category-tapped(idx) => { fan-menu-category-tapped(idx); }
-        item-tapped(cat, exec) => { fan-menu-item-tapped(cat, exec); }
-        dismiss => { fan-menu-dismiss(); }
+    // Orbital launcher overlay - shown on left/right edge swipe
+    if orbital-visible: OrbitalLauncher {
+        is-left: orbital-is-left;
+        progress: orbital-progress;
+        anchor-x: orbital-anchor-x * 1px;
+        anchor-y: orbital-anchor-y * 1px;
+        selected-app: orbital-selected-app;
+        app-tapped(idx) => { orbital-app-tapped(idx); }
+        dismiss => { orbital-dismiss(); }
     }
 
     // Lock view - minimal debug message while QML lock screen loads

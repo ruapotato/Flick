@@ -1032,25 +1032,27 @@ fn handle_input_event(
                     // This prevents edge swipes from triggering wiggle mode
                     state.shell.long_press_start = None;
 
-                    // Left edge gestures - start fan menu
+                    // Left edge gestures - start orbital launcher (left-handed mode)
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
                         state.qs_gesture_active = true;
                         state.qs_gesture_progress = 0.0;
-                        // Capture initial touch position for fan menu anchor
-                        if let Some(pos) = state.last_touch_pos.values().next() {
-                            state.fan_menu_start_x = pos.x;
-                            state.fan_menu_start_y = pos.y;
-                        }
+                        // Set orbital launcher to left-handed mode (anchored bottom-left)
+                        state.orbital_is_left = true;
+                        state.orbital_anchor_x = 50.0;
+                        state.orbital_anchor_y = (state.screen_size.h as f64) - 100.0;
+                        state.orbital_progress = 0.0;
+                        state.orbital_selected_app = -1;
                     }
-                    // Right edge gestures - start fan menu
+                    // Right edge gestures - start orbital launcher (right-handed mode)
                     if *edge == crate::input::Edge::Right && shell_view != crate::shell::ShellView::LockScreen {
                         state.switcher_gesture_active = true;
                         state.switcher_gesture_progress = 0.0;
-                        // Capture initial touch position for fan menu anchor
-                        if let Some(pos) = state.last_touch_pos.values().next() {
-                            state.fan_menu_start_x = pos.x;
-                            state.fan_menu_start_y = pos.y;
-                        }
+                        // Set orbital launcher to right-handed mode (anchored bottom-right)
+                        state.orbital_is_left = false;
+                        state.orbital_anchor_x = (state.screen_size.w as f64) - 50.0;
+                        state.orbital_anchor_y = (state.screen_size.h as f64) - 100.0;
+                        state.orbital_progress = 0.0;
+                        state.orbital_selected_app = -1;
                     }
                     // Bottom edge = Home gesture (swipe up)
                     if *edge == crate::input::Edge::Bottom && shell_view != crate::shell::ShellView::LockScreen {
@@ -1066,7 +1068,7 @@ fn handle_input_event(
                 if let crate::input::GestureEvent::EdgeSwipeUpdate { edge, progress, .. } = &gesture_event {
                     let shell_view = state.shell.view;
 
-                    // Fan menu interaction for left/right edges
+                    // Orbital launcher interaction for left/right edges
                     let is_left = *edge == crate::input::Edge::Left;
                     let is_right = *edge == crate::input::Edge::Right;
 
@@ -1079,85 +1081,17 @@ fn handle_input_event(
                             state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
                         }
 
+                        // Update orbital launcher progress
+                        let boosted_progress = (progress * 2.0).clamp(0.0, 1.0) as f32;
+                        state.orbital_progress = boosted_progress;
+                        state.orbital_visible = true;
+
                         if let Some(ref slint_ui) = state.shell.slint_ui {
-                            let anchor_y = state.fan_menu_start_y as f32;
-                            slint_ui.set_fan_menu_left(is_left);
-                            slint_ui.set_fan_menu_touch_y(anchor_y);
-                            // Faster popup: boost progress (reach full size quicker)
-                            let boosted_progress = (progress * 2.5).clamp(0.0, 1.0) as f32;
-                            slint_ui.set_fan_menu_progress(boosted_progress);
-                            slint_ui.set_fan_menu_visible(true);
-
-                            // Calculate angle and distance from anchor
-                            if let Some(current_pos) = state.last_touch_pos.values().next() {
-                                let dx = if is_left {
-                                    current_pos.x - state.fan_menu_start_x
-                                } else {
-                                    state.fan_menu_start_x - current_pos.x
-                                };
-                                let dy = state.fan_menu_start_y - current_pos.y; // Y inverted (up is positive)
-                                let distance = (dx * dx + dy * dy).sqrt();
-                                let angle = dy.atan2(dx).to_degrees(); // 0=horizontal, 90=up
-
-                                // Constants for the new interaction model
-                                let highlight_distance = 60.0;  // Min distance to start highlighting
-                                let select_distance = 180.0;    // Distance to trigger selection/sub-menu
-                                let max_angle = 70.0;           // Limit max angle (avoid straight up)
-                                let min_angle = -15.0;          // Limit min angle (avoid straight down)
-
-                                // Clamp angle to valid range
-                                let clamped_angle = angle.clamp(min_angle, max_angle);
-
-                                if state.fan_menu_level == 0 {
-                                    // Top level: arc movement highlights categories
-                                    if distance > highlight_distance {
-                                        // Map angle to 5 categories spanning min_angle to max_angle
-                                        // Categories: 0=Talk(top), 1=Media, 2=Tools, 3=Apps, 4=System(bottom)
-                                        let angle_range = max_angle - min_angle; // 85 degrees
-                                        let angle_per_cat = angle_range / 5.0;   // ~17 degrees each
-
-                                        let category = if clamped_angle > max_angle - angle_per_cat { 0 }
-                                            else if clamped_angle > max_angle - 2.0 * angle_per_cat { 1 }
-                                            else if clamped_angle > max_angle - 3.0 * angle_per_cat { 2 }
-                                            else if clamped_angle > max_angle - 4.0 * angle_per_cat { 3 }
-                                            else { 4 };
-
-                                        slint_ui.set_fan_menu_highlighted(category);
-                                        state.fan_menu_highlighted = category;
-
-                                        // Radial selection: moving further away selects the category
-                                        if distance > select_distance && state.fan_menu_highlighted >= 0 {
-                                            // Enter sub-menu for highlighted category
-                                            state.fan_menu_selected = state.fan_menu_highlighted;
-                                            state.fan_menu_level = 1;
-                                            slint_ui.set_fan_menu_selected(state.fan_menu_selected);
-                                            state.system.haptic_tap();
-                                            info!("Fan menu: entered sub-menu for category {}", state.fan_menu_selected);
-                                        }
-                                    } else {
-                                        slint_ui.set_fan_menu_highlighted(-1);
-                                        state.fan_menu_highlighted = -1;
-                                    }
-                                } else {
-                                    // Sub-menu level: similar arc navigation for sub-items
-                                    if distance > highlight_distance {
-                                        // Sub-menu has up to 4 items per category
-                                        let angle_range = max_angle - min_angle;
-                                        let angle_per_item = angle_range / 4.0;
-
-                                        let sub_item = if clamped_angle > max_angle - angle_per_item { 0 }
-                                            else if clamped_angle > max_angle - 2.0 * angle_per_item { 1 }
-                                            else if clamped_angle > max_angle - 3.0 * angle_per_item { 2 }
-                                            else { 3 };
-
-                                        state.fan_menu_sub_highlighted = sub_item;
-                                        slint_ui.set_fan_menu_sub_highlighted(sub_item);
-                                    } else {
-                                        state.fan_menu_sub_highlighted = -1;
-                                        slint_ui.set_fan_menu_sub_highlighted(-1);
-                                    }
-                                }
-                            }
+                            slint_ui.set_orbital_visible(true);
+                            slint_ui.set_orbital_is_left(is_left);
+                            slint_ui.set_orbital_progress(boosted_progress);
+                            slint_ui.set_orbital_anchor_x(state.orbital_anchor_x as f32);
+                            slint_ui.set_orbital_anchor_y(state.orbital_anchor_y as f32);
                         }
                     }
                     // Bottom edge = Home gesture (swipe up)
@@ -1521,7 +1455,7 @@ fn handle_input_event(
 
                 // Handle edge swipe completion
                 if let crate::input::GestureEvent::EdgeSwipeEnd { edge, completed, .. } = &gesture_event {
-                    // Fan menu completion for left/right edges
+                    // Orbital launcher completion for left/right edges
                     let is_left = *edge == crate::input::Edge::Left;
                     let is_right = *edge == crate::input::Edge::Right;
                     let gesture_active = if is_left { state.qs_gesture_active } else { state.switcher_gesture_active };
@@ -1531,71 +1465,50 @@ fn handle_input_event(
                             touch.cancel(state);
                         }
 
-                        if *completed {
-                            let level = state.fan_menu_level;
-                            let category = state.fan_menu_selected;
-                            let sub_item = state.fan_menu_sub_highlighted;
+                        // If gesture completed and an app is selected, launch it
+                        if *completed && state.orbital_selected_app >= 0 {
+                            let selected_app = state.orbital_selected_app;
 
-                            // Sub-menu items by category (Flick apps)
-                            // Category 0 = Talk: phone, messages, contacts, email
-                            // Category 1 = Media: music, video, photos, recorder
-                            // Category 2 = Tools: files, calculator, notes, calendar
-                            // Category 3 = Apps: go to home/app drawer
-                            // Category 4 = System: settings, store
+                            // App list for orbital launcher (favorites ring)
+                            // Index 0-5: Ring 1 favorites
+                            let app_name = match selected_app {
+                                0 => Some("phone"),
+                                1 => Some("messages"),
+                                2 => Some("music"),
+                                3 => Some("photos"),
+                                4 => Some("settings"),
+                                5 => Some("store"),
+                                // Ring 2 apps (6-13)
+                                6 => Some("contacts"),
+                                7 => Some("email"),
+                                8 => Some("video"),
+                                9 => Some("recorder"),
+                                10 => Some("files"),
+                                11 => Some("calculator"),
+                                12 => Some("notes"),
+                                13 => Some("calendar"),
+                                _ => None,
+                            };
 
-                            if level == 1 && category >= 0 && sub_item >= 0 {
-                                // Launch Flick app from sub-menu
-                                let app_name = match (category, sub_item) {
-                                    // Talk
-                                    (0, 0) => Some("phone"),
-                                    (0, 1) => Some("messages"),
-                                    (0, 2) => Some("contacts"),
-                                    (0, 3) => Some("email"),
-                                    // Media
-                                    (1, 0) => Some("music"),
-                                    (1, 1) => Some("video"),
-                                    (1, 2) => Some("photos"),
-                                    (1, 3) => Some("recorder"),
-                                    // Tools
-                                    (2, 0) => Some("files"),
-                                    (2, 1) => Some("calculator"),
-                                    (2, 2) => Some("notes"),
-                                    (2, 3) => Some("calendar"),
-                                    // System
-                                    (4, 0) => Some("settings"),
-                                    (4, 1) => Some("store"),
-                                    _ => None,
-                                };
-
-                                if let Some(app) = app_name {
-                                    info!("Fan Menu: launching Flick app '{}'", app);
-                                    state.system.haptic_click();
-                                    let socket = state.socket_name.to_string_lossy().to_string();
-                                    // Flick apps use run scripts
-                                    let cmd = format!("sh -c \"$HOME/Flick/apps/{}/run_{}.sh\"", app, app);
-                                    let app_id = format!("org.puri.Flick.{}", app);
-                                    crate::spawn_user::spawn_app_with_logging(&cmd, &app_id, &socket, 1.0);
-                                    state.shell.set_view(crate::shell::ShellView::App);
-                                }
-                            } else if level == 0 && state.fan_menu_highlighted == 3 {
-                                // Apps category at top level - go to home/app drawer
-                                info!("Fan Menu: going to app drawer");
-                                state.system.haptic_tap();
-                                state.shell.set_view(crate::shell::ShellView::Home);
+                            if let Some(app) = app_name {
+                                info!("Orbital Launcher: launching Flick app '{}'", app);
+                                state.system.haptic_click();
+                                let socket = state.socket_name.to_string_lossy().to_string();
+                                let cmd = format!("sh -c \"$HOME/Flick/apps/{}/run_{}.sh\"", app, app);
+                                let app_id = format!("org.puri.Flick.{}", app);
+                                crate::spawn_user::spawn_app_with_logging(&cmd, &app_id, &socket, 1.0);
+                                state.shell.set_view(crate::shell::ShellView::App);
                             }
-                            // If still at top level with a category highlighted but not selected,
-                            // user lifted before moving far enough - just dismiss
                         }
 
-                        // Hide the menu and reset state
+                        // Hide the orbital launcher and reset state
                         if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.set_fan_menu_visible(false);
-                            slint_ui.set_fan_menu_highlighted(-1);
-                            slint_ui.set_fan_menu_selected(-1);
-                            slint_ui.set_fan_menu_sub_highlighted(-1);
+                            slint_ui.set_orbital_visible(false);
+                            slint_ui.set_orbital_progress(0.0);
+                            slint_ui.set_orbital_selected_app(-1);
                         }
 
-                        // Reset all fan menu state
+                        // Reset orbital launcher state
                         if is_left {
                             state.qs_gesture_active = false;
                             state.qs_gesture_progress = 0.0;
@@ -1603,29 +1516,35 @@ fn handle_input_event(
                             state.switcher_gesture_active = false;
                             state.switcher_gesture_progress = 0.0;
                         }
-                        state.fan_menu_highlighted = -1;
-                        state.fan_menu_selected = -1;
-                        state.fan_menu_level = 0;
-                        state.fan_menu_sub_highlighted = -1;
+                        state.orbital_visible = false;
+                        state.orbital_progress = 0.0;
+                        state.orbital_selected_app = -1;
                         state.shell.home_push_offset = 0.0;
 
-                        info!("Fan Menu completed");
+                        info!("Orbital Launcher completed");
                     }
-                    // Bottom edge = Home gesture (swipe up)
+                    // Bottom edge = App switcher (swipe up)
                     if *edge == crate::input::Edge::Bottom {
                         let shell_view = state.shell.view;
-                        // In Switcher or QuickSettings, just go directly home on swipe up
+                        // From Switcher/QuickSettings: go home
                         if shell_view == crate::shell::ShellView::Switcher ||
                            shell_view == crate::shell::ShellView::QuickSettings {
                             if *completed {
                                 info!("Swipe up from {} - going home", if shell_view == crate::shell::ShellView::Switcher { "Switcher" } else { "QuickSettings" });
                                 state.shell.set_view(crate::shell::ShellView::Home);
                             }
+                        } else if shell_view == crate::shell::ShellView::Home {
+                            // From Home: open app switcher
+                            if *completed {
+                                info!("Swipe up from Home - opening app switcher");
+                                state.system.haptic_tap();
+                                state.shell.set_view(crate::shell::ShellView::Switcher);
+                            }
                         } else {
-                            // In App view, use the home gesture with keyboard handling
-                            state.end_home_gesture(*completed);
+                            // From App view: open app switcher (with keyboard handling)
+                            state.end_switcher_gesture(*completed);
                         }
-                        info!("Home gesture END, completed={}", completed);
+                        info!("Switcher gesture END, completed={}", completed);
                     }
                     // Top edge = Close gesture (swipe down)
                     if *edge == crate::input::Edge::Top {
@@ -2787,62 +2706,78 @@ pub fn run() -> Result<()> {
             }
         }
 
-        // Handle fan menu actions from Slint (collect actions first to avoid borrow conflicts)
-        let (fan_dismiss, fan_category, fan_item) = if let Some(ref slint_ui) = state.shell.slint_ui {
-            (slint_ui.poll_fan_dismiss(), slint_ui.poll_fan_category(), slint_ui.poll_fan_item())
+        // Handle orbital launcher actions from Slint
+        let (orbital_dismiss, orbital_app_select) = if let Some(ref slint_ui) = state.shell.slint_ui {
+            (slint_ui.poll_orbital_dismiss(), slint_ui.poll_orbital_app_select())
         } else {
-            (false, None, None)
+            (false, None)
         };
 
-        if fan_dismiss {
+        if orbital_dismiss {
             if let Some(ref slint_ui) = state.shell.slint_ui {
-                slint_ui.set_fan_menu_visible(false);
+                slint_ui.set_orbital_visible(false);
             }
-            info!("Fan menu dismissed");
+            state.orbital_visible = false;
+            state.orbital_progress = 0.0;
+            state.orbital_selected_app = -1;
+            info!("Orbital launcher dismissed");
         }
 
-        if let Some(cat_idx) = fan_category {
-            info!("Fan menu category tapped: {}", cat_idx);
-            // Hide fan menu first
+        if let Some(app_idx) = orbital_app_select {
+            info!("Orbital launcher app tapped: {}", app_idx);
+            // Hide orbital launcher first
             if let Some(ref slint_ui) = state.shell.slint_ui {
-                slint_ui.set_fan_menu_visible(false);
+                slint_ui.set_orbital_visible(false);
             }
-            // Launch app based on category
-            let exec_and_id: Option<(&str, &str)> = match cat_idx {
-                0 => Some(("gnome-calls", "phone")),           // Communicate -> Phone
-                1 => Some(("flick-music", "flick-music")),     // Media -> Music
-                2 => Some(("nautilus", "files")),              // Tools -> Files
-                3 => None,  // Apps -> Show app grid
-                4 => Some(("gnome-control-center", "settings")), // System -> Settings
+            state.orbital_visible = false;
+            state.orbital_progress = 0.0;
+            state.orbital_selected_app = -1;
+
+            // Launch Flick app based on index
+            let app_name = match app_idx {
+                // Ring 1 favorites (0-5)
+                0 => Some("phone"),
+                1 => Some("messages"),
+                2 => Some("music"),
+                3 => Some("photos"),
+                4 => Some("settings"),
+                5 => Some("store"),
+                // Ring 2 apps (6-13)
+                6 => Some("contacts"),
+                7 => Some("email"),
+                8 => Some("video"),
+                9 => Some("recorder"),
+                10 => Some("files"),
+                11 => Some("calculator"),
+                12 => Some("notes"),
+                13 => Some("calendar"),
                 _ => None,
             };
-            if let Some((cmd, app_id)) = exec_and_id {
-                let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
-                let text_scale = state.shell.text_scale as f64;
-                if let Err(e) = crate::spawn_user::spawn_app_with_logging(cmd, app_id, socket_name, text_scale) {
-                    error!("Failed to launch app from fan menu: {}", e);
+
+            if let Some(app) = app_name {
+                state.system.haptic_click();
+                let socket = state.socket_name.to_string_lossy().to_string();
+                let cmd = format!("sh -c \"$HOME/Flick/apps/{}/run_{}.sh\"", app, app);
+                let app_id = format!("org.puri.Flick.{}", app);
+                if let Err(e) = crate::spawn_user::spawn_app_with_logging(&cmd, &app_id, &socket, 1.0) {
+                    error!("Failed to launch app from orbital launcher: {}", e);
                 } else {
                     state.shell.view = crate::shell::ShellView::App;
                 }
-            } else if cat_idx == 3 {
-                // Apps category - go to home screen (app grid)
-                state.shell.set_view(crate::shell::ShellView::Home);
             }
         }
 
-        if let Some((cat, exec)) = fan_item {
-            info!("Fan menu item tapped: cat={}, exec={}", cat, exec);
-            if let Some(ref slint_ui) = state.shell.slint_ui {
-                slint_ui.set_fan_menu_visible(false);
-            }
-            let app_id = exec.split('/').last().unwrap_or(&exec);
-            let socket_name = state.socket_name.to_str().unwrap_or("wayland-1");
-            let text_scale = state.shell.text_scale as f64;
-            if let Err(e) = crate::spawn_user::spawn_app_with_logging(&exec, app_id, socket_name, text_scale) {
-                error!("Failed to launch app from fan menu: {}", e);
-            } else {
-                state.shell.view = crate::shell::ShellView::App;
-            }
+        // Handle status bar tap (opens quick settings)
+        let status_bar_tapped = if let Some(ref slint_ui) = state.shell.slint_ui {
+            slint_ui.poll_status_bar_tap()
+        } else {
+            false
+        };
+
+        if status_bar_tapped {
+            info!("Status bar tapped - opening quick settings");
+            state.system.haptic_tap();
+            state.shell.set_view(crate::shell::ShellView::QuickSettings);
         }
 
         // Poll for pick default callbacks (runs every frame when in PickDefault view)

@@ -4,14 +4,13 @@
 //! - Lock screen (PIN, pattern, password authentication - external QML app)
 //! - App grid (home screen)
 //! - App switcher (Android-style card stack)
-//! - Fan menu (sPlay-inspired radial menu for left/right edge gestures)
+//! - Orbital launcher (thumb-friendly concentric rings for edge gestures)
 //! - Gesture overlays (close indicators)
 
 pub mod primitives;
 pub mod app_grid;
 pub mod app_switcher;
-pub mod fan_menu;
-pub mod quick_settings;  // TODO: Remove once fan menu System category is complete
+pub mod quick_settings;
 pub mod overlay;
 pub mod text;
 pub mod apps;

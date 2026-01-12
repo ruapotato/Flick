@@ -153,12 +153,12 @@ pub struct SlintShell {
     pending_phone_actions: Rc<RefCell<Vec<PhoneCallAction>>>,
     /// Pending system menu action (lock, reboot, shutdown)
     pending_system_action: Rc<RefCell<Option<String>>>,
-    /// Pending fan menu category tap (category index)
-    pending_fan_category: Rc<RefCell<Option<i32>>>,
-    /// Pending fan menu item tap (category, exec)
-    pending_fan_item: Rc<RefCell<Option<(i32, String)>>>,
-    /// Pending fan menu dismiss
-    pending_fan_dismiss: Rc<RefCell<bool>>,
+    /// Pending orbital launcher app tap (app index)
+    pending_orbital_app_select: Rc<RefCell<Option<i32>>>,
+    /// Pending orbital launcher dismiss
+    pending_orbital_dismiss: Rc<RefCell<bool>>,
+    /// Pending status bar tap (open quick settings)
+    pending_status_bar_tap: Rc<RefCell<bool>>,
 }
 
 impl SlintShell {
@@ -401,27 +401,28 @@ impl SlintShell {
             *back_clone.borrow_mut() = true;
         });
 
-        // Fan menu callbacks
-        let pending_fan_category = Rc::new(RefCell::new(None::<i32>));
-        let pending_fan_item = Rc::new(RefCell::new(None::<(i32, String)>));
-        let pending_fan_dismiss = Rc::new(RefCell::new(false));
+        // Orbital launcher callbacks
+        let pending_orbital_app_select = Rc::new(RefCell::new(None::<i32>));
+        let pending_orbital_dismiss = Rc::new(RefCell::new(false));
 
-        let fan_cat_clone = pending_fan_category.clone();
-        shell.on_fan_menu_category_tapped(move |idx| {
-            info!("Fan menu category tapped: {}", idx);
-            *fan_cat_clone.borrow_mut() = Some(idx);
+        let orbital_app_clone = pending_orbital_app_select.clone();
+        shell.on_orbital_app_tapped(move |idx| {
+            info!("Orbital launcher app tapped: {}", idx);
+            *orbital_app_clone.borrow_mut() = Some(idx);
         });
 
-        let fan_item_clone = pending_fan_item.clone();
-        shell.on_fan_menu_item_tapped(move |cat, exec| {
-            info!("Fan menu item tapped: cat={}, exec={}", cat, exec);
-            *fan_item_clone.borrow_mut() = Some((cat, exec.to_string()));
+        let orbital_dismiss_clone = pending_orbital_dismiss.clone();
+        shell.on_orbital_dismiss(move || {
+            info!("Orbital launcher dismiss");
+            *orbital_dismiss_clone.borrow_mut() = true;
         });
 
-        let fan_dismiss_clone = pending_fan_dismiss.clone();
-        shell.on_fan_menu_dismiss(move || {
-            info!("Fan menu dismiss");
-            *fan_dismiss_clone.borrow_mut() = true;
+        // Status bar tap callback
+        let pending_status_bar_tap = Rc::new(RefCell::new(false));
+        let status_bar_clone = pending_status_bar_tap.clone();
+        shell.on_status_bar_tapped(move || {
+            info!("Status bar tapped");
+            *status_bar_clone.borrow_mut() = true;
         });
 
         Self {
@@ -443,9 +444,9 @@ impl SlintShell {
             pending_lock_actions,
             pending_phone_actions,
             pending_system_action,
-            pending_fan_category,
-            pending_fan_item,
-            pending_fan_dismiss,
+            pending_orbital_app_select,
+            pending_orbital_dismiss,
+            pending_status_bar_tap,
         }
     }
 
@@ -477,58 +478,57 @@ impl SlintShell {
         self.pending_lock_actions.borrow_mut().drain(..).collect()
     }
 
-    /// Poll for fan menu category tap
-    pub fn poll_fan_category(&self) -> Option<i32> {
-        self.pending_fan_category.borrow_mut().take()
+    /// Poll for orbital launcher app select
+    pub fn poll_orbital_app_select(&self) -> Option<i32> {
+        self.pending_orbital_app_select.borrow_mut().take()
     }
 
-    /// Poll for fan menu item tap (returns category, exec)
-    pub fn poll_fan_item(&self) -> Option<(i32, String)> {
-        self.pending_fan_item.borrow_mut().take()
-    }
-
-    /// Poll for fan menu dismiss
-    pub fn poll_fan_dismiss(&self) -> bool {
-        let result = *self.pending_fan_dismiss.borrow();
+    /// Poll for orbital launcher dismiss
+    pub fn poll_orbital_dismiss(&self) -> bool {
+        let result = *self.pending_orbital_dismiss.borrow();
         if result {
-            *self.pending_fan_dismiss.borrow_mut() = false;
+            *self.pending_orbital_dismiss.borrow_mut() = false;
         }
         result
     }
 
-    /// Show fan menu
-    pub fn set_fan_menu_visible(&self, visible: bool) {
-        self.shell.set_fan_menu_visible(visible);
+    /// Show orbital launcher
+    pub fn set_orbital_visible(&self, visible: bool) {
+        self.shell.set_orbital_visible(visible);
     }
 
-    /// Set fan menu side (true = left, false = right)
-    pub fn set_fan_menu_left(&self, left: bool) {
-        self.shell.set_fan_menu_left(left);
+    /// Set orbital launcher side (true = left, false = right)
+    pub fn set_orbital_is_left(&self, is_left: bool) {
+        self.shell.set_orbital_is_left(is_left);
     }
 
-    /// Set fan menu animation progress
-    pub fn set_fan_menu_progress(&self, progress: f32) {
-        self.shell.set_fan_menu_progress(progress);
+    /// Set orbital launcher animation progress
+    pub fn set_orbital_progress(&self, progress: f32) {
+        self.shell.set_orbital_progress(progress);
     }
 
-    /// Set highlighted category (-1 = none)
-    pub fn set_fan_menu_highlighted(&self, idx: i32) {
-        self.shell.set_fan_menu_highlighted(idx);
+    /// Set orbital launcher anchor X position
+    pub fn set_orbital_anchor_x(&self, x: f32) {
+        self.shell.set_orbital_anchor_x(x);
     }
 
-    /// Set selected category for submenu (-1 = none)
-    pub fn set_fan_menu_selected(&self, idx: i32) {
-        self.shell.set_fan_menu_selected(idx);
+    /// Set orbital launcher anchor Y position
+    pub fn set_orbital_anchor_y(&self, y: f32) {
+        self.shell.set_orbital_anchor_y(y);
     }
 
-    /// Set highlighted sub-menu item (-1 = none)
-    pub fn set_fan_menu_sub_highlighted(&self, idx: i32) {
-        self.shell.set_fan_menu_item_highlighted(idx);
+    /// Set selected app index (-1 = none)
+    pub fn set_orbital_selected_app(&self, idx: i32) {
+        self.shell.set_orbital_selected_app(idx);
     }
 
-    /// Set touch Y position for fan menu anchor
-    pub fn set_fan_menu_touch_y(&self, y: f32) {
-        self.shell.set_fan_menu_touch_y(y);
+    /// Poll for status bar tap (opens quick settings)
+    pub fn poll_status_bar_tap(&self) -> bool {
+        let result = *self.pending_status_bar_tap.borrow();
+        if result {
+            *self.pending_status_bar_tap.borrow_mut() = false;
+        }
+        result
     }
 
     /// Set brightness value (0.0 to 1.0)

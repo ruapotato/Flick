@@ -183,13 +183,13 @@ pub struct Flick {
     pub qs_return_progress: f64,
     pub qs_return_start_progress: f64,  // Initial progress when gesture started
 
-    /// Fan menu gesture state
-    pub fan_menu_start_x: f64,  // X position where edge swipe started (for anchor)
-    pub fan_menu_start_y: f64,  // Y position where edge swipe started (for anchor)
-    pub fan_menu_highlighted: i32,  // Currently highlighted category (-1 = none)
-    pub fan_menu_selected: i32,     // Selected category showing sub-menu (-1 = none)
-    pub fan_menu_level: i32,        // 0 = top level, 1 = sub-menu
-    pub fan_menu_sub_highlighted: i32, // Highlighted sub-menu item (-1 = none)
+    /// Orbital launcher state
+    pub orbital_visible: bool,      // Whether orbital launcher is shown
+    pub orbital_is_left: bool,      // Left-handed (true) or right-handed (false) mode
+    pub orbital_anchor_x: f64,      // Anchor X position (corner of screen)
+    pub orbital_anchor_y: f64,      // Anchor Y position (near bottom)
+    pub orbital_progress: f32,      // Animation progress (0-1)
+    pub orbital_selected_app: i32,  // Currently selected app index (-1 = none)
 
     /// Per-slot keyboard touch tracking for multi-touch support
     /// Maps touch slot ID -> initial touch position
@@ -372,12 +372,12 @@ impl Flick {
             qs_return_active: false,
             qs_return_progress: 0.0,
             qs_return_start_progress: 0.0,
-            fan_menu_start_x: 0.0,
-            fan_menu_start_y: 0.0,
-            fan_menu_highlighted: -1,
-            fan_menu_selected: -1,
-            fan_menu_level: 0,
-            fan_menu_sub_highlighted: -1,
+            orbital_visible: false,
+            orbital_is_left: true,
+            orbital_anchor_x: 50.0,
+            orbital_anchor_y: 1500.0,
+            orbital_progress: 0.0,
+            orbital_selected_app: -1,
             keyboard_touch_initial: HashMap::new(),
             keyboard_touch_last: HashMap::new(),
             keyboard_dismiss_slot: None,
@@ -782,6 +782,92 @@ impl Flick {
                 // Hide keyboard since gesture was cancelled
                 if let Some(ref slint_ui) = self.shell.slint_ui {
                     slint_ui.set_keyboard_y_offset(0.0);  // Reset offset
+                    slint_ui.set_keyboard_visible(false);
+                }
+                // Resize windows to full screen
+                self.resize_windows_for_keyboard(false);
+            }
+        }
+
+        self.home_gesture_original_y = 0;
+        self.home_gesture_past_keyboard = false;
+    }
+
+    /// End the switcher gesture - opens app switcher instead of home
+    /// Similar to end_home_gesture but navigates to Switcher view
+    pub fn end_switcher_gesture(&mut self, _completed: bool) {
+        // Lock screen: just keep keyboard visible, don't change view
+        if self.shell.view == crate::shell::ShellView::LockScreen {
+            tracing::info!("Lock screen: switcher gesture ended, keeping keyboard visible");
+            self.home_gesture_past_keyboard = false;
+            return;
+        }
+
+        let past_keyboard = self.home_gesture_past_keyboard;
+
+        if let Some(window) = self.home_gesture_window.take() {
+            // Calculate how far we actually moved
+            let current_y = self.space.element_location(&window)
+                .map(|loc| loc.y)
+                .unwrap_or(self.home_gesture_original_y);
+            let actual_offset = self.home_gesture_original_y - current_y;
+
+            if past_keyboard {
+                // User went past the buffer zone - open app switcher
+                tracing::info!("Switcher gesture: past buffer zone (offset={}px) - opening switcher", actual_offset);
+
+                // Cancel any pending touch sequences before leaving app
+                if let Some(touch) = self.seat.get_touch() {
+                    touch.cancel(self);
+                    tracing::info!("Switcher gesture: cancelled pending touch sequences");
+                }
+
+                // Haptic feedback for opening switcher
+                self.system.haptic_click();
+                self.shell.set_view(crate::shell::ShellView::Switcher);
+
+                // Restore window to original position
+                if let Some(loc) = self.space.element_location(&window) {
+                    self.space.map_element(window, (loc.x, self.home_gesture_original_y), false);
+                }
+            } else if actual_offset > 20 {
+                // Released within keyboard/buffer zone with some movement - snap keyboard into place
+                tracing::info!("Switcher gesture: within buffer zone (offset={}px) - snapping keyboard into place",
+                    actual_offset);
+
+                // Haptic feedback for keyboard opening
+                self.system.haptic_tap();
+
+                // Snap keyboard to fully visible (offset = 0)
+                if let Some(ref slint_ui) = self.shell.slint_ui {
+                    slint_ui.set_keyboard_y_offset(0.0);
+                }
+
+                // Restore window position
+                if let Some(loc) = self.space.element_location(&window) {
+                    self.space.map_element(window.clone(), (loc.x, self.home_gesture_original_y), false);
+                }
+
+                // Resize windows for keyboard (this ensures proper layout)
+                self.resize_windows_for_keyboard(true);
+
+                // Save keyboard state for this window
+                if let Some(toplevel) = window.toplevel() {
+                    let surface_id = toplevel.wl_surface().id();
+                    self.window_keyboard_state.insert(surface_id, true);
+                }
+            } else {
+                // Barely moved - cancel the gesture
+                tracing::info!("Switcher gesture cancelled (offset={}px) - hiding keyboard", actual_offset);
+
+                // Restore window position
+                if let Some(loc) = self.space.element_location(&window) {
+                    self.space.map_element(window, (loc.x, self.home_gesture_original_y), false);
+                }
+
+                // Hide keyboard since gesture was cancelled
+                if let Some(ref slint_ui) = self.shell.slint_ui {
+                    slint_ui.set_keyboard_y_offset(0.0);
                     slint_ui.set_keyboard_visible(false);
                 }
                 // Resize windows to full screen
