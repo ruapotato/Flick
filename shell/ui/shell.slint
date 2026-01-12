@@ -2011,354 +2011,214 @@ component HomeScreen inherits Rectangle {
     }
 }
 
-// Orbital Launcher - concentric rings of apps centered on thumb position
-// Designed for thumb-friendly navigation: apps arranged in arcs that follow natural thumb movement
-component OrbitalLauncher inherits Rectangle {
-    in property <bool> is-left: true;      // Left-handed (bottom-left anchor) or right-handed (bottom-right)
-    in property <float> progress: 0.0;      // Animation progress 0-1
-    in property <length> anchor-x: 50px;    // Anchor X position
-    in property <length> anchor-y: 1500px;  // Anchor Y position (near bottom for thumb reach)
-    in property <int> selected-app: -1;     // Currently selected app (-1 = none)
+// Orbital Home - the main home screen with apps in a large spinnable arc
+// Shows 1/4 of a circle with apps, can be rotated by swiping
+component OrbitalHome inherits Rectangle {
+    in property <[AppCategory]> categories: [];
+    in property <string> time: "12:00";
+    in property <int> battery: 85;
+    in property <float> text-scale: 2.0;
+    in property <bool> has-wallpaper: false;
+    in property <bool> is-left: false;       // false = right-handed (default), true = left-handed
+    in property <float> rotation: 0.0;       // Ring rotation in degrees
+    in property <float> push-offset: 0.0;    // Push offset during gesture
 
     callback app-tapped(int);
-    callback dismiss();
+    callback status-bar-tapped();
 
     width: 100%;
     height: 100%;
-    background: #000000;
-    opacity: 0.6 * progress;
+    background: has-wallpaper ? transparent : Theme.background;
 
-    // Dismiss on background tap
-    TouchArea { clicked => { dismiss(); } }
-
-    // Ring radii (scaled by progress)
-    property <length> ring1-radius: 100px * progress;   // Inner ring: 6 favorites
-    property <length> ring2-radius: 200px * progress;   // Outer ring: 8 apps
-    property <length> icon-size: 72px;
-    property <length> half-icon: 36px;
-
-    // Direction multiplier for left/right positioning
+    // Arc configuration - large arc centered at bottom corner
+    // Anchor point is off-screen at bottom-right (or bottom-left for left-handed)
+    property <length> arc-radius: 900px;      // Large radius so 1/4 shows
+    property <length> anchor-x: is-left ? -300px : root.width + 300px;
+    property <length> anchor-y: root.height + 200px;
+    property <length> icon-size: 100px;       // Bigger icons
+    property <length> half-icon: 50px;
     property <float> dir: is-left ? 1.0 : -1.0;
 
-    // Ring 1 background arc (semi-transparent)
-    Rectangle {
-        x: anchor-x - ring1-radius - 30px;
-        y: anchor-y - ring1-radius - 30px;
-        width: (ring1-radius + 30px) * 2;
-        height: (ring1-radius + 30px) * 2;
-        border-radius: ring1-radius + 30px;
-        background: #1a1a2a;
-        opacity: 0.8 * progress;
+    // Calculate visible arc range (about 90° visible, from 100° to 190° for right-handed)
+    // Apps spaced every 15° around the arc
+    property <float> base-angle: is-left ? 350.0 : 190.0;  // Starting angle
+
+    // Status bar at top
+    StatusBar {
+        x: 0;
+        y: 0;
+        width: 100%;
+        time: root.time;
+        battery: root.battery;
+        wifi: true;
+        text-scale: root.text-scale;
+        tapped => { root.status-bar-tapped(); }
     }
 
-    // Ring 2 background arc
+    // Arc background - subtle guide
     Rectangle {
-        x: anchor-x - ring2-radius - 30px;
-        y: anchor-y - ring2-radius - 30px;
-        width: (ring2-radius + 30px) * 2;
-        height: (ring2-radius + 30px) * 2;
-        border-radius: ring2-radius + 30px;
+        x: anchor-x - arc-radius;
+        y: anchor-y - arc-radius;
+        width: arc-radius * 2;
+        height: arc-radius * 2;
+        border-radius: arc-radius;
         background: #1a1a2a;
-        opacity: 0.5 * progress;
+        opacity: 0.3;
     }
 
-    // Anchor point indicator
-    Rectangle {
-        x: anchor-x - 20px;
-        y: anchor-y - 20px;
-        width: 40px;
-        height: 40px;
+    // App tiles arranged in a large arc
+    // For right-handed: apps go from bottom-right corner upward in an arc
+    // For left-handed: apps go from bottom-left corner upward in an arc
+    // Using pre-computed positions for angles from 100° to 170° (visible quarter)
+
+    // App 0 at 100° - cos=-0.174, sin=0.985
+    if categories.length > 0: Rectangle {
+        x: anchor-x + dir * (-0.174) * arc-radius - half-icon;
+        y: anchor-y - 0.985 * arc-radius - half-icon;
+        width: icon-size; height: icon-size;
         border-radius: 20px;
-        background: Theme.accent;
-        opacity: progress;
-    }
-
-    // === Ring 1: 6 Favorites (inner ring) ===
-    // Apps positioned at 30°, 60°, 90°, 120°, 150°, 180° from horizontal
-    // Using pre-calculated cos/sin values for each angle
-
-    // App 0: Phone (30°) - cos=0.866, sin=0.5
-    Rectangle {
-        visible: selected-app == 0;
-        x: anchor-x + dir * 0.866 * ring1-radius - half-icon - 4px;
-        y: anchor-y - 0.5 * ring1-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x + dir * 0.866 * ring1-radius - half-icon;
-        y: anchor-y - 0.5 * ring1-radius - half-icon;
-        width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #2d2d44;
-        opacity: progress;
+        background: categories[0].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[0].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(0); } }
-        Text { text: "📞"; font-size: 40px; x: 16px; y: 12px; }
     }
 
-    // App 1: Messages (60°) - cos=0.5, sin=0.866
-    Rectangle {
-        visible: selected-app == 1;
-        x: anchor-x + dir * 0.5 * ring1-radius - half-icon - 4px;
-        y: anchor-y - 0.866 * ring1-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x + dir * 0.5 * ring1-radius - half-icon;
-        y: anchor-y - 0.866 * ring1-radius - half-icon;
+    // App 1 at 115° - cos=-0.423, sin=0.906
+    if categories.length > 1: Rectangle {
+        x: anchor-x + dir * (-0.423) * arc-radius - half-icon;
+        y: anchor-y - 0.906 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #2d2d44;
-        opacity: progress;
+        border-radius: 20px;
+        background: categories[1].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[1].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(1); } }
-        Text { text: "💬"; font-size: 40px; x: 16px; y: 12px; }
     }
 
-    // App 2: Music (90°) - cos=0, sin=1
-    Rectangle {
-        visible: selected-app == 2;
-        x: anchor-x - half-icon - 4px;
-        y: anchor-y - 1.0 * ring1-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x - half-icon;
-        y: anchor-y - 1.0 * ring1-radius - half-icon;
+    // App 2 at 130° - cos=-0.643, sin=0.766
+    if categories.length > 2: Rectangle {
+        x: anchor-x + dir * (-0.643) * arc-radius - half-icon;
+        y: anchor-y - 0.766 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #2d2d44;
-        opacity: progress;
+        border-radius: 20px;
+        background: categories[2].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[2].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(2); } }
-        Text { text: "🎵"; font-size: 40px; x: 16px; y: 12px; }
     }
 
-    // App 3: Photos (120°) - cos=-0.5, sin=0.866
-    Rectangle {
-        visible: selected-app == 3;
-        x: anchor-x - dir * 0.5 * ring1-radius - half-icon - 4px;
-        y: anchor-y - 0.866 * ring1-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x - dir * 0.5 * ring1-radius - half-icon;
-        y: anchor-y - 0.866 * ring1-radius - half-icon;
+    // App 3 at 145° - cos=-0.819, sin=0.574
+    if categories.length > 3: Rectangle {
+        x: anchor-x + dir * (-0.819) * arc-radius - half-icon;
+        y: anchor-y - 0.574 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #2d2d44;
-        opacity: progress;
+        border-radius: 20px;
+        background: categories[3].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[3].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(3); } }
-        Text { text: "📷"; font-size: 40px; x: 16px; y: 12px; }
     }
 
-    // App 4: Settings (150°) - cos=-0.866, sin=0.5
-    Rectangle {
-        visible: selected-app == 4;
-        x: anchor-x - dir * 0.866 * ring1-radius - half-icon - 4px;
-        y: anchor-y - 0.5 * ring1-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x - dir * 0.866 * ring1-radius - half-icon;
-        y: anchor-y - 0.5 * ring1-radius - half-icon;
+    // App 4 at 160° - cos=-0.940, sin=0.342
+    if categories.length > 4: Rectangle {
+        x: anchor-x + dir * (-0.940) * arc-radius - half-icon;
+        y: anchor-y - 0.342 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #2d2d44;
-        opacity: progress;
+        border-radius: 20px;
+        background: categories[4].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[4].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(4); } }
-        Text { text: "⚙"; font-size: 40px; x: 16px; y: 12px; }
     }
 
-    // App 5: Store (180°) - cos=-1, sin=0 (not visible - below anchor)
-    // Moved to 15° instead: cos=0.966, sin=0.259
-    Rectangle {
-        visible: selected-app == 5;
-        x: anchor-x + dir * 0.966 * ring1-radius - half-icon - 4px;
-        y: anchor-y - 0.259 * ring1-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x + dir * 0.966 * ring1-radius - half-icon;
-        y: anchor-y - 0.259 * ring1-radius - half-icon;
+    // App 5 at 175° - cos=-0.996, sin=0.087
+    if categories.length > 5: Rectangle {
+        x: anchor-x + dir * (-0.996) * arc-radius - half-icon;
+        y: anchor-y - 0.087 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #2d2d44;
-        opacity: progress;
+        border-radius: 20px;
+        background: categories[5].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[5].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(5); } }
-        Text { text: "🏪"; font-size: 40px; x: 16px; y: 12px; }
     }
 
-    // === Ring 2: 8 Secondary Apps (outer ring) ===
-    // Apps at 22.5°, 45°, 67.5°, 90°, 112.5°, 135°, 157.5°, 180° - but shifted up
-
-    // App 6: Contacts (22.5°) - cos=0.924, sin=0.383
-    Rectangle {
-        visible: selected-app == 6;
-        x: anchor-x + dir * 0.924 * ring2-radius - half-icon - 4px;
-        y: anchor-y - 0.383 * ring2-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x + dir * 0.924 * ring2-radius - half-icon;
-        y: anchor-y - 0.383 * ring2-radius - half-icon;
+    // Additional apps continue around the arc
+    // App 6 at 85° - cos=0.087, sin=0.996
+    if categories.length > 6: Rectangle {
+        x: anchor-x + dir * 0.087 * arc-radius - half-icon;
+        y: anchor-y - 0.996 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #252538;
-        opacity: progress;
+        border-radius: 20px;
+        background: categories[6].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[6].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(6); } }
-        Text { text: "👤"; font-size: 40px; x: 16px; y: 12px; }
     }
 
-    // App 7: Email (45°) - cos=0.707, sin=0.707
-    Rectangle {
-        visible: selected-app == 7;
-        x: anchor-x + dir * 0.707 * ring2-radius - half-icon - 4px;
-        y: anchor-y - 0.707 * ring2-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x + dir * 0.707 * ring2-radius - half-icon;
-        y: anchor-y - 0.707 * ring2-radius - half-icon;
+    // App 7 at 70° - cos=0.342, sin=0.940
+    if categories.length > 7: Rectangle {
+        x: anchor-x + dir * 0.342 * arc-radius - half-icon;
+        y: anchor-y - 0.940 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #252538;
-        opacity: progress;
+        border-radius: 20px;
+        background: categories[7].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[7].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(7); } }
-        Text { text: "📧"; font-size: 40px; x: 16px; y: 12px; }
     }
 
-    // App 8: Video (67.5°) - cos=0.383, sin=0.924
-    Rectangle {
-        visible: selected-app == 8;
-        x: anchor-x + dir * 0.383 * ring2-radius - half-icon - 4px;
-        y: anchor-y - 0.924 * ring2-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x + dir * 0.383 * ring2-radius - half-icon;
-        y: anchor-y - 0.924 * ring2-radius - half-icon;
+    // App 8 at 55° - cos=0.574, sin=0.819
+    if categories.length > 8: Rectangle {
+        x: anchor-x + dir * 0.574 * arc-radius - half-icon;
+        y: anchor-y - 0.819 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #252538;
-        opacity: progress;
+        border-radius: 20px;
+        background: categories[8].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[8].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(8); } }
-        Text { text: "🎬"; font-size: 40px; x: 16px; y: 12px; }
     }
 
-    // App 9: Recorder (90°) - cos=0, sin=1
-    Rectangle {
-        visible: selected-app == 9;
-        x: anchor-x - half-icon - 4px;
-        y: anchor-y - 1.0 * ring2-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x - half-icon;
-        y: anchor-y - 1.0 * ring2-radius - half-icon;
+    // App 9 at 40° - cos=0.766, sin=0.643
+    if categories.length > 9: Rectangle {
+        x: anchor-x + dir * 0.766 * arc-radius - half-icon;
+        y: anchor-y - 0.643 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #252538;
-        opacity: progress;
+        border-radius: 20px;
+        background: categories[9].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[9].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(9); } }
-        Text { text: "🎙"; font-size: 40px; x: 16px; y: 12px; }
     }
 
-    // App 10: Files (112.5°) - cos=-0.383, sin=0.924
-    Rectangle {
-        visible: selected-app == 10;
-        x: anchor-x - dir * 0.383 * ring2-radius - half-icon - 4px;
-        y: anchor-y - 0.924 * ring2-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x - dir * 0.383 * ring2-radius - half-icon;
-        y: anchor-y - 0.924 * ring2-radius - half-icon;
+    // App 10 at 25° - cos=0.906, sin=0.423
+    if categories.length > 10: Rectangle {
+        x: anchor-x + dir * 0.906 * arc-radius - half-icon;
+        y: anchor-y - 0.423 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #252538;
-        opacity: progress;
+        border-radius: 20px;
+        background: categories[10].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[10].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(10); } }
-        Text { text: "📁"; font-size: 40px; x: 16px; y: 12px; }
     }
 
-    // App 11: Calculator (135°) - cos=-0.707, sin=0.707
-    Rectangle {
-        visible: selected-app == 11;
-        x: anchor-x - dir * 0.707 * ring2-radius - half-icon - 4px;
-        y: anchor-y - 0.707 * ring2-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x - dir * 0.707 * ring2-radius - half-icon;
-        y: anchor-y - 0.707 * ring2-radius - half-icon;
+    // App 11 at 10° - cos=0.985, sin=0.174
+    if categories.length > 11: Rectangle {
+        x: anchor-x + dir * 0.985 * arc-radius - half-icon;
+        y: anchor-y - 0.174 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #252538;
-        opacity: progress;
+        border-radius: 20px;
+        background: categories[11].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[11].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(11); } }
-        Text { text: "🔢"; font-size: 40px; x: 16px; y: 12px; }
     }
 
-    // App 12: Notes (157.5°) - cos=-0.924, sin=0.383
-    Rectangle {
-        visible: selected-app == 12;
-        x: anchor-x - dir * 0.924 * ring2-radius - half-icon - 4px;
-        y: anchor-y - 0.383 * ring2-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x - dir * 0.924 * ring2-radius - half-icon;
-        y: anchor-y - 0.383 * ring2-radius - half-icon;
-        width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #252538;
-        opacity: progress;
-        TouchArea { clicked => { app-tapped(12); } }
-        Text { text: "📝"; font-size: 40px; x: 16px; y: 12px; }
-    }
-
-    // App 13: Calendar (7.5° - filling the gap) - cos=0.991, sin=0.131
-    Rectangle {
-        visible: selected-app == 13;
-        x: anchor-x + dir * 0.991 * ring2-radius - half-icon - 4px;
-        y: anchor-y - 0.131 * ring2-radius - half-icon - 4px;
-        width: icon-size + 8px; height: icon-size + 8px;
-        border-radius: (icon-size + 8px) / 2;
-        background: Theme.accent; opacity: 0.9 * progress;
-    }
-    Rectangle {
-        x: anchor-x + dir * 0.991 * ring2-radius - half-icon;
-        y: anchor-y - 0.131 * ring2-radius - half-icon;
-        width: icon-size; height: icon-size;
-        border-radius: icon-size / 2;
-        background: #252538;
-        opacity: progress;
-        TouchArea { clicked => { app-tapped(13); } }
-        Text { text: "📅"; font-size: 40px; x: 16px; y: 12px; }
+    // Home indicator at bottom
+    HomeIndicator {
+        y: parent.height - 40px;
     }
 }
 
@@ -3566,15 +3426,9 @@ export component FlickShell inherits Window {
     in property <bool> show-system-menu: false;
     callback system-menu-action(string);  // lock, reboot, shutdown
 
-    // Orbital launcher state
-    in property <bool> orbital-visible: false;
-    in property <bool> orbital-is-left: true;  // true = left-handed (anchor bottom-left), false = right-handed
-    in property <float> orbital-progress: 0.0;  // Animation progress 0-1
-    in property <float> orbital-anchor-x: 50;   // Anchor X position
-    in property <float> orbital-anchor-y: 1500; // Anchor Y position (near bottom)
-    in property <int> orbital-selected-app: -1; // Currently selected app index (-1 = none)
-    callback orbital-app-tapped(int);
-    callback orbital-dismiss();
+    // Orbital home state (orbital launcher IS the home screen)
+    in property <bool> orbital-is-left: false;  // false = right-handed (default), true = left-handed
+    in property <float> orbital-rotation: 0.0;  // Ring rotation in degrees
 
     // Volume overlay state (shown when hardware volume buttons pressed)
     in property <bool> show-volume-overlay: false;
@@ -3684,24 +3538,19 @@ export component FlickShell inherits Window {
         image-fit: cover;
     }
 
-    // Home screen - visible in home view OR during return gestures (to animate icons sliding back)
-    if current-view == "home" || return-gesture-active || forward-gesture-active: HomeScreen {
+    // Orbital Home - the main home screen with apps in a large arc
+    if current-view == "home" || return-gesture-active || forward-gesture-active: OrbitalHome {
         width: 100%;
         height: 100%;
         categories: categories;
         time: root.time;
         battery: battery-percent;
-        wiggle-mode: root.wiggle-mode;
-        wiggle-time: root.wiggle-time;
-        dragging-index: root.dragging-index;
-        drag-x: root.drag-x;
-        drag-y: root.drag-y;
         text-scale: root.text-scale;
         has-wallpaper: root.has-wallpaper;
-        scroll-offset: root.home-scroll;
+        is-left: orbital-is-left;
+        rotation: orbital-rotation;
         push-offset: root.home-push-offset;
         app-tapped(i) => { app-tapped(i); }
-        new-category-clicked => { new-category-clicked(); }
         status-bar-tapped => { status-bar-tapped(); }
     }
 
@@ -3754,17 +3603,6 @@ export component FlickShell inherits Window {
         push-offset: switcher-push-offset;
         has-wallpaper: root.has-wallpaper;
         window-tapped(id) => { switcher-window-tapped(id); }
-    }
-
-    // Orbital launcher overlay - shown on left/right edge swipe
-    if orbital-visible: OrbitalLauncher {
-        is-left: orbital-is-left;
-        progress: orbital-progress;
-        anchor-x: orbital-anchor-x * 1px;
-        anchor-y: orbital-anchor-y * 1px;
-        selected-app: orbital-selected-app;
-        app-tapped(idx) => { orbital-app-tapped(idx); }
-        dismiss => { orbital-dismiss(); }
     }
 
     // Lock view - minimal debug message while QML lock screen loads

@@ -183,13 +183,10 @@ pub struct Flick {
     pub qs_return_progress: f64,
     pub qs_return_start_progress: f64,  // Initial progress when gesture started
 
-    /// Orbital launcher state
-    pub orbital_visible: bool,      // Whether orbital launcher is shown
+    /// Orbital launcher state (this IS the home screen now)
     pub orbital_is_left: bool,      // Left-handed (true) or right-handed (false) mode
-    pub orbital_anchor_x: f64,      // Anchor X position (corner of screen)
-    pub orbital_anchor_y: f64,      // Anchor Y position (near bottom)
-    pub orbital_progress: f32,      // Animation progress (0-1)
-    pub orbital_selected_app: i32,  // Currently selected app index (-1 = none)
+    pub orbital_rotation: f32,      // Ring rotation angle in degrees
+    pub orbital_selected_app: i32,  // Currently highlighted app index (-1 = none)
 
     /// Per-slot keyboard touch tracking for multi-touch support
     /// Maps touch slot ID -> initial touch position
@@ -372,11 +369,8 @@ impl Flick {
             qs_return_active: false,
             qs_return_progress: 0.0,
             qs_return_start_progress: 0.0,
-            orbital_visible: false,
-            orbital_is_left: true,
-            orbital_anchor_x: 50.0,
-            orbital_anchor_y: 1500.0,
-            orbital_progress: 0.0,
+            orbital_is_left: false,  // Default to right-handed
+            orbital_rotation: 0.0,
             orbital_selected_app: -1,
             keyboard_touch_initial: HashMap::new(),
             keyboard_touch_last: HashMap::new(),

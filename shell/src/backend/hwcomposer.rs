@@ -1032,27 +1032,17 @@ fn handle_input_event(
                     // This prevents edge swipes from triggering wiggle mode
                     state.shell.long_press_start = None;
 
-                    // Left edge gestures - start orbital launcher (left-handed mode)
+                    // Left edge gestures - go to home (orbital launcher, left-handed mode)
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
                         state.qs_gesture_active = true;
                         state.qs_gesture_progress = 0.0;
-                        // Set orbital launcher to left-handed mode (anchored bottom-left)
                         state.orbital_is_left = true;
-                        state.orbital_anchor_x = 50.0;
-                        state.orbital_anchor_y = (state.screen_size.h as f64) - 100.0;
-                        state.orbital_progress = 0.0;
-                        state.orbital_selected_app = -1;
                     }
-                    // Right edge gestures - start orbital launcher (right-handed mode)
+                    // Right edge gestures - go to home (orbital launcher, right-handed mode)
                     if *edge == crate::input::Edge::Right && shell_view != crate::shell::ShellView::LockScreen {
                         state.switcher_gesture_active = true;
                         state.switcher_gesture_progress = 0.0;
-                        // Set orbital launcher to right-handed mode (anchored bottom-right)
                         state.orbital_is_left = false;
-                        state.orbital_anchor_x = (state.screen_size.w as f64) - 50.0;
-                        state.orbital_anchor_y = (state.screen_size.h as f64) - 100.0;
-                        state.orbital_progress = 0.0;
-                        state.orbital_selected_app = -1;
                     }
                     // Bottom edge = Home gesture (swipe up)
                     if *edge == crate::input::Edge::Bottom && shell_view != crate::shell::ShellView::LockScreen {
@@ -1068,30 +1058,27 @@ fn handle_input_event(
                 if let crate::input::GestureEvent::EdgeSwipeUpdate { edge, progress, .. } = &gesture_event {
                     let shell_view = state.shell.view;
 
-                    // Orbital launcher interaction for left/right edges
+                    // Left/right edge swipe - track progress for home transition
                     let is_left = *edge == crate::input::Edge::Left;
                     let is_right = *edge == crate::input::Edge::Right;
 
                     if (is_left || is_right) && shell_view != crate::shell::ShellView::LockScreen {
+                        let clamped = progress.clamp(0.0, 1.0);
                         if is_left {
                             state.qs_gesture_active = true;
-                            state.qs_gesture_progress = progress.clamp(0.0, 1.0);
+                            state.qs_gesture_progress = clamped;
+                            // Push home icons from left
+                            state.shell.home_push_offset = clamped;
                         } else {
                             state.switcher_gesture_active = true;
-                            state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
+                            state.switcher_gesture_progress = clamped;
+                            // Push home icons from right
+                            state.shell.home_push_offset = -clamped;
                         }
 
-                        // Update orbital launcher progress
-                        let boosted_progress = (progress * 2.0).clamp(0.0, 1.0) as f32;
-                        state.orbital_progress = boosted_progress;
-                        state.orbital_visible = true;
-
+                        // Update Slint with orbital mode
                         if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.set_orbital_visible(true);
                             slint_ui.set_orbital_is_left(is_left);
-                            slint_ui.set_orbital_progress(boosted_progress);
-                            slint_ui.set_orbital_anchor_x(state.orbital_anchor_x as f32);
-                            slint_ui.set_orbital_anchor_y(state.orbital_anchor_y as f32);
                         }
                     }
                     // Bottom edge = Home gesture (swipe up)
@@ -1455,7 +1442,7 @@ fn handle_input_event(
 
                 // Handle edge swipe completion
                 if let crate::input::GestureEvent::EdgeSwipeEnd { edge, completed, .. } = &gesture_event {
-                    // Orbital launcher completion for left/right edges
+                    // Left/right edge swipe - go to home (orbital launcher)
                     let is_left = *edge == crate::input::Edge::Left;
                     let is_right = *edge == crate::input::Edge::Right;
                     let gesture_active = if is_left { state.qs_gesture_active } else { state.switcher_gesture_active };
@@ -1465,50 +1452,14 @@ fn handle_input_event(
                             touch.cancel(state);
                         }
 
-                        // If gesture completed and an app is selected, launch it
-                        if *completed && state.orbital_selected_app >= 0 {
-                            let selected_app = state.orbital_selected_app;
-
-                            // App list for orbital launcher (favorites ring)
-                            // Index 0-5: Ring 1 favorites
-                            let app_name = match selected_app {
-                                0 => Some("phone"),
-                                1 => Some("messages"),
-                                2 => Some("music"),
-                                3 => Some("photos"),
-                                4 => Some("settings"),
-                                5 => Some("store"),
-                                // Ring 2 apps (6-13)
-                                6 => Some("contacts"),
-                                7 => Some("email"),
-                                8 => Some("video"),
-                                9 => Some("recorder"),
-                                10 => Some("files"),
-                                11 => Some("calculator"),
-                                12 => Some("notes"),
-                                13 => Some("calendar"),
-                                _ => None,
-                            };
-
-                            if let Some(app) = app_name {
-                                info!("Orbital Launcher: launching Flick app '{}'", app);
-                                state.system.haptic_click();
-                                let socket = state.socket_name.to_string_lossy().to_string();
-                                let cmd = format!("sh -c \"$HOME/Flick/apps/{}/run_{}.sh\"", app, app);
-                                let app_id = format!("org.puri.Flick.{}", app);
-                                crate::spawn_user::spawn_app_with_logging(&cmd, &app_id, &socket, 1.0);
-                                state.shell.set_view(crate::shell::ShellView::App);
-                            }
+                        // Go to home view (which now shows orbital launcher)
+                        if *completed {
+                            info!("Edge swipe completed - going to orbital home (is_left={})", is_left);
+                            state.system.haptic_tap();
+                            state.shell.set_view(crate::shell::ShellView::Home);
                         }
 
-                        // Hide the orbital launcher and reset state
-                        if let Some(ref slint_ui) = state.shell.slint_ui {
-                            slint_ui.set_orbital_visible(false);
-                            slint_ui.set_orbital_progress(0.0);
-                            slint_ui.set_orbital_selected_app(-1);
-                        }
-
-                        // Reset orbital launcher state
+                        // Reset gesture state
                         if is_left {
                             state.qs_gesture_active = false;
                             state.qs_gesture_progress = 0.0;
@@ -1516,12 +1467,10 @@ fn handle_input_event(
                             state.switcher_gesture_active = false;
                             state.switcher_gesture_progress = 0.0;
                         }
-                        state.orbital_visible = false;
-                        state.orbital_progress = 0.0;
-                        state.orbital_selected_app = -1;
                         state.shell.home_push_offset = 0.0;
+                        state.orbital_selected_app = -1;
 
-                        info!("Orbital Launcher completed");
+                        info!("Edge swipe to home completed");
                     }
                     // Bottom edge = App switcher (swipe up)
                     if *edge == crate::input::Edge::Bottom {
@@ -2703,67 +2652,6 @@ pub fn run() -> Result<()> {
         if let Some(ref slint_ui) = state.shell.slint_ui {
             if let Some(action) = slint_ui.take_pending_system_action() {
                 state.shell.execute_system_action(&action);
-            }
-        }
-
-        // Handle orbital launcher actions from Slint
-        let (orbital_dismiss, orbital_app_select) = if let Some(ref slint_ui) = state.shell.slint_ui {
-            (slint_ui.poll_orbital_dismiss(), slint_ui.poll_orbital_app_select())
-        } else {
-            (false, None)
-        };
-
-        if orbital_dismiss {
-            if let Some(ref slint_ui) = state.shell.slint_ui {
-                slint_ui.set_orbital_visible(false);
-            }
-            state.orbital_visible = false;
-            state.orbital_progress = 0.0;
-            state.orbital_selected_app = -1;
-            info!("Orbital launcher dismissed");
-        }
-
-        if let Some(app_idx) = orbital_app_select {
-            info!("Orbital launcher app tapped: {}", app_idx);
-            // Hide orbital launcher first
-            if let Some(ref slint_ui) = state.shell.slint_ui {
-                slint_ui.set_orbital_visible(false);
-            }
-            state.orbital_visible = false;
-            state.orbital_progress = 0.0;
-            state.orbital_selected_app = -1;
-
-            // Launch Flick app based on index
-            let app_name = match app_idx {
-                // Ring 1 favorites (0-5)
-                0 => Some("phone"),
-                1 => Some("messages"),
-                2 => Some("music"),
-                3 => Some("photos"),
-                4 => Some("settings"),
-                5 => Some("store"),
-                // Ring 2 apps (6-13)
-                6 => Some("contacts"),
-                7 => Some("email"),
-                8 => Some("video"),
-                9 => Some("recorder"),
-                10 => Some("files"),
-                11 => Some("calculator"),
-                12 => Some("notes"),
-                13 => Some("calendar"),
-                _ => None,
-            };
-
-            if let Some(app) = app_name {
-                state.system.haptic_click();
-                let socket = state.socket_name.to_string_lossy().to_string();
-                let cmd = format!("sh -c \"$HOME/Flick/apps/{}/run_{}.sh\"", app, app);
-                let app_id = format!("org.puri.Flick.{}", app);
-                if let Err(e) = crate::spawn_user::spawn_app_with_logging(&cmd, &app_id, &socket, 1.0) {
-                    error!("Failed to launch app from orbital launcher: {}", e);
-                } else {
-                    state.shell.view = crate::shell::ShellView::App;
-                }
             }
         }
 
