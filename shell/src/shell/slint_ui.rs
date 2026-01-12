@@ -521,6 +521,11 @@ impl SlintShell {
         self.shell.set_fan_menu_selected(idx);
     }
 
+    /// Set touch Y position for fan menu anchor
+    pub fn set_fan_menu_touch_y(&self, y: f32) {
+        self.shell.set_fan_menu_touch_y(y);
+    }
+
     /// Set brightness value (0.0 to 1.0)
     pub fn set_brightness(&self, brightness: f32) {
         self.shell.set_brightness(brightness);

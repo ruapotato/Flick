@@ -1073,58 +1073,36 @@ fn handle_input_event(
                     let shell_view = state.shell.view;
                     info!("EdgeSwipeUpdate: edge={:?}, progress={:.3}, view={:?}, qs_return={}, switcher_return={}",
                           edge, progress, shell_view, state.qs_return_active, state.switcher_return_active);
-                    // Left edge gestures
+                    // Left edge gestures - show fan menu with progress
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
-                        if state.switcher_return_active {
-                            // Capture start progress on first update (sentinel is -1.0)
-                            if state.switcher_return_start_progress < 0.0 {
-                                state.switcher_return_start_progress = *progress;
-                                info!("Switcher return: captured start_progress={:.3}", *progress);
-                            }
-                            // Use 1:1 finger tracking like outward gestures
-                            // Start at -3.5 (off-screen left), move toward 0 as finger moves
-                            let progress_delta = progress - state.switcher_return_start_progress;
-                            let offset = (-3.5 + progress_delta).min(0.0);
-                            info!("Switcher return: start={:.3}, delta={:.3}, offset={:.3}",
-                                  state.switcher_return_start_progress, progress_delta, offset);
-                            // Return from Switcher: icons slide in from left
-                            state.switcher_return_progress = progress_delta.clamp(0.0, 1.0);
-                            state.shell.home_push_offset = offset;
-                        } else {
-                            // Going to QS: push icons right
-                            state.qs_gesture_active = true;
-                            state.qs_gesture_progress = progress.clamp(0.0, 1.5);
-                            if shell_view == crate::shell::ShellView::Home {
-                                // Allow icons to move up to ~100% of screen (0.3 * 3.3 ≈ 1.0)
-                                state.shell.home_push_offset = progress.clamp(0.0, 3.5);
-                            }
+                        state.qs_gesture_active = true;
+                        state.qs_gesture_progress = progress.clamp(0.0, 1.0);
+                        // Show fan menu during gesture with animation
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            // Get touch Y position
+                            let touch_y = state.last_touch_pos.values().next()
+                                .map(|p| p.y as f32)
+                                .unwrap_or(800.0);
+                            slint_ui.set_fan_menu_left(true);
+                            slint_ui.set_fan_menu_touch_y(touch_y);
+                            slint_ui.set_fan_menu_progress(progress.clamp(0.0, 1.0) as f32);
+                            slint_ui.set_fan_menu_visible(true);
                         }
                     }
-                    // Right edge gestures
+                    // Right edge gestures - show fan menu with progress
                     if *edge == crate::input::Edge::Right && shell_view != crate::shell::ShellView::LockScreen {
-                        if state.qs_return_active {
-                            // Capture start progress on first update (sentinel is -1.0)
-                            if state.qs_return_start_progress < 0.0 {
-                                state.qs_return_start_progress = *progress;
-                                info!("QS return: captured start_progress={:.3}", *progress);
-                            }
-                            // Use 1:1 finger tracking like outward gestures
-                            // Start at 3.5 (off-screen right), move toward 0 as finger moves
-                            let progress_delta = progress - state.qs_return_start_progress;
-                            let offset = (3.5 - progress_delta).max(0.0);
-                            info!("QS return: start={:.3}, delta={:.3}, offset={:.3}",
-                                  state.qs_return_start_progress, progress_delta, offset);
-                            // Return from QS: icons slide in from right
-                            state.qs_return_progress = progress_delta.clamp(0.0, 1.0);
-                            state.shell.home_push_offset = offset;
-                        } else {
-                            // Going to Switcher: push icons left
-                            state.switcher_gesture_active = true;
-                            state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
-                            if shell_view == crate::shell::ShellView::Home {
-                                // Allow icons to move up to ~100% of screen (0.3 * 3.3 ≈ 1.0)
-                                state.shell.home_push_offset = -progress.clamp(0.0, 3.5);
-                            }
+                        state.switcher_gesture_active = true;
+                        state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
+                        // Show fan menu during gesture with animation
+                        if let Some(ref slint_ui) = state.shell.slint_ui {
+                            // Get touch Y position
+                            let touch_y = state.last_touch_pos.values().next()
+                                .map(|p| p.y as f32)
+                                .unwrap_or(800.0);
+                            slint_ui.set_fan_menu_left(false);
+                            slint_ui.set_fan_menu_touch_y(touch_y);
+                            slint_ui.set_fan_menu_progress(progress.clamp(0.0, 1.0) as f32);
+                            slint_ui.set_fan_menu_visible(true);
                         }
                     }
                     // Bottom edge = Home gesture (swipe up)
@@ -1489,72 +1467,49 @@ fn handle_input_event(
                 // Handle edge swipe completion
                 if let crate::input::GestureEvent::EdgeSwipeEnd { edge, completed, .. } = &gesture_event {
                     // Left edge gestures
+                    // Left edge gestures - Fan Menu
                     if *edge == crate::input::Edge::Left {
-                        if state.switcher_return_active {
-                            // Return from Switcher to Home
-                            if *completed {
-                                state.shell.set_view(crate::shell::ShellView::Home);
-                                info!("Returned to Home from Switcher via gesture");
-                            }
-                            state.switcher_return_active = false;
-                            state.switcher_return_progress = 0.0;
-                            state.shell.home_push_offset = 0.0;
-                        } else if *completed && state.qs_gesture_active {
-                            // Open Fan Menu (anchored left)
+                        if *completed && state.qs_gesture_active {
+                            // Finalize fan menu - keep it open with full progress
                             if let Some(touch) = state.seat.get_touch() {
                                 touch.cancel(state);
                             }
                             if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.set_fan_menu_left(true);
-                                slint_ui.set_fan_menu_visible(true);
                                 slint_ui.set_fan_menu_progress(1.0);
                                 slint_ui.set_fan_menu_highlighted(-1);
-                                slint_ui.set_fan_menu_selected(-1);
                             }
-                            state.shell.home_push_offset = 0.0;
                             info!("Fan Menu OPENED (left)");
-                        } else {
-                            // Gesture cancelled
-                            state.shell.home_push_offset = 0.0;
+                        } else if state.qs_gesture_active {
+                            // Gesture cancelled - hide fan menu
+                            if let Some(ref slint_ui) = state.shell.slint_ui {
+                                slint_ui.set_fan_menu_visible(false);
+                            }
                         }
                         state.qs_gesture_active = false;
                         state.qs_gesture_progress = 0.0;
+                        state.shell.home_push_offset = 0.0;
                     }
-                    // Right edge gestures
+                    // Right edge gestures - Fan Menu
                     if *edge == crate::input::Edge::Right {
-                        if state.qs_return_active {
-                            // Return from QuickSettings to Home
-                            if *completed {
-                                state.shell.set_view(crate::shell::ShellView::Home);
-                                info!("Returned to Home from QuickSettings via gesture");
-                            }
-                            state.qs_return_active = false;
-                            state.qs_return_progress = 0.0;
-                            state.shell.home_push_offset = 0.0;
-                        } else if *completed && state.switcher_gesture_active {
-                            // Open Fan Menu (anchored right)
+                        if *completed && state.switcher_gesture_active {
+                            // Finalize fan menu - keep it open with full progress
                             if let Some(touch) = state.seat.get_touch() {
                                 touch.cancel(state);
                             }
                             if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.set_fan_menu_left(false);
-                                slint_ui.set_fan_menu_visible(true);
                                 slint_ui.set_fan_menu_progress(1.0);
                                 slint_ui.set_fan_menu_highlighted(-1);
-                                slint_ui.set_fan_menu_selected(-1);
                             }
-                            state.shell.home_push_offset = 0.0;
                             info!("Fan Menu OPENED (right)");
-                        } else if !state.qs_return_active {
-                            // Gesture cancelled, reset push offset
-                            state.shell.home_push_offset = 0.0;
-                            // Also reset forward gesture when cancelled
+                        } else if state.switcher_gesture_active {
+                            // Gesture cancelled - hide fan menu
                             if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.set_forward_gesture_active(false);
+                                slint_ui.set_fan_menu_visible(false);
                             }
                         }
                         state.switcher_gesture_active = false;
                         state.switcher_gesture_progress = 0.0;
+                        state.shell.home_push_offset = 0.0;
                     }
                     // Bottom edge = Home gesture (swipe up)
                     if *edge == crate::input::Edge::Bottom {
@@ -3441,10 +3396,10 @@ fn render_frame(
         }
 
         // Check if we're in a gesture that needs to preview the switcher
-        let switcher_gesture_preview = state.switcher_gesture_active &&
-            (shell_view == ShellView::App || shell_view == ShellView::Home);
+        // DISABLED: Edge swipes now trigger fan menu instead of switcher
+        let switcher_gesture_preview = false;
         // Only skip normal view rendering when coming from App view
-        let skip_view_for_preview = state.switcher_gesture_active && shell_view == ShellView::App;
+        let skip_view_for_preview = false;
 
         // Render Slint UI for shell views (not for lock screen when QML is connected)
         // When QML lock screen is connected, render QML windows instead of Slint
