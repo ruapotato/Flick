@@ -183,6 +183,11 @@ pub struct Flick {
     pub qs_return_progress: f64,
     pub qs_return_start_progress: f64,  // Initial progress when gesture started
 
+    /// Fan menu gesture state
+    pub fan_menu_start_x: f64,  // X position where edge swipe started (for anchor)
+    pub fan_menu_start_y: f64,  // Y position where edge swipe started (for anchor)
+    pub fan_menu_highlighted: i32,  // Currently highlighted category (-1 = none)
+
     /// Per-slot keyboard touch tracking for multi-touch support
     /// Maps touch slot ID -> initial touch position
     pub keyboard_touch_initial: HashMap<i32, smithay::utils::Point<f64, smithay::utils::Logical>>,
@@ -364,6 +369,9 @@ impl Flick {
             qs_return_active: false,
             qs_return_progress: 0.0,
             qs_return_start_progress: 0.0,
+            fan_menu_start_x: 0.0,
+            fan_menu_start_y: 0.0,
+            fan_menu_highlighted: -1,
             keyboard_touch_initial: HashMap::new(),
             keyboard_touch_last: HashMap::new(),
             keyboard_dismiss_slot: None,

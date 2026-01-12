@@ -1032,30 +1032,24 @@ fn handle_input_event(
                     // This prevents edge swipes from triggering wiggle mode
                     state.shell.long_press_start = None;
 
-                    // Left edge gestures
+                    // Left edge gestures - start fan menu
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
-                        if shell_view == crate::shell::ShellView::Switcher {
-                            state.switcher_return_active = true;
-                            state.switcher_return_progress = 0.0;
-                            state.switcher_return_start_progress = -1.0;  // Sentinel: capture on first update
-                            // Initialize icons fully pushed left (off-screen)
-                            state.shell.home_push_offset = -1.0;
-                        } else {
-                            state.qs_gesture_active = true;
-                            state.qs_gesture_progress = 0.0;
+                        state.qs_gesture_active = true;
+                        state.qs_gesture_progress = 0.0;
+                        // Capture initial touch position for fan menu anchor
+                        if let Some(pos) = state.last_touch_pos.values().next() {
+                            state.fan_menu_start_x = pos.x;
+                            state.fan_menu_start_y = pos.y;
                         }
                     }
-                    // Right edge gestures
+                    // Right edge gestures - start fan menu
                     if *edge == crate::input::Edge::Right && shell_view != crate::shell::ShellView::LockScreen {
-                        if shell_view == crate::shell::ShellView::QuickSettings {
-                            state.qs_return_active = true;
-                            state.qs_return_progress = 0.0;
-                            state.qs_return_start_progress = -1.0;  // Sentinel: capture on first update
-                            // Initialize icons fully pushed right (off-screen)
-                            state.shell.home_push_offset = 1.0;
-                        } else {
-                            state.switcher_gesture_active = true;
-                            state.switcher_gesture_progress = 0.0;
+                        state.switcher_gesture_active = true;
+                        state.switcher_gesture_progress = 0.0;
+                        // Capture initial touch position for fan menu anchor
+                        if let Some(pos) = state.last_touch_pos.values().next() {
+                            state.fan_menu_start_x = pos.x;
+                            state.fan_menu_start_y = pos.y;
                         }
                     }
                     // Bottom edge = Home gesture (swipe up)
@@ -1073,36 +1067,76 @@ fn handle_input_event(
                     let shell_view = state.shell.view;
                     info!("EdgeSwipeUpdate: edge={:?}, progress={:.3}, view={:?}, qs_return={}, switcher_return={}",
                           edge, progress, shell_view, state.qs_return_active, state.switcher_return_active);
-                    // Left edge gestures - show fan menu with progress
+                    // Left edge gestures - show fan menu with progress and angle-based selection
                     if *edge == crate::input::Edge::Left && shell_view != crate::shell::ShellView::LockScreen {
                         state.qs_gesture_active = true;
                         state.qs_gesture_progress = progress.clamp(0.0, 1.0);
-                        // Show fan menu during gesture with animation
+
                         if let Some(ref slint_ui) = state.shell.slint_ui {
-                            // Get touch Y position
-                            let touch_y = state.last_touch_pos.values().next()
-                                .map(|p| p.y as f32)
-                                .unwrap_or(800.0);
+                            // Use locked start position for anchor
+                            let anchor_y = state.fan_menu_start_y as f32;
                             slint_ui.set_fan_menu_left(true);
-                            slint_ui.set_fan_menu_touch_y(touch_y);
+                            slint_ui.set_fan_menu_touch_y(anchor_y);
                             slint_ui.set_fan_menu_progress(progress.clamp(0.0, 1.0) as f32);
                             slint_ui.set_fan_menu_visible(true);
+
+                            // Calculate angle from anchor to current touch for category highlight
+                            if let Some(current_pos) = state.last_touch_pos.values().next() {
+                                let dx = current_pos.x - state.fan_menu_start_x;
+                                let dy = state.fan_menu_start_y - current_pos.y; // Y inverted
+                                let distance = (dx * dx + dy * dy).sqrt();
+
+                                // Only highlight if finger moved enough from anchor
+                                if distance > 50.0 {
+                                    let angle = dy.atan2(dx).to_degrees(); // 0=right, 90=up
+                                    // Map angle to category (0-4) for left edge: 80, 60, 40, 20, 0 degrees
+                                    let category = if angle > 70.0 { 0 }      // Talk (80 deg)
+                                        else if angle > 50.0 { 1 }  // Media (60 deg)
+                                        else if angle > 30.0 { 2 }  // Tools (40 deg)
+                                        else if angle > 10.0 { 3 }  // Apps (20 deg)
+                                        else if angle > -20.0 { 4 } // System (0 deg)
+                                        else { -1 };
+                                    slint_ui.set_fan_menu_highlighted(category);
+                                } else {
+                                    slint_ui.set_fan_menu_highlighted(-1);
+                                }
+                            }
                         }
                     }
-                    // Right edge gestures - show fan menu with progress
+                    // Right edge gestures - show fan menu with progress and angle-based selection
                     if *edge == crate::input::Edge::Right && shell_view != crate::shell::ShellView::LockScreen {
                         state.switcher_gesture_active = true;
                         state.switcher_gesture_progress = progress.clamp(0.0, 1.0);
-                        // Show fan menu during gesture with animation
+
                         if let Some(ref slint_ui) = state.shell.slint_ui {
-                            // Get touch Y position
-                            let touch_y = state.last_touch_pos.values().next()
-                                .map(|p| p.y as f32)
-                                .unwrap_or(800.0);
+                            // Use locked start position for anchor
+                            let anchor_y = state.fan_menu_start_y as f32;
                             slint_ui.set_fan_menu_left(false);
-                            slint_ui.set_fan_menu_touch_y(touch_y);
+                            slint_ui.set_fan_menu_touch_y(anchor_y);
                             slint_ui.set_fan_menu_progress(progress.clamp(0.0, 1.0) as f32);
                             slint_ui.set_fan_menu_visible(true);
+
+                            // Calculate angle from anchor to current touch for category highlight
+                            if let Some(current_pos) = state.last_touch_pos.values().next() {
+                                let dx = state.fan_menu_start_x - current_pos.x; // Inverted for right edge
+                                let dy = state.fan_menu_start_y - current_pos.y; // Y inverted
+                                let distance = (dx * dx + dy * dy).sqrt();
+
+                                // Only highlight if finger moved enough from anchor
+                                if distance > 50.0 {
+                                    let angle = dy.atan2(dx).to_degrees(); // 0=left, 90=up
+                                    // Map angle to category (0-4) for right edge: 100, 120, 140, 160, 180 degrees
+                                    let category = if angle > 70.0 { 0 }      // Talk (100 deg = 80 mirrored)
+                                        else if angle > 50.0 { 1 }  // Media (120 deg = 60 mirrored)
+                                        else if angle > 30.0 { 2 }  // Tools (140 deg = 40 mirrored)
+                                        else if angle > 10.0 { 3 }  // Apps (160 deg = 20 mirrored)
+                                        else if angle > -20.0 { 4 } // System (180 deg = 0 mirrored)
+                                        else { -1 };
+                                    slint_ui.set_fan_menu_highlighted(category);
+                                } else {
+                                    slint_ui.set_fan_menu_highlighted(-1);
+                                }
+                            }
                         }
                     }
                     // Bottom edge = Home gesture (swipe up)
@@ -1470,15 +1504,45 @@ fn handle_input_event(
                     // Left edge gestures - Fan Menu
                     if *edge == crate::input::Edge::Left {
                         if *completed && state.qs_gesture_active {
-                            // Finalize fan menu - keep it open with full progress
+                            // Check if a category was highlighted
+                            let highlighted = state.fan_menu_highlighted;
                             if let Some(touch) = state.seat.get_touch() {
                                 touch.cancel(state);
                             }
+
+                            if highlighted >= 0 && highlighted <= 4 {
+                                // Trigger the highlighted category action
+                                // 0=Talk, 1=Media, 2=Tools, 3=Apps, 4=System
+                                info!("Fan Menu: selected category {} (left edge)", highlighted);
+                                state.system.haptic_click();
+
+                                // For now, launch a representative app for each category
+                                // TODO: Implement sub-menus for each category
+                                let app_cmd = match highlighted {
+                                    0 => Some(("gnome-calls", "org.gnome.Calls")),  // Talk
+                                    1 => Some(("lollypop", "org.gnome.Lollypop")),  // Media
+                                    2 => Some(("nautilus", "org.gnome.Nautilus")),  // Tools
+                                    3 => None,  // Apps - will show app drawer
+                                    4 => Some(("gnome-control-center", "org.gnome.Settings")),  // System
+                                    _ => None,
+                                };
+
+                                if highlighted == 3 {
+                                    // Apps category - show app drawer
+                                    state.shell.set_view(crate::shell::ShellView::Home);
+                                } else if let Some((cmd, app_id)) = app_cmd {
+                                    let socket = state.socket_name.to_string_lossy().to_string();
+                                    crate::spawn_user::spawn_app_with_logging(cmd, app_id, &socket, 1.0);
+                                    state.shell.set_view(crate::shell::ShellView::App);
+                                }
+                            }
+
+                            // Hide the menu after selection
                             if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.set_fan_menu_progress(1.0);
+                                slint_ui.set_fan_menu_visible(false);
                                 slint_ui.set_fan_menu_highlighted(-1);
                             }
-                            info!("Fan Menu OPENED (left)");
+                            info!("Fan Menu completed (left)");
                         } else if state.qs_gesture_active {
                             // Gesture cancelled - hide fan menu
                             if let Some(ref slint_ui) = state.shell.slint_ui {
@@ -1487,20 +1551,51 @@ fn handle_input_event(
                         }
                         state.qs_gesture_active = false;
                         state.qs_gesture_progress = 0.0;
+                        state.fan_menu_highlighted = -1;
                         state.shell.home_push_offset = 0.0;
                     }
                     // Right edge gestures - Fan Menu
                     if *edge == crate::input::Edge::Right {
                         if *completed && state.switcher_gesture_active {
-                            // Finalize fan menu - keep it open with full progress
+                            // Check if a category was highlighted
+                            let highlighted = state.fan_menu_highlighted;
                             if let Some(touch) = state.seat.get_touch() {
                                 touch.cancel(state);
                             }
+
+                            if highlighted >= 0 && highlighted <= 4 {
+                                // Trigger the highlighted category action
+                                // 0=Talk, 1=Media, 2=Tools, 3=Apps, 4=System
+                                info!("Fan Menu: selected category {} (right edge)", highlighted);
+                                state.system.haptic_click();
+
+                                // For now, launch a representative app for each category
+                                // TODO: Implement sub-menus for each category
+                                let app_cmd = match highlighted {
+                                    0 => Some(("gnome-calls", "org.gnome.Calls")),  // Talk
+                                    1 => Some(("lollypop", "org.gnome.Lollypop")),  // Media
+                                    2 => Some(("nautilus", "org.gnome.Nautilus")),  // Tools
+                                    3 => None,  // Apps - will show app drawer
+                                    4 => Some(("gnome-control-center", "org.gnome.Settings")),  // System
+                                    _ => None,
+                                };
+
+                                if highlighted == 3 {
+                                    // Apps category - show app drawer
+                                    state.shell.set_view(crate::shell::ShellView::Home);
+                                } else if let Some((cmd, app_id)) = app_cmd {
+                                    let socket = state.socket_name.to_string_lossy().to_string();
+                                    crate::spawn_user::spawn_app_with_logging(cmd, app_id, &socket, 1.0);
+                                    state.shell.set_view(crate::shell::ShellView::App);
+                                }
+                            }
+
+                            // Hide the menu after selection
                             if let Some(ref slint_ui) = state.shell.slint_ui {
-                                slint_ui.set_fan_menu_progress(1.0);
+                                slint_ui.set_fan_menu_visible(false);
                                 slint_ui.set_fan_menu_highlighted(-1);
                             }
-                            info!("Fan Menu OPENED (right)");
+                            info!("Fan Menu completed (right)");
                         } else if state.switcher_gesture_active {
                             // Gesture cancelled - hide fan menu
                             if let Some(ref slint_ui) = state.shell.slint_ui {
@@ -1509,6 +1604,7 @@ fn handle_input_event(
                         }
                         state.switcher_gesture_active = false;
                         state.switcher_gesture_progress = 0.0;
+                        state.fan_menu_highlighted = -1;
                         state.shell.home_push_offset = 0.0;
                     }
                     // Bottom edge = Home gesture (swipe up)
