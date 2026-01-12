@@ -2668,6 +2668,13 @@ pub fn run() -> Result<()> {
             state.shell.set_view(crate::shell::ShellView::QuickSettings);
         }
 
+        // Handle orbital rotation changes from swipe gesture
+        if let Some(ref slint_ui) = state.shell.slint_ui {
+            if let Some(new_rotation) = slint_ui.poll_orbital_rotation() {
+                state.orbital_rotation = new_rotation;
+            }
+        }
+
         // Poll for pick default callbacks (runs every frame when in PickDefault view)
         if state.shell.view == crate::shell::ShellView::PickDefault {
             // Get pending actions from Slint first (to avoid borrow conflicts)

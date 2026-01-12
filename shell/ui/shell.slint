@@ -2020,28 +2020,35 @@ component OrbitalHome inherits Rectangle {
     in property <float> text-scale: 2.0;
     in property <bool> has-wallpaper: false;
     in property <bool> is-left: false;       // false = right-handed (default), true = left-handed
-    in property <float> rotation: 0.0;       // Ring rotation in degrees
+    in-out property <float> rotation: 0.0;   // Ring rotation offset (shifts which app appears where)
     in property <float> push-offset: 0.0;    // Push offset during gesture
 
     callback app-tapped(int);
     callback status-bar-tapped();
+    callback rotation-changed(float);        // Emitted when user swipes to rotate
 
     width: 100%;
     height: 100%;
     background: has-wallpaper ? transparent : Theme.background;
 
-    // Arc configuration - large arc centered at bottom corner
-    // Anchor point is off-screen at bottom-right (or bottom-left for left-handed)
-    property <length> arc-radius: 900px;      // Large radius so 1/4 shows
-    property <length> anchor-x: is-left ? -300px : root.width + 300px;
-    property <length> anchor-y: root.height + 200px;
-    property <length> icon-size: 100px;       // Bigger icons
-    property <length> half-icon: 50px;
-    property <float> dir: is-left ? 1.0 : -1.0;
+    // Arc configuration - anchor at bottom corner, arc curves into screen
+    // For right-handed: anchor at bottom-right, arc curves up and left
+    // For left-handed: anchor at bottom-left, arc curves up and right
+    property <length> arc-radius: 420px;
+    property <length> anchor-x: is-left ? -80px : root.width + 80px;
+    property <length> anchor-y: root.height + 120px;
+    property <length> icon-size: 80px;
+    property <length> half-icon: 40px;
 
-    // Calculate visible arc range (about 90° visible, from 100° to 190° for right-handed)
-    // Apps spaced every 15° around the arc
-    property <float> base-angle: is-left ? 350.0 : 190.0;  // Starting angle
+    // Rotation offset converts to index shift (each 1.0 = one app position)
+    // rotation of 0 = app 0 at position 0, rotation of 1 = app 1 at position 0, etc.
+    property <int> rot-offset: mod(round(rotation), 16);
+
+    // Touch tracking for rotation
+    property <float> touch-start-x: 0;
+    property <float> touch-start-y: 0;
+    property <float> touch-start-rotation: 0;
+    property <bool> is-dragging: false;
 
     // Status bar at top
     StatusBar {
@@ -2055,165 +2062,148 @@ component OrbitalHome inherits Rectangle {
         tapped => { root.status-bar-tapped(); }
     }
 
-    // Arc background - subtle guide
+    // Arc background ring - subtle visual guide
     Rectangle {
-        x: anchor-x - arc-radius;
-        y: anchor-y - arc-radius;
-        width: arc-radius * 2;
-        height: arc-radius * 2;
-        border-radius: arc-radius;
-        background: #1a1a2a;
-        opacity: 0.3;
+        x: anchor-x - arc-radius - 20px;
+        y: anchor-y - arc-radius - 20px;
+        width: (arc-radius + 20px) * 2;
+        height: (arc-radius + 20px) * 2;
+        border-radius: arc-radius + 20px;
+        background: transparent;
+        border-width: 60px;
+        border-color: #1a1a2a40;
     }
 
-    // App tiles arranged in a large arc
-    // For right-handed: apps go from bottom-right corner upward in an arc
-    // For left-handed: apps go from bottom-left corner upward in an arc
-    // Using pre-computed positions for angles from 100° to 170° (visible quarter)
+    // Pre-computed positions around the arc (angles from 90° to 180° = visible quarter)
+    // For right-handed: 90° is straight up, 180° is straight left
+    // Position 0: 95° - cos=-0.087, sin=0.996 (near top)
+    // Position 1: 107° - cos=-0.292, sin=0.956
+    // Position 2: 119° - cos=-0.485, sin=0.875
+    // Position 3: 131° - cos=-0.656, sin=0.755
+    // Position 4: 143° - cos=-0.799, sin=0.602
+    // Position 5: 155° - cos=-0.906, sin=0.423
+    // Position 6: 167° - cos=-0.974, sin=0.225 (near left side)
 
-    // App 0 at 100° - cos=-0.174, sin=0.985
+    // App icons at each visible position
+    // The rot-offset shifts which category index appears at each position
+
+    // Position 0 (near top of arc) - angle 95°
     if categories.length > 0: Rectangle {
-        x: anchor-x + dir * (-0.174) * arc-radius - half-icon;
-        y: anchor-y - 0.985 * arc-radius - half-icon;
-        width: icon-size; height: icon-size;
-        border-radius: 20px;
-        background: categories[0].color;
-        clip: true;
-        Image { width: 100%; height: 100%; source: categories[0].icon; image-fit: contain; }
-        TouchArea { clicked => { app-tapped(0); } }
-    }
-
-    // App 1 at 115° - cos=-0.423, sin=0.906
-    if categories.length > 1: Rectangle {
-        x: anchor-x + dir * (-0.423) * arc-radius - half-icon;
-        y: anchor-y - 0.906 * arc-radius - half-icon;
-        width: icon-size; height: icon-size;
-        border-radius: 20px;
-        background: categories[1].color;
-        clip: true;
-        Image { width: 100%; height: 100%; source: categories[1].icon; image-fit: contain; }
-        TouchArea { clicked => { app-tapped(1); } }
-    }
-
-    // App 2 at 130° - cos=-0.643, sin=0.766
-    if categories.length > 2: Rectangle {
-        x: anchor-x + dir * (-0.643) * arc-radius - half-icon;
-        y: anchor-y - 0.766 * arc-radius - half-icon;
-        width: icon-size; height: icon-size;
-        border-radius: 20px;
-        background: categories[2].color;
-        clip: true;
-        Image { width: 100%; height: 100%; source: categories[2].icon; image-fit: contain; }
-        TouchArea { clicked => { app-tapped(2); } }
-    }
-
-    // App 3 at 145° - cos=-0.819, sin=0.574
-    if categories.length > 3: Rectangle {
-        x: anchor-x + dir * (-0.819) * arc-radius - half-icon;
-        y: anchor-y - 0.574 * arc-radius - half-icon;
-        width: icon-size; height: icon-size;
-        border-radius: 20px;
-        background: categories[3].color;
-        clip: true;
-        Image { width: 100%; height: 100%; source: categories[3].icon; image-fit: contain; }
-        TouchArea { clicked => { app-tapped(3); } }
-    }
-
-    // App 4 at 160° - cos=-0.940, sin=0.342
-    if categories.length > 4: Rectangle {
-        x: anchor-x + dir * (-0.940) * arc-radius - half-icon;
-        y: anchor-y - 0.342 * arc-radius - half-icon;
-        width: icon-size; height: icon-size;
-        border-radius: 20px;
-        background: categories[4].color;
-        clip: true;
-        Image { width: 100%; height: 100%; source: categories[4].icon; image-fit: contain; }
-        TouchArea { clicked => { app-tapped(4); } }
-    }
-
-    // App 5 at 175° - cos=-0.996, sin=0.087
-    if categories.length > 5: Rectangle {
-        x: anchor-x + dir * (-0.996) * arc-radius - half-icon;
-        y: anchor-y - 0.087 * arc-radius - half-icon;
-        width: icon-size; height: icon-size;
-        border-radius: 20px;
-        background: categories[5].color;
-        clip: true;
-        Image { width: 100%; height: 100%; source: categories[5].icon; image-fit: contain; }
-        TouchArea { clicked => { app-tapped(5); } }
-    }
-
-    // Additional apps continue around the arc
-    // App 6 at 85° - cos=0.087, sin=0.996
-    if categories.length > 6: Rectangle {
-        x: anchor-x + dir * 0.087 * arc-radius - half-icon;
+        property <int> idx: mod(0 + rot-offset, max(1, categories.length));
+        x: is-left ? (0px - 80px + 0.087 * arc-radius - half-icon) : (root.width + 80px - 0.087 * arc-radius - half-icon);
         y: anchor-y - 0.996 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: 20px;
-        background: categories[6].color;
+        border-radius: 16px;
+        background: categories[idx].color;
         clip: true;
-        Image { width: 100%; height: 100%; source: categories[6].icon; image-fit: contain; }
-        TouchArea { clicked => { app-tapped(6); } }
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
     }
 
-    // App 7 at 70° - cos=0.342, sin=0.940
-    if categories.length > 7: Rectangle {
-        x: anchor-x + dir * 0.342 * arc-radius - half-icon;
-        y: anchor-y - 0.940 * arc-radius - half-icon;
+    // Position 1 - angle 107°
+    if categories.length > 1: Rectangle {
+        property <int> idx: mod(1 + rot-offset, max(1, categories.length));
+        x: is-left ? (0px - 80px + 0.292 * arc-radius - half-icon) : (root.width + 80px - 0.292 * arc-radius - half-icon);
+        y: anchor-y - 0.956 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: 20px;
-        background: categories[7].color;
+        border-radius: 16px;
+        background: categories[idx].color;
         clip: true;
-        Image { width: 100%; height: 100%; source: categories[7].icon; image-fit: contain; }
-        TouchArea { clicked => { app-tapped(7); } }
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
     }
 
-    // App 8 at 55° - cos=0.574, sin=0.819
-    if categories.length > 8: Rectangle {
-        x: anchor-x + dir * 0.574 * arc-radius - half-icon;
-        y: anchor-y - 0.819 * arc-radius - half-icon;
+    // Position 2 - angle 119°
+    if categories.length > 2: Rectangle {
+        property <int> idx: mod(2 + rot-offset, max(1, categories.length));
+        x: is-left ? (0px - 80px + 0.485 * arc-radius - half-icon) : (root.width + 80px - 0.485 * arc-radius - half-icon);
+        y: anchor-y - 0.875 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: 20px;
-        background: categories[8].color;
+        border-radius: 16px;
+        background: categories[idx].color;
         clip: true;
-        Image { width: 100%; height: 100%; source: categories[8].icon; image-fit: contain; }
-        TouchArea { clicked => { app-tapped(8); } }
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
     }
 
-    // App 9 at 40° - cos=0.766, sin=0.643
-    if categories.length > 9: Rectangle {
-        x: anchor-x + dir * 0.766 * arc-radius - half-icon;
-        y: anchor-y - 0.643 * arc-radius - half-icon;
+    // Position 3 - angle 131°
+    if categories.length > 3: Rectangle {
+        property <int> idx: mod(3 + rot-offset, max(1, categories.length));
+        x: is-left ? (0px - 80px + 0.656 * arc-radius - half-icon) : (root.width + 80px - 0.656 * arc-radius - half-icon);
+        y: anchor-y - 0.755 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: 20px;
-        background: categories[9].color;
+        border-radius: 16px;
+        background: categories[idx].color;
         clip: true;
-        Image { width: 100%; height: 100%; source: categories[9].icon; image-fit: contain; }
-        TouchArea { clicked => { app-tapped(9); } }
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
     }
 
-    // App 10 at 25° - cos=0.906, sin=0.423
-    if categories.length > 10: Rectangle {
-        x: anchor-x + dir * 0.906 * arc-radius - half-icon;
+    // Position 4 - angle 143°
+    if categories.length > 4: Rectangle {
+        property <int> idx: mod(4 + rot-offset, max(1, categories.length));
+        x: is-left ? (0px - 80px + 0.799 * arc-radius - half-icon) : (root.width + 80px - 0.799 * arc-radius - half-icon);
+        y: anchor-y - 0.602 * arc-radius - half-icon;
+        width: icon-size; height: icon-size;
+        border-radius: 16px;
+        background: categories[idx].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+
+    // Position 5 - angle 155°
+    if categories.length > 5: Rectangle {
+        property <int> idx: mod(5 + rot-offset, max(1, categories.length));
+        x: is-left ? (0px - 80px + 0.906 * arc-radius - half-icon) : (root.width + 80px - 0.906 * arc-radius - half-icon);
         y: anchor-y - 0.423 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: 20px;
-        background: categories[10].color;
+        border-radius: 16px;
+        background: categories[idx].color;
         clip: true;
-        Image { width: 100%; height: 100%; source: categories[10].icon; image-fit: contain; }
-        TouchArea { clicked => { app-tapped(10); } }
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
     }
 
-    // App 11 at 10° - cos=0.985, sin=0.174
-    if categories.length > 11: Rectangle {
-        x: anchor-x + dir * 0.985 * arc-radius - half-icon;
-        y: anchor-y - 0.174 * arc-radius - half-icon;
+    // Position 6 (near left/right edge) - angle 167°
+    if categories.length > 6: Rectangle {
+        property <int> idx: mod(6 + rot-offset, max(1, categories.length));
+        x: is-left ? (0px - 80px + 0.974 * arc-radius - half-icon) : (root.width + 80px - 0.974 * arc-radius - half-icon);
+        y: anchor-y - 0.225 * arc-radius - half-icon;
         width: icon-size; height: icon-size;
-        border-radius: 20px;
-        background: categories[11].color;
+        border-radius: 16px;
+        background: categories[idx].color;
         clip: true;
-        Image { width: 100%; height: 100%; source: categories[11].icon; image-fit: contain; }
-        TouchArea { clicked => { app-tapped(11); } }
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+
+    // Touch area for rotation - covers the arc region
+    TouchArea {
+        x: is-left ? 0px : root.width / 2;
+        y: 60px;
+        width: root.width / 2;
+        height: root.height - 100px;
+
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.touch-start-x = self.mouse-x / 1px;
+                root.touch-start-y = self.mouse-y / 1px;
+                root.touch-start-rotation = root.rotation;
+                root.is-dragging = true;
+            } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                root.is-dragging = false;
+            }
+        }
+
+        moved => {
+            if (root.is-dragging) {
+                // Calculate rotation based on vertical movement (swipe up/down to rotate)
+                // Each 80px of vertical movement = 1 app position
+                root.rotation = root.touch-start-rotation + ((self.mouse-y / 1px) - root.touch-start-y) / 80.0;
+                root.rotation-changed(root.rotation);
+            }
+        }
     }
 
     // Home indicator at bottom
@@ -3428,7 +3418,8 @@ export component FlickShell inherits Window {
 
     // Orbital home state (orbital launcher IS the home screen)
     in property <bool> orbital-is-left: false;  // false = right-handed (default), true = left-handed
-    in property <float> orbital-rotation: 0.0;  // Ring rotation in degrees
+    in-out property <float> orbital-rotation: 0.0;  // Ring rotation (swipe changes this)
+    callback orbital-rotation-changed(float);  // Emitted when user swipes to rotate the ring
 
     // Volume overlay state (shown when hardware volume buttons pressed)
     in property <bool> show-volume-overlay: false;
@@ -3548,10 +3539,11 @@ export component FlickShell inherits Window {
         text-scale: root.text-scale;
         has-wallpaper: root.has-wallpaper;
         is-left: orbital-is-left;
-        rotation: orbital-rotation;
+        rotation <=> orbital-rotation;
         push-offset: root.home-push-offset;
         app-tapped(i) => { app-tapped(i); }
         status-bar-tapped => { status-bar-tapped(); }
+        rotation-changed(r) => { orbital-rotation-changed(r); }
     }
 
     // Quick settings - slides down as overlay on top of home

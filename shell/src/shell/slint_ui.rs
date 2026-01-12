@@ -155,6 +155,8 @@ pub struct SlintShell {
     pending_system_action: Rc<RefCell<Option<String>>>,
     /// Pending status bar tap (open quick settings)
     pending_status_bar_tap: Rc<RefCell<bool>>,
+    /// Pending orbital rotation change (from swipe gesture)
+    pending_orbital_rotation: Rc<RefCell<Option<f32>>>,
 }
 
 impl SlintShell {
@@ -405,6 +407,13 @@ impl SlintShell {
             *status_bar_clone.borrow_mut() = true;
         });
 
+        // Orbital rotation changed callback
+        let pending_orbital_rotation = Rc::new(RefCell::new(None::<f32>));
+        let rotation_clone = pending_orbital_rotation.clone();
+        shell.on_orbital_rotation_changed(move |rotation| {
+            *rotation_clone.borrow_mut() = Some(rotation);
+        });
+
         Self {
             window,
             shell,
@@ -425,6 +434,7 @@ impl SlintShell {
             pending_phone_actions,
             pending_system_action,
             pending_status_bar_tap,
+            pending_orbital_rotation,
         }
     }
 
@@ -464,6 +474,11 @@ impl SlintShell {
     /// Set orbital home ring rotation in degrees
     pub fn set_orbital_rotation(&self, rotation: f32) {
         self.shell.set_orbital_rotation(rotation);
+    }
+
+    /// Poll for pending orbital rotation changes (from swipe gesture)
+    pub fn poll_orbital_rotation(&self) -> Option<f32> {
+        self.pending_orbital_rotation.borrow_mut().take()
     }
 
     /// Poll for status bar tap (opens quick settings)
