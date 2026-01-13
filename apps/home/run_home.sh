@@ -35,4 +35,5 @@ fi
 
 echo "Running: $QMLSCENE $QML_FILE --state-dir $STATE_DIR" >> "$LOG_FILE"
 
-exec $QMLSCENE "$QML_FILE" -- --state-dir "$STATE_DIR" 2>&1 | tee -a "$LOG_FILE"
+# Run QML scene with logging (exec replaces shell, output redirected to log)
+exec $QMLSCENE "$QML_FILE" -- --state-dir "$STATE_DIR" >> "$LOG_FILE" 2>&1
