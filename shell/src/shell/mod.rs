@@ -128,6 +128,31 @@ pub fn apps_json_path() -> PathBuf {
     get_state_dir().join("apps.json")
 }
 
+/// Path to home config file (handedness, etc.)
+pub fn home_config_path() -> PathBuf {
+    get_state_dir().join("home_config.json")
+}
+
+/// Write handedness config for QML home to read
+/// right_handed: true = anchor bottom-right, false = anchor bottom-left
+pub fn write_handedness_config(right_handed: bool) {
+    let config_path = home_config_path();
+    let state_dir = get_state_dir();
+
+    // Ensure state dir exists
+    if let Err(e) = std::fs::create_dir_all(&state_dir) {
+        tracing::warn!("Failed to create state dir: {:?}", e);
+        return;
+    }
+
+    let config = format!(r#"{{"rightHanded": {}}}"#, right_handed);
+    if let Err(e) = std::fs::write(&config_path, &config) {
+        tracing::warn!("Failed to write handedness config: {:?}", e);
+    } else {
+        tracing::info!("Wrote handedness config: rightHanded={}", right_handed);
+    }
+}
+
 // AppInfo is now defined in apps.rs - use apps::AppInfo
 pub use apps::AppInfo;
 

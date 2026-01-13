@@ -7,6 +7,7 @@ Window {
     visibility: Window.FullScreen
     title: "Flick Home"
     color: "#1a1a2e"
+    flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnBottomHint
 
     // State directory - read from state_dir.txt written by run_home.sh
     property string stateDir: "/home/furios/.local/state/flick"
@@ -27,18 +28,16 @@ Window {
     // Margin from edge for first column of icons
     property real edgeMargin: iconSize/2 + 20
 
-    // Ring colors
+    // Ring colors - vibrant rainbow from purple to red
     property var ringColors: [
-        {h: 0.85, s: 0.7, l: 0.5},
-        {h: 0.75, s: 0.7, l: 0.5},
-        {h: 0.65, s: 0.7, l: 0.5},
-        {h: 0.55, s: 0.7, l: 0.5},
-        {h: 0.45, s: 0.7, l: 0.5},
-        {h: 0.35, s: 0.7, l: 0.5},
-        {h: 0.25, s: 0.7, l: 0.5},
-        {h: 0.15, s: 0.7, l: 0.5},
-        {h: 0.08, s: 0.7, l: 0.5},
-        {h: 0.0,  s: 0.7, l: 0.5}
+        {h: 0.83, s: 0.85, l: 0.45},  // Purple
+        {h: 0.70, s: 0.85, l: 0.45},  // Blue
+        {h: 0.55, s: 0.85, l: 0.45},  // Cyan
+        {h: 0.40, s: 0.85, l: 0.45},  // Green
+        {h: 0.30, s: 0.85, l: 0.45},  // Yellow-green
+        {h: 0.18, s: 0.85, l: 0.45},  // Orange
+        {h: 0.08, s: 0.85, l: 0.45},  // Red-orange
+        {h: 0.0,  s: 0.85, l: 0.45}   // Red
     ]
 
     function hslToRgb(h, s, l) {
@@ -76,6 +75,22 @@ Window {
         console.log("Home screen started, stateDir:", stateDir);
         loadApps();
         loadConfig();
+    }
+
+    // Reload config when window becomes active (e.g., when swiping back to home)
+    onActiveChanged: {
+        if (active) {
+            console.log("Window became active, reloading config");
+            loadConfig();
+        }
+    }
+
+    // Also poll config periodically in case file changes
+    Timer {
+        interval: 500
+        running: true
+        repeat: true
+        onTriggered: loadConfig()
     }
 
     // Load apps from JSON file provided by compositor
@@ -256,27 +271,41 @@ Window {
         onPaint: {
             var ctx = getContext("2d");
             ctx.reset();
+            ctx.clearRect(0, 0, width, height);
 
             var startAngle, endAngle;
             if (rightHanded) {
-                startAngle = -Math.PI;
-                endAngle = -Math.PI / 2;
+                // Right-handed: arc from bottom-right corner, spanning up-left quadrant
+                startAngle = Math.PI;      // 180 degrees (pointing left)
+                endAngle = Math.PI * 1.5;  // 270 degrees (pointing up)
             } else {
-                startAngle = -Math.PI / 2;
-                endAngle = 0;
+                // Left-handed: arc from bottom-left corner, spanning up-right quadrant
+                startAngle = Math.PI * 1.5;  // 270 degrees (pointing up)
+                endAngle = Math.PI * 2;      // 360 degrees (pointing right)
             }
 
-            for (var i = 0; i < rings.length; i++) {
-                var innerR = (i === 0) ? 0 : (firstRadius + (i - 1) * ringSpacing + ringSpacing/2);
-                var outerR = firstRadius + i * ringSpacing + ringSpacing/2;
+            console.log("Drawing arcs: anchorX=" + anchorX + " anchorY=" + anchorY + " rings=" + rings.length + " rightHanded=" + rightHanded);
+
+            // Draw from outermost ring first (painter's algorithm - outer rings behind)
+            for (var i = rings.length - 1; i >= 0; i--) {
+                var innerR = (i === 0) ? 0 : (firstRadius + (i - 0.5) * ringSpacing);
+                var outerR = firstRadius + (i + 0.5) * ringSpacing;
                 var color = getRingColor(i);
 
                 ctx.beginPath();
-                ctx.arc(anchorX, anchorY, outerR, startAngle, endAngle, false);
-                ctx.arc(anchorX, anchorY, innerR, endAngle, startAngle, true);
+                if (innerR === 0) {
+                    // First ring: draw as a pie slice from center
+                    ctx.moveTo(anchorX, anchorY);
+                    ctx.arc(anchorX, anchorY, outerR, startAngle, endAngle, false);
+                    ctx.lineTo(anchorX, anchorY);
+                } else {
+                    // Other rings: draw as arc bands
+                    ctx.arc(anchorX, anchorY, outerR, startAngle, endAngle, false);
+                    ctx.arc(anchorX, anchorY, innerR, endAngle, startAngle, true);
+                }
                 ctx.closePath();
 
-                ctx.fillStyle = Qt.rgba(color.r, color.g, color.b, 0.4);
+                ctx.fillStyle = Qt.rgba(color.r, color.g, color.b, 0.5);
                 ctx.fill();
             }
         }
@@ -285,6 +314,8 @@ Window {
         Connections {
             target: root
             function onRightHandedChanged() { arcCanvas.requestPaint() }
+            function onWidthChanged() { arcCanvas.requestPaint() }
+            function onHeightChanged() { arcCanvas.requestPaint() }
         }
 
         // Handle swipes anywhere in the arc area

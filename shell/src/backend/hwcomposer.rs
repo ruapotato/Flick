@@ -1456,6 +1456,8 @@ fn handle_input_event(
                         if *completed {
                             info!("Edge swipe completed - going to orbital home (is_left={})", is_left);
                             state.system.haptic_tap();
+                            // Write handedness config: left edge = left-handed, right edge = right-handed
+                            crate::shell::write_handedness_config(is_right);
                             state.shell.set_view(crate::shell::ShellView::Home);
                         }
 

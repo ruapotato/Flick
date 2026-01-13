@@ -1781,10 +1781,13 @@ impl XdgShellHandler for Flick {
         tracing::info!("Active window set to new toplevel: {:?}", surface_id);
 
         // Switch to App view now that we have a real window
-        // UNLESS we're on the lock screen OR we recently unlocked (dying lock screen app)
+        // UNLESS we're on the lock screen, home screen with QML home, OR we recently unlocked
         let current_view = self.shell.view;
         if current_view == crate::shell::ShellView::LockScreen {
             tracing::info!("New window on lock screen - staying in LockScreen view");
+        } else if current_view == crate::shell::ShellView::Home && self.shell.qml_home_launched {
+            // QML home window - stay on Home view, don't switch to App
+            tracing::info!("New window on home screen with QML home - staying in Home view");
         } else if self.shell.unlock_app_launched {
             // App was launched from notification tap - switch to App view
             tracing::info!("New window from notification app launch - switching to App view");
