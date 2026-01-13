@@ -2011,8 +2011,9 @@ component HomeScreen inherits Rectangle {
     }
 }
 
-// Orbital Home - the main home screen with apps in a large spinnable arc
-// Shows 1/4 of a circle with apps, can be rotated by swiping
+// Orbital Home - Full screen curved app grid
+// Looks like a traditional app grid but rows are curved arcs
+// Center point is at bottom corner, arcs curve across full screen
 component OrbitalHome inherits Rectangle {
     in property <[AppCategory]> categories: [];
     in property <string> time: "12:00";
@@ -2022,14 +2023,13 @@ component OrbitalHome inherits Rectangle {
     in property <bool> is-left: false;       // false = right-handed (default), true = left-handed
     in property <float> push-offset: 0.0;    // Push offset during gesture
 
-    // Per-ring rotation (each ring rotates independently)
-    in-out property <float> ring1-rotation: 0.0;
-    in-out property <float> ring2-rotation: 0.0;
-    in-out property <float> ring3-rotation: 0.0;
+    // Single scroll offset for whole grid (simple, smooth scrolling)
+    in-out property <float> ring1-rotation: 0.0;  // Used as scroll offset
+    in-out property <float> ring2-rotation: 0.0;  // Unused but kept for compatibility
+    in-out property <float> ring3-rotation: 0.0;  // Unused but kept for compatibility
 
     callback app-tapped(int);
     callback status-bar-tapped();
-    // Callbacks include ring number (1, 2, or 3)
     callback ring-rotation-changed(int, float);
     callback ring-swipe-ended(int, float);
 
@@ -2037,32 +2037,23 @@ component OrbitalHome inherits Rectangle {
     height: 100%;
     background: has-wallpaper ? transparent : Theme.background;
 
-    // Anchor point RIGHT at the corner
+    // Grid configuration - LARGE icons filling screen
+    property <length> icon-size: 72px;
+    property <length> row-spacing: 88px;  // Icon + small gap
+    property <length> first-row-radius: 130px;  // Start close to corner
+
+    // Anchor at bottom corner (off-screen center of arcs)
     property <length> anchor-x: is-left ? 0px : root.width;
-    property <length> anchor-y: root.height;
+    property <length> anchor-y: root.height + 20px;  // Slightly below screen
 
-    // Three orbital rings - larger, filling more screen
-    property <length> ring1-radius: 200px;   // Inner ring - Flick apps
-    property <length> ring2-radius: 340px;   // Middle ring
-    property <length> ring3-radius: 480px;   // Outer ring
-
-    // Larger icons
-    property <length> ring1-icon: 90px;
-    property <length> ring2-icon: 85px;
-    property <length> ring3-icon: 80px;
-
-    // Per-ring rotation offsets
+    // Number of apps
     property <int> num-apps: max(1, categories.length);
-    property <int> r1-offset: mod(round(ring1-rotation), num-apps);
-    property <int> r2-offset: mod(round(ring2-rotation), num-apps);
-    property <int> r3-offset: mod(round(ring3-rotation), num-apps);
 
-    // Touch tracking - which ring is being dragged
-    property <int> active-ring: 0;  // 0 = none, 1/2/3 = ring number
+    // Touch tracking for smooth scrolling
     property <float> touch-start-y: 0;
     property <float> touch-last-y: 0;
-    property <float> touch-start-rotation: 0;
     property <float> velocity: 0;
+    property <bool> is-dragging: false;
 
     // Status bar at top
     StatusBar {
@@ -2076,289 +2067,592 @@ component OrbitalHome inherits Rectangle {
         tapped => { root.status-bar-tapped(); }
     }
 
-    // Visual ring tracks (subtle arcs showing the orbital paths)
-    Rectangle {
-        x: anchor-x - ring1-radius;
-        y: anchor-y - ring1-radius;
-        width: ring1-radius * 2;
-        height: ring1-radius * 2;
-        border-radius: ring1-radius;
-        background: transparent;
-        border-width: ring1-icon + 10px;
-        border-color: #2a2a4a25;
-    }
-    Rectangle {
-        x: anchor-x - ring2-radius;
-        y: anchor-y - ring2-radius;
-        width: ring2-radius * 2;
-        height: ring2-radius * 2;
-        border-radius: ring2-radius;
-        background: transparent;
-        border-width: ring2-icon + 8px;
-        border-color: #2a2a4a20;
-    }
-    Rectangle {
-        x: anchor-x - ring3-radius;
-        y: anchor-y - ring3-radius;
-        width: ring3-radius * 2;
-        height: ring3-radius * 2;
-        border-radius: ring3-radius;
-        background: transparent;
-        border-width: ring3-icon + 6px;
-        border-color: #2a2a4a15;
-    }
+    // Helper function-like properties for positioning
+    // Row radii: first-row-radius + row-spacing * row-number
+    property <length> r0: first-row-radius;
+    property <length> r1: first-row-radius + row-spacing;
+    property <length> r2: first-row-radius + row-spacing * 2;
+    property <length> r3: first-row-radius + row-spacing * 3;
+    property <length> r4: first-row-radius + row-spacing * 4;
+    property <length> r5: first-row-radius + row-spacing * 5;
+    property <length> r6: first-row-radius + row-spacing * 6;
+    property <length> r7: first-row-radius + row-spacing * 7;
+    property <length> r8: first-row-radius + row-spacing * 8;
+    property <length> r9: first-row-radius + row-spacing * 9;
+    property <length> r10: first-row-radius + row-spacing * 10;
+    property <length> r11: first-row-radius + row-spacing * 11;
+    property <length> r12: first-row-radius + row-spacing * 12;
+    property <length> r13: first-row-radius + row-spacing * 13;
+    property <length> r14: first-row-radius + row-spacing * 14;
+    property <length> r15: first-row-radius + row-spacing * 15;
 
-    // === RING 1 (Inner) - 5 apps visible, tighter spacing ===
-    // Angles: 95°, 115°, 135°, 155°, 175° (20° apart)
-
+    // === ROW 0 (bottom, closest to corner) - 2 apps ===
+    // Angles ~110°, 150° for 2 apps
     if categories.length > 0: Rectangle {
-        property <int> idx: mod(0 + r1-offset, num-apps);
-        x: is-left ? (anchor-x + 0.087 * ring1-radius - ring1-icon/2) : (anchor-x - 0.087 * ring1-radius - ring1-icon/2);
-        y: anchor-y - 0.996 * ring1-radius - ring1-icon/2;
-        width: ring1-icon; height: ring1-icon;
-        border-radius: 18px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(0, num-apps);
+        x: is-left ? (anchor-x + 0.342 * r0 - icon-size/2) : (anchor-x - 0.342 * r0 - icon-size/2);
+        y: anchor-y - 0.940 * r0 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
     if categories.length > 1: Rectangle {
-        property <int> idx: mod(1 + r1-offset, num-apps);
-        x: is-left ? (anchor-x + 0.423 * ring1-radius - ring1-icon/2) : (anchor-x - 0.423 * ring1-radius - ring1-icon/2);
-        y: anchor-y - 0.906 * ring1-radius - ring1-icon/2;
-        width: ring1-icon; height: ring1-icon;
-        border-radius: 18px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(1, num-apps);
+        x: is-left ? (anchor-x + 0.866 * r0 - icon-size/2) : (anchor-x - 0.866 * r0 - icon-size/2);
+        y: anchor-y - 0.500 * r0 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
+
+    // === ROW 1 - 3 apps ===
+    // Angles ~100°, 130°, 160°
     if categories.length > 2: Rectangle {
-        property <int> idx: mod(2 + r1-offset, num-apps);
-        x: is-left ? (anchor-x + 0.707 * ring1-radius - ring1-icon/2) : (anchor-x - 0.707 * ring1-radius - ring1-icon/2);
-        y: anchor-y - 0.707 * ring1-radius - ring1-icon/2;
-        width: ring1-icon; height: ring1-icon;
-        border-radius: 18px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(2, num-apps);
+        x: is-left ? (anchor-x + 0.174 * r1 - icon-size/2) : (anchor-x - 0.174 * r1 - icon-size/2);
+        y: anchor-y - 0.985 * r1 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
     if categories.length > 3: Rectangle {
-        property <int> idx: mod(3 + r1-offset, num-apps);
-        x: is-left ? (anchor-x + 0.906 * ring1-radius - ring1-icon/2) : (anchor-x - 0.906 * ring1-radius - ring1-icon/2);
-        y: anchor-y - 0.423 * ring1-radius - ring1-icon/2;
-        width: ring1-icon; height: ring1-icon;
-        border-radius: 18px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(3, num-apps);
+        x: is-left ? (anchor-x + 0.643 * r1 - icon-size/2) : (anchor-x - 0.643 * r1 - icon-size/2);
+        y: anchor-y - 0.766 * r1 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
     if categories.length > 4: Rectangle {
-        property <int> idx: mod(4 + r1-offset, num-apps);
-        x: is-left ? (anchor-x + 0.996 * ring1-radius - ring1-icon/2) : (anchor-x - 0.996 * ring1-radius - ring1-icon/2);
-        y: anchor-y - 0.087 * ring1-radius - ring1-icon/2;
-        width: ring1-icon; height: ring1-icon;
-        border-radius: 18px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(4, num-apps);
+        x: is-left ? (anchor-x + 0.940 * r1 - icon-size/2) : (anchor-x - 0.940 * r1 - icon-size/2);
+        y: anchor-y - 0.342 * r1 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
 
-    // === RING 2 (Middle) - 6 apps visible ===
-    // Angles: 92°, 110°, 128°, 146°, 164°, 182° (18° apart)
-
+    // === ROW 2 - 4 apps ===
+    // Angles ~95°, 118°, 142°, 165°
     if categories.length > 5: Rectangle {
-        property <int> idx: mod(5 + r2-offset, num-apps);
-        x: is-left ? (anchor-x + 0.035 * ring2-radius - ring2-icon/2) : (anchor-x - 0.035 * ring2-radius - ring2-icon/2);
-        y: anchor-y - 0.999 * ring2-radius - ring2-icon/2;
-        width: ring2-icon; height: ring2-icon;
-        border-radius: 16px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(5, num-apps);
+        x: is-left ? (anchor-x + 0.087 * r2 - icon-size/2) : (anchor-x - 0.087 * r2 - icon-size/2);
+        y: anchor-y - 0.996 * r2 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
     if categories.length > 6: Rectangle {
-        property <int> idx: mod(6 + r2-offset, num-apps);
-        x: is-left ? (anchor-x + 0.342 * ring2-radius - ring2-icon/2) : (anchor-x - 0.342 * ring2-radius - ring2-icon/2);
-        y: anchor-y - 0.940 * ring2-radius - ring2-icon/2;
-        width: ring2-icon; height: ring2-icon;
-        border-radius: 16px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(6, num-apps);
+        x: is-left ? (anchor-x + 0.469 * r2 - icon-size/2) : (anchor-x - 0.469 * r2 - icon-size/2);
+        y: anchor-y - 0.883 * r2 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
     if categories.length > 7: Rectangle {
-        property <int> idx: mod(7 + r2-offset, num-apps);
-        x: is-left ? (anchor-x + 0.616 * ring2-radius - ring2-icon/2) : (anchor-x - 0.616 * ring2-radius - ring2-icon/2);
-        y: anchor-y - 0.788 * ring2-radius - ring2-icon/2;
-        width: ring2-icon; height: ring2-icon;
-        border-radius: 16px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(7, num-apps);
+        x: is-left ? (anchor-x + 0.788 * r2 - icon-size/2) : (anchor-x - 0.788 * r2 - icon-size/2);
+        y: anchor-y - 0.616 * r2 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
     if categories.length > 8: Rectangle {
-        property <int> idx: mod(8 + r2-offset, num-apps);
-        x: is-left ? (anchor-x + 0.829 * ring2-radius - ring2-icon/2) : (anchor-x - 0.829 * ring2-radius - ring2-icon/2);
-        y: anchor-y - 0.559 * ring2-radius - ring2-icon/2;
-        width: ring2-icon; height: ring2-icon;
-        border-radius: 16px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(8, num-apps);
+        x: is-left ? (anchor-x + 0.966 * r2 - icon-size/2) : (anchor-x - 0.966 * r2 - icon-size/2);
+        y: anchor-y - 0.259 * r2 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
+
+    // === ROW 3 - 4 apps ===
     if categories.length > 9: Rectangle {
-        property <int> idx: mod(9 + r2-offset, num-apps);
-        x: is-left ? (anchor-x + 0.961 * ring2-radius - ring2-icon/2) : (anchor-x - 0.961 * ring2-radius - ring2-icon/2);
-        y: anchor-y - 0.276 * ring2-radius - ring2-icon/2;
-        width: ring2-icon; height: ring2-icon;
-        border-radius: 16px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(9, num-apps);
+        x: is-left ? (anchor-x + 0.087 * r3 - icon-size/2) : (anchor-x - 0.087 * r3 - icon-size/2);
+        y: anchor-y - 0.996 * r3 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
     if categories.length > 10: Rectangle {
-        property <int> idx: mod(10 + r2-offset, num-apps);
-        x: is-left ? (anchor-x + 0.999 * ring2-radius - ring2-icon/2) : (anchor-x - 0.999 * ring2-radius - ring2-icon/2);
-        y: anchor-y + 0.035 * ring2-radius - ring2-icon/2;
-        width: ring2-icon; height: ring2-icon;
-        border-radius: 16px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(10, num-apps);
+        x: is-left ? (anchor-x + 0.469 * r3 - icon-size/2) : (anchor-x - 0.469 * r3 - icon-size/2);
+        y: anchor-y - 0.883 * r3 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-
-    // === RING 3 (Outer) - 7 apps visible ===
-    // Angles: 90°, 105°, 120°, 135°, 150°, 165°, 180° (15° apart)
-
     if categories.length > 11: Rectangle {
-        property <int> idx: mod(11 + r3-offset, num-apps);
-        x: is-left ? (anchor-x + 0.000 * ring3-radius - ring3-icon/2) : (anchor-x - 0.000 * ring3-radius - ring3-icon/2);
-        y: anchor-y - 1.000 * ring3-radius - ring3-icon/2;
-        width: ring3-icon; height: ring3-icon;
-        border-radius: 14px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(11, num-apps);
+        x: is-left ? (anchor-x + 0.788 * r3 - icon-size/2) : (anchor-x - 0.788 * r3 - icon-size/2);
+        y: anchor-y - 0.616 * r3 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
     if categories.length > 12: Rectangle {
-        property <int> idx: mod(12 + r3-offset, num-apps);
-        x: is-left ? (anchor-x + 0.259 * ring3-radius - ring3-icon/2) : (anchor-x - 0.259 * ring3-radius - ring3-icon/2);
-        y: anchor-y - 0.966 * ring3-radius - ring3-icon/2;
-        width: ring3-icon; height: ring3-icon;
-        border-radius: 14px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(12, num-apps);
+        x: is-left ? (anchor-x + 0.966 * r3 - icon-size/2) : (anchor-x - 0.966 * r3 - icon-size/2);
+        y: anchor-y - 0.259 * r3 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
+
+    // === ROW 4 - 4 apps ===
     if categories.length > 13: Rectangle {
-        property <int> idx: mod(13 + r3-offset, num-apps);
-        x: is-left ? (anchor-x + 0.500 * ring3-radius - ring3-icon/2) : (anchor-x - 0.500 * ring3-radius - ring3-icon/2);
-        y: anchor-y - 0.866 * ring3-radius - ring3-icon/2;
-        width: ring3-icon; height: ring3-icon;
-        border-radius: 14px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(13, num-apps);
+        x: is-left ? (anchor-x + 0.087 * r4 - icon-size/2) : (anchor-x - 0.087 * r4 - icon-size/2);
+        y: anchor-y - 0.996 * r4 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
     if categories.length > 14: Rectangle {
-        property <int> idx: mod(14 + r3-offset, num-apps);
-        x: is-left ? (anchor-x + 0.707 * ring3-radius - ring3-icon/2) : (anchor-x - 0.707 * ring3-radius - ring3-icon/2);
-        y: anchor-y - 0.707 * ring3-radius - ring3-icon/2;
-        width: ring3-icon; height: ring3-icon;
-        border-radius: 14px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(14, num-apps);
+        x: is-left ? (anchor-x + 0.469 * r4 - icon-size/2) : (anchor-x - 0.469 * r4 - icon-size/2);
+        y: anchor-y - 0.883 * r4 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
     if categories.length > 15: Rectangle {
-        property <int> idx: mod(15 + r3-offset, num-apps);
-        x: is-left ? (anchor-x + 0.866 * ring3-radius - ring3-icon/2) : (anchor-x - 0.866 * ring3-radius - ring3-icon/2);
-        y: anchor-y - 0.500 * ring3-radius - ring3-icon/2;
-        width: ring3-icon; height: ring3-icon;
-        border-radius: 14px;
-        background: categories[idx].color;
-        clip: true;
+        property <int> idx: mod(15, num-apps);
+        x: is-left ? (anchor-x + 0.788 * r4 - icon-size/2) : (anchor-x - 0.788 * r4 - icon-size/2);
+        y: anchor-y - 0.616 * r4 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 16: Rectangle {
+        property <int> idx: mod(16, num-apps);
+        x: is-left ? (anchor-x + 0.966 * r4 - icon-size/2) : (anchor-x - 0.966 * r4 - icon-size/2);
+        y: anchor-y - 0.259 * r4 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
 
-    // Touch area for ring rotation - detects which ring based on distance from anchor
-    // Pre-computed distance values for touch detection (updated on mouse move)
-    property <float> touch-dx: 0;
-    property <float> touch-dy: 0;
-    property <float> touch-dist: 0;
+    // === ROW 5 - 5 apps ===
+    if categories.length > 17: Rectangle {
+        property <int> idx: mod(17, num-apps);
+        x: is-left ? (anchor-x + 0.000 * r5 - icon-size/2) : (anchor-x - 0.000 * r5 - icon-size/2);
+        y: anchor-y - 1.000 * r5 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 18: Rectangle {
+        property <int> idx: mod(18, num-apps);
+        x: is-left ? (anchor-x + 0.342 * r5 - icon-size/2) : (anchor-x - 0.342 * r5 - icon-size/2);
+        y: anchor-y - 0.940 * r5 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 19: Rectangle {
+        property <int> idx: mod(19, num-apps);
+        x: is-left ? (anchor-x + 0.643 * r5 - icon-size/2) : (anchor-x - 0.643 * r5 - icon-size/2);
+        y: anchor-y - 0.766 * r5 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 20: Rectangle {
+        property <int> idx: mod(20, num-apps);
+        x: is-left ? (anchor-x + 0.866 * r5 - icon-size/2) : (anchor-x - 0.866 * r5 - icon-size/2);
+        y: anchor-y - 0.500 * r5 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 21: Rectangle {
+        property <int> idx: mod(21, num-apps);
+        x: is-left ? (anchor-x + 0.985 * r5 - icon-size/2) : (anchor-x - 0.985 * r5 - icon-size/2);
+        y: anchor-y - 0.174 * r5 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
 
-    TouchArea {
-        x: 0px;
-        y: 60px;
-        width: root.width;
-        height: root.height - 100px;
+    // === ROW 6 - 5 apps ===
+    if categories.length > 22: Rectangle {
+        property <int> idx: mod(22, num-apps);
+        x: is-left ? (anchor-x + 0.000 * r6 - icon-size/2) : (anchor-x - 0.000 * r6 - icon-size/2);
+        y: anchor-y - 1.000 * r6 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 23: Rectangle {
+        property <int> idx: mod(23, num-apps);
+        x: is-left ? (anchor-x + 0.342 * r6 - icon-size/2) : (anchor-x - 0.342 * r6 - icon-size/2);
+        y: anchor-y - 0.940 * r6 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 24: Rectangle {
+        property <int> idx: mod(24, num-apps);
+        x: is-left ? (anchor-x + 0.643 * r6 - icon-size/2) : (anchor-x - 0.643 * r6 - icon-size/2);
+        y: anchor-y - 0.766 * r6 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 25: Rectangle {
+        property <int> idx: mod(25, num-apps);
+        x: is-left ? (anchor-x + 0.866 * r6 - icon-size/2) : (anchor-x - 0.866 * r6 - icon-size/2);
+        y: anchor-y - 0.500 * r6 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 26: Rectangle {
+        property <int> idx: mod(26, num-apps);
+        x: is-left ? (anchor-x + 0.985 * r6 - icon-size/2) : (anchor-x - 0.985 * r6 - icon-size/2);
+        y: anchor-y - 0.174 * r6 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
 
-        pointer-event(event) => {
-            if (event.kind == PointerEventKind.down) {
-                // Calculate distance from anchor to determine which ring
-                // For right-handed: anchor is at right edge, so dx = width - mouse-x
-                // For left-handed: anchor is at left edge, so dx = mouse-x
-                root.touch-dx = is-left ? (self.mouse-x / 1px) : ((root.width / 1px) - (self.mouse-x / 1px));
-                root.touch-dy = ((root.height / 1px) - 60) - (self.mouse-y / 1px);
-                root.touch-dist = sqrt((root.touch-dx * root.touch-dx) + (root.touch-dy * root.touch-dy));
+    // === ROW 7 - 5 apps ===
+    if categories.length > 27: Rectangle {
+        property <int> idx: mod(27, num-apps);
+        x: is-left ? (anchor-x + 0.000 * r7 - icon-size/2) : (anchor-x - 0.000 * r7 - icon-size/2);
+        y: anchor-y - 1.000 * r7 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 28: Rectangle {
+        property <int> idx: mod(28, num-apps);
+        x: is-left ? (anchor-x + 0.342 * r7 - icon-size/2) : (anchor-x - 0.342 * r7 - icon-size/2);
+        y: anchor-y - 0.940 * r7 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 29: Rectangle {
+        property <int> idx: mod(29, num-apps);
+        x: is-left ? (anchor-x + 0.643 * r7 - icon-size/2) : (anchor-x - 0.643 * r7 - icon-size/2);
+        y: anchor-y - 0.766 * r7 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 30: Rectangle {
+        property <int> idx: mod(30, num-apps);
+        x: is-left ? (anchor-x + 0.866 * r7 - icon-size/2) : (anchor-x - 0.866 * r7 - icon-size/2);
+        y: anchor-y - 0.500 * r7 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 31: Rectangle {
+        property <int> idx: mod(31, num-apps);
+        x: is-left ? (anchor-x + 0.985 * r7 - icon-size/2) : (anchor-x - 0.985 * r7 - icon-size/2);
+        y: anchor-y - 0.174 * r7 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
 
-                // Determine which ring was touched based on distance from anchor
-                // Inner ring (ring1) is closest to corner
-                if (root.touch-dist < ((ring1-radius / 1px) + 60)) {
-                    root.active-ring = 1;
-                    root.touch-start-rotation = root.ring1-rotation;
-                } else if (root.touch-dist < ((ring2-radius / 1px) + 50)) {
-                    root.active-ring = 2;
-                    root.touch-start-rotation = root.ring2-rotation;
-                } else {
-                    root.active-ring = 3;
-                    root.touch-start-rotation = root.ring3-rotation;
-                }
+    // === ROW 8 - 5 apps ===
+    if categories.length > 32: Rectangle {
+        property <int> idx: mod(32, num-apps);
+        x: is-left ? (anchor-x + 0.000 * r8 - icon-size/2) : (anchor-x - 0.000 * r8 - icon-size/2);
+        y: anchor-y - 1.000 * r8 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 33: Rectangle {
+        property <int> idx: mod(33, num-apps);
+        x: is-left ? (anchor-x + 0.342 * r8 - icon-size/2) : (anchor-x - 0.342 * r8 - icon-size/2);
+        y: anchor-y - 0.940 * r8 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 34: Rectangle {
+        property <int> idx: mod(34, num-apps);
+        x: is-left ? (anchor-x + 0.643 * r8 - icon-size/2) : (anchor-x - 0.643 * r8 - icon-size/2);
+        y: anchor-y - 0.766 * r8 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 35: Rectangle {
+        property <int> idx: mod(35, num-apps);
+        x: is-left ? (anchor-x + 0.866 * r8 - icon-size/2) : (anchor-x - 0.866 * r8 - icon-size/2);
+        y: anchor-y - 0.500 * r8 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 36: Rectangle {
+        property <int> idx: mod(36, num-apps);
+        x: is-left ? (anchor-x + 0.985 * r8 - icon-size/2) : (anchor-x - 0.985 * r8 - icon-size/2);
+        y: anchor-y - 0.174 * r8 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
 
-                root.touch-start-y = self.mouse-y / 1px;
-                root.touch-last-y = self.mouse-y / 1px;
-                root.velocity = 0;
-            } else if ((event.kind == PointerEventKind.up) || (event.kind == PointerEventKind.cancel)) {
-                if (root.active-ring > 0) {
-                    root.ring-swipe-ended(root.active-ring, root.velocity);
-                }
-                root.active-ring = 0;
-            }
-        }
+    // === ROW 9 - 6 apps ===
+    if categories.length > 37: Rectangle {
+        property <int> idx: mod(37, num-apps);
+        x: is-left ? (anchor-x + 0.000 * r9 - icon-size/2) : (anchor-x - 0.000 * r9 - icon-size/2);
+        y: anchor-y - 1.000 * r9 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 38: Rectangle {
+        property <int> idx: mod(38, num-apps);
+        x: is-left ? (anchor-x + 0.259 * r9 - icon-size/2) : (anchor-x - 0.259 * r9 - icon-size/2);
+        y: anchor-y - 0.966 * r9 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 39: Rectangle {
+        property <int> idx: mod(39, num-apps);
+        x: is-left ? (anchor-x + 0.500 * r9 - icon-size/2) : (anchor-x - 0.500 * r9 - icon-size/2);
+        y: anchor-y - 0.866 * r9 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 40: Rectangle {
+        property <int> idx: mod(40, num-apps);
+        x: is-left ? (anchor-x + 0.707 * r9 - icon-size/2) : (anchor-x - 0.707 * r9 - icon-size/2);
+        y: anchor-y - 0.707 * r9 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 41: Rectangle {
+        property <int> idx: mod(41, num-apps);
+        x: is-left ? (anchor-x + 0.866 * r9 - icon-size/2) : (anchor-x - 0.866 * r9 - icon-size/2);
+        y: anchor-y - 0.500 * r9 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 42: Rectangle {
+        property <int> idx: mod(42, num-apps);
+        x: is-left ? (anchor-x + 0.966 * r9 - icon-size/2) : (anchor-x - 0.966 * r9 - icon-size/2);
+        y: anchor-y - 0.259 * r9 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
 
-        moved => {
-            if (root.active-ring > 0) {
-                root.velocity = ((self.mouse-y / 1px) - root.touch-last-y) / 50.0;
-                root.touch-last-y = self.mouse-y / 1px;
+    // === ROW 10 - 6 apps ===
+    if categories.length > 43: Rectangle {
+        property <int> idx: mod(43, num-apps);
+        x: is-left ? (anchor-x + 0.000 * r10 - icon-size/2) : (anchor-x - 0.000 * r10 - icon-size/2);
+        y: anchor-y - 1.000 * r10 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 44: Rectangle {
+        property <int> idx: mod(44, num-apps);
+        x: is-left ? (anchor-x + 0.259 * r10 - icon-size/2) : (anchor-x - 0.259 * r10 - icon-size/2);
+        y: anchor-y - 0.966 * r10 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 45: Rectangle {
+        property <int> idx: mod(45, num-apps);
+        x: is-left ? (anchor-x + 0.500 * r10 - icon-size/2) : (anchor-x - 0.500 * r10 - icon-size/2);
+        y: anchor-y - 0.866 * r10 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 46: Rectangle {
+        property <int> idx: mod(46, num-apps);
+        x: is-left ? (anchor-x + 0.707 * r10 - icon-size/2) : (anchor-x - 0.707 * r10 - icon-size/2);
+        y: anchor-y - 0.707 * r10 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 47: Rectangle {
+        property <int> idx: mod(47, num-apps);
+        x: is-left ? (anchor-x + 0.866 * r10 - icon-size/2) : (anchor-x - 0.866 * r10 - icon-size/2);
+        y: anchor-y - 0.500 * r10 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 48: Rectangle {
+        property <int> idx: mod(48, num-apps);
+        x: is-left ? (anchor-x + 0.966 * r10 - icon-size/2) : (anchor-x - 0.966 * r10 - icon-size/2);
+        y: anchor-y - 0.259 * r10 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
 
-                // Calculate delta rotation based on Y movement
-                if (root.active-ring == 1) {
-                    root.ring1-rotation = root.touch-start-rotation + (((self.mouse-y / 1px) - root.touch-start-y) / 50.0);
-                    root.ring-rotation-changed(1, root.ring1-rotation);
-                } else if (root.active-ring == 2) {
-                    root.ring2-rotation = root.touch-start-rotation + (((self.mouse-y / 1px) - root.touch-start-y) / 50.0);
-                    root.ring-rotation-changed(2, root.ring2-rotation);
-                } else {
-                    root.ring3-rotation = root.touch-start-rotation + (((self.mouse-y / 1px) - root.touch-start-y) / 50.0);
-                    root.ring-rotation-changed(3, root.ring3-rotation);
-                }
-            }
-        }
+    // === ROW 11 - 6 apps ===
+    if categories.length > 49: Rectangle {
+        property <int> idx: mod(49, num-apps);
+        x: is-left ? (anchor-x + 0.000 * r11 - icon-size/2) : (anchor-x - 0.000 * r11 - icon-size/2);
+        y: anchor-y - 1.000 * r11 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 50: Rectangle {
+        property <int> idx: mod(50, num-apps);
+        x: is-left ? (anchor-x + 0.259 * r11 - icon-size/2) : (anchor-x - 0.259 * r11 - icon-size/2);
+        y: anchor-y - 0.966 * r11 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 51: Rectangle {
+        property <int> idx: mod(51, num-apps);
+        x: is-left ? (anchor-x + 0.500 * r11 - icon-size/2) : (anchor-x - 0.500 * r11 - icon-size/2);
+        y: anchor-y - 0.866 * r11 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 52: Rectangle {
+        property <int> idx: mod(52, num-apps);
+        x: is-left ? (anchor-x + 0.707 * r11 - icon-size/2) : (anchor-x - 0.707 * r11 - icon-size/2);
+        y: anchor-y - 0.707 * r11 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 53: Rectangle {
+        property <int> idx: mod(53, num-apps);
+        x: is-left ? (anchor-x + 0.866 * r11 - icon-size/2) : (anchor-x - 0.866 * r11 - icon-size/2);
+        y: anchor-y - 0.500 * r11 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 54: Rectangle {
+        property <int> idx: mod(54, num-apps);
+        x: is-left ? (anchor-x + 0.966 * r11 - icon-size/2) : (anchor-x - 0.966 * r11 - icon-size/2);
+        y: anchor-y - 0.259 * r11 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+
+    // === ROW 12 - 6 apps ===
+    if categories.length > 55: Rectangle {
+        property <int> idx: mod(55, num-apps);
+        x: is-left ? (anchor-x + 0.000 * r12 - icon-size/2) : (anchor-x - 0.000 * r12 - icon-size/2);
+        y: anchor-y - 1.000 * r12 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 56: Rectangle {
+        property <int> idx: mod(56, num-apps);
+        x: is-left ? (anchor-x + 0.259 * r12 - icon-size/2) : (anchor-x - 0.259 * r12 - icon-size/2);
+        y: anchor-y - 0.966 * r12 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 57: Rectangle {
+        property <int> idx: mod(57, num-apps);
+        x: is-left ? (anchor-x + 0.500 * r12 - icon-size/2) : (anchor-x - 0.500 * r12 - icon-size/2);
+        y: anchor-y - 0.866 * r12 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 58: Rectangle {
+        property <int> idx: mod(58, num-apps);
+        x: is-left ? (anchor-x + 0.707 * r12 - icon-size/2) : (anchor-x - 0.707 * r12 - icon-size/2);
+        y: anchor-y - 0.707 * r12 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 59: Rectangle {
+        property <int> idx: mod(59, num-apps);
+        x: is-left ? (anchor-x + 0.866 * r12 - icon-size/2) : (anchor-x - 0.866 * r12 - icon-size/2);
+        y: anchor-y - 0.500 * r12 - icon-size/2;
+        width: icon-size; height: icon-size; border-radius: 16px;
+        background: categories[idx].color; clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
     }
 
     // Home indicator at bottom
