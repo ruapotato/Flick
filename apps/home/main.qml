@@ -11,11 +11,11 @@ Window {
     // State directory - read from state_dir.txt written by run_home.sh
     property string stateDir: "/home/furios/.local/state/flick"
 
-    // Configuration
-    property real iconSize: 72
-    property real firstRadius: 120
-    property real ringSpacing: 100
-    property real arcSpacing: 95
+    // Configuration - sizes are larger to account for QT_SCALE_FACTOR
+    property real iconSize: 110
+    property real firstRadius: 180
+    property real ringSpacing: 140
+    property real arcSpacing: 130
 
     // Handedness: false = left-handed (anchor bottom-left), true = right-handed (anchor bottom-right)
     property bool rightHanded: true
@@ -25,7 +25,7 @@ Window {
     property real anchorY: height
 
     // Margin from edge for first column of icons
-    property real edgeMargin: iconSize/2 + 10
+    property real edgeMargin: iconSize/2 + 20
 
     // Ring colors
     property var ringColors: [
