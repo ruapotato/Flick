@@ -98,7 +98,8 @@ impl AppDef {
         let id = path.file_name()?.to_str()?.to_string();
 
         // Skip hidden directories and special cases
-        if id.starts_with('.') || id == "lockscreen" || id == "shared" || id == "welcome" {
+        // "home" is the home screen itself, not a launchable app
+        if id.starts_with('.') || id == "lockscreen" || id == "shared" || id == "welcome" || id == "home" {
             return None;
         }
 

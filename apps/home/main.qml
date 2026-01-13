@@ -14,10 +14,10 @@ Window {
 
     // Configuration - sizes scaled for phone display
     // Icons should be large and easy to tap
-    property real iconSize: 180
-    property real firstRadius: 200
-    property real ringSpacing: 200
-    property real arcSpacing: 180
+    property real iconSize: 160
+    property real firstRadius: 280  // Further out from corner
+    property real ringSpacing: 190
+    property real arcSpacing: 200   // More than iconSize to avoid overlap
 
     // Handedness: false = left-handed (anchor bottom-left), true = right-handed (anchor bottom-right)
     property bool rightHanded: true
@@ -513,51 +513,74 @@ Window {
 
                     MouseArea {
                         anchors.fill: parent
-                        property real startAngle: 0
+                        preventStealing: true  // Don't let parent steal touch events
+
+                        property real startX: 0
+                        property real startY: 0
                         property real startRotation: 0
-                        property real lastAngle: 0
+                        property real lastX: 0
+                        property real lastY: 0
                         property real lastTime: 0
                         property bool moved: false
 
-                        function getAngle(mx, my) {
-                            // Convert local mouse coords to global screen coords
-                            var globalPos = mapToItem(root, mx, my);
+                        function calcRotationDelta(x1, y1, x2, y2) {
+                            // Get anchor point
                             var ax = rightHanded ? root.width : 0;
                             var ay = root.height;
-                            var dx = globalPos.x - ax;
-                            var dy = ay - globalPos.y;
-                            var angle = Math.atan2(dx, dy) * 180 / Math.PI;
-                            if (rightHanded) angle = -angle;
-                            return angle;
+
+                            // Map to root coordinates
+                            var p1 = mapToItem(root, x1, y1);
+                            var p2 = mapToItem(root, x2, y2);
+
+                            // Calculate angles from anchor
+                            var angle1 = Math.atan2(p1.x - ax, ay - p1.y) * 180 / Math.PI;
+                            var angle2 = Math.atan2(p2.x - ax, ay - p2.y) * 180 / Math.PI;
+
+                            // Flip for right-handed
+                            if (rightHanded) {
+                                angle1 = -angle1;
+                                angle2 = -angle2;
+                            }
+
+                            return angle2 - angle1;
                         }
 
                         onPressed: {
-                            startAngle = getAngle(mouse.x, mouse.y);
-                            lastAngle = startAngle;
+                            startX = mouse.x;
+                            startY = mouse.y;
+                            lastX = mouse.x;
+                            lastY = mouse.y;
                             startRotation = ringItem.ringRotation;
                             lastTime = Date.now();
                             moved = false;
                             ringItem.isDragging = true;
                             ringItem.velocity = 0;
-                            console.log("Icon pressed, startAngle=" + startAngle + " rotation=" + startRotation);
+                            console.log("ICON TOUCH START ring=" + ringItem.ringData.ringIndex);
                         }
 
                         onPositionChanged: {
-                            var currentAngle = getAngle(mouse.x, mouse.y);
+                            var delta = calcRotationDelta(lastX, lastY, mouse.x, mouse.y);
+                            var totalDelta = calcRotationDelta(startX, startY, mouse.x, mouse.y);
+
                             var now = Date.now();
                             var dt = Math.max(1, now - lastTime);
 
-                            ringItem.velocity = (currentAngle - lastAngle) / dt * 16;
-                            ringItem.ringRotation = startRotation + (currentAngle - startAngle);
-                            lastAngle = currentAngle;
+                            ringItem.velocity = delta / dt * 16;
+                            ringItem.ringRotation = startRotation + totalDelta;
+
+                            lastX = mouse.x;
+                            lastY = mouse.y;
                             lastTime = now;
 
-                            if (Math.abs(currentAngle - startAngle) > 3) {
+                            if (Math.abs(totalDelta) > 3) {
                                 moved = true;
                             }
+
+                            console.log("ICON DRAG delta=" + delta.toFixed(1) + " total=" + totalDelta.toFixed(1) + " rot=" + ringItem.ringRotation.toFixed(1));
                         }
 
                         onReleased: {
+                            console.log("ICON RELEASE moved=" + moved);
                             ringItem.isDragging = false;
                             if (!moved && slotData.app) {
                                 launchApp(slotData.app.id, slotData.app.exec);
