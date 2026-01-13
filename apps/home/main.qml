@@ -12,11 +12,12 @@ Window {
     // State directory - read from state_dir.txt written by run_home.sh
     property string stateDir: "/home/furios/.local/state/flick"
 
-    // Configuration - sizes are larger to account for QT_SCALE_FACTOR
-    property real iconSize: 110
-    property real firstRadius: 180
-    property real ringSpacing: 140
-    property real arcSpacing: 130
+    // Configuration - sizes scaled for phone display
+    // Icons should be large and easy to tap
+    property real iconSize: 180
+    property real firstRadius: 200
+    property real ringSpacing: 200
+    property real arcSpacing: 180
 
     // Handedness: false = left-handed (anchor bottom-left), true = right-handed (anchor bottom-right)
     property bool rightHanded: true
@@ -85,9 +86,9 @@ Window {
         }
     }
 
-    // Also poll config periodically in case file changes
+    // Poll config frequently for responsive handedness switching
     Timer {
-        interval: 500
+        interval: 100
         running: true
         repeat: true
         onTriggered: loadConfig()
@@ -480,29 +481,34 @@ Window {
 
                     width: iconSize
                     height: iconSize
-                    radius: 16
+                    radius: iconSize * 0.15
                     color: slotData.app ? "#2a2a3e" : "transparent"
                     border.color: slotData.app ? "#4a4a5e" : "#2a2a3e"
-                    border.width: 1
+                    border.width: 2
 
-                    // App icon
+                    // App icon - use full path from apps.json
                     Image {
+                        id: appIcon
                         visible: slotData.app !== null
                         anchors.centerIn: parent
-                        width: parent.width * 0.7
-                        height: parent.height * 0.7
-                        source: slotData.app ? "file:///home/droidian/Flick/shell/icons/" + slotData.app.icon + ".png" : ""
+                        width: parent.width * 0.75
+                        height: parent.height * 0.75
+                        // Icon path is full path from apps.json (e.g., /home/user/Flick/icons/app.svg)
+                        source: slotData.app && slotData.app.icon ? "file://" + slotData.app.icon : ""
                         fillMode: Image.PreserveAspectFit
+                        sourceSize.width: width * 2
+                        sourceSize.height: height * 2
+                        asynchronous: true
+                    }
 
-                        // Fallback text if no icon
-                        Text {
-                            anchors.centerIn: parent
-                            visible: parent.status !== Image.Ready
-                            text: slotData.app ? slotData.app.name.substring(0, 2).toUpperCase() : ""
-                            color: "white"
-                            font.pixelSize: 18
-                            font.bold: true
-                        }
+                    // Fallback text if no icon or icon failed to load
+                    Text {
+                        anchors.centerIn: parent
+                        visible: slotData.app && appIcon.status !== Image.Ready
+                        text: slotData.app ? slotData.app.name.substring(0, 2).toUpperCase() : ""
+                        color: "white"
+                        font.pixelSize: iconSize * 0.35
+                        font.bold: true
                     }
 
                     MouseArea {
@@ -514,27 +520,30 @@ Window {
                         property bool moved: false
 
                         function getAngle(mx, my) {
-                            var px = mx + slotRect.x + slotRect.width/2;
-                            var py = my + slotRect.y + slotRect.height/2;
-                            var dx = px - anchorX;
-                            var dy = anchorY - py;
+                            // Convert local mouse coords to global screen coords
+                            var globalPos = mapToItem(root, mx, my);
+                            var ax = rightHanded ? root.width : 0;
+                            var ay = root.height;
+                            var dx = globalPos.x - ax;
+                            var dy = ay - globalPos.y;
                             var angle = Math.atan2(dx, dy) * 180 / Math.PI;
                             if (rightHanded) angle = -angle;
                             return angle;
                         }
 
                         onPressed: {
-                            startAngle = getAngle(mouseX, mouseY);
+                            startAngle = getAngle(mouse.x, mouse.y);
                             lastAngle = startAngle;
                             startRotation = ringItem.ringRotation;
                             lastTime = Date.now();
                             moved = false;
                             ringItem.isDragging = true;
                             ringItem.velocity = 0;
+                            console.log("Icon pressed, startAngle=" + startAngle + " rotation=" + startRotation);
                         }
 
                         onPositionChanged: {
-                            var currentAngle = getAngle(mouseX, mouseY);
+                            var currentAngle = getAngle(mouse.x, mouse.y);
                             var now = Date.now();
                             var dt = Math.max(1, now - lastTime);
 

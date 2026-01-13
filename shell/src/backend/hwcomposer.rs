@@ -3522,7 +3522,21 @@ fn render_frame(
                                 let visible_margin = screen_w * 1.5;
 
                                 // Update window list for Slint Switcher
+                                // Filter out home and lock screen windows
                                 let windows: Vec<_> = state.space.elements()
+                                    .filter(|window| {
+                                        if let Some(toplevel) = window.toplevel() {
+                                            let title = compositor::with_states(toplevel.wl_surface(), |states| {
+                                                states.data_map
+                                                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                                    .and_then(|data| data.lock().unwrap().title.clone())
+                                            });
+                                            let title = title.as_deref();
+                                            title != Some("Flick Home") && title != Some("Flick Lock Screen")
+                                        } else {
+                                            true // Include non-toplevel windows
+                                        }
+                                    })
                                     .enumerate()
                                     .map(|(i, window)| {
                                         // Check if this window is visible in the fanout
