@@ -8,23 +8,21 @@ Window {
     title: "Flick Home"
     color: "#1a1a2e"
 
-    // State directory for communication with compositor
-    property string stateDir: {
-        var dir = Qt.application.arguments.indexOf("--state-dir");
-        if (dir >= 0 && dir + 1 < Qt.application.arguments.length) {
-            return Qt.application.arguments[dir + 1];
-        }
-        // Default to standard location
-        var home = "/home/droidian";
-        if (!fileExists(home)) home = "/home/user";
-        return home + "/.local/state/flick";
-    }
+    // State directory - read from state_dir.txt written by run_home.sh
+    property string stateDir: "/home/furios/.local/state/flick"
 
-    function fileExists(path) {
+    Component.onCompleted: {
+        // Try to read actual state dir from file
         var xhr = new XMLHttpRequest();
-        xhr.open("HEAD", "file://" + path, false);
-        try { xhr.send(); return xhr.status === 200 || xhr.status === 0; }
-        catch (e) { return false; }
+        xhr.open("GET", "file:///home/furios/.local/state/flick/state_dir.txt", false);
+        try {
+            xhr.send();
+            if (xhr.status === 200 || xhr.status === 0) {
+                var dir = xhr.responseText.trim();
+                if (dir.length > 0) stateDir = dir;
+            }
+        } catch (e) {}
+        console.log("Home screen stateDir:", stateDir);
     }
 
     // Configuration

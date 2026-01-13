@@ -15,6 +15,9 @@ fi
 STATE_DIR="$USER_HOME/.local/state/flick"
 mkdir -p "$STATE_DIR"
 
+# Write state dir for QML to read
+echo "$STATE_DIR" > "$STATE_DIR/state_dir.txt"
+
 LOG_FILE="$STATE_DIR/home.log"
 echo "=== Home screen starting at $(date) ===" >> "$LOG_FILE"
 echo "USER_HOME: $USER_HOME" >> "$LOG_FILE"
@@ -33,7 +36,8 @@ else
     QMLSCENE=qmlscene
 fi
 
-echo "Running: $QMLSCENE $QML_FILE --state-dir $STATE_DIR" >> "$LOG_FILE"
+echo "Running: $QMLSCENE $QML_FILE" >> "$LOG_FILE"
 
 # Run QML scene with logging (exec replaces shell, output redirected to log)
-exec $QMLSCENE "$QML_FILE" -- --state-dir "$STATE_DIR" >> "$LOG_FILE" 2>&1
+# State dir is communicated via state_dir.txt file
+exec $QMLSCENE "$QML_FILE" >> "$LOG_FILE" 2>&1
