@@ -815,10 +815,13 @@ fn handle_input_event(
                                  state.home_gesture_window.is_some() || state.close_gesture_window.is_some();
             let potential_gesture = state.gesture_recognizer.has_potential_edge_swipe();
             let system_menu_showing = state.shell.system_menu_active;
+            // Forward touch to Home view when QML home is connected
+            let qml_home_active = shell_view == crate::shell::ShellView::Home && state.shell.qml_home_launched;
             let forward_to_wayland = has_wayland_window && !touch_on_keyboard &&
                 !gesture_active && !potential_gesture && !system_menu_showing &&
                 (shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active ||
-                 shell_view == crate::shell::ShellView::LockScreen);
+                 shell_view == crate::shell::ShellView::LockScreen ||
+                 qml_home_active);
             if forward_to_wayland {
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();
@@ -1122,10 +1125,13 @@ fn handle_input_event(
                                  state.home_gesture_window.is_some() || state.close_gesture_window.is_some();
             let potential_gesture = state.gesture_recognizer.has_potential_edge_swipe();
             let system_menu_showing = state.shell.system_menu_active;
+            // Forward touch to Home view when QML home is connected
+            let qml_home_active = shell_view == crate::shell::ShellView::Home && state.shell.qml_home_launched;
             let forward_to_wayland = has_wayland_window && !touch_on_keyboard &&
                 !gesture_active && !potential_gesture && !system_menu_showing &&
                 (shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active ||
-                 shell_view == crate::shell::ShellView::LockScreen);
+                 shell_view == crate::shell::ShellView::LockScreen ||
+                 qml_home_active);
             if forward_to_wayland {
                 if let Some(touch) = state.seat.get_touch() {
                     // Use space topmost for touch motion - same source as touch down
@@ -1539,10 +1545,13 @@ fn handle_input_event(
                                  state.home_gesture_window.is_some() || state.close_gesture_window.is_some();
             let potential_gesture = state.gesture_recognizer.has_potential_edge_swipe();
             let system_menu_showing = state.shell.system_menu_active;
+            // Forward touch to Home view when QML home is connected
+            let qml_home_active = shell_view == crate::shell::ShellView::Home && state.shell.qml_home_launched;
             let forward_to_wayland = has_wayland_window && !touch_on_keyboard &&
                 !gesture_active && !potential_gesture && !system_menu_showing &&
                 (shell_view == crate::shell::ShellView::App && !state.shell.lock_screen_active ||
-                 shell_view == crate::shell::ShellView::LockScreen);
+                 shell_view == crate::shell::ShellView::LockScreen ||
+                 qml_home_active);
             if forward_to_wayland {
                 if let Some(touch) = state.seat.get_touch() {
                     let serial = smithay::utils::SERIAL_COUNTER.next_serial();

@@ -13,11 +13,12 @@ Window {
     property string stateDir: "/home/furios/.local/state/flick"
 
     // Configuration - sizes scaled for phone display
-    // Icons should be large and easy to tap
-    property real iconSize: 160
-    property real firstRadius: 280  // Further out from corner
-    property real ringSpacing: 190
-    property real arcSpacing: 200   // More than iconSize to avoid overlap
+    // Calculate to fill screen: last orbit should reach top edge
+    // With 5 orbits at spacing 180, total reach = firstRadius + 4*180 = ~920 for 1000px height
+    property real iconSize: 180
+    property real firstRadius: 200  // Start close to corner for more orbits
+    property real ringSpacing: 180
+    property real arcSpacing: 220   // More than iconSize to avoid overlap
 
     // Handedness: false = left-handed (anchor bottom-left), true = right-handed (anchor bottom-right)
     property bool rightHanded: true
@@ -29,16 +30,16 @@ Window {
     // Margin from edge for first column of icons
     property real edgeMargin: iconSize/2 + 20
 
-    // Ring colors - vibrant rainbow from purple to red
+    // Ring colors - bright rainbow starting from magenta (contrasts with dark purple background)
     property var ringColors: [
-        {h: 0.83, s: 0.85, l: 0.45},  // Purple
-        {h: 0.70, s: 0.85, l: 0.45},  // Blue
-        {h: 0.55, s: 0.85, l: 0.45},  // Cyan
-        {h: 0.40, s: 0.85, l: 0.45},  // Green
-        {h: 0.30, s: 0.85, l: 0.45},  // Yellow-green
-        {h: 0.18, s: 0.85, l: 0.45},  // Orange
-        {h: 0.08, s: 0.85, l: 0.45},  // Red-orange
-        {h: 0.0,  s: 0.85, l: 0.45}   // Red
+        {h: 0.92, s: 0.90, l: 0.55},  // Magenta/Pink (ring 0 - innermost)
+        {h: 0.83, s: 0.85, l: 0.50},  // Purple
+        {h: 0.65, s: 0.85, l: 0.50},  // Blue
+        {h: 0.50, s: 0.85, l: 0.50},  // Cyan
+        {h: 0.35, s: 0.85, l: 0.50},  // Green
+        {h: 0.18, s: 0.90, l: 0.50},  // Orange
+        {h: 0.08, s: 0.90, l: 0.50},  // Red-orange
+        {h: 0.0,  s: 0.90, l: 0.50}   // Red (ring 7 - outermost)
     ]
 
     function hslToRgb(h, s, l) {
