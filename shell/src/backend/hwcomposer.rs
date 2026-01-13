@@ -2668,11 +2668,39 @@ pub fn run() -> Result<()> {
             state.shell.set_view(crate::shell::ShellView::QuickSettings);
         }
 
-        // Handle orbital rotation changes from swipe gesture
+        // Handle orbital rotation - direct changes from swipe and momentum
         if let Some(ref slint_ui) = state.shell.slint_ui {
+            // Poll for direct rotation changes (while dragging)
             if let Some(new_rotation) = slint_ui.poll_orbital_rotation() {
                 state.orbital_rotation = new_rotation;
+                state.orbital_velocity = 0.0; // Stop momentum while dragging
             }
+
+            // Poll for velocity (when swipe ends, start momentum)
+            if let Some(velocity) = slint_ui.poll_orbital_velocity() {
+                state.orbital_velocity = velocity;
+            }
+        }
+
+        // Apply momentum physics (runs every frame)
+        if state.orbital_velocity.abs() > 0.001 {
+            // Apply velocity to rotation
+            state.orbital_rotation += state.orbital_velocity;
+
+            // Friction decay (0.92 feels smooth)
+            state.orbital_velocity *= 0.92;
+
+            // Update Slint with new rotation
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                slint_ui.set_orbital_rotation(state.orbital_rotation);
+            }
+        }
+
+        // Haptic feedback when crossing app boundaries (integer values)
+        let current_int = state.orbital_rotation.round() as i32;
+        if current_int != state.orbital_last_int {
+            state.orbital_last_int = current_int;
+            state.system.haptic_tap(); // Light tap for each app passed
         }
 
         // Poll for pick default callbacks (runs every frame when in PickDefault view)

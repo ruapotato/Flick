@@ -157,6 +157,8 @@ pub struct SlintShell {
     pending_status_bar_tap: Rc<RefCell<bool>>,
     /// Pending orbital rotation change (from swipe gesture)
     pending_orbital_rotation: Rc<RefCell<Option<f32>>>,
+    /// Pending orbital velocity (from swipe end, for momentum)
+    pending_orbital_velocity: Rc<RefCell<Option<f32>>>,
 }
 
 impl SlintShell {
@@ -414,6 +416,13 @@ impl SlintShell {
             *rotation_clone.borrow_mut() = Some(rotation);
         });
 
+        // Orbital swipe ended callback (with velocity for momentum)
+        let pending_orbital_velocity = Rc::new(RefCell::new(None::<f32>));
+        let velocity_clone = pending_orbital_velocity.clone();
+        shell.on_orbital_swipe_ended(move |velocity| {
+            *velocity_clone.borrow_mut() = Some(velocity);
+        });
+
         Self {
             window,
             shell,
@@ -435,6 +444,7 @@ impl SlintShell {
             pending_system_action,
             pending_status_bar_tap,
             pending_orbital_rotation,
+            pending_orbital_velocity,
         }
     }
 
@@ -479,6 +489,11 @@ impl SlintShell {
     /// Poll for pending orbital rotation changes (from swipe gesture)
     pub fn poll_orbital_rotation(&self) -> Option<f32> {
         self.pending_orbital_rotation.borrow_mut().take()
+    }
+
+    /// Poll for pending orbital velocity (from swipe end, for momentum)
+    pub fn poll_orbital_velocity(&self) -> Option<f32> {
+        self.pending_orbital_velocity.borrow_mut().take()
     }
 
     /// Poll for status bar tap (opens quick settings)
