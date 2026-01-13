@@ -3877,7 +3877,7 @@ fn render_frame(
                             .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
                             .and_then(|data| data.lock().unwrap().title.clone())
                     });
-                    title.as_deref() == Some("Flick Lock")
+                    title.as_deref() == Some("Flick Lock Screen")
                 } else {
                     false
                 };
@@ -4116,7 +4116,7 @@ fn render_frame(
                             .and_then(|data| data.lock().unwrap().title.clone())
                     });
                     let title = title.as_deref();
-                    title != Some("Flick Home") && title != Some("Flick Lock")
+                    title != Some("Flick Home") && title != Some("Flick Lock Screen")
                 } else {
                     true // Non-toplevel windows are assumed to be app windows
                 }
