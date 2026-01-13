@@ -13,13 +13,11 @@ Window {
     property string stateDir: "/home/furios/.local/state/flick"
 
     // Configuration - sizes scaled for phone display
-    // Calculate to fill screen: need orbits to reach diagonal from corner to opposite corner
-    // Phone is ~1080x2220, diagonal from corner ≈ 2470px
-    // With firstRadius 150 and ringSpacing 160: rings at 150, 310, 470, 630, 790, 950, 1110, 1270, 1430, 1590, 1750, 1910, 2070, 2230
+    // Icons are 180px, need at least 200px between ring centers and 240px arc spacing
     property real iconSize: 180
-    property real firstRadius: 150  // Start closer to corner for more orbits
-    property real ringSpacing: 160  // Tighter spacing to fit more orbits
-    property real arcSpacing: 200   // Keep icons from overlapping on arc
+    property real firstRadius: 200  // First ring radius from corner
+    property real ringSpacing: 200  // Distance between ring centers (must be > iconSize)
+    property real arcSpacing: 250   // Arc distance between icon centers (must be > iconSize)
 
     // Handedness: false = left-handed (anchor bottom-left), true = right-handed (anchor bottom-right)
     property bool rightHanded: true
@@ -557,7 +555,7 @@ Window {
                             moved = false;
                             ringItem.isDragging = true;
                             ringItem.velocity = 0;
-                            console.log("ICON TOUCH START ring=" + ringItem.ringData.ringIndex);
+                            console.log("TOUCH_DOWN ring=" + ringItem.ringData.ringIndex + " pos=" + mouse.x.toFixed(0) + "," + mouse.y.toFixed(0));
                         }
 
                         onPositionChanged: {
@@ -576,13 +574,12 @@ Window {
 
                             if (Math.abs(totalDelta) > 3) {
                                 moved = true;
+                                console.log("DRAG ring=" + ringItem.ringData.ringIndex + " delta=" + totalDelta.toFixed(1) + " rot=" + ringItem.ringRotation.toFixed(1));
                             }
-
-                            console.log("ICON DRAG delta=" + delta.toFixed(1) + " total=" + totalDelta.toFixed(1) + " rot=" + ringItem.ringRotation.toFixed(1));
                         }
 
                         onReleased: {
-                            console.log("ICON RELEASE moved=" + moved);
+                            console.log("TOUCH_UP ring=" + ringItem.ringData.ringIndex + " moved=" + moved + " app=" + (slotData.app ? slotData.app.id : "none"));
                             ringItem.isDragging = false;
                             if (!moved && slotData.app) {
                                 launchApp(slotData.app.id, slotData.app.exec);
