@@ -4233,6 +4233,48 @@ fn render_frame(
                 }
             });
 
+            // If no app window found but QML home is running, render the home window instead
+            // This prevents black screen when app is launching but window not yet open
+            if app_window.is_none() && state.shell.qml_home_launched {
+                // Find and render the home window
+                let home_window = windows.iter().find(|w| {
+                    if let Some(toplevel) = w.toplevel() {
+                        let title = compositor::with_states(toplevel.wl_surface(), |states| {
+                            states.data_map
+                                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                .and_then(|data| data.lock().unwrap().title.clone())
+                        });
+                        title.as_deref() == Some("Flick Home")
+                    } else {
+                        false
+                    }
+                });
+
+                if let Some(window) = home_window {
+                    if let Some(toplevel) = window.toplevel() {
+                        let wl_surface = toplevel.wl_surface().clone();
+                        // Render the home window using existing EGL texture
+                        let egl_texture_info = compositor::with_states(&wl_surface, |data| {
+                            use std::cell::RefCell;
+                            use crate::state::SurfaceBufferData;
+
+                            if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                let bd = buffer_data.borrow();
+                                bd.egl_texture.as_ref().map(|t| (t.texture_id, t.width, t.height))
+                            } else {
+                                None
+                            }
+                        });
+
+                        if let Some((texture_id, width, height)) = egl_texture_info {
+                            unsafe {
+                                gl::render_egl_texture_at(texture_id, width, height, display.width, display.height, 0, 0);
+                            }
+                        }
+                    }
+                }
+            }
+
             if let Some(window) = app_window {
                 let i = 0; // For debug logging
                 debug!("Processing app window");
