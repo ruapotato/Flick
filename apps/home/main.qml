@@ -273,6 +273,12 @@ Window {
             ctx.reset();
             ctx.clearRect(0, 0, width, height);
 
+            // Don't draw if window isn't sized yet
+            if (width <= 0 || height <= 0) {
+                console.log("Canvas not sized yet, skipping paint");
+                return;
+            }
+
             var startAngle, endAngle;
             if (rightHanded) {
                 // Right-handed: arc from bottom-right corner, spanning up-left quadrant
@@ -284,24 +290,30 @@ Window {
                 endAngle = Math.PI * 2;      // 360 degrees (pointing right)
             }
 
-            console.log("Drawing arcs: anchorX=" + anchorX + " anchorY=" + anchorY + " rings=" + rings.length + " rightHanded=" + rightHanded);
+            // Calculate anchor at corner
+            var ax = rightHanded ? width : 0;
+            var ay = height;
 
-            // Draw from outermost ring first (painter's algorithm - outer rings behind)
+            console.log("Drawing arcs: canvas=" + width + "x" + height + " anchor=" + ax + "," + ay + " rings=" + rings.length + " rightHanded=" + rightHanded);
+
+            // Draw all rings from outermost to innermost
             for (var i = rings.length - 1; i >= 0; i--) {
-                var innerR = (i === 0) ? 0 : (firstRadius + (i - 0.5) * ringSpacing);
-                var outerR = firstRadius + (i + 0.5) * ringSpacing;
+                // Ring i has icons at radius: firstRadius + i * ringSpacing
+                // Band should be centered on that radius
+                var iconRadius = firstRadius + i * ringSpacing;
+                var bandHalf = ringSpacing / 2;
+                var innerR = (i === 0) ? 0 : (iconRadius - bandHalf);
+                var outerR = iconRadius + bandHalf;
                 var color = getRingColor(i);
 
+                console.log("Ring " + i + ": iconR=" + iconRadius + " band=" + innerR + "-" + outerR);
+
                 ctx.beginPath();
-                if (innerR === 0) {
-                    // First ring: draw as a pie slice from center
-                    ctx.moveTo(anchorX, anchorY);
-                    ctx.arc(anchorX, anchorY, outerR, startAngle, endAngle, false);
-                    ctx.lineTo(anchorX, anchorY);
+                ctx.arc(ax, ay, outerR, startAngle, endAngle, false);
+                if (innerR > 0) {
+                    ctx.arc(ax, ay, innerR, endAngle, startAngle, true);
                 } else {
-                    // Other rings: draw as arc bands
-                    ctx.arc(anchorX, anchorY, outerR, startAngle, endAngle, false);
-                    ctx.arc(anchorX, anchorY, innerR, endAngle, startAngle, true);
+                    ctx.lineTo(ax, ay);
                 }
                 ctx.closePath();
 
@@ -309,7 +321,14 @@ Window {
                 ctx.fill();
             }
         }
-        Component.onCompleted: requestPaint()
+
+        // Repaint after a delay to ensure window is sized
+        Timer {
+            id: initialPaintTimer
+            interval: 100
+            running: true
+            onTriggered: arcCanvas.requestPaint()
+        }
 
         Connections {
             target: root
@@ -318,9 +337,11 @@ Window {
             function onHeightChanged() { arcCanvas.requestPaint() }
         }
 
-        // Handle swipes anywhere in the arc area
+        // Handle swipes anywhere in the arc area (background swipes)
+        // Icons have their own MouseAreas that take priority
         MouseArea {
             anchors.fill: parent
+            z: -1  // Behind icons
             property int activeRing: -1
             property real startAngle: 0
             property real startRotation: 0
@@ -328,12 +349,16 @@ Window {
             property real lastTime: 0
 
             function getRingAt(mx, my) {
-                var dx = mx - anchorX;
-                var dy = anchorY - my;
+                var ax = rightHanded ? root.width : 0;
+                var ay = root.height;
+                var dx = mx - ax;
+                var dy = ay - my;
                 var dist = Math.sqrt(dx*dx + dy*dy);
                 for (var i = 0; i < rings.length; i++) {
-                    var innerR = (i === 0) ? 0 : (firstRadius + (i - 1) * ringSpacing + ringSpacing/2);
-                    var outerR = firstRadius + i * ringSpacing + ringSpacing/2;
+                    var iconRadius = firstRadius + i * ringSpacing;
+                    var bandHalf = ringSpacing / 2;
+                    var innerR = (i === 0) ? 0 : (iconRadius - bandHalf);
+                    var outerR = iconRadius + bandHalf;
                     if (dist >= innerR && dist < outerR) {
                         return i;
                     }
@@ -342,8 +367,10 @@ Window {
             }
 
             function getAngle(mx, my) {
-                var dx = mx - anchorX;
-                var dy = anchorY - my;
+                var ax = rightHanded ? root.width : 0;
+                var ay = root.height;
+                var dx = mx - ax;
+                var dy = ay - my;
                 var angle = Math.atan2(dx, dy) * 180 / Math.PI;
                 if (rightHanded) angle = -angle;
                 return angle;
@@ -351,6 +378,7 @@ Window {
 
             onPressed: {
                 activeRing = getRingAt(mouse.x, mouse.y);
+                console.log("Canvas pressed at " + mouse.x + "," + mouse.y + " -> ring " + activeRing);
                 if (activeRing >= 0 && activeRing < ringRepeater.count) {
                     var ring = ringRepeater.itemAt(activeRing);
                     if (ring) {

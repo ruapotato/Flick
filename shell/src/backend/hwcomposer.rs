@@ -3866,9 +3866,21 @@ fn render_frame(
         }
 
         // Render QML lock screen window when on lock screen with QML connected
+        // Only render windows with title "Flick Lock" to avoid showing other apps
         if shell_view == ShellView::LockScreen && qml_lockscreen_connected {
             let windows: Vec<_> = state.space.elements().cloned().collect();
             for window in windows.iter() {
+                // Check if this is the lock screen window by title
+                let is_lock_window = if let Some(toplevel) = window.toplevel() {
+                    toplevel.current_state().title.as_deref() == Some("Flick Lock")
+                } else {
+                    false
+                };
+
+                if !is_lock_window {
+                    continue; // Skip non-lock windows
+                }
+
                 let wl_surface = if let Some(toplevel) = window.toplevel() {
                     Some(toplevel.wl_surface().clone())
                 } else {
@@ -3962,9 +3974,21 @@ fn render_frame(
         }
 
         // Render QML home window when on Home view with QML connected
+        // Only render windows with title "Flick Home" to avoid showing other apps
         if shell_view == ShellView::Home && qml_home_connected {
             let windows: Vec<_> = state.space.elements().cloned().collect();
             for window in windows.iter() {
+                // Check if this is the home window by title
+                let is_home_window = if let Some(toplevel) = window.toplevel() {
+                    toplevel.current_state().title.as_deref() == Some("Flick Home")
+                } else {
+                    false
+                };
+
+                if !is_home_window {
+                    continue; // Skip non-home windows
+                }
+
                 let wl_surface = if let Some(toplevel) = window.toplevel() {
                     Some(toplevel.wl_surface().clone())
                 } else {
@@ -4068,15 +4092,24 @@ fn render_frame(
 
         // Render Wayland windows ONLY for App view (not during switcher gesture preview)
         if shell_view == ShellView::App && !switcher_gesture_preview && !state.shell.lock_screen_active {
-            // Render ONLY the topmost Wayland client surface (last in elements order)
-            // This ensures only the active window is visible and receives input
+            // Render ONLY the topmost non-shell Wayland client surface
+            // Skip home and lock screen windows
             let windows: Vec<_> = state.space.elements().cloned().collect();
             debug!("Rendering {} Wayland windows", windows.len());
 
-            // Only render the LAST (topmost) window
-            let start_idx = if windows.len() > 0 { windows.len() - 1 } else { 0 };
-            for (i, window) in windows.iter().enumerate().skip(start_idx) {
-                debug!("Processing window {}", i);
+            // Find the topmost non-shell window (iterate in reverse)
+            let app_window = windows.iter().rev().find(|w| {
+                if let Some(toplevel) = w.toplevel() {
+                    let title = toplevel.current_state().title.as_deref();
+                    title != Some("Flick Home") && title != Some("Flick Lock")
+                } else {
+                    true // Non-toplevel windows are assumed to be app windows
+                }
+            });
+
+            if let Some(window) = app_window {
+                let i = 0; // For debug logging
+                debug!("Processing app window");
 
                 // Get the wl_surface from either Wayland toplevel or X11 surface
                 let wl_surface = if let Some(toplevel) = window.toplevel() {
