@@ -3872,7 +3872,12 @@ fn render_frame(
             for window in windows.iter() {
                 // Check if this is the lock screen window by title
                 let is_lock_window = if let Some(toplevel) = window.toplevel() {
-                    toplevel.current_state().title.as_deref() == Some("Flick Lock")
+                    let title = compositor::with_states(toplevel.wl_surface(), |states| {
+                        states.data_map
+                            .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                            .and_then(|data| data.lock().unwrap().title.clone())
+                    });
+                    title.as_deref() == Some("Flick Lock")
                 } else {
                     false
                 };
@@ -3980,7 +3985,12 @@ fn render_frame(
             for window in windows.iter() {
                 // Check if this is the home window by title
                 let is_home_window = if let Some(toplevel) = window.toplevel() {
-                    toplevel.current_state().title.as_deref() == Some("Flick Home")
+                    let title = compositor::with_states(toplevel.wl_surface(), |states| {
+                        states.data_map
+                            .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                            .and_then(|data| data.lock().unwrap().title.clone())
+                    });
+                    title.as_deref() == Some("Flick Home")
                 } else {
                     false
                 };
@@ -4100,7 +4110,12 @@ fn render_frame(
             // Find the topmost non-shell window (iterate in reverse)
             let app_window = windows.iter().rev().find(|w| {
                 if let Some(toplevel) = w.toplevel() {
-                    let title = toplevel.current_state().title.as_deref();
+                    let title = compositor::with_states(toplevel.wl_surface(), |states| {
+                        states.data_map
+                            .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                            .and_then(|data| data.lock().unwrap().title.clone())
+                    });
+                    let title = title.as_deref();
                     title != Some("Flick Home") && title != Some("Flick Lock")
                 } else {
                     true // Non-toplevel windows are assumed to be app windows
