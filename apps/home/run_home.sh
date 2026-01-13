@@ -38,6 +38,23 @@ fi
 
 echo "Running: $QMLSCENE $QML_FILE" >> "$LOG_FILE"
 
-# Run QML scene with logging (exec replaces shell, output redirected to log)
-# State dir is communicated via state_dir.txt file
-exec $QMLSCENE "$QML_FILE" >> "$LOG_FILE" 2>&1
+# Function to process output and handle launch signals
+process_output() {
+    while IFS= read -r line; do
+        # Log the line
+        echo "$line" >> "$LOG_FILE"
+
+        # Check for launch signal
+        if [[ "$line" == *"FLICK_LAUNCH_APP:"* ]]; then
+            # Extract path and data: FLICK_LAUNCH_APP:/path/to/file:{"id":"app","exec":"cmd"}
+            local rest="${line#*FLICK_LAUNCH_APP:}"
+            local path="${rest%%:*}"
+            local data="${rest#*:}"
+            echo "Writing launch signal to $path: $data" >> "$LOG_FILE"
+            echo "$data" > "$path"
+        fi
+    done
+}
+
+# Run QML scene, pipe output through processor
+$QMLSCENE "$QML_FILE" 2>&1 | process_output

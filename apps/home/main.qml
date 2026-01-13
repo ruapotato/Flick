@@ -151,23 +151,14 @@ Window {
         }
     }
 
-    // Launch an app by writing to signal file
+    // Launch an app by writing exec command to signal file
     function launchApp(appId, execCmd) {
-        console.log("Launching app:", appId);
+        console.log("Launching app:", appId, "exec:", execCmd);
         var signalPath = stateDir + "/launch_app";
-        var data = JSON.stringify({id: appId, exec: execCmd});
 
-        // Write using console output that wrapper script can capture
-        console.log("FLICK_LAUNCH_APP:" + signalPath + ":" + data);
-
-        // Also try direct file write
-        var xhr = new XMLHttpRequest();
-        xhr.open("PUT", "file://" + signalPath, false);
-        try {
-            xhr.send(data);
-        } catch (e) {
-            console.log("Could not write launch signal");
-        }
+        // Write using console output that wrapper script captures and writes to file
+        // Format: FLICK_LAUNCH_APP:/path/to/file:exec_command
+        console.log("FLICK_LAUNCH_APP:" + signalPath + ":" + execCmd);
     }
 
     // Visible slots for a ring (how many fit in 90 degree arc)
@@ -303,7 +294,8 @@ Window {
                 // Band should be centered on that radius
                 var iconRadius = firstRadius + i * ringSpacing;
                 var bandHalf = ringSpacing / 2;
-                var innerR = (i === 0) ? 0 : (iconRadius - bandHalf);
+                // All bands centered on their icons (no special case for first ring)
+                var innerR = Math.max(0, iconRadius - bandHalf);
                 var outerR = iconRadius + bandHalf;
                 var color = getRingColor(i);
 
@@ -456,24 +448,37 @@ Window {
                     property int effectiveSlots: Math.max(totalSlots, minSlots)
                     property real effectiveOrbit: effectiveSlots * angleStep
 
+                    // Track last valid angle for smooth dragging
+                    property real lastValidAngle: 45  // Start in middle of visible range
+
                     property real displayAngle: {
                         var a = ((rawAngle % effectiveOrbit) + effectiveOrbit) % effectiveOrbit;
                         var exitAngle = 90 + buffer;
                         var entryAngle = buffer;
-                        if (a <= exitAngle) return a;
-                        if (a >= effectiveOrbit - entryAngle) return a - effectiveOrbit;
+                        if (a <= exitAngle) {
+                            lastValidAngle = a;
+                            return a;
+                        }
+                        if (a >= effectiveOrbit - entryAngle) {
+                            lastValidAngle = a - effectiveOrbit;
+                            return a - effectiveOrbit;
+                        }
+                        // Icon is in hidden zone - return marker
                         return -999;
                     }
 
-                    property real angleRad: displayAngle * Math.PI / 180
+                    // Use last valid angle when dragging in hidden zone, otherwise use displayAngle
+                    property real renderAngle: (displayAngle === -999 && ringItem.isDragging) ? lastValidAngle : displayAngle
+                    property real angleRad: renderAngle * Math.PI / 180
 
                     // Keep visible while dragging to prevent losing touch events
                     visible: ringItem.isDragging || (displayAngle >= -buffer && displayAngle <= 90 + buffer)
                     opacity: {
-                        // During drag, keep full opacity for touched icon
+                        // During drag, keep full opacity
                         if (ringItem.isDragging) return 1;
-                        if (displayAngle < 0) return Math.max(0, (displayAngle + buffer) / buffer);
-                        if (displayAngle > 90) return Math.max(0, (90 + buffer - displayAngle) / buffer);
+                        // Fade at edges using render angle
+                        if (renderAngle < 0) return Math.max(0, (renderAngle + buffer) / buffer);
+                        if (renderAngle > 90) return Math.max(0, (90 + buffer - renderAngle) / buffer);
                         return 1;
                     }
 
