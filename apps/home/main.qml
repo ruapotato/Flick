@@ -527,13 +527,16 @@ Window {
                         property bool moved: false
 
                         function calcRotationDelta(x1, y1, x2, y2) {
-                            // Get anchor point
-                            var ax = rightHanded ? root.width : 0;
-                            var ay = root.height;
+                            // Use anchorX/anchorY from root (already accounts for handedness)
+                            var ax = anchorX;
+                            var ay = anchorY;
 
-                            // Map to root coordinates
-                            var p1 = mapToItem(root, x1, y1);
-                            var p2 = mapToItem(root, x2, y2);
+                            // Map to global coordinates (null = root window)
+                            var p1 = mapToItem(null, x1, y1);
+                            var p2 = mapToItem(null, x2, y2);
+
+                            // Safety check
+                            if (!p1 || !p2) return 0;
 
                             // Calculate angles from anchor
                             var angle1 = Math.atan2(p1.x - ax, ay - p1.y) * 180 / Math.PI;
