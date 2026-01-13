@@ -2020,42 +2020,49 @@ component OrbitalHome inherits Rectangle {
     in property <float> text-scale: 2.0;
     in property <bool> has-wallpaper: false;
     in property <bool> is-left: false;       // false = right-handed (default), true = left-handed
-    in-out property <float> rotation: 0.0;   // Ring rotation offset (shifts which app appears where)
     in property <float> push-offset: 0.0;    // Push offset during gesture
+
+    // Per-ring rotation (each ring rotates independently)
+    in-out property <float> ring1-rotation: 0.0;
+    in-out property <float> ring2-rotation: 0.0;
+    in-out property <float> ring3-rotation: 0.0;
 
     callback app-tapped(int);
     callback status-bar-tapped();
-    callback rotation-changed(float);        // Emitted when user swipes to rotate
-    callback swipe-ended(float);             // Emitted with velocity when touch ends
+    // Callbacks include ring number (1, 2, or 3)
+    callback ring-rotation-changed(int, float);
+    callback ring-swipe-ended(int, float);
 
     width: 100%;
     height: 100%;
     background: has-wallpaper ? transparent : Theme.background;
 
-    // Anchor point at bottom corner
-    property <length> anchor-x: is-left ? -40px : root.width + 40px;
-    property <length> anchor-y: root.height + 80px;
+    // Anchor point RIGHT at the corner
+    property <length> anchor-x: is-left ? 0px : root.width;
+    property <length> anchor-y: root.height;
 
-    // Three orbital rings with different radii
-    property <length> ring1-radius: 260px;   // Inner ring - most common apps
-    property <length> ring2-radius: 400px;   // Middle ring
-    property <length> ring3-radius: 540px;   // Outer ring - less common apps
+    // Three orbital rings - larger, filling more screen
+    property <length> ring1-radius: 200px;   // Inner ring - Flick apps
+    property <length> ring2-radius: 340px;   // Middle ring
+    property <length> ring3-radius: 480px;   // Outer ring
 
-    // Icon sizes per ring (inner = bigger)
-    property <length> ring1-icon: 100px;
+    // Larger icons
+    property <length> ring1-icon: 90px;
     property <length> ring2-icon: 85px;
-    property <length> ring3-icon: 70px;
+    property <length> ring3-icon: 80px;
 
-    // Rotation offset - each 1.0 shifts by one app
+    // Per-ring rotation offsets
     property <int> num-apps: max(1, categories.length);
-    property <int> rot-offset: mod(round(rotation), num-apps);
+    property <int> r1-offset: mod(round(ring1-rotation), num-apps);
+    property <int> r2-offset: mod(round(ring2-rotation), num-apps);
+    property <int> r3-offset: mod(round(ring3-rotation), num-apps);
 
-    // Touch tracking for rotation with velocity
+    // Touch tracking - which ring is being dragged
+    property <int> active-ring: 0;  // 0 = none, 1/2/3 = ring number
     property <float> touch-start-y: 0;
     property <float> touch-last-y: 0;
     property <float> touch-start-rotation: 0;
     property <float> velocity: 0;
-    property <bool> is-dragging: false;
 
     // Status bar at top
     StatusBar {
@@ -2069,184 +2076,174 @@ component OrbitalHome inherits Rectangle {
         tapped => { root.status-bar-tapped(); }
     }
 
-    // Visual ring guides (subtle arcs)
+    // Visual ring tracks (subtle arcs showing the orbital paths)
     Rectangle {
-        x: anchor-x - ring1-radius - 15px;
-        y: anchor-y - ring1-radius - 15px;
-        width: (ring1-radius + 15px) * 2;
-        height: (ring1-radius + 15px) * 2;
-        border-radius: ring1-radius + 15px;
+        x: anchor-x - ring1-radius;
+        y: anchor-y - ring1-radius;
+        width: ring1-radius * 2;
+        height: ring1-radius * 2;
+        border-radius: ring1-radius;
         background: transparent;
-        border-width: 40px;
-        border-color: #2a2a4a30;
+        border-width: ring1-icon + 10px;
+        border-color: #2a2a4a25;
     }
     Rectangle {
-        x: anchor-x - ring2-radius - 10px;
-        y: anchor-y - ring2-radius - 10px;
-        width: (ring2-radius + 10px) * 2;
-        height: (ring2-radius + 10px) * 2;
-        border-radius: ring2-radius + 10px;
+        x: anchor-x - ring2-radius;
+        y: anchor-y - ring2-radius;
+        width: ring2-radius * 2;
+        height: ring2-radius * 2;
+        border-radius: ring2-radius;
         background: transparent;
-        border-width: 35px;
+        border-width: ring2-icon + 8px;
         border-color: #2a2a4a20;
     }
     Rectangle {
-        x: anchor-x - ring3-radius - 5px;
-        y: anchor-y - ring3-radius - 5px;
-        width: (ring3-radius + 5px) * 2;
-        height: (ring3-radius + 5px) * 2;
-        border-radius: ring3-radius + 5px;
+        x: anchor-x - ring3-radius;
+        y: anchor-y - ring3-radius;
+        width: ring3-radius * 2;
+        height: ring3-radius * 2;
+        border-radius: ring3-radius;
         background: transparent;
-        border-width: 30px;
+        border-width: ring3-icon + 6px;
         border-color: #2a2a4a15;
     }
 
-    // === INNER RING (Ring 1) - 6 apps, angles 92° to 172° ===
-    // cos/sin for: 92°, 108°, 124°, 140°, 156°, 172°
+    // === RING 1 (Inner) - 5 apps visible, tighter spacing ===
+    // Angles: 95°, 115°, 135°, 155°, 175° (20° apart)
 
-    // Ring 1, Position 0 - 92°: cos=-0.035, sin=0.999
     if categories.length > 0: Rectangle {
-        property <int> idx: mod(0 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.035 * ring1-radius - ring1-icon/2) : (anchor-x - 0.035 * ring1-radius - ring1-icon/2);
-        y: anchor-y - 0.999 * ring1-radius - ring1-icon/2;
+        property <int> idx: mod(0 + r1-offset, num-apps);
+        x: is-left ? (anchor-x + 0.087 * ring1-radius - ring1-icon/2) : (anchor-x - 0.087 * ring1-radius - ring1-icon/2);
+        y: anchor-y - 0.996 * ring1-radius - ring1-icon/2;
         width: ring1-icon; height: ring1-icon;
-        border-radius: 20px;
+        border-radius: 18px;
         background: categories[idx].color;
         clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-    // Ring 1, Position 1 - 108°: cos=-0.309, sin=0.951
     if categories.length > 1: Rectangle {
-        property <int> idx: mod(1 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.309 * ring1-radius - ring1-icon/2) : (anchor-x - 0.309 * ring1-radius - ring1-icon/2);
-        y: anchor-y - 0.951 * ring1-radius - ring1-icon/2;
+        property <int> idx: mod(1 + r1-offset, num-apps);
+        x: is-left ? (anchor-x + 0.423 * ring1-radius - ring1-icon/2) : (anchor-x - 0.423 * ring1-radius - ring1-icon/2);
+        y: anchor-y - 0.906 * ring1-radius - ring1-icon/2;
         width: ring1-icon; height: ring1-icon;
-        border-radius: 20px;
+        border-radius: 18px;
         background: categories[idx].color;
         clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-    // Ring 1, Position 2 - 124°: cos=-0.559, sin=0.829
     if categories.length > 2: Rectangle {
-        property <int> idx: mod(2 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.559 * ring1-radius - ring1-icon/2) : (anchor-x - 0.559 * ring1-radius - ring1-icon/2);
-        y: anchor-y - 0.829 * ring1-radius - ring1-icon/2;
+        property <int> idx: mod(2 + r1-offset, num-apps);
+        x: is-left ? (anchor-x + 0.707 * ring1-radius - ring1-icon/2) : (anchor-x - 0.707 * ring1-radius - ring1-icon/2);
+        y: anchor-y - 0.707 * ring1-radius - ring1-icon/2;
         width: ring1-icon; height: ring1-icon;
-        border-radius: 20px;
+        border-radius: 18px;
         background: categories[idx].color;
         clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-    // Ring 1, Position 3 - 140°: cos=-0.766, sin=0.643
     if categories.length > 3: Rectangle {
-        property <int> idx: mod(3 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.766 * ring1-radius - ring1-icon/2) : (anchor-x - 0.766 * ring1-radius - ring1-icon/2);
-        y: anchor-y - 0.643 * ring1-radius - ring1-icon/2;
+        property <int> idx: mod(3 + r1-offset, num-apps);
+        x: is-left ? (anchor-x + 0.906 * ring1-radius - ring1-icon/2) : (anchor-x - 0.906 * ring1-radius - ring1-icon/2);
+        y: anchor-y - 0.423 * ring1-radius - ring1-icon/2;
         width: ring1-icon; height: ring1-icon;
-        border-radius: 20px;
+        border-radius: 18px;
         background: categories[idx].color;
         clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-    // Ring 1, Position 4 - 156°: cos=-0.914, sin=0.407
     if categories.length > 4: Rectangle {
-        property <int> idx: mod(4 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.914 * ring1-radius - ring1-icon/2) : (anchor-x - 0.914 * ring1-radius - ring1-icon/2);
-        y: anchor-y - 0.407 * ring1-radius - ring1-icon/2;
+        property <int> idx: mod(4 + r1-offset, num-apps);
+        x: is-left ? (anchor-x + 0.996 * ring1-radius - ring1-icon/2) : (anchor-x - 0.996 * ring1-radius - ring1-icon/2);
+        y: anchor-y - 0.087 * ring1-radius - ring1-icon/2;
         width: ring1-icon; height: ring1-icon;
-        border-radius: 20px;
+        border-radius: 18px;
         background: categories[idx].color;
         clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-    // Ring 1, Position 5 - 172°: cos=-0.990, sin=0.139
+
+    // === RING 2 (Middle) - 6 apps visible ===
+    // Angles: 92°, 110°, 128°, 146°, 164°, 182° (18° apart)
+
     if categories.length > 5: Rectangle {
-        property <int> idx: mod(5 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.990 * ring1-radius - ring1-icon/2) : (anchor-x - 0.990 * ring1-radius - ring1-icon/2);
-        y: anchor-y - 0.139 * ring1-radius - ring1-icon/2;
-        width: ring1-icon; height: ring1-icon;
-        border-radius: 20px;
+        property <int> idx: mod(5 + r2-offset, num-apps);
+        x: is-left ? (anchor-x + 0.035 * ring2-radius - ring2-icon/2) : (anchor-x - 0.035 * ring2-radius - ring2-icon/2);
+        y: anchor-y - 0.999 * ring2-radius - ring2-icon/2;
+        width: ring2-icon; height: ring2-icon;
+        border-radius: 16px;
         background: categories[idx].color;
         clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-
-    // === MIDDLE RING (Ring 2) - 5 apps offset, angles 100°, 120°, 140°, 160°, 180° ===
-
-    // Ring 2, Position 0 - 100°: cos=-0.174, sin=0.985
     if categories.length > 6: Rectangle {
-        property <int> idx: mod(6 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.174 * ring2-radius - ring2-icon/2) : (anchor-x - 0.174 * ring2-radius - ring2-icon/2);
-        y: anchor-y - 0.985 * ring2-radius - ring2-icon/2;
+        property <int> idx: mod(6 + r2-offset, num-apps);
+        x: is-left ? (anchor-x + 0.342 * ring2-radius - ring2-icon/2) : (anchor-x - 0.342 * ring2-radius - ring2-icon/2);
+        y: anchor-y - 0.940 * ring2-radius - ring2-icon/2;
         width: ring2-icon; height: ring2-icon;
-        border-radius: 18px;
+        border-radius: 16px;
         background: categories[idx].color;
         clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-    // Ring 2, Position 1 - 120°: cos=-0.500, sin=0.866
     if categories.length > 7: Rectangle {
-        property <int> idx: mod(7 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.500 * ring2-radius - ring2-icon/2) : (anchor-x - 0.500 * ring2-radius - ring2-icon/2);
-        y: anchor-y - 0.866 * ring2-radius - ring2-icon/2;
+        property <int> idx: mod(7 + r2-offset, num-apps);
+        x: is-left ? (anchor-x + 0.616 * ring2-radius - ring2-icon/2) : (anchor-x - 0.616 * ring2-radius - ring2-icon/2);
+        y: anchor-y - 0.788 * ring2-radius - ring2-icon/2;
         width: ring2-icon; height: ring2-icon;
-        border-radius: 18px;
+        border-radius: 16px;
         background: categories[idx].color;
         clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-    // Ring 2, Position 2 - 140°: cos=-0.766, sin=0.643
     if categories.length > 8: Rectangle {
-        property <int> idx: mod(8 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.766 * ring2-radius - ring2-icon/2) : (anchor-x - 0.766 * ring2-radius - ring2-icon/2);
-        y: anchor-y - 0.643 * ring2-radius - ring2-icon/2;
+        property <int> idx: mod(8 + r2-offset, num-apps);
+        x: is-left ? (anchor-x + 0.829 * ring2-radius - ring2-icon/2) : (anchor-x - 0.829 * ring2-radius - ring2-icon/2);
+        y: anchor-y - 0.559 * ring2-radius - ring2-icon/2;
         width: ring2-icon; height: ring2-icon;
-        border-radius: 18px;
+        border-radius: 16px;
         background: categories[idx].color;
         clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-    // Ring 2, Position 3 - 160°: cos=-0.940, sin=0.342
     if categories.length > 9: Rectangle {
-        property <int> idx: mod(9 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.940 * ring2-radius - ring2-icon/2) : (anchor-x - 0.940 * ring2-radius - ring2-icon/2);
-        y: anchor-y - 0.342 * ring2-radius - ring2-icon/2;
+        property <int> idx: mod(9 + r2-offset, num-apps);
+        x: is-left ? (anchor-x + 0.961 * ring2-radius - ring2-icon/2) : (anchor-x - 0.961 * ring2-radius - ring2-icon/2);
+        y: anchor-y - 0.276 * ring2-radius - ring2-icon/2;
         width: ring2-icon; height: ring2-icon;
-        border-radius: 18px;
+        border-radius: 16px;
         background: categories[idx].color;
         clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-
-    // === OUTER RING (Ring 3) - 4 apps, angles 95°, 125°, 155°, 185° ===
-
-    // Ring 3, Position 0 - 95°: cos=-0.087, sin=0.996
     if categories.length > 10: Rectangle {
-        property <int> idx: mod(10 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.087 * ring3-radius - ring3-icon/2) : (anchor-x - 0.087 * ring3-radius - ring3-icon/2);
-        y: anchor-y - 0.996 * ring3-radius - ring3-icon/2;
-        width: ring3-icon; height: ring3-icon;
-        border-radius: 14px;
+        property <int> idx: mod(10 + r2-offset, num-apps);
+        x: is-left ? (anchor-x + 0.999 * ring2-radius - ring2-icon/2) : (anchor-x - 0.999 * ring2-radius - ring2-icon/2);
+        y: anchor-y + 0.035 * ring2-radius - ring2-icon/2;
+        width: ring2-icon; height: ring2-icon;
+        border-radius: 16px;
         background: categories[idx].color;
         clip: true;
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-    // Ring 3, Position 1 - 125°: cos=-0.574, sin=0.819
+
+    // === RING 3 (Outer) - 7 apps visible ===
+    // Angles: 90°, 105°, 120°, 135°, 150°, 165°, 180° (15° apart)
+
     if categories.length > 11: Rectangle {
-        property <int> idx: mod(11 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.574 * ring3-radius - ring3-icon/2) : (anchor-x - 0.574 * ring3-radius - ring3-icon/2);
-        y: anchor-y - 0.819 * ring3-radius - ring3-icon/2;
+        property <int> idx: mod(11 + r3-offset, num-apps);
+        x: is-left ? (anchor-x + 0.000 * ring3-radius - ring3-icon/2) : (anchor-x - 0.000 * ring3-radius - ring3-icon/2);
+        y: anchor-y - 1.000 * ring3-radius - ring3-icon/2;
         width: ring3-icon; height: ring3-icon;
         border-radius: 14px;
         background: categories[idx].color;
@@ -2254,11 +2251,10 @@ component OrbitalHome inherits Rectangle {
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-    // Ring 3, Position 2 - 155°: cos=-0.906, sin=0.423
     if categories.length > 12: Rectangle {
-        property <int> idx: mod(12 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.906 * ring3-radius - ring3-icon/2) : (anchor-x - 0.906 * ring3-radius - ring3-icon/2);
-        y: anchor-y - 0.423 * ring3-radius - ring3-icon/2;
+        property <int> idx: mod(12 + r3-offset, num-apps);
+        x: is-left ? (anchor-x + 0.259 * ring3-radius - ring3-icon/2) : (anchor-x - 0.259 * ring3-radius - ring3-icon/2);
+        y: anchor-y - 0.966 * ring3-radius - ring3-icon/2;
         width: ring3-icon; height: ring3-icon;
         border-radius: 14px;
         background: categories[idx].color;
@@ -2266,11 +2262,32 @@ component OrbitalHome inherits Rectangle {
         Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
         TouchArea { clicked => { app-tapped(idx); } }
     }
-    // Ring 3, Position 3 - 185°: cos=-0.996, sin=-0.087 (just past horizontal)
     if categories.length > 13: Rectangle {
-        property <int> idx: mod(13 + rot-offset, num-apps);
-        x: is-left ? (anchor-x + 0.996 * ring3-radius - ring3-icon/2) : (anchor-x - 0.996 * ring3-radius - ring3-icon/2);
-        y: anchor-y + 0.087 * ring3-radius - ring3-icon/2;
+        property <int> idx: mod(13 + r3-offset, num-apps);
+        x: is-left ? (anchor-x + 0.500 * ring3-radius - ring3-icon/2) : (anchor-x - 0.500 * ring3-radius - ring3-icon/2);
+        y: anchor-y - 0.866 * ring3-radius - ring3-icon/2;
+        width: ring3-icon; height: ring3-icon;
+        border-radius: 14px;
+        background: categories[idx].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 14: Rectangle {
+        property <int> idx: mod(14 + r3-offset, num-apps);
+        x: is-left ? (anchor-x + 0.707 * ring3-radius - ring3-icon/2) : (anchor-x - 0.707 * ring3-radius - ring3-icon/2);
+        y: anchor-y - 0.707 * ring3-radius - ring3-icon/2;
+        width: ring3-icon; height: ring3-icon;
+        border-radius: 14px;
+        background: categories[idx].color;
+        clip: true;
+        Image { width: 100%; height: 100%; source: categories[idx].icon; image-fit: contain; }
+        TouchArea { clicked => { app-tapped(idx); } }
+    }
+    if categories.length > 15: Rectangle {
+        property <int> idx: mod(15 + r3-offset, num-apps);
+        x: is-left ? (anchor-x + 0.866 * ring3-radius - ring3-icon/2) : (anchor-x - 0.866 * ring3-radius - ring3-icon/2);
+        y: anchor-y - 0.500 * ring3-radius - ring3-icon/2;
         width: ring3-icon; height: ring3-icon;
         border-radius: 14px;
         background: categories[idx].color;
@@ -2279,7 +2296,12 @@ component OrbitalHome inherits Rectangle {
         TouchArea { clicked => { app-tapped(idx); } }
     }
 
-    // Touch area for rotation - covers most of the screen
+    // Touch area for ring rotation - detects which ring based on distance from anchor
+    // Pre-computed distance values for touch detection (updated on mouse move)
+    property <float> touch-dx: 0;
+    property <float> touch-dy: 0;
+    property <float> touch-dist: 0;
+
     TouchArea {
         x: 0px;
         y: 60px;
@@ -2288,27 +2310,53 @@ component OrbitalHome inherits Rectangle {
 
         pointer-event(event) => {
             if (event.kind == PointerEventKind.down) {
+                // Calculate distance from anchor to determine which ring
+                // For right-handed: anchor is at right edge, so dx = width - mouse-x
+                // For left-handed: anchor is at left edge, so dx = mouse-x
+                root.touch-dx = is-left ? (self.mouse-x / 1px) : ((root.width / 1px) - (self.mouse-x / 1px));
+                root.touch-dy = ((root.height / 1px) - 60) - (self.mouse-y / 1px);
+                root.touch-dist = sqrt((root.touch-dx * root.touch-dx) + (root.touch-dy * root.touch-dy));
+
+                // Determine which ring was touched based on distance from anchor
+                // Inner ring (ring1) is closest to corner
+                if (root.touch-dist < ((ring1-radius / 1px) + 60)) {
+                    root.active-ring = 1;
+                    root.touch-start-rotation = root.ring1-rotation;
+                } else if (root.touch-dist < ((ring2-radius / 1px) + 50)) {
+                    root.active-ring = 2;
+                    root.touch-start-rotation = root.ring2-rotation;
+                } else {
+                    root.active-ring = 3;
+                    root.touch-start-rotation = root.ring3-rotation;
+                }
+
                 root.touch-start-y = self.mouse-y / 1px;
                 root.touch-last-y = self.mouse-y / 1px;
-                root.touch-start-rotation = root.rotation;
                 root.velocity = 0;
-                root.is-dragging = true;
-            } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
-                root.is-dragging = false;
-                // Send velocity for momentum scrolling
-                root.swipe-ended(root.velocity);
+            } else if ((event.kind == PointerEventKind.up) || (event.kind == PointerEventKind.cancel)) {
+                if (root.active-ring > 0) {
+                    root.ring-swipe-ended(root.active-ring, root.velocity);
+                }
+                root.active-ring = 0;
             }
         }
 
         moved => {
-            if (root.is-dragging) {
-                // Calculate velocity from movement delta
-                root.velocity = ((self.mouse-y / 1px) - root.touch-last-y) / 60.0;
+            if (root.active-ring > 0) {
+                root.velocity = ((self.mouse-y / 1px) - root.touch-last-y) / 50.0;
                 root.touch-last-y = self.mouse-y / 1px;
 
-                // Update rotation based on total movement
-                root.rotation = root.touch-start-rotation + ((self.mouse-y / 1px) - root.touch-start-y) / 60.0;
-                root.rotation-changed(root.rotation);
+                // Calculate delta rotation based on Y movement
+                if (root.active-ring == 1) {
+                    root.ring1-rotation = root.touch-start-rotation + (((self.mouse-y / 1px) - root.touch-start-y) / 50.0);
+                    root.ring-rotation-changed(1, root.ring1-rotation);
+                } else if (root.active-ring == 2) {
+                    root.ring2-rotation = root.touch-start-rotation + (((self.mouse-y / 1px) - root.touch-start-y) / 50.0);
+                    root.ring-rotation-changed(2, root.ring2-rotation);
+                } else {
+                    root.ring3-rotation = root.touch-start-rotation + (((self.mouse-y / 1px) - root.touch-start-y) / 50.0);
+                    root.ring-rotation-changed(3, root.ring3-rotation);
+                }
             }
         }
     }
@@ -3525,9 +3573,13 @@ export component FlickShell inherits Window {
 
     // Orbital home state (orbital launcher IS the home screen)
     in property <bool> orbital-is-left: false;  // false = right-handed (default), true = left-handed
-    in-out property <float> orbital-rotation: 0.0;  // Ring rotation (swipe changes this)
-    callback orbital-rotation-changed(float);  // Emitted when user swipes to rotate the ring
-    callback orbital-swipe-ended(float);       // Emitted with velocity when swipe ends
+    // Per-ring rotation (each ring rotates independently)
+    in-out property <float> orbital-ring1-rotation: 0.0;
+    in-out property <float> orbital-ring2-rotation: 0.0;
+    in-out property <float> orbital-ring3-rotation: 0.0;
+    // Callbacks with ring number (1, 2, or 3)
+    callback orbital-ring-rotation-changed(int, float);
+    callback orbital-ring-swipe-ended(int, float);
 
     // Volume overlay state (shown when hardware volume buttons pressed)
     in property <bool> show-volume-overlay: false;
@@ -3647,12 +3699,15 @@ export component FlickShell inherits Window {
         text-scale: root.text-scale;
         has-wallpaper: root.has-wallpaper;
         is-left: orbital-is-left;
-        rotation <=> orbital-rotation;
         push-offset: root.home-push-offset;
+        // Per-ring rotation bindings
+        ring1-rotation <=> orbital-ring1-rotation;
+        ring2-rotation <=> orbital-ring2-rotation;
+        ring3-rotation <=> orbital-ring3-rotation;
         app-tapped(i) => { app-tapped(i); }
         status-bar-tapped => { status-bar-tapped(); }
-        rotation-changed(r) => { orbital-rotation-changed(r); }
-        swipe-ended(v) => { orbital-swipe-ended(v); }
+        ring-rotation-changed(ring, r) => { orbital-ring-rotation-changed(ring, r); }
+        ring-swipe-ended(ring, v) => { orbital-ring-swipe-ended(ring, v); }
     }
 
     // Quick settings - slides down as overlay on top of home

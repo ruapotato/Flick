@@ -2668,39 +2668,79 @@ pub fn run() -> Result<()> {
             state.shell.set_view(crate::shell::ShellView::QuickSettings);
         }
 
-        // Handle orbital rotation - direct changes from swipe and momentum
+        // Handle per-ring orbital rotation - direct changes from swipe and momentum
         if let Some(ref slint_ui) = state.shell.slint_ui {
-            // Poll for direct rotation changes (while dragging)
-            if let Some(new_rotation) = slint_ui.poll_orbital_rotation() {
-                state.orbital_rotation = new_rotation;
-                state.orbital_velocity = 0.0; // Stop momentum while dragging
+            // Poll for direct rotation changes (while dragging) - per ring
+            if let Some((ring, new_rotation)) = slint_ui.poll_orbital_ring_rotation() {
+                match ring {
+                    1 => {
+                        state.orbital_ring1_rotation = new_rotation;
+                        state.orbital_ring1_velocity = 0.0;
+                    }
+                    2 => {
+                        state.orbital_ring2_rotation = new_rotation;
+                        state.orbital_ring2_velocity = 0.0;
+                    }
+                    3 => {
+                        state.orbital_ring3_rotation = new_rotation;
+                        state.orbital_ring3_velocity = 0.0;
+                    }
+                    _ => {}
+                }
             }
 
-            // Poll for velocity (when swipe ends, start momentum)
-            if let Some(velocity) = slint_ui.poll_orbital_velocity() {
-                state.orbital_velocity = velocity;
+            // Poll for velocity (when swipe ends, start momentum) - per ring
+            if let Some((ring, velocity)) = slint_ui.poll_orbital_ring_velocity() {
+                match ring {
+                    1 => state.orbital_ring1_velocity = velocity,
+                    2 => state.orbital_ring2_velocity = velocity,
+                    3 => state.orbital_ring3_velocity = velocity,
+                    _ => {}
+                }
             }
         }
 
-        // Apply momentum physics (runs every frame)
-        if state.orbital_velocity.abs() > 0.001 {
-            // Apply velocity to rotation
-            state.orbital_rotation += state.orbital_velocity;
-
-            // Friction decay (0.92 feels smooth)
-            state.orbital_velocity *= 0.92;
-
-            // Update Slint with new rotation
+        // Apply per-ring momentum physics (runs every frame)
+        // Ring 1
+        if state.orbital_ring1_velocity.abs() > 0.001 {
+            state.orbital_ring1_rotation += state.orbital_ring1_velocity;
+            state.orbital_ring1_velocity *= 0.92; // Friction decay
             if let Some(ref slint_ui) = state.shell.slint_ui {
-                slint_ui.set_orbital_rotation(state.orbital_rotation);
+                slint_ui.set_orbital_ring1_rotation(state.orbital_ring1_rotation);
+            }
+        }
+        // Ring 2
+        if state.orbital_ring2_velocity.abs() > 0.001 {
+            state.orbital_ring2_rotation += state.orbital_ring2_velocity;
+            state.orbital_ring2_velocity *= 0.92;
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                slint_ui.set_orbital_ring2_rotation(state.orbital_ring2_rotation);
+            }
+        }
+        // Ring 3
+        if state.orbital_ring3_velocity.abs() > 0.001 {
+            state.orbital_ring3_rotation += state.orbital_ring3_velocity;
+            state.orbital_ring3_velocity *= 0.92;
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                slint_ui.set_orbital_ring3_rotation(state.orbital_ring3_rotation);
             }
         }
 
-        // Haptic feedback when crossing app boundaries (integer values)
-        let current_int = state.orbital_rotation.round() as i32;
-        if current_int != state.orbital_last_int {
-            state.orbital_last_int = current_int;
-            state.system.haptic_tap(); // Light tap for each app passed
+        // Per-ring haptic feedback when crossing app boundaries (integer values)
+        let r1_int = state.orbital_ring1_rotation.round() as i32;
+        if r1_int != state.orbital_ring1_last_int {
+            state.orbital_ring1_last_int = r1_int;
+            state.system.haptic_tap();
+        }
+        let r2_int = state.orbital_ring2_rotation.round() as i32;
+        if r2_int != state.orbital_ring2_last_int {
+            state.orbital_ring2_last_int = r2_int;
+            state.system.haptic_tap();
+        }
+        let r3_int = state.orbital_ring3_rotation.round() as i32;
+        if r3_int != state.orbital_ring3_last_int {
+            state.orbital_ring3_last_int = r3_int;
+            state.system.haptic_tap();
         }
 
         // Poll for pick default callbacks (runs every frame when in PickDefault view)

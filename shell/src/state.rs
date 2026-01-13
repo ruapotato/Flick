@@ -185,9 +185,16 @@ pub struct Flick {
 
     /// Orbital launcher state (this IS the home screen now)
     pub orbital_is_left: bool,      // Left-handed (true) or right-handed (false) mode
-    pub orbital_rotation: f32,      // Ring rotation offset (each 1.0 = one app)
-    pub orbital_velocity: f32,      // Rotation velocity for momentum scrolling
-    pub orbital_last_int: i32,      // Last integer rotation (for haptic on crossing)
+    // Per-ring rotation state (each ring rotates independently)
+    pub orbital_ring1_rotation: f32,      // Ring 1 rotation offset
+    pub orbital_ring1_velocity: f32,      // Ring 1 velocity for momentum
+    pub orbital_ring1_last_int: i32,      // Ring 1 last int (for haptic)
+    pub orbital_ring2_rotation: f32,      // Ring 2 rotation offset
+    pub orbital_ring2_velocity: f32,      // Ring 2 velocity for momentum
+    pub orbital_ring2_last_int: i32,      // Ring 2 last int (for haptic)
+    pub orbital_ring3_rotation: f32,      // Ring 3 rotation offset
+    pub orbital_ring3_velocity: f32,      // Ring 3 velocity for momentum
+    pub orbital_ring3_last_int: i32,      // Ring 3 last int (for haptic)
     pub orbital_selected_app: i32,  // Currently highlighted app index (-1 = none)
 
     /// Per-slot keyboard touch tracking for multi-touch support
@@ -372,9 +379,16 @@ impl Flick {
             qs_return_progress: 0.0,
             qs_return_start_progress: 0.0,
             orbital_is_left: false,  // Default to right-handed
-            orbital_rotation: 0.0,
-            orbital_velocity: 0.0,
-            orbital_last_int: 0,
+            // Per-ring rotation state
+            orbital_ring1_rotation: 0.0,
+            orbital_ring1_velocity: 0.0,
+            orbital_ring1_last_int: 0,
+            orbital_ring2_rotation: 0.0,
+            orbital_ring2_velocity: 0.0,
+            orbital_ring2_last_int: 0,
+            orbital_ring3_rotation: 0.0,
+            orbital_ring3_velocity: 0.0,
+            orbital_ring3_last_int: 0,
             orbital_selected_app: -1,
             keyboard_touch_initial: HashMap::new(),
             keyboard_touch_last: HashMap::new(),

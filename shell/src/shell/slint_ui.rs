@@ -155,10 +155,10 @@ pub struct SlintShell {
     pending_system_action: Rc<RefCell<Option<String>>>,
     /// Pending status bar tap (open quick settings)
     pending_status_bar_tap: Rc<RefCell<bool>>,
-    /// Pending orbital rotation change (from swipe gesture)
-    pending_orbital_rotation: Rc<RefCell<Option<f32>>>,
-    /// Pending orbital velocity (from swipe end, for momentum)
-    pending_orbital_velocity: Rc<RefCell<Option<f32>>>,
+    /// Pending orbital rotation changes (ring number, rotation) - per-ring
+    pending_orbital_ring_rotation: Rc<RefCell<Option<(i32, f32)>>>,
+    /// Pending orbital velocity (ring number, velocity) - per-ring for momentum
+    pending_orbital_ring_velocity: Rc<RefCell<Option<(i32, f32)>>>,
 }
 
 impl SlintShell {
@@ -409,18 +409,18 @@ impl SlintShell {
             *status_bar_clone.borrow_mut() = true;
         });
 
-        // Orbital rotation changed callback
-        let pending_orbital_rotation = Rc::new(RefCell::new(None::<f32>));
-        let rotation_clone = pending_orbital_rotation.clone();
-        shell.on_orbital_rotation_changed(move |rotation| {
-            *rotation_clone.borrow_mut() = Some(rotation);
+        // Per-ring orbital rotation changed callback
+        let pending_orbital_ring_rotation = Rc::new(RefCell::new(None::<(i32, f32)>));
+        let rotation_clone = pending_orbital_ring_rotation.clone();
+        shell.on_orbital_ring_rotation_changed(move |ring, rotation| {
+            *rotation_clone.borrow_mut() = Some((ring, rotation));
         });
 
-        // Orbital swipe ended callback (with velocity for momentum)
-        let pending_orbital_velocity = Rc::new(RefCell::new(None::<f32>));
-        let velocity_clone = pending_orbital_velocity.clone();
-        shell.on_orbital_swipe_ended(move |velocity| {
-            *velocity_clone.borrow_mut() = Some(velocity);
+        // Per-ring orbital swipe ended callback (with velocity for momentum)
+        let pending_orbital_ring_velocity = Rc::new(RefCell::new(None::<(i32, f32)>));
+        let velocity_clone = pending_orbital_ring_velocity.clone();
+        shell.on_orbital_ring_swipe_ended(move |ring, velocity| {
+            *velocity_clone.borrow_mut() = Some((ring, velocity));
         });
 
         Self {
@@ -443,8 +443,8 @@ impl SlintShell {
             pending_phone_actions,
             pending_system_action,
             pending_status_bar_tap,
-            pending_orbital_rotation,
-            pending_orbital_velocity,
+            pending_orbital_ring_rotation,
+            pending_orbital_ring_velocity,
         }
     }
 
@@ -481,19 +481,29 @@ impl SlintShell {
         self.shell.set_orbital_is_left(is_left);
     }
 
-    /// Set orbital home ring rotation in degrees
-    pub fn set_orbital_rotation(&self, rotation: f32) {
-        self.shell.set_orbital_rotation(rotation);
+    /// Set orbital ring 1 rotation
+    pub fn set_orbital_ring1_rotation(&self, rotation: f32) {
+        self.shell.set_orbital_ring1_rotation(rotation);
     }
 
-    /// Poll for pending orbital rotation changes (from swipe gesture)
-    pub fn poll_orbital_rotation(&self) -> Option<f32> {
-        self.pending_orbital_rotation.borrow_mut().take()
+    /// Set orbital ring 2 rotation
+    pub fn set_orbital_ring2_rotation(&self, rotation: f32) {
+        self.shell.set_orbital_ring2_rotation(rotation);
     }
 
-    /// Poll for pending orbital velocity (from swipe end, for momentum)
-    pub fn poll_orbital_velocity(&self) -> Option<f32> {
-        self.pending_orbital_velocity.borrow_mut().take()
+    /// Set orbital ring 3 rotation
+    pub fn set_orbital_ring3_rotation(&self, rotation: f32) {
+        self.shell.set_orbital_ring3_rotation(rotation);
+    }
+
+    /// Poll for pending orbital ring rotation changes (ring number, rotation)
+    pub fn poll_orbital_ring_rotation(&self) -> Option<(i32, f32)> {
+        self.pending_orbital_ring_rotation.borrow_mut().take()
+    }
+
+    /// Poll for pending orbital ring velocity (ring number, velocity) for momentum
+    pub fn poll_orbital_ring_velocity(&self) -> Option<(i32, f32)> {
+        self.pending_orbital_ring_velocity.borrow_mut().take()
     }
 
     /// Poll for status bar tap (opens quick settings)
