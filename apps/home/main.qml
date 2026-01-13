@@ -11,20 +11,6 @@ Window {
     // State directory - read from state_dir.txt written by run_home.sh
     property string stateDir: "/home/furios/.local/state/flick"
 
-    Component.onCompleted: {
-        // Try to read actual state dir from file
-        var xhr = new XMLHttpRequest();
-        xhr.open("GET", "file:///home/furios/.local/state/flick/state_dir.txt", false);
-        try {
-            xhr.send();
-            if (xhr.status === 200 || xhr.status === 0) {
-                var dir = xhr.responseText.trim();
-                if (dir.length > 0) stateDir = dir;
-            }
-        } catch (e) {}
-        console.log("Home screen stateDir:", stateDir);
-    }
-
     // Configuration
     property real iconSize: 72
     property real firstRadius: 120
@@ -101,7 +87,8 @@ Window {
             xhr.send();
             if (xhr.status === 200 || xhr.status === 0) {
                 var data = JSON.parse(xhr.responseText);
-                apps = data.apps || [];
+                // apps.json is a direct array, not {apps: [...]}
+                apps = Array.isArray(data) ? data : (data.apps || []);
                 console.log("Loaded", apps.length, "apps");
                 rings = generateRings();
                 arcCanvas.requestPaint();

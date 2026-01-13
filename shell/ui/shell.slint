@@ -3591,25 +3591,21 @@ export component FlickShell inherits Window {
         image-fit: cover;
     }
 
-    // Orbital Home - the main home screen with apps in a large arc
-    if current-view == "home" || return-gesture-active || forward-gesture-active: OrbitalHome {
+    // Home screen placeholder - QML home renders on top when connected
+    if current-view == "home" || return-gesture-active || forward-gesture-active: Rectangle {
         width: 100%;
         height: 100%;
-        categories: categories;
-        time: root.time;
-        battery: battery-percent;
-        text-scale: root.text-scale;
-        has-wallpaper: root.has-wallpaper;
-        is-left: orbital-is-left;
-        push-offset: root.home-push-offset;
-        // Per-ring rotation bindings
-        ring1-rotation <=> orbital-ring1-rotation;
-        ring2-rotation <=> orbital-ring2-rotation;
-        ring3-rotation <=> orbital-ring3-rotation;
-        app-tapped(i) => { app-tapped(i); }
-        status-bar-tapped => { status-bar-tapped(); }
-        ring-rotation-changed(ring, r) => { orbital-ring-rotation-changed(ring, r); }
-        ring-swipe-ended(ring, v) => { orbital-ring-swipe-ended(ring, v); }
+        background: #1a1a2e;
+
+        Text {
+            text: "Loading QML homescreen...";
+            color: #ffffff80;
+            font-size: 18px * root.text-scale;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+        }
     }
 
     // Quick settings - slides down as overlay on top of home
