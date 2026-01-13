@@ -13,11 +13,11 @@ Window {
     property string stateDir: "/home/furios/.local/state/flick"
 
     // Configuration - sizes scaled for phone display
-    // Icons are 180px, need at least 200px between ring centers and 240px arc spacing
+    // Icons are 180px, spacing must be larger to prevent overlap
     property real iconSize: 180
-    property real firstRadius: 200  // First ring radius from corner
-    property real ringSpacing: 200  // Distance between ring centers (must be > iconSize)
-    property real arcSpacing: 250   // Arc distance between icon centers (must be > iconSize)
+    property real firstRadius: 300  // First ring further from corner
+    property real ringSpacing: 250  // Distance between ring centers (spread orbits more)
+    property real arcSpacing: 380   // Arc distance between icons (4 icons on outer rings instead of 5)
 
     // Handedness: false = left-handed (anchor bottom-left), true = right-handed (anchor bottom-right)
     property bool rightHanded: true
@@ -467,8 +467,11 @@ Window {
 
                     property real angleRad: displayAngle * Math.PI / 180
 
-                    visible: displayAngle >= -buffer && displayAngle <= 90 + buffer
+                    // Keep visible while dragging to prevent losing touch events
+                    visible: ringItem.isDragging || (displayAngle >= -buffer && displayAngle <= 90 + buffer)
                     opacity: {
+                        // During drag, keep full opacity for touched icon
+                        if (ringItem.isDragging) return 1;
                         if (displayAngle < 0) return Math.max(0, (displayAngle + buffer) / buffer);
                         if (displayAngle > 90) return Math.max(0, (90 + buffer - displayAngle) / buffer);
                         return 1;
