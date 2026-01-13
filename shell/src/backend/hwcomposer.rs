@@ -2594,6 +2594,35 @@ pub fn run() -> Result<()> {
             }
         }
 
+        // Launch QML home if on Home view and not already launched
+        if state.shell.view == crate::shell::ShellView::Home && !state.shell.qml_home_launched {
+            if let Some(socket) = state.socket_name.to_str() {
+                state.shell.launch_home_app(socket);
+            }
+        }
+
+        // Check for app launch signal from QML home
+        if let Some(exec_cmd) = state.shell.check_launch_signal() {
+            info!("Launching app from QML home: {}", exec_cmd);
+            // Extract app_id from command for logging purposes
+            let app_id = if exec_cmd.contains("/apps/") {
+                exec_cmd.split("/apps/").nth(1)
+                    .and_then(|s| s.split('/').next())
+                    .unwrap_or("qml_home_app")
+            } else {
+                "qml_home_app"
+            };
+            if let Some(socket) = state.socket_name.to_str() {
+                let text_scale = state.shell.text_scale as f64;
+                if let Err(e) = crate::spawn_user::spawn_app_with_logging(&exec_cmd, app_id, socket, text_scale) {
+                    error!("Failed to launch app from QML home: {}", e);
+                } else {
+                    // Switch to App view after launching
+                    state.shell.set_view(crate::shell::ShellView::App);
+                }
+            }
+        }
+
         // Log every loop iteration for debugging
         debug!("Loop {}: after dispatch_clients", loop_count);
 
@@ -3378,18 +3407,26 @@ fn render_frame(
             && state.shell.lock_screen_active
             && element_count > 0;
 
+        // Check if QML home app is connected
+        let qml_home_connected = shell_view == ShellView::Home
+            && state.shell.qml_home_launched
+            && element_count > 0;
+
         // Log status every 60 frames, or on any change
         static mut LAST_ELEMENT_COUNT: usize = 999;
         static mut LAST_QML_CONNECTED: bool = false;
+        static mut LAST_QML_HOME_CONNECTED: bool = false;
         let element_changed = unsafe { LAST_ELEMENT_COUNT != element_count };
         let connected_changed = unsafe { LAST_QML_CONNECTED != qml_lockscreen_connected };
+        let home_connected_changed = unsafe { LAST_QML_HOME_CONNECTED != qml_home_connected };
 
-        if log_frame || element_changed || connected_changed {
-            info!("RENDER frame {}: view={:?}, lock_active={}, elements={}, qml_connected={}",
-                frame_num, shell_view, state.shell.lock_screen_active, element_count, qml_lockscreen_connected);
+        if log_frame || element_changed || connected_changed || home_connected_changed {
+            info!("RENDER frame {}: view={:?}, lock_active={}, elements={}, qml_lock={}, qml_home={}",
+                frame_num, shell_view, state.shell.lock_screen_active, element_count, qml_lockscreen_connected, qml_home_connected);
             unsafe {
                 LAST_ELEMENT_COUNT = element_count;
                 LAST_QML_CONNECTED = qml_lockscreen_connected;
+                LAST_QML_HOME_CONNECTED = qml_home_connected;
             }
         }
 
@@ -3399,12 +3436,53 @@ fn render_frame(
         // Only skip normal view rendering when coming from App view
         let skip_view_for_preview = false;
 
-        // Render Slint UI for shell views (not for lock screen when QML is connected)
-        // When QML lock screen is connected, render QML windows instead of Slint
+        // Render Slint UI for shell views (not for lock screen or home when QML is connected)
+        // When QML lock/home screen is connected, render QML windows instead of Slint
         let render_slint_lock = shell_view == ShellView::LockScreen && !qml_lockscreen_connected;
-        if !qml_lockscreen_connected || render_slint_lock {
+        let render_slint_home = shell_view == ShellView::Home && !qml_home_connected;
+        let skip_slint_for_qml = qml_lockscreen_connected || qml_home_connected;
+        if !skip_slint_for_qml || render_slint_lock || render_slint_home {
             match shell_view {
-                ShellView::Home | ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault
+                ShellView::Home if !qml_home_connected && !skip_view_for_preview => {
+                    // Only render Slint home if QML home not connected (fallback)
+                    slint::platform::update_timers_and_animations();
+
+                    if let Some(ref slint_ui) = state.shell.slint_ui {
+                        let in_return_gesture = state.qs_return_active || state.switcher_return_active;
+                        slint_ui.set_return_gesture_active(in_return_gesture);
+                        slint_ui.set_view("home");
+                        let slint_categories = state.shell.get_categories_with_icons();
+                        slint_ui.set_categories(slint_categories);
+                        slint_ui.set_show_popup(state.shell.popup_showing);
+                        slint_ui.set_wiggle_mode(state.shell.wiggle_mode);
+                        slint_ui.set_home_scroll(state.shell.home_scroll as f32);
+                        slint_ui.set_home_push_offset(state.shell.home_push_offset as f32);
+
+                        if state.shell.wiggle_mode {
+                            if let Some(start) = state.shell.wiggle_start_time {
+                                let elapsed = start.elapsed().as_secs_f32();
+                                slint_ui.set_wiggle_time(elapsed);
+                            }
+                            let drag_idx = state.shell.dragging_index.map(|i| i as i32).unwrap_or(-1);
+                            slint_ui.set_dragging_index(drag_idx);
+                            if let Some(pos) = state.shell.drag_position {
+                                slint_ui.set_drag_position(pos.x as f32, pos.y as f32);
+                            }
+                        }
+
+                        let now = chrono::Local::now();
+                        slint_ui.set_time(&now.format("%H:%M").to_string());
+                        slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
+                        slint_ui.set_text_scale(state.shell.text_scale);
+
+                        if let Some((width, height, pixels)) = slint_ui.render() {
+                            unsafe {
+                                gl::render_texture(width, height, &pixels, display.width, display.height);
+                            }
+                        }
+                    }
+                }
+                ShellView::QuickSettings | ShellView::Switcher | ShellView::PickDefault
                 if !skip_view_for_preview => {
                     // Update Slint timers and animations (needed for clock updates, etc.)
                     slint::platform::update_timers_and_animations();
@@ -3416,44 +3494,6 @@ fn render_frame(
                         slint_ui.set_return_gesture_active(in_return_gesture);
 
                         match shell_view {
-                            ShellView::Home => {
-                                slint_ui.set_view("home");
-                                let slint_categories = state.shell.get_categories_with_icons();
-                                slint_ui.set_categories(slint_categories);
-                                slint_ui.set_show_popup(state.shell.popup_showing);
-                                slint_ui.set_wiggle_mode(state.shell.wiggle_mode);
-                                // Sync home screen scroll offset (physics updated in main loop)
-                                slint_ui.set_home_scroll(state.shell.home_scroll as f32);
-                                // Sync home screen push offset for edge swipe gestures
-                                slint_ui.set_home_push_offset(state.shell.home_push_offset as f32);
-
-                                // Update wiggle mode animation and state
-                                if state.shell.wiggle_mode {
-                                    // Update wiggle animation time
-                                    if let Some(start) = state.shell.wiggle_start_time {
-                                        let elapsed = start.elapsed().as_secs_f32();
-                                        slint_ui.set_wiggle_time(elapsed);
-                                    }
-
-                                    // Sync drag state to Slint
-                                    let drag_idx = state.shell.dragging_index.map(|i| i as i32).unwrap_or(-1);
-                                    slint_ui.set_dragging_index(drag_idx);
-                                    if let Some(pos) = state.shell.drag_position {
-                                        slint_ui.set_drag_position(pos.x as f32, pos.y as f32);
-                                    }
-
-                                    // Check wiggle done button - handled in main loop with mutable state
-                                    // (can't mutate here since render_frame takes immutable state)
-                                }
-
-                                // Update time for status bar
-                                let now = chrono::Local::now();
-                                slint_ui.set_time(&now.format("%H:%M").to_string());
-                                // Update battery from system info
-                                slint_ui.set_battery_percent(state.shell.quick_settings.battery_percent as i32);
-                                // Update text scale from settings
-                                slint_ui.set_text_scale(state.shell.text_scale);
-                            }
                             ShellView::QuickSettings => {
                                 slint_ui.set_view("quick-settings");
                                 slint_ui.set_brightness(state.shell.quick_settings.brightness);
@@ -3888,6 +3928,98 @@ fn render_frame(
                         }
                     } else if let Some((texture_id, width, height)) = egl_texture_info {
                         // Render existing EGL texture
+                        unsafe {
+                            gl::render_egl_texture_at(texture_id, width, height, display.width, display.height, 0, 0);
+                        }
+                    } else {
+                        // Fallback to SHM buffer
+                        let buffer_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(&wl_surface, |data| {
+                            use std::cell::RefCell;
+                            use crate::state::SurfaceBufferData;
+
+                            if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                let data = buffer_data.borrow();
+                                if let Some(ref stored) = data.buffer {
+                                    Some((stored.width, stored.height, stored.pixels.clone()))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        });
+
+                        if let Some((width, height, pixels)) = buffer_info {
+                            unsafe {
+                                gl::render_texture(width, height, &pixels, display.width, display.height);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Render QML home window when on Home view with QML connected
+        if shell_view == ShellView::Home && qml_home_connected {
+            let windows: Vec<_> = state.space.elements().cloned().collect();
+            for window in windows.iter() {
+                let wl_surface = if let Some(toplevel) = window.toplevel() {
+                    Some(toplevel.wl_surface().clone())
+                } else {
+                    None
+                };
+
+                if let Some(wl_surface) = wl_surface {
+                    // Check if we need to import EGL buffer, and get old texture for cleanup
+                    let (needs_import, egl_texture_info, old_egl_texture) = compositor::with_states(&wl_surface, |data| {
+                        use std::cell::RefCell;
+                        use crate::state::SurfaceBufferData;
+
+                        if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                            let bd = buffer_data.borrow();
+                            let egl_info = bd.egl_texture.as_ref().map(|t| (t.texture_id, t.width, t.height));
+                            let old_tex = if bd.needs_egl_import {
+                                bd.egl_texture.as_ref().map(|t| (t.texture_id, t.egl_image))
+                            } else {
+                                None
+                            };
+                            (bd.needs_egl_import, egl_info, old_tex)
+                        } else {
+                            (false, None, None)
+                        }
+                    });
+
+                    // Try EGL import if needed
+                    if needs_import {
+                        if let Some((old_tex_id, old_egl_image)) = old_egl_texture {
+                            destroy_egl_texture(old_tex_id, old_egl_image, display);
+                        }
+
+                        if let Some(imported) = try_import_egl_buffer(&wl_surface, display) {
+                            compositor::with_states(&wl_surface, |data| {
+                                use std::cell::RefCell;
+                                use crate::state::{SurfaceBufferData, EglTextureBuffer};
+                                data.data_map.insert_if_missing(|| RefCell::new(SurfaceBufferData::default()));
+                                if let Some(buffer_data) = data.data_map.get::<RefCell<SurfaceBufferData>>() {
+                                    let mut bd = buffer_data.borrow_mut();
+                                    bd.egl_texture = Some(EglTextureBuffer {
+                                        texture_id: imported.0,
+                                        width: imported.1,
+                                        height: imported.2,
+                                        egl_image: imported.3,
+                                    });
+                                    bd.needs_egl_import = false;
+                                    bd.wl_buffer_ptr = None;
+                                    if let Some(buffer) = bd.pending_buffer.take() {
+                                        buffer.release();
+                                    }
+                                }
+                            });
+                            unsafe {
+                                gl::render_egl_texture_at(imported.0, imported.1, imported.2, display.width, display.height, 0, 0);
+                            }
+                        }
+                    } else if let Some((texture_id, width, height)) = egl_texture_info {
                         unsafe {
                             gl::render_egl_texture_at(texture_id, width, height, display.width, display.height, 0, 0);
                         }

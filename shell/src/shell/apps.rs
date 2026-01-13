@@ -431,3 +431,104 @@ impl DesktopEntry {
 
 // CategoryDef alias for compatibility
 pub type CategoryDef = AppDef;
+
+/// App entry for JSON export (for QML home screen)
+#[derive(Debug, Clone, Serialize)]
+pub struct AppJsonEntry {
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub color: [f32; 4],
+    pub exec: String,
+}
+
+/// Generate apps.json for QML home screen to read
+/// Returns true if the file was updated
+pub fn generate_apps_json(app_manager: &AppManager) -> bool {
+    use std::io::Write;
+
+    let state_dir = super::get_state_dir();
+    let apps_json_path = state_dir.join("apps.json");
+
+    // Ensure state dir exists
+    if let Err(e) = fs::create_dir_all(&state_dir) {
+        tracing::warn!("Failed to create state dir: {:?}", e);
+        return false;
+    }
+
+    // Build app list in grid order
+    let apps: Vec<AppJsonEntry> = app_manager.get_category_info()
+        .iter()
+        .map(|info| {
+            let icon_path = find_icon_path(&info.icon.clone().unwrap_or_else(|| info.id.clone()));
+            AppJsonEntry {
+                id: info.id.clone(),
+                name: info.name.clone(),
+                icon: icon_path,
+                color: info.color,
+                exec: info.exec.clone(),
+            }
+        })
+        .collect();
+
+    // Serialize to JSON
+    let json = match serde_json::to_string_pretty(&apps) {
+        Ok(j) => j,
+        Err(e) => {
+            tracing::warn!("Failed to serialize apps.json: {:?}", e);
+            return false;
+        }
+    };
+
+    // Write atomically (write to temp, then rename)
+    let temp_path = apps_json_path.with_extension("json.tmp");
+    match fs::File::create(&temp_path) {
+        Ok(mut file) => {
+            if let Err(e) = file.write_all(json.as_bytes()) {
+                tracing::warn!("Failed to write apps.json.tmp: {:?}", e);
+                return false;
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to create apps.json.tmp: {:?}", e);
+            return false;
+        }
+    }
+
+    // Rename temp to final
+    if let Err(e) = fs::rename(&temp_path, &apps_json_path) {
+        tracing::warn!("Failed to rename apps.json.tmp: {:?}", e);
+        return false;
+    }
+
+    tracing::info!("Generated apps.json with {} apps", apps.len());
+    true
+}
+
+/// Find the full path to an icon
+fn find_icon_path(icon_name: &str) -> String {
+    let home = get_real_user_home();
+
+    // Check in order: Flick icons dir, Flick shell icons dir
+    let paths = [
+        home.join("Flick/icons"),
+        home.join("Flick/shell/icons"),
+    ];
+
+    for base in &paths {
+        // Try with .svg extension
+        let svg_path = base.join(format!("{}.svg", icon_name));
+        if svg_path.exists() {
+            return svg_path.to_string_lossy().to_string();
+        }
+
+        // Try with .png extension
+        let png_path = base.join(format!("{}.png", icon_name));
+        if png_path.exists() {
+            return png_path.to_string_lossy().to_string();
+        }
+    }
+
+    // Return placeholder path if not found
+    home.join("Flick/icons/placeholder.svg").to_string_lossy().to_string()
+}
