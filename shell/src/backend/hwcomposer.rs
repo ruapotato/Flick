@@ -852,26 +852,53 @@ fn handle_input_event(
                               i, surface_id, client_info, is_wayland, is_x11);
                     }
 
-                    // ALWAYS use the topmost window from the space - this is the window
-                    // that's actually being rendered on top. Don't rely on keyboard focus
-                    // as it may not be synchronized with the space stacking order.
-                    let topmost_surface = state.space.elements().last()
-                        .and_then(|window| {
-                            if let Some(toplevel) = window.toplevel() {
-                                let surface = toplevel.wl_surface().clone();
-                                let client_info = surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
-                                info!("TouchDown: Using SPACE TOPMOST surface {:?} (client: {})", surface.id(), client_info);
-                                Some(surface)
-                            } else if let Some(x11) = window.x11_surface() {
-                                x11.wl_surface().map(|s| {
-                                    let client_info = s.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
-                                    info!("TouchDown: Using SPACE TOPMOST X11 surface (client: {})", client_info);
-                                    s.clone()
-                                })
-                            } else {
-                                None
-                            }
-                        });
+                    // For Home view, specifically find the home window by title
+                    // For other views, use the topmost window from the space
+                    let topmost_surface = if qml_home_active {
+                        // Find the home window specifically
+                        state.space.elements()
+                            .find(|window| {
+                                if let Some(toplevel) = window.toplevel() {
+                                    let title = compositor::with_states(toplevel.wl_surface(), |states| {
+                                        states.data_map
+                                            .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                            .and_then(|data| data.lock().unwrap().title.clone())
+                                    });
+                                    title.as_deref() == Some("Flick Home")
+                                } else {
+                                    false
+                                }
+                            })
+                            .and_then(|window| {
+                                if let Some(toplevel) = window.toplevel() {
+                                    let surface = toplevel.wl_surface().clone();
+                                    let client_info = surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                                    info!("TouchDown: Using HOME window surface {:?} (client: {})", surface.id(), client_info);
+                                    Some(surface)
+                                } else {
+                                    None
+                                }
+                            })
+                    } else {
+                        // Use the topmost window from the space for other views
+                        state.space.elements().last()
+                            .and_then(|window| {
+                                if let Some(toplevel) = window.toplevel() {
+                                    let surface = toplevel.wl_surface().clone();
+                                    let client_info = surface.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                                    info!("TouchDown: Using SPACE TOPMOST surface {:?} (client: {})", surface.id(), client_info);
+                                    Some(surface)
+                                } else if let Some(x11) = window.x11_surface() {
+                                    x11.wl_surface().map(|s| {
+                                        let client_info = s.client().map(|c| format!("{:?}", c.id())).unwrap_or_else(|| "no-client".to_string());
+                                        info!("TouchDown: Using SPACE TOPMOST X11 surface (client: {})", client_info);
+                                        s.clone()
+                                    })
+                                } else {
+                                    None
+                                }
+                            })
+                    };
 
                     // Also log keyboard focus for comparison
                     if let Some(kb) = state.seat.get_keyboard() {
@@ -1134,17 +1161,41 @@ fn handle_input_event(
                  qml_home_active);
             if forward_to_wayland {
                 if let Some(touch) = state.seat.get_touch() {
-                    // Use space topmost for touch motion - same source as touch down
-                    let focus = state.space.elements().last()
-                        .and_then(|window| {
-                            if let Some(toplevel) = window.toplevel() {
-                                Some((toplevel.wl_surface().clone(), smithay::utils::Point::from((0.0, 0.0))))
-                            } else if let Some(x11) = window.x11_surface() {
-                                x11.wl_surface().map(|s| (s.clone(), smithay::utils::Point::from((0.0, 0.0))))
-                            } else {
-                                None
-                            }
-                        });
+                    // For Home view, specifically find the home window by title
+                    // For other views, use the topmost window from the space
+                    let focus = if qml_home_active {
+                        state.space.elements()
+                            .find(|window| {
+                                if let Some(toplevel) = window.toplevel() {
+                                    let title = compositor::with_states(toplevel.wl_surface(), |states| {
+                                        states.data_map
+                                            .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                            .and_then(|data| data.lock().unwrap().title.clone())
+                                    });
+                                    title.as_deref() == Some("Flick Home")
+                                } else {
+                                    false
+                                }
+                            })
+                            .and_then(|window| {
+                                if let Some(toplevel) = window.toplevel() {
+                                    Some((toplevel.wl_surface().clone(), smithay::utils::Point::from((0.0, 0.0))))
+                                } else {
+                                    None
+                                }
+                            })
+                    } else {
+                        state.space.elements().last()
+                            .and_then(|window| {
+                                if let Some(toplevel) = window.toplevel() {
+                                    Some((toplevel.wl_surface().clone(), smithay::utils::Point::from((0.0, 0.0))))
+                                } else if let Some(x11) = window.x11_surface() {
+                                    x11.wl_surface().map(|s| (s.clone(), smithay::utils::Point::from((0.0, 0.0))))
+                                } else {
+                                    None
+                                }
+                            })
+                    };
 
                     if focus.is_some() {
                         // Check if we have a pending touch that needs to be sent first
@@ -1564,16 +1615,40 @@ fn handle_input_event(
                         // Only forward if this is the same slot and context menu wasn't triggered
                         if pending_slot_id == slot_id && !state.shell.context_menu_active {
                             // Forward the pending touch down first
-                            let focus = state.space.elements().last()
-                                .and_then(|window| {
-                                    if let Some(toplevel) = window.toplevel() {
-                                        Some((toplevel.wl_surface().clone(), smithay::utils::Point::from((0.0, 0.0))))
-                                    } else if let Some(x11) = window.x11_surface() {
-                                        x11.wl_surface().map(|s| (s.clone(), smithay::utils::Point::from((0.0, 0.0))))
-                                    } else {
-                                        None
-                                    }
-                                });
+                            // For Home view, specifically find the home window by title
+                            let focus = if qml_home_active {
+                                state.space.elements()
+                                    .find(|window| {
+                                        if let Some(toplevel) = window.toplevel() {
+                                            let title = compositor::with_states(toplevel.wl_surface(), |states| {
+                                                states.data_map
+                                                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                                    .and_then(|data| data.lock().unwrap().title.clone())
+                                            });
+                                            title.as_deref() == Some("Flick Home")
+                                        } else {
+                                            false
+                                        }
+                                    })
+                                    .and_then(|window| {
+                                        if let Some(toplevel) = window.toplevel() {
+                                            Some((toplevel.wl_surface().clone(), smithay::utils::Point::from((0.0, 0.0))))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                            } else {
+                                state.space.elements().last()
+                                    .and_then(|window| {
+                                        if let Some(toplevel) = window.toplevel() {
+                                            Some((toplevel.wl_surface().clone(), smithay::utils::Point::from((0.0, 0.0))))
+                                        } else if let Some(x11) = window.x11_surface() {
+                                            x11.wl_surface().map(|s| (s.clone(), smithay::utils::Point::from((0.0, 0.0))))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                            };
 
                             if let (Some(focus), Some(slot)) = (focus, pending_slot) {
                                 let down_serial = smithay::utils::SERIAL_COUNTER.next_serial();
@@ -4004,6 +4079,7 @@ fn render_frame(
         // Render QML home window when on Home view with QML connected
         // Only render windows with title "Flick Home" to avoid showing other apps
         if shell_view == ShellView::Home && qml_home_connected {
+            let mut home_rendered = false;
             let windows: Vec<_> = state.space.elements().cloned().collect();
             for window in windows.iter() {
                 // Check if this is the home window by title
@@ -4077,11 +4153,13 @@ fn render_frame(
                             unsafe {
                                 gl::render_egl_texture_at(imported.0, imported.1, imported.2, display.width, display.height, 0, 0);
                             }
+                            home_rendered = true;
                         }
                     } else if let Some((texture_id, width, height)) = egl_texture_info {
                         unsafe {
                             gl::render_egl_texture_at(texture_id, width, height, display.width, display.height, 0, 0);
                         }
+                        home_rendered = true;
                     } else {
                         // Fallback to SHM buffer
                         let buffer_info: Option<(u32, u32, Vec<u8>)> = compositor::with_states(&wl_surface, |data| {
@@ -4104,8 +4182,18 @@ fn render_frame(
                             unsafe {
                                 gl::render_texture(width, height, &pixels, display.width, display.height);
                             }
+                            home_rendered = true;
                         }
                     }
+                }
+            }
+
+            // Fallback: if home window buffer wasn't ready, render a solid color
+            // matching the home screen background (#1a1a2e = RGB 26, 26, 46)
+            if !home_rendered {
+                unsafe {
+                    gl::ClearColor(26.0 / 255.0, 26.0 / 255.0, 46.0 / 255.0, 1.0);
+                    gl::Clear(gl::COLOR_BUFFER_BIT);
                 }
             }
         }

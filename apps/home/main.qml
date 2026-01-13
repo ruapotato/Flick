@@ -13,12 +13,13 @@ Window {
     property string stateDir: "/home/furios/.local/state/flick"
 
     // Configuration - sizes scaled for phone display
-    // Calculate to fill screen: last orbit should reach top edge
-    // With 5 orbits at spacing 180, total reach = firstRadius + 4*180 = ~920 for 1000px height
+    // Calculate to fill screen: need orbits to reach diagonal from corner to opposite corner
+    // Phone is ~1080x2220, diagonal from corner ≈ 2470px
+    // With firstRadius 150 and ringSpacing 160: rings at 150, 310, 470, 630, 790, 950, 1110, 1270, 1430, 1590, 1750, 1910, 2070, 2230
     property real iconSize: 180
-    property real firstRadius: 200  // Start close to corner for more orbits
-    property real ringSpacing: 180
-    property real arcSpacing: 220   // More than iconSize to avoid overlap
+    property real firstRadius: 150  // Start closer to corner for more orbits
+    property real ringSpacing: 160  // Tighter spacing to fit more orbits
+    property real arcSpacing: 200   // Keep icons from overlapping on arc
 
     // Handedness: false = left-handed (anchor bottom-left), true = right-handed (anchor bottom-right)
     property bool rightHanded: true
