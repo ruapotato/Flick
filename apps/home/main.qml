@@ -282,21 +282,25 @@ Window {
                 endAngle = Math.PI * 2;      // 360 degrees (pointing right)
             }
 
-            // Use root's anchor point to ensure alignment with icons
-            var ax = anchorX;
-            var ay = anchorY;
+            // Use canvas dimensions for anchor (should match root)
+            var ax = rightHanded ? width : 0;
+            var ay = height;
+            console.log("Canvas size: " + width + "x" + height + ", root size: " + root.width + "x" + root.height);
 
             // Draw separator lines between orbits using same coordinate system as icons
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 3;
 
             console.log("Drawing lines, anchor=" + ax + "," + ay + ", rings=" + rings.length);
+
+            // Use different colors to identify each line
+            var colors = ["#ff0000", "#ff8800", "#ffff00", "#00ff00", "#00ffff", "#0088ff", "#8800ff", "#ff00ff"];
 
             // Draw lines AT each ring radius (through the icons) for debugging
             for (var i = 0; i < rings.length; i++) {
                 var lineRadius = rings[i].radius;
-                console.log("Ring " + i + " line at radius " + lineRadius);
+                console.log("Ring " + i + " line at radius " + lineRadius + " color " + colors[i]);
 
+                ctx.strokeStyle = colors[i];
                 // Draw arc using same formula as icon positioning
                 ctx.beginPath();
                 var numSegments = 45;
