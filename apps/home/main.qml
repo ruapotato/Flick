@@ -256,186 +256,155 @@ Window {
         }
     }
 
-    // Draw colored arc backgrounds
-    Canvas {
-        id: arcCanvas
-        anchors.fill: parent
-        z: 100  // Draw on top of everything for debugging
-        onPaint: {
-            var ctx = getContext("2d");
-            ctx.reset();
-            ctx.clearRect(0, 0, width, height);
+    // Draw separator arcs - position canvas AT the anchor point so (0,0) = anchor
+    // This ensures the same coordinate system as icons
+    Item {
+        id: arcContainer
+        // Position this item so its origin is at the anchor point
+        x: anchorX
+        y: anchorY
+        width: 1
+        height: 1
+        z: -1  // Behind icons
 
-            // Don't draw if window isn't sized yet
-            if (width <= 0 || height <= 0) {
-                console.log("Canvas not sized yet, skipping paint");
-                return;
-            }
+        Canvas {
+            id: arcCanvas
+            // Extend canvas to cover visible area from anchor
+            // For right-handed: extend left and up from anchor (bottom-right corner)
+            // For left-handed: extend right and up from anchor (bottom-left corner)
+            x: rightHanded ? -root.width : 0
+            y: -root.height
+            width: root.width
+            height: root.height
 
-            var startAngle, endAngle;
-            if (rightHanded) {
-                // Right-handed: arc from bottom-right corner, spanning up-left quadrant
-                startAngle = Math.PI;      // 180 degrees (pointing left)
-                endAngle = Math.PI * 1.5;  // 270 degrees (pointing up)
-            } else {
-                // Left-handed: arc from bottom-left corner, spanning up-right quadrant
-                startAngle = Math.PI * 1.5;  // 270 degrees (pointing up)
-                endAngle = Math.PI * 2;      // 360 degrees (pointing right)
-            }
+            onPaint: {
+                var ctx = getContext("2d");
+                ctx.reset();
+                ctx.clearRect(0, 0, width, height);
 
-            // Use the SAME anchor as icons: root's anchorX/anchorY properties
-            var ax = root.anchorX;
-            var ay = root.anchorY;
-            console.log("Canvas anchor: " + ax + "," + ay + " (root.anchorX/Y), canvas size: " + width + "x" + height);
+                if (width <= 0 || height <= 0) return;
 
-            // DEBUG: Draw markers at fixed positions to understand Canvas coordinates
-            // Red at (0,0) - should be top-left
-            ctx.fillStyle = "#ff0000";
-            ctx.beginPath();
-            ctx.arc(50, 50, 40, 0, Math.PI * 2);
-            ctx.fill();
+                // The anchor point in canvas coordinates
+                // For right-handed: anchor is at bottom-right of canvas (width, height)
+                // For left-handed: anchor is at bottom-left of canvas (0, height)
+                var ax = rightHanded ? width : 0;
+                var ay = height;
 
-            // Green at (width, 0) - should be top-right
-            ctx.fillStyle = "#00ff00";
-            ctx.beginPath();
-            ctx.arc(width - 50, 50, 40, 0, Math.PI * 2);
-            ctx.fill();
+                console.log("ArcCanvas: anchor in canvas coords = " + ax + "," + ay + ", canvas size = " + width + "x" + height);
 
-            // Blue at (0, height) - should be bottom-left
-            ctx.fillStyle = "#0000ff";
-            ctx.beginPath();
-            ctx.arc(50, height - 50, 40, 0, Math.PI * 2);
-            ctx.fill();
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
 
-            // Magenta at (width, height) - should be bottom-right (the anchor!)
-            ctx.fillStyle = "#ff00ff";
-            ctx.beginPath();
-            ctx.arc(width - 50, height - 50, 40, 0, Math.PI * 2);
-            ctx.fill();
-
-            console.log("Drew markers at corners. Canvas: " + width + "x" + height);
-
-            // Draw separator lines between orbits using same coordinate system as icons
-            ctx.lineWidth = 3;
-
-            console.log("Drawing lines, anchor=" + ax + "," + ay + ", rings=" + rings.length);
-
-            // Use different colors to identify each line
-            var colors = ["#ff0000", "#ff8800", "#ffff00", "#00ff00", "#00ffff", "#0088ff", "#8800ff", "#ff00ff"];
-
-            // Draw lines AT each ring radius (through the icons) for debugging
-            for (var i = 0; i < rings.length; i++) {
-                var lineRadius = rings[i].radius;
-                console.log("Ring " + i + " line at radius " + lineRadius + " color " + colors[i]);
-
-                ctx.strokeStyle = colors[i];
-                // Use native arc() - angles: 0=right, PI/2=down, PI=left, 3PI/2=up
-                ctx.beginPath();
-                if (rightHanded) {
-                    // Arc from left (PI) to up (3PI/2)
-                    ctx.arc(ax, ay, lineRadius, Math.PI, Math.PI * 1.5, false);
-                } else {
-                    // Arc from up (3PI/2) to right (2PI)
-                    ctx.arc(ax, ay, lineRadius, Math.PI * 1.5, Math.PI * 2, false);
-                }
-                ctx.stroke();
-            }
-        }
-
-        // Repaint after a delay to ensure window is sized
-        Timer {
-            id: initialPaintTimer
-            interval: 100
-            running: true
-            onTriggered: arcCanvas.requestPaint()
-        }
-
-        Connections {
-            target: root
-            function onRightHandedChanged() { arcCanvas.requestPaint() }
-            function onWidthChanged() { arcCanvas.requestPaint() }
-            function onHeightChanged() { arcCanvas.requestPaint() }
-        }
-
-        // Handle swipes anywhere in the arc area (background swipes)
-        // Icons have their own MouseAreas that take priority
-        MouseArea {
-            anchors.fill: parent
-            z: -1  // Behind icons
-            property int activeRing: -1
-            property real startAngle: 0
-            property real startRotation: 0
-            property real lastAngle: 0
-            property real lastTime: 0
-
-            function getRingAt(mx, my) {
-                var ax = rightHanded ? root.width : 0;
-                var ay = root.height;
-                var dx = mx - ax;
-                var dy = ay - my;
-                var dist = Math.sqrt(dx*dx + dy*dy);
+                // Draw arc lines at each ring radius
                 for (var i = 0; i < rings.length; i++) {
-                    var iconRadius = firstRadius + i * ringSpacing;
-                    var bandHalf = ringSpacing / 2;
-                    var innerR = (i === 0) ? 0 : (iconRadius - bandHalf);
-                    var outerR = iconRadius + bandHalf;
-                    if (dist >= innerR && dist < outerR) {
-                        return i;
-                    }
-                }
-                return -1;
-            }
+                    var lineRadius = rings[i].radius;
 
-            function getAngle(mx, my) {
-                var ax = rightHanded ? root.width : 0;
-                var ay = root.height;
-                var dx = mx - ax;
-                var dy = ay - my;
-                var angle = Math.atan2(dx, dy) * 180 / Math.PI;
-                if (rightHanded) angle = -angle;
-                return angle;
-            }
-
-            onPressed: {
-                activeRing = getRingAt(mouse.x, mouse.y);
-                console.log("Canvas pressed at " + mouse.x + "," + mouse.y + " -> ring " + activeRing);
-                if (activeRing >= 0 && activeRing < ringRepeater.count) {
-                    var ring = ringRepeater.itemAt(activeRing);
-                    if (ring) {
-                        startAngle = getAngle(mouse.x, mouse.y);
-                        lastAngle = startAngle;
-                        startRotation = ring.ringRotation;
-                        lastTime = Date.now();
-                        ring.isDragging = true;
-                        ring.velocity = 0;
+                    ctx.beginPath();
+                    if (rightHanded) {
+                        // Arc from left (PI) to up (3PI/2), counterclockwise from anchor
+                        ctx.arc(ax, ay, lineRadius, Math.PI, Math.PI * 1.5, false);
+                    } else {
+                        // Arc from up (3PI/2) to right (2PI)
+                        ctx.arc(ax, ay, lineRadius, Math.PI * 1.5, Math.PI * 2, false);
                     }
+                    ctx.stroke();
                 }
             }
 
-            onPositionChanged: {
-                if (activeRing >= 0 && activeRing < ringRepeater.count) {
-                    var ring = ringRepeater.itemAt(activeRing);
-                    if (ring) {
-                        var currentAngle = getAngle(mouse.x, mouse.y);
-                        var now = Date.now();
-                        var dt = Math.max(1, now - lastTime);
-                        ring.velocity = (currentAngle - lastAngle) / dt * 16;
-                        ring.ringRotation = startRotation + (currentAngle - startAngle);
-                        lastAngle = currentAngle;
-                        lastTime = now;
-                    }
-                }
+            Timer {
+                id: initialPaintTimer
+                interval: 100
+                running: true
+                onTriggered: arcCanvas.requestPaint()
             }
 
-            onReleased: {
-                if (activeRing >= 0 && activeRing < ringRepeater.count) {
-                    var ring = ringRepeater.itemAt(activeRing);
-                    if (ring) {
-                        ring.isDragging = false;
-                    }
-                }
-                activeRing = -1;
+            Connections {
+                target: root
+                function onRightHandedChanged() { arcCanvas.requestPaint() }
+                function onWidthChanged() { arcCanvas.requestPaint() }
+                function onHeightChanged() { arcCanvas.requestPaint() }
+                function onRingsChanged() { arcCanvas.requestPaint() }
             }
+        }
+    }
+
+    // Background touch handler for swipes between icons
+    MouseArea {
+        anchors.fill: parent
+        z: -2  // Behind everything
+        property int activeRing: -1
+        property real startAngle: 0
+        property real startRotation: 0
+        property real lastAngle: 0
+        property real lastTime: 0
+
+        function getRingAt(mx, my) {
+            var ax = rightHanded ? root.width : 0;
+            var ay = root.height;
+            var dx = mx - ax;
+            var dy = ay - my;
+            var dist = Math.sqrt(dx*dx + dy*dy);
+            for (var i = 0; i < rings.length; i++) {
+                var iconRadius = firstRadius + i * ringSpacing;
+                var bandHalf = ringSpacing / 2;
+                var innerR = (i === 0) ? 0 : (iconRadius - bandHalf);
+                var outerR = iconRadius + bandHalf;
+                if (dist >= innerR && dist < outerR) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        function getAngle(mx, my) {
+            var ax = rightHanded ? root.width : 0;
+            var ay = root.height;
+            var dx = mx - ax;
+            var dy = ay - my;
+            var angle = Math.atan2(dx, dy) * 180 / Math.PI;
+            if (rightHanded) angle = -angle;
+            return angle;
+        }
+
+        onPressed: {
+            activeRing = getRingAt(mouse.x, mouse.y);
+            console.log("Background pressed at " + mouse.x + "," + mouse.y + " -> ring " + activeRing);
+            if (activeRing >= 0 && activeRing < ringRepeater.count) {
+                var ring = ringRepeater.itemAt(activeRing);
+                if (ring) {
+                    startAngle = getAngle(mouse.x, mouse.y);
+                    lastAngle = startAngle;
+                    startRotation = ring.ringRotation;
+                    lastTime = Date.now();
+                    ring.isDragging = true;
+                    ring.velocity = 0;
+                }
+            }
+        }
+
+        onPositionChanged: {
+            if (activeRing >= 0 && activeRing < ringRepeater.count) {
+                var ring = ringRepeater.itemAt(activeRing);
+                if (ring) {
+                    var currentAngle = getAngle(mouse.x, mouse.y);
+                    var now = Date.now();
+                    var dt = Math.max(1, now - lastTime);
+                    ring.velocity = (currentAngle - lastAngle) / dt * 16;
+                    ring.ringRotation = startRotation + (currentAngle - startAngle);
+                    lastAngle = currentAngle;
+                    lastTime = now;
+                }
+            }
+        }
+
+        onReleased: {
+            if (activeRing >= 0 && activeRing < ringRepeater.count) {
+                var ring = ringRepeater.itemAt(activeRing);
+                if (ring) {
+                    ring.isDragging = false;
+                }
+            }
+            activeRing = -1;
         }
     }
 
