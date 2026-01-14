@@ -283,10 +283,10 @@ Window {
                 endAngle = Math.PI * 2;      // 360 degrees (pointing right)
             }
 
-            // Use canvas dimensions for anchor (should match root)
-            var ax = rightHanded ? width : 0;
-            var ay = height;
-            console.log("Canvas size: " + width + "x" + height + ", root size: " + root.width + "x" + root.height);
+            // Use the SAME anchor as icons: root's anchorX/anchorY properties
+            var ax = root.anchorX;
+            var ay = root.anchorY;
+            console.log("Canvas anchor: " + ax + "," + ay + " (root.anchorX/Y), canvas size: " + width + "x" + height);
 
             // Draw separator lines between orbits using same coordinate system as icons
             ctx.lineWidth = 3;
