@@ -288,17 +288,32 @@ Window {
             var ay = root.anchorY;
             console.log("Canvas anchor: " + ax + "," + ay + " (root.anchorX/Y), canvas size: " + width + "x" + height);
 
-            // DEBUG: Draw a bright marker at the anchor point to verify Canvas coords
-            ctx.fillStyle = "#ff00ff";
+            // DEBUG: Draw markers at fixed positions to understand Canvas coordinates
+            // Red at (0,0) - should be top-left
+            ctx.fillStyle = "#ff0000";
             ctx.beginPath();
-            ctx.arc(ax, ay, 30, 0, Math.PI * 2);  // Circle at anchor
+            ctx.arc(50, 50, 40, 0, Math.PI * 2);
             ctx.fill();
 
-            // Also draw a marker at center of screen
+            // Green at (width, 0) - should be top-right
             ctx.fillStyle = "#00ff00";
             ctx.beginPath();
-            ctx.arc(width/2, height/2, 30, 0, Math.PI * 2);
+            ctx.arc(width - 50, 50, 40, 0, Math.PI * 2);
             ctx.fill();
+
+            // Blue at (0, height) - should be bottom-left
+            ctx.fillStyle = "#0000ff";
+            ctx.beginPath();
+            ctx.arc(50, height - 50, 40, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Magenta at (width, height) - should be bottom-right (the anchor!)
+            ctx.fillStyle = "#ff00ff";
+            ctx.beginPath();
+            ctx.arc(width - 50, height - 50, 40, 0, Math.PI * 2);
+            ctx.fill();
+
+            console.log("Drew markers at corners. Canvas: " + width + "x" + height);
 
             // Draw separator lines between orbits using same coordinate system as icons
             ctx.lineWidth = 3;
