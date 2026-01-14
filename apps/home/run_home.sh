@@ -44,7 +44,7 @@ process_output() {
         # Log the line
         echo "$line" >> "$LOG_FILE"
 
-        # Check for launch signal
+        # Check for launch signal (handles "qml: FLICK_LAUNCH_APP:" format)
         if [[ "$line" == *"FLICK_LAUNCH_APP:"* ]]; then
             # Extract path and data: FLICK_LAUNCH_APP:/path/to/file:exec_command
             local rest="${line#*FLICK_LAUNCH_APP:}"
@@ -54,7 +54,7 @@ process_output() {
             echo "$data" > "$path"
         fi
 
-        # Check for haptic signal: FLICK_HAPTIC:tap|click|heavy
+        # Check for haptic signal: FLICK_HAPTIC:tap|click|heavy (handles "qml:" prefix)
         if [[ "$line" == *"FLICK_HAPTIC:"* ]]; then
             local haptic_type="${line#*FLICK_HAPTIC:}"
             # Remove any trailing whitespace
@@ -64,12 +64,13 @@ process_output() {
             echo "$haptic_type" > "$STATE_DIR/haptic_command"
         fi
 
-        # Check for keyboard signal: FLICK_KEYBOARD:show|hide
+        # Check for keyboard signal: FLICK_KEYBOARD:show|hide (handles "qml:" prefix)
         if [[ "$line" == *"FLICK_KEYBOARD:"* ]]; then
             local kb_action="${line#*FLICK_KEYBOARD:}"
-            # Remove any trailing whitespace
+            # Remove any trailing whitespace and newlines
             kb_action="${kb_action%%[[:space:]]*}"
-            echo "Writing keyboard signal: $kb_action" >> "$LOG_FILE"
+            kb_action="${kb_action//[$'\r\n']/}"
+            echo "=== KEYBOARD SIGNAL: $kb_action ===" >> "$LOG_FILE"
             echo "$kb_action" > "$STATE_DIR/keyboard_request"
         fi
     done

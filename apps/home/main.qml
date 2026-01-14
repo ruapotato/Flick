@@ -654,23 +654,23 @@ Window {
     Rectangle {
         id: searchBox
         anchors.top: parent.top
-        anchors.topMargin: 40
+        anchors.topMargin: 50
         anchors.horizontalCenter: parent.horizontalCenter
-        width: parent.width * 0.85
-        height: 50
-        radius: 25
+        width: parent.width * 0.92
+        height: 70
+        radius: 35
         color: searchInput.activeFocus ? "#3a3a4e" : "#2a2a3e"
         border.color: searchInput.activeFocus ? "#6a6aff" : "#4a4a5e"
-        border.width: 2
-        opacity: searchInput.activeFocus || searchActive ? 1.0 : 0.6
+        border.width: 3
+        opacity: searchInput.activeFocus || searchActive ? 1.0 : 0.7
 
         // Search icon
         Text {
             anchors.left: parent.left
-            anchors.leftMargin: 18
+            anchors.leftMargin: 24
             anchors.verticalCenter: parent.verticalCenter
             text: "\u{1F50D}" // magnifying glass emoji
-            font.pixelSize: 20
+            font.pixelSize: 28
             color: "#888"
         }
 
@@ -678,18 +678,19 @@ Window {
         TextInput {
             id: searchInput
             anchors.left: parent.left
-            anchors.leftMargin: 50
+            anchors.leftMargin: 65
             anchors.right: clearButton.left
-            anchors.rightMargin: 10
+            anchors.rightMargin: 15
             anchors.verticalCenter: parent.verticalCenter
             color: "white"
-            font.pixelSize: 18
+            font.pixelSize: 24
             clip: true
             onTextChanged: {
                 root.searchText = text;
             }
             onActiveFocusChanged: {
                 // Request keyboard show/hide from compositor
+                console.log("Search focus changed:", activeFocus);
                 if (activeFocus) {
                     console.log("FLICK_KEYBOARD:show");
                     haptic("tap");
@@ -704,7 +705,7 @@ Window {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Search apps..."
                 color: "#666"
-                font.pixelSize: 18
+                font.pixelSize: 24
                 visible: !searchInput.text && !searchInput.activeFocus
             }
         }
@@ -713,11 +714,11 @@ Window {
         Rectangle {
             id: clearButton
             anchors.right: parent.right
-            anchors.rightMargin: 12
+            anchors.rightMargin: 18
             anchors.verticalCenter: parent.verticalCenter
-            width: 30
-            height: 30
-            radius: 15
+            width: 40
+            height: 40
+            radius: 20
             color: clearMouseArea.pressed ? "#4a4a5e" : "transparent"
             visible: searchActive
 
@@ -725,7 +726,7 @@ Window {
                 anchors.centerIn: parent
                 text: "\u{2715}" // X symbol
                 color: "#888"
-                font.pixelSize: 16
+                font.pixelSize: 22
             }
 
             MouseArea {
