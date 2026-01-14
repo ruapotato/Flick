@@ -397,35 +397,48 @@ Window {
 
                     property real rawAngle: slotBaseAngle + ringItem.ringRotation
 
-                    // Total orbit wraps at totalSlots * angleStep
+                    // Total orbit - how far we need to scroll before icons repeat
+                    // For rings with few apps, use their actual spread; minimum 90 to fill screen
                     property real totalOrbit: Math.max(90, totalSlots * angleStep)
 
-                    // Primary angle wrapped to totalOrbit range
+                    // Primary angle wrapped to orbit range, then to 0-90 visible range
                     property real primaryAngle: {
                         var a = ((rawAngle % totalOrbit) + totalOrbit) % totalOrbit;
+                        // If orbit > 90, wrap to visible range
+                        if (totalOrbit > 90) {
+                            a = ((a % 90) + 90) % 90;
+                        }
                         return a;
                     }
 
-                    // Visible range with buffer for partial icons
+                    // Visible range with buffer for partial icons at edges
                     property real visibleMin: -15
                     property real visibleMax: 105
 
-                    // Render icon at multiple positions for seamless carousel wrapping
-                    // Creates copies at primaryAngle, primaryAngle-90, primaryAngle+90, etc.
+                    // For seamless carousel: show wrapped copy only at edges
+                    // Primary copy at primaryAngle, edge copies for wrap-around effect
                     Repeater {
-                        // Render up to 3 copies to cover all wrap cases
+                        // Primary + 2 edge copies (for 90° wrapping)
                         model: slotContainer.slotData.app ? 3 : 0
 
                         Rectangle {
                             id: iconRect
-                            // Calculate this copy's angle: primary, primary-90, primary+90
-                            property real copyOffset: (index - 1) * 90  // -90, 0, +90
+                            // index 0: -90 copy (entering from bottom when primary near 0)
+                            // index 1: primary copy
+                            // index 2: +90 copy (exiting to top when primary near 90)
+                            property real copyOffset: (index - 1) * 90
                             property real displayAngle: slotContainer.primaryAngle + copyOffset
 
-                            // Only visible if angle is in visible range
-                            property bool inRange: displayAngle >= slotContainer.visibleMin && displayAngle <= slotContainer.visibleMax
+                            // Only show wrapped copies if primary is near that edge
+                            property bool isPrimary: index === 1
+                            property bool isEntryCopy: index === 0 && slotContainer.primaryAngle < 45
+                            property bool isExitCopy: index === 2 && slotContainer.primaryAngle > 45
 
-                            visible: inRange
+                            // Visible if in range AND (is primary OR is relevant edge copy)
+                            property bool inRange: displayAngle >= slotContainer.visibleMin && displayAngle <= slotContainer.visibleMax
+                            property bool shouldShow: inRange && (isPrimary || isEntryCopy || isExitCopy)
+
+                            visible: shouldShow
                             opacity: {
                                 // Fade at edges
                                 var a = displayAngle;
