@@ -302,24 +302,14 @@ Window {
                 console.log("Ring " + i + " line at radius " + lineRadius + " color " + colors[i]);
 
                 ctx.strokeStyle = colors[i];
-                // Draw arc using same formula as icon positioning
+                // Use native arc() - angles: 0=right, PI/2=down, PI=left, 3PI/2=up
                 ctx.beginPath();
-                var numSegments = 45;
-                for (var j = 0; j <= numSegments; j++) {
-                    var angle = (j / numSegments) * (Math.PI / 2);  // 0 to 90 degrees
-                    var px, py;
-                    if (rightHanded) {
-                        px = ax - Math.sin(angle) * lineRadius;
-                    } else {
-                        px = ax + Math.sin(angle) * lineRadius;
-                    }
-                    py = ay - Math.cos(angle) * lineRadius;
-
-                    if (j === 0) {
-                        ctx.moveTo(px, py);
-                    } else {
-                        ctx.lineTo(px, py);
-                    }
+                if (rightHanded) {
+                    // Arc from left (PI) to up (3PI/2)
+                    ctx.arc(ax, ay, lineRadius, Math.PI, Math.PI * 1.5, false);
+                } else {
+                    // Arc from up (3PI/2) to right (2PI)
+                    ctx.arc(ax, ay, lineRadius, Math.PI * 1.5, Math.PI * 2, false);
                 }
                 ctx.stroke();
             }
