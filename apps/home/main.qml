@@ -397,35 +397,62 @@ Window {
 
                     property real rawAngle: slotBaseAngle + ringItem.ringRotation
 
-                    // Always wrap angle to 0-90 visible range for continuous carousel
+                    // Calculate the actual visible angle range for this orbit
+                    // Outer orbits may have radius > screen height, so angle 0 is off-screen
+                    property real minVisibleAngle: {
+                        // At angle 0, y = anchorY - cos(0)*radius = height - radius
+                        // Icon top edge is at y - iconSize/2
+                        // Visible if y - iconSize/2 > 0, i.e., height - radius - iconSize/2 > 0
+                        // So minAngle where y = iconSize/2: cos(angle) = (height - iconSize/2) / radius
+                        var maxCos = (root.height - iconSize/2) / ringRadius;
+                        if (maxCos >= 1) return 0;  // Fully visible from angle 0
+                        if (maxCos <= 0) return 45; // Very large radius, start from middle
+                        return Math.acos(maxCos) * 180 / Math.PI;
+                    }
+                    property real maxVisibleAngle: {
+                        // At angle 90, x = anchorX - sin(90)*radius = width - radius (right-handed)
+                        // For right-handed, icon is off-screen if width - radius < -iconSize/2
+                        var maxSin = (root.width - iconSize/2) / ringRadius;
+                        if (maxSin >= 1) return 90;  // Fully visible to angle 90
+                        if (maxSin <= 0) return 45;  // Very large radius
+                        return Math.asin(maxSin) * 180 / Math.PI;
+                    }
+                    property real visibleRange: maxVisibleAngle - minVisibleAngle
+
+                    // Wrap angle to the actual visible range for this orbit
                     property real primaryAngle: {
-                        var a = ((rawAngle % 90) + 90) % 90;
-                        return a;
+                        var a = ((rawAngle % visibleRange) + visibleRange) % visibleRange;
+                        return a + minVisibleAngle;
                     }
 
                     // For seamless carousel: primary + edge copies for wrap-around
                     Repeater {
-                        // 3 copies: at -90, 0, +90 offset from primary
+                        // 3 copies: at -range, 0, +range offset from primary
                         model: slotContainer.slotData.app ? 3 : 0
 
                         Rectangle {
                             id: iconRect
-                            property real copyOffset: (index - 1) * 90  // -90, 0, +90
+                            // Use the orbit's visible range for wrap offsets
+                            property real wrapOffset: slotContainer.visibleRange
+                            property real copyOffset: (index - 1) * wrapOffset  // -range, 0, +range
                             property real displayAngle: slotContainer.primaryAngle + copyOffset
 
                             // Primary (index 1) always visible
-                            // -90 copy (index 0): shows when primary > 75 (wrapping from top to bottom)
-                            // +90 copy (index 2): shows when primary < 15 (wrapping from bottom to top)
+                            // Edge copies show when primary is near the edges of visible range
+                            property real edgeThreshold: Math.min(15, slotContainer.visibleRange * 0.2)
                             property bool isPrimary: index === 1
-                            property bool isWrapFromTop: index === 0 && slotContainer.primaryAngle > 75
-                            property bool isWrapFromBottom: index === 2 && slotContainer.primaryAngle < 15
+                            property bool isWrapFromTop: index === 0 && slotContainer.primaryAngle > (slotContainer.maxVisibleAngle - edgeThreshold)
+                            property bool isWrapFromBottom: index === 2 && slotContainer.primaryAngle < (slotContainer.minVisibleAngle + edgeThreshold)
 
                             visible: isPrimary || isWrapFromTop || isWrapFromBottom
                             opacity: {
-                                // Fade at edges
+                                // Fade at edges of visible range
                                 var a = displayAngle;
-                                if (a < 0) return Math.max(0, (a + 15) / 15);
-                                if (a > 90) return Math.max(0, (105 - a) / 15);
+                                var minA = slotContainer.minVisibleAngle;
+                                var maxA = slotContainer.maxVisibleAngle;
+                                var fadeZone = edgeThreshold;
+                                if (a < minA) return Math.max(0, (a - minA + fadeZone) / fadeZone);
+                                if (a > maxA) return Math.max(0, (maxA + fadeZone - a) / fadeZone);
                                 return 1;
                             }
 
