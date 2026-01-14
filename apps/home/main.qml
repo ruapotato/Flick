@@ -107,7 +107,6 @@ Window {
                 apps = Array.isArray(data) ? data : (data.apps || []);
                 console.log("Loaded", apps.length, "apps");
                 rings = generateRings();
-                arcCanvas.requestPaint();
             }
         } catch (e) {
             console.log("Could not load apps.json:", e);
@@ -144,7 +143,6 @@ Window {
             if (xhr.status === 200 || xhr.status === 0) {
                 var config = JSON.parse(xhr.responseText);
                 if (config.rightHanded !== undefined) rightHanded = config.rightHanded;
-                arcCanvas.requestPaint();
             }
         } catch (e) {
             // Use defaults
