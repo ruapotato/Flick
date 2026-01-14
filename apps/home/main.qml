@@ -287,26 +287,18 @@ Window {
             var ay = height;
 
             // Draw separator lines between orbits
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+            ctx.lineWidth = 1;
 
-            // Draw lines at the boundary between each ring
-            for (var i = 0; i <= rings.length; i++) {
-                // Line at midpoint between ring i-1 and ring i
-                var lineRadius;
-                if (i === 0) {
-                    // First line: before the first ring
-                    lineRadius = firstRadius - ringSpacing / 2;
-                } else {
-                    // Lines between rings
-                    lineRadius = firstRadius + (i - 0.5) * ringSpacing;
-                }
+            // Draw lines between each adjacent pair of rings
+            for (var i = 0; i < rings.length; i++) {
+                var currentRadius = rings[i].radius;
+                var nextRadius = (i + 1 < rings.length) ? rings[i + 1].radius : currentRadius + ringSpacing;
+                var lineRadius = (currentRadius + nextRadius) / 2;
 
-                if (lineRadius > 0) {
-                    ctx.beginPath();
-                    ctx.arc(ax, ay, lineRadius, startAngle, endAngle, false);
-                    ctx.stroke();
-                }
+                ctx.beginPath();
+                ctx.arc(ax, ay, lineRadius, startAngle, endAngle, false);
+                ctx.stroke();
             }
         }
 

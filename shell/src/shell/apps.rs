@@ -510,8 +510,9 @@ pub fn generate_apps_json(app_manager: &AppManager) -> bool {
 fn find_icon_path(icon_name: &str) -> String {
     let home = get_real_user_home();
 
-    // Check in order: Flick icons dir, Flick shell icons dir
+    // Check in order: Flick icons/apps dir, Flick icons dir, Flick shell icons dir
     let paths = [
+        home.join("Flick/icons/apps"),
         home.join("Flick/icons"),
         home.join("Flick/shell/icons"),
     ];
