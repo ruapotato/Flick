@@ -32,6 +32,7 @@ Droidian and similar Android-based Linux distributions require **HWComposer** in
 - Edge gesture detection (swipe from edges)
 - App switcher with fan-out card stack and gesture-driven animations
 - **App switcher previews** - captures EGL textures with GL state save/restore
+- **Orbital app grid** - working early prototype with rotatable icon rings
 - Smooth shrink animation when entering app switcher (follows finger)
 - On-screen keyboard overlay with touch input to apps
 - **Keyboard auto-show** for terminal and text-focused apps
