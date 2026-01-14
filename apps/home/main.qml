@@ -288,6 +288,18 @@ Window {
             var ay = root.anchorY;
             console.log("Canvas anchor: " + ax + "," + ay + " (root.anchorX/Y), canvas size: " + width + "x" + height);
 
+            // DEBUG: Draw a bright marker at the anchor point to verify Canvas coords
+            ctx.fillStyle = "#ff00ff";
+            ctx.beginPath();
+            ctx.arc(ax, ay, 30, 0, Math.PI * 2);  // Circle at anchor
+            ctx.fill();
+
+            // Also draw a marker at center of screen
+            ctx.fillStyle = "#00ff00";
+            ctx.beginPath();
+            ctx.arc(width/2, height/2, 30, 0, Math.PI * 2);
+            ctx.fill();
+
             // Draw separator lines between orbits using same coordinate system as icons
             ctx.lineWidth = 3;
 
