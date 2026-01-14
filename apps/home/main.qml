@@ -290,14 +290,12 @@ Window {
             ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
             ctx.lineWidth = 2;
 
-            console.log("Drawing " + (rings.length - 1) + " lines for " + rings.length + " rings, anchor=" + ax + "," + ay);
+            console.log("Drawing lines, anchor=" + ax + "," + ay + ", rings=" + rings.length);
 
-            // Draw lines BETWEEN adjacent rings (n-1 lines for n rings)
-            for (var i = 0; i < rings.length - 1; i++) {
-                var currentRadius = rings[i].radius;
-                var nextRadius = rings[i + 1].radius;
-                var lineRadius = (currentRadius + nextRadius) / 2;
-                console.log("Line " + i + ": between r=" + currentRadius + " and r=" + nextRadius + " -> lineR=" + lineRadius);
+            // Draw lines AT each ring radius (through the icons) for debugging
+            for (var i = 0; i < rings.length; i++) {
+                var lineRadius = rings[i].radius;
+                console.log("Ring " + i + " line at radius " + lineRadius);
 
                 // Draw arc using same formula as icon positioning
                 ctx.beginPath();
