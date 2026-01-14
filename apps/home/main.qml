@@ -294,7 +294,7 @@ Window {
                     width: 4
                     height: 4
                     radius: 2
-                    color: "rgba(255, 255, 255, 0.3)"
+                    color: "#4dffffff"
                     z: -1
                 }
             }
