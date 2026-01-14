@@ -286,18 +286,36 @@ Window {
             var ax = rightHanded ? width : 0;
             var ay = height;
 
-            // Draw separator lines between orbits
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
-            ctx.lineWidth = 1;
+            // Draw separator lines between orbits using same coordinate system as icons
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+            ctx.lineWidth = 2;
 
-            // Draw lines between each adjacent pair of rings
+            // Draw arc lines between each adjacent pair of rings
             for (var i = 0; i < rings.length; i++) {
                 var currentRadius = rings[i].radius;
                 var nextRadius = (i + 1 < rings.length) ? rings[i + 1].radius : currentRadius + ringSpacing;
                 var lineRadius = (currentRadius + nextRadius) / 2;
 
+                // Draw arc using same formula as icon positioning
+                // Icons use: x = anchorX -/+ sin(angle) * radius, y = anchorY - cos(angle) * radius
                 ctx.beginPath();
-                ctx.arc(ax, ay, lineRadius, startAngle, endAngle, false);
+                var numSegments = 30;
+                for (var j = 0; j <= numSegments; j++) {
+                    var angle = (j / numSegments) * (Math.PI / 2);  // 0 to 90 degrees in radians
+                    var px, py;
+                    if (rightHanded) {
+                        px = ax - Math.sin(angle) * lineRadius;
+                    } else {
+                        px = ax + Math.sin(angle) * lineRadius;
+                    }
+                    py = ay - Math.cos(angle) * lineRadius;
+
+                    if (j === 0) {
+                        ctx.moveTo(px, py);
+                    } else {
+                        ctx.lineTo(px, py);
+                    }
+                }
                 ctx.stroke();
             }
         }
