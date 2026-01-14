@@ -286,32 +286,27 @@ Window {
             var ax = rightHanded ? width : 0;
             var ay = height;
 
-            console.log("Drawing arcs: canvas=" + width + "x" + height + " anchor=" + ax + "," + ay + " rings=" + rings.length + " rightHanded=" + rightHanded);
+            // Draw separator lines between orbits
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+            ctx.lineWidth = 2;
 
-            // Draw all rings from outermost to innermost
-            for (var i = rings.length - 1; i >= 0; i--) {
-                // Ring i has icons at radius: firstRadius + i * ringSpacing
-                // Band should be centered on that radius
-                var iconRadius = firstRadius + i * ringSpacing;
-                var bandHalf = ringSpacing / 2;
-                // All bands centered on their icons (no special case for first ring)
-                var innerR = Math.max(0, iconRadius - bandHalf);
-                var outerR = iconRadius + bandHalf;
-                var color = getRingColor(i);
-
-                console.log("Ring " + i + ": iconR=" + iconRadius + " band=" + innerR + "-" + outerR);
-
-                ctx.beginPath();
-                ctx.arc(ax, ay, outerR, startAngle, endAngle, false);
-                if (innerR > 0) {
-                    ctx.arc(ax, ay, innerR, endAngle, startAngle, true);
+            // Draw lines at the boundary between each ring
+            for (var i = 0; i <= rings.length; i++) {
+                // Line at midpoint between ring i-1 and ring i
+                var lineRadius;
+                if (i === 0) {
+                    // First line: before the first ring
+                    lineRadius = firstRadius - ringSpacing / 2;
                 } else {
-                    ctx.lineTo(ax, ay);
+                    // Lines between rings
+                    lineRadius = firstRadius + (i - 0.5) * ringSpacing;
                 }
-                ctx.closePath();
 
-                ctx.fillStyle = Qt.rgba(color.r, color.g, color.b, 0.5);
-                ctx.fill();
+                if (lineRadius > 0) {
+                    ctx.beginPath();
+                    ctx.arc(ax, ay, lineRadius, startAngle, endAngle, false);
+                    ctx.stroke();
+                }
             }
         }
 
