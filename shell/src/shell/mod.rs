@@ -1186,18 +1186,24 @@ impl Shell {
         let request_path = state_dir.join("keyboard_request");
 
         if request_path.exists() {
+            tracing::info!("Found keyboard_request file at {:?}", request_path);
             match std::fs::read_to_string(&request_path) {
                 Ok(content) => {
                     // Clear the request file
                     let _ = std::fs::remove_file(&request_path);
                     let action = content.trim();
+                    tracing::info!("Keyboard request action: '{}'", action);
                     match action {
                         "show" => return Some(true),
                         "hide" => return Some(false),
-                        _ => {}
+                        _ => {
+                            tracing::warn!("Unknown keyboard action: '{}'", action);
+                        }
                     }
                 }
-                Err(_) => {}
+                Err(e) => {
+                    tracing::error!("Failed to read keyboard_request: {}", e);
+                }
             }
         }
         None
