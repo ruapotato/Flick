@@ -382,8 +382,9 @@ Window {
             Repeater {
                 model: ringItem.ringData.totalSlots
 
-                Rectangle {
-                    id: slotRect
+                // Container for each slot - holds both primary and wrapped copies
+                Item {
+                    id: slotContainer
                     property int slotIndex: index
                     property var slotData: ringItem.ringData.slots[index]
                     property real ringRadius: ringItem.ringData.radius
@@ -396,130 +397,143 @@ Window {
 
                     property real rawAngle: slotBaseAngle + ringItem.ringRotation
 
-                    // Total orbit is the full wrap-around range
-                    property real totalOrbit: totalSlots * angleStep
+                    // Total orbit wraps at totalSlots * angleStep
+                    property real totalOrbit: Math.max(90, totalSlots * angleStep)
 
-                    // Seamless wrapping: angle always in range [0, 90)
-                    // Icons instantly wrap from 90 back to 0
-                    property real displayAngle: {
-                        // First wrap to total orbit
+                    // Primary angle wrapped to totalOrbit range
+                    property real primaryAngle: {
                         var a = ((rawAngle % totalOrbit) + totalOrbit) % totalOrbit;
-                        // Then wrap to visible 90-degree arc
-                        a = ((a % 90) + 90) % 90;
                         return a;
                     }
 
-                    property real angleRad: displayAngle * Math.PI / 180
+                    // Visible range with buffer for partial icons
+                    property real visibleMin: -15
+                    property real visibleMax: 105
 
-                    // Always visible - no hidden zone
-                    visible: slotData.app !== null
-                    opacity: 1
+                    // Render icon at multiple positions for seamless carousel wrapping
+                    // Creates copies at primaryAngle, primaryAngle-90, primaryAngle+90, etc.
+                    Repeater {
+                        // Render up to 3 copies to cover all wrap cases
+                        model: slotContainer.slotData.app ? 3 : 0
 
-                    x: rightHanded
-                        ? anchorX - Math.sin(angleRad) * ringRadius - width/2
-                        : anchorX + Math.sin(angleRad) * ringRadius - width/2
-                    y: anchorY - Math.cos(angleRad) * ringRadius - height/2
+                        Rectangle {
+                            id: iconRect
+                            // Calculate this copy's angle: primary, primary-90, primary+90
+                            property real copyOffset: (index - 1) * 90  // -90, 0, +90
+                            property real displayAngle: slotContainer.primaryAngle + copyOffset
 
-                    width: iconSize
-                    height: iconSize
-                    radius: iconSize * 0.15
-                    color: slotData.app ? "#2a2a3e" : "transparent"
-                    border.color: slotData.app ? "#4a4a5e" : "#2a2a3e"
-                    border.width: 2
+                            // Only visible if angle is in visible range
+                            property bool inRange: displayAngle >= slotContainer.visibleMin && displayAngle <= slotContainer.visibleMax
 
-                    // App icon - use full path from apps.json
-                    Image {
-                        id: appIcon
-                        visible: slotData.app !== null
-                        anchors.centerIn: parent
-                        width: parent.width * 0.75
-                        height: parent.height * 0.75
-                        // Icon path is full path from apps.json (e.g., /home/user/Flick/icons/app.svg)
-                        source: slotData.app && slotData.app.icon ? "file://" + slotData.app.icon : ""
-                        fillMode: Image.PreserveAspectFit
-                        sourceSize.width: width * 2
-                        sourceSize.height: height * 2
-                        asynchronous: true
-                    }
-
-                    // Fallback text if no icon or icon failed to load
-                    Text {
-                        anchors.centerIn: parent
-                        visible: slotData.app && appIcon.status !== Image.Ready
-                        text: slotData.app ? slotData.app.name.substring(0, 2).toUpperCase() : ""
-                        color: "white"
-                        font.pixelSize: iconSize * 0.35
-                        font.bold: true
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        preventStealing: true  // Don't let parent steal touch events
-
-                        // Store GLOBAL coordinates to avoid instability from icon movement
-                        property real startGlobalX: 0
-                        property real startGlobalY: 0
-                        property real startRotation: 0
-                        property real lastGlobalX: 0
-                        property real lastGlobalY: 0
-                        property real lastTime: 0
-                        property bool moved: false
-
-                        // Calculate angle from anchor point to a global position
-                        function angleFromAnchor(gx, gy) {
-                            var ax = anchorX;
-                            var ay = anchorY;
-                            var angle = Math.atan2(gx - ax, ay - gy) * 180 / Math.PI;
-                            return rightHanded ? -angle : angle;
-                        }
-
-                        onPressed: {
-                            // Convert to global immediately and store
-                            var global = mapToItem(null, mouse.x, mouse.y);
-                            startGlobalX = global.x;
-                            startGlobalY = global.y;
-                            lastGlobalX = global.x;
-                            lastGlobalY = global.y;
-                            startRotation = ringItem.ringRotation;
-                            lastTime = Date.now();
-                            moved = false;
-                            ringItem.isDragging = true;
-                            ringItem.velocity = 0;
-                            console.log("TOUCH_DOWN ring=" + ringItem.ringData.ringIndex + " global=" + global.x.toFixed(0) + "," + global.y.toFixed(0));
-                        }
-
-                        onPositionChanged: {
-                            // Convert current position to global
-                            var global = mapToItem(null, mouse.x, mouse.y);
-
-                            // Calculate angles directly from global positions
-                            var startAngle = angleFromAnchor(startGlobalX, startGlobalY);
-                            var lastAngle = angleFromAnchor(lastGlobalX, lastGlobalY);
-                            var currentAngle = angleFromAnchor(global.x, global.y);
-
-                            var delta = currentAngle - lastAngle;
-                            var totalDelta = currentAngle - startAngle;
-
-                            var now = Date.now();
-                            var dt = Math.max(1, now - lastTime);
-
-                            ringItem.velocity = delta / dt * 16;
-                            ringItem.ringRotation = startRotation + totalDelta;
-
-                            lastGlobalX = global.x;
-                            lastGlobalY = global.y;
-                            lastTime = now;
-
-                            if (Math.abs(totalDelta) > 3) {
-                                moved = true;
+                            visible: inRange
+                            opacity: {
+                                // Fade at edges
+                                var a = displayAngle;
+                                if (a < 0) return Math.max(0, (a + 15) / 15);
+                                if (a > 90) return Math.max(0, (105 - a) / 15);
+                                return 1;
                             }
-                        }
 
-                        onReleased: {
-                            console.log("TOUCH_UP ring=" + ringItem.ringData.ringIndex + " moved=" + moved + " app=" + (slotData.app ? slotData.app.id : "none"));
-                            ringItem.isDragging = false;
-                            if (!moved && slotData.app) {
-                                launchApp(slotData.app.id, slotData.app.exec);
+                            property real angleRad: displayAngle * Math.PI / 180
+
+                            x: rightHanded
+                                ? anchorX - Math.sin(angleRad) * slotContainer.ringRadius - width/2
+                                : anchorX + Math.sin(angleRad) * slotContainer.ringRadius - width/2
+                            y: anchorY - Math.cos(angleRad) * slotContainer.ringRadius - height/2
+
+                            width: iconSize
+                            height: iconSize
+                            radius: iconSize * 0.15
+                            color: "#2a2a3e"
+                            border.color: "#4a4a5e"
+                            border.width: 2
+
+                            // App icon
+                            Image {
+                                id: appIcon
+                                anchors.centerIn: parent
+                                width: parent.width * 0.75
+                                height: parent.height * 0.75
+                                source: slotContainer.slotData.app && slotContainer.slotData.app.icon ? "file://" + slotContainer.slotData.app.icon : ""
+                                fillMode: Image.PreserveAspectFit
+                                sourceSize.width: width * 2
+                                sourceSize.height: height * 2
+                                asynchronous: true
+                            }
+
+                            // Fallback text
+                            Text {
+                                anchors.centerIn: parent
+                                visible: appIcon.status !== Image.Ready
+                                text: slotContainer.slotData.app ? slotContainer.slotData.app.name.substring(0, 2).toUpperCase() : ""
+                                color: "white"
+                                font.pixelSize: iconSize * 0.35
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                preventStealing: true
+                                enabled: parent.inRange
+
+                                property real startGlobalX: 0
+                                property real startGlobalY: 0
+                                property real startRotation: 0
+                                property real lastGlobalX: 0
+                                property real lastGlobalY: 0
+                                property real lastTime: 0
+                                property bool moved: false
+
+                                function angleFromAnchor(gx, gy) {
+                                    var ax = anchorX;
+                                    var ay = anchorY;
+                                    var angle = Math.atan2(gx - ax, ay - gy) * 180 / Math.PI;
+                                    return rightHanded ? -angle : angle;
+                                }
+
+                                onPressed: {
+                                    var global = mapToItem(null, mouse.x, mouse.y);
+                                    startGlobalX = global.x;
+                                    startGlobalY = global.y;
+                                    lastGlobalX = global.x;
+                                    lastGlobalY = global.y;
+                                    startRotation = ringItem.ringRotation;
+                                    lastTime = Date.now();
+                                    moved = false;
+                                    ringItem.isDragging = true;
+                                    ringItem.velocity = 0;
+                                }
+
+                                onPositionChanged: {
+                                    var global = mapToItem(null, mouse.x, mouse.y);
+                                    var startAngle = angleFromAnchor(startGlobalX, startGlobalY);
+                                    var lastAngle = angleFromAnchor(lastGlobalX, lastGlobalY);
+                                    var currentAngle = angleFromAnchor(global.x, global.y);
+
+                                    var delta = currentAngle - lastAngle;
+                                    var totalDelta = currentAngle - startAngle;
+
+                                    var now = Date.now();
+                                    var dt = Math.max(1, now - lastTime);
+
+                                    ringItem.velocity = delta / dt * 16;
+                                    ringItem.ringRotation = startRotation + totalDelta;
+
+                                    lastGlobalX = global.x;
+                                    lastGlobalY = global.y;
+                                    lastTime = now;
+
+                                    if (Math.abs(totalDelta) > 3) {
+                                        moved = true;
+                                    }
+                                }
+
+                                onReleased: {
+                                    ringItem.isDragging = false;
+                                    if (!moved && slotContainer.slotData.app) {
+                                        launchApp(slotContainer.slotData.app.id, slotContainer.slotData.app.exec);
+                                    }
+                                }
                             }
                         }
                     }
