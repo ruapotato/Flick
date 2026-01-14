@@ -4,10 +4,14 @@ import QtQuick.Window 2.15
 Window {
     id: root
     visible: true
-    visibility: Window.FullScreen
+    visibility: Window.Maximized  // Allow compositor to resize for keyboard
     title: "Flick Home"
     color: "#1a1a2e"
     flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnBottomHint
+
+    // Search/filter state
+    property string searchText: ""
+    property bool searchActive: searchText.length > 0
 
     // State directory - read from state_dir.txt written by run_home.sh
     property string stateDir: "/home/furios/.local/state/flick"
@@ -162,6 +166,16 @@ Window {
     // Trigger haptic feedback (tap, click, or heavy)
     function haptic(type) {
         console.log("FLICK_HAPTIC:" + type);
+    }
+
+    // Check if an app matches the search text
+    function appMatchesSearch(app) {
+        if (!searchActive) return true;
+        if (!app) return false;
+        var search = searchText.toLowerCase();
+        var name = app.name ? app.name.toLowerCase() : "";
+        var id = app.id ? app.id.toLowerCase() : "";
+        return name.indexOf(search) >= 0 || id.indexOf(search) >= 0;
     }
 
     // Visible slots for a ring (how many fit in 90 degree arc)
@@ -510,11 +524,14 @@ Window {
                             x: myX
                             y: myY
 
-                            // Visibility logic
+                            // Visibility logic - includes search filtering
                             property bool myOnScreen: myX > -iconSize && myX < root.width && myY > -iconSize && myY < root.height
-                            visible: (isPrimary && myOnScreen) ||
+                            property bool matchesSearch: appMatchesSearch(slotContainer.slotData.app)
+                            visible: matchesSearch && (
+                                     (isPrimary && myOnScreen) ||
                                      (isMinEdgeCopy && slotContainer.nearMinEdge && myOnScreen) ||
                                      (isMaxEdgeCopy && slotContainer.nearMaxEdge && myOnScreen)
+                            )
 
                             opacity: 1
 
@@ -612,9 +629,121 @@ Window {
                                     }
                                 }
                             }
+
+                            // App name label below icon
+                            Text {
+                                anchors.top: parent.bottom
+                                anchors.topMargin: 4
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: slotContainer.slotData.app ? slotContainer.slotData.app.name : ""
+                                color: "white"
+                                font.pixelSize: 11
+                                width: iconSize + 10
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                                opacity: 0.9
+                            }
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // Search box at top of screen
+    Rectangle {
+        id: searchBox
+        anchors.top: parent.top
+        anchors.topMargin: 40
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: parent.width * 0.85
+        height: 50
+        radius: 25
+        color: searchInput.activeFocus ? "#3a3a4e" : "#2a2a3e"
+        border.color: searchInput.activeFocus ? "#6a6aff" : "#4a4a5e"
+        border.width: 2
+        opacity: searchInput.activeFocus || searchActive ? 1.0 : 0.6
+
+        // Search icon
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 18
+            anchors.verticalCenter: parent.verticalCenter
+            text: "\u{1F50D}" // magnifying glass emoji
+            font.pixelSize: 20
+            color: "#888"
+        }
+
+        // Text input
+        TextInput {
+            id: searchInput
+            anchors.left: parent.left
+            anchors.leftMargin: 50
+            anchors.right: clearButton.left
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            color: "white"
+            font.pixelSize: 18
+            clip: true
+            onTextChanged: {
+                root.searchText = text;
+            }
+            onActiveFocusChanged: {
+                // Request keyboard show/hide from compositor
+                if (activeFocus) {
+                    console.log("FLICK_KEYBOARD:show");
+                    haptic("tap");
+                } else {
+                    console.log("FLICK_KEYBOARD:hide");
+                }
+            }
+
+            // Placeholder text
+            Text {
+                anchors.fill: parent
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Search apps..."
+                color: "#666"
+                font.pixelSize: 18
+                visible: !searchInput.text && !searchInput.activeFocus
+            }
+        }
+
+        // Clear button
+        Rectangle {
+            id: clearButton
+            anchors.right: parent.right
+            anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            width: 30
+            height: 30
+            radius: 15
+            color: clearMouseArea.pressed ? "#4a4a5e" : "transparent"
+            visible: searchActive
+
+            Text {
+                anchors.centerIn: parent
+                text: "\u{2715}" // X symbol
+                color: "#888"
+                font.pixelSize: 16
+            }
+
+            MouseArea {
+                id: clearMouseArea
+                anchors.fill: parent
+                onClicked: {
+                    searchInput.text = "";
+                    searchInput.focus = false;
+                }
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            propagateComposedEvents: true
+            onClicked: {
+                searchInput.forceActiveFocus();
+                mouse.accepted = false;
             }
         }
     }

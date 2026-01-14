@@ -60,7 +60,17 @@ process_output() {
             # Remove any trailing whitespace
             haptic_type="${haptic_type%%[[:space:]]*}"
             echo "Writing haptic signal: $haptic_type" >> "$LOG_FILE"
-            echo "$haptic_type" > "$STATE_DIR/haptic_signal"
+            # Use haptic_command which the compositor already checks
+            echo "$haptic_type" > "$STATE_DIR/haptic_command"
+        fi
+
+        # Check for keyboard signal: FLICK_KEYBOARD:show|hide
+        if [[ "$line" == *"FLICK_KEYBOARD:"* ]]; then
+            local kb_action="${line#*FLICK_KEYBOARD:}"
+            # Remove any trailing whitespace
+            kb_action="${kb_action%%[[:space:]]*}"
+            echo "Writing keyboard signal: $kb_action" >> "$LOG_FILE"
+            echo "$kb_action" > "$STATE_DIR/keyboard_request"
         fi
     done
 }

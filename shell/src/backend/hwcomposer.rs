@@ -2728,16 +2728,6 @@ pub fn run() -> Result<()> {
             }
         }
 
-        // Check for haptic signal from QML home
-        if let Some(haptic_type) = crate::shell::check_haptic_signal() {
-            match haptic_type.as_str() {
-                "tap" => state.system.haptic_tap(),
-                "click" => state.system.haptic_click(),
-                "heavy" => state.system.haptic_heavy(),
-                _ => {}
-            }
-        }
-
         // Log every loop iteration for debugging
         debug!("Loop {}: after dispatch_clients", loop_count);
 
@@ -3052,6 +3042,15 @@ pub fn run() -> Result<()> {
 
         // Check for haptic requests from apps (via /tmp/flick_haptic)
         state.system.check_app_haptic();
+
+        // Check for keyboard requests from QML home or apps
+        if let Some(show_keyboard) = state.shell.check_keyboard_request() {
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                info!("Keyboard request: setting visibility to {}", show_keyboard);
+                slint_ui.set_keyboard_visible(show_keyboard);
+                state.resize_windows_for_keyboard(show_keyboard);
+            }
+        }
 
         // Check for media status updates from player apps
         state.system.check_media();

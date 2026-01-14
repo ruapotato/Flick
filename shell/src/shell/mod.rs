@@ -133,31 +133,6 @@ pub fn home_config_path() -> PathBuf {
     get_state_dir().join("home_config.json")
 }
 
-/// Path to haptic signal file (QML home writes, compositor reads)
-pub fn haptic_signal_path() -> PathBuf {
-    get_state_dir().join("haptic_signal")
-}
-
-/// Check for haptic signal from QML home
-/// Returns the haptic type if signal exists: "tap", "click", or "heavy"
-pub fn check_haptic_signal() -> Option<String> {
-    let haptic_path = haptic_signal_path();
-    if haptic_path.exists() {
-        match std::fs::read_to_string(&haptic_path) {
-            Ok(content) => {
-                // Clear the signal file
-                let _ = std::fs::remove_file(&haptic_path);
-                let haptic_type = content.trim().to_string();
-                if !haptic_type.is_empty() {
-                    return Some(haptic_type);
-                }
-            }
-            Err(_) => {}
-        }
-    }
-    None
-}
-
 /// Write handedness config for QML home to read
 /// right_handed: true = anchor bottom-right, false = anchor bottom-left
 pub fn write_handedness_config(right_handed: bool) {
@@ -1206,6 +1181,25 @@ impl Shell {
 
     /// Check for keyboard visibility requests from apps (stub - not yet implemented)
     pub fn check_keyboard_request(&mut self) -> Option<bool> {
+        // Check for keyboard request from QML home or other apps
+        let state_dir = get_state_dir();
+        let request_path = state_dir.join("keyboard_request");
+
+        if request_path.exists() {
+            match std::fs::read_to_string(&request_path) {
+                Ok(content) => {
+                    // Clear the request file
+                    let _ = std::fs::remove_file(&request_path);
+                    let action = content.trim();
+                    match action {
+                        "show" => return Some(true),
+                        "hide" => return Some(false),
+                        _ => {}
+                    }
+                }
+                Err(_) => {}
+            }
+        }
         None
     }
 
