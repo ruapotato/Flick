@@ -282,15 +282,19 @@ Window {
                 ctx.reset();
                 ctx.clearRect(0, 0, width, height);
 
-                if (width <= 0 || height <= 0) return;
+                if (root.width <= 0 || root.height <= 0) return;
+
+                // Use root dimensions directly, not canvas dimensions
+                var rw = root.width;
+                var rh = root.height;
 
                 // The anchor point in canvas coordinates
-                // For right-handed: anchor is at bottom-right of canvas (width, height)
-                // For left-handed: anchor is at bottom-left of canvas (0, height)
-                var ax = rightHanded ? width : 0;
-                var ay = height;
+                // For right-handed: anchor is at bottom-right (rw, rh)
+                // For left-handed: anchor is at bottom-left (0, rh)
+                var ax = rightHanded ? rw : 0;
+                var ay = rh;
 
-                console.log("ArcCanvas: anchor in canvas coords = " + ax + "," + ay + ", canvas size = " + width + "x" + height);
+                console.log("ArcCanvas: anchor = " + ax + "," + ay + ", root = " + rw + "x" + rh + ", canvas = " + width + "x" + height);
 
                 // DEBUG: Draw a bright marker at the anchor point
                 ctx.fillStyle = "#ff0000";
