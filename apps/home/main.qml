@@ -400,30 +400,45 @@ Window {
                     // Calculate the actual visible angle range for this orbit
                     // Outer orbits may have radius > screen height, so angle 0 is off-screen
                     property real minVisibleAngle: {
-                        // At angle 0, y = anchorY - cos(0)*radius = height - radius
-                        // Icon top edge is at y - iconSize/2
-                        // Visible if y - iconSize/2 > 0, i.e., height - radius - iconSize/2 > 0
-                        // So minAngle where y = iconSize/2: cos(angle) = (height - iconSize/2) / radius
                         var maxCos = (root.height - iconSize/2) / ringRadius;
-                        if (maxCos >= 1) return 0;  // Fully visible from angle 0
-                        if (maxCos <= 0) return 45; // Very large radius, start from middle
+                        if (maxCos >= 1) return 0;
+                        if (maxCos <= 0) return 45;
                         return Math.acos(maxCos) * 180 / Math.PI;
                     }
                     property real maxVisibleAngle: {
-                        // At angle 90, x = anchorX - sin(90)*radius = width - radius (right-handed)
-                        // For right-handed, icon is off-screen if width - radius < -iconSize/2
                         var maxSin = (root.width - iconSize/2) / ringRadius;
-                        if (maxSin >= 1) return 90;  // Fully visible to angle 90
-                        if (maxSin <= 0) return 45;  // Very large radius
+                        if (maxSin >= 1) return 90;
+                        if (maxSin <= 0) return 45;
                         return Math.asin(maxSin) * 180 / Math.PI;
                     }
                     property real visibleRange: maxVisibleAngle - minVisibleAngle
 
-                    // Wrap angle to the actual visible range for this orbit
-                    property real primaryAngle: {
-                        var a = ((rawAngle % visibleRange) + visibleRange) % visibleRange;
-                        return a + minVisibleAngle;
+                    // Count apps in this ring to decide wrapping strategy
+                    property int appsInRing: {
+                        var count = 0;
+                        for (var i = 0; i < ringItem.ringData.slots.length; i++) {
+                            if (ringItem.ringData.slots[i].app) count++;
+                        }
+                        return count;
                     }
+
+                    // Primary angle calculation:
+                    // - For rings with 1 app: wrap to stay always visible
+                    // - For rings with multiple apps: use full orbit, some may be off-screen
+                    property real primaryAngle: {
+                        if (appsInRing <= 1) {
+                            // Single app: always keep visible by wrapping to visible range
+                            var a = ((rawAngle % visibleRange) + visibleRange) % visibleRange;
+                            return a + minVisibleAngle;
+                        } else {
+                            // Multiple apps: use 90 degree orbit, allow off-screen
+                            var a = ((rawAngle % 90) + 90) % 90;
+                            return a;
+                        }
+                    }
+
+                    // Is this icon currently in the visible range?
+                    property bool inVisibleRange: primaryAngle >= minVisibleAngle - 15 && primaryAngle <= maxVisibleAngle + 15
 
                     // For seamless carousel: primary + edge copies for wrap-around
                     Repeater {
@@ -437,14 +452,20 @@ Window {
                             property real copyOffset: (index - 1) * wrapOffset  // -range, 0, +range
                             property real displayAngle: slotContainer.primaryAngle + copyOffset
 
-                            // Primary (index 1) always visible
-                            // Edge copies show when primary is near the edges of visible range
+                            // Primary (index 1) visible if in range (or single-app ring)
+                            // Edge copies only during drag/momentum for smooth wrap animation
                             property real edgeThreshold: Math.min(15, slotContainer.visibleRange * 0.2)
                             property bool isPrimary: index === 1
-                            property bool isWrapFromTop: index === 0 && slotContainer.primaryAngle > (slotContainer.maxVisibleAngle - edgeThreshold)
-                            property bool isWrapFromBottom: index === 2 && slotContainer.primaryAngle < (slotContainer.minVisibleAngle + edgeThreshold)
+                            property bool isMoving: ringItem.isDragging || Math.abs(ringItem.velocity) > 0.1
 
-                            visible: isPrimary || isWrapFromTop || isWrapFromBottom
+                            // For single-app rings, always visible; for multi-app, check range
+                            property bool primaryVisible: isPrimary && (slotContainer.appsInRing <= 1 || slotContainer.inVisibleRange)
+
+                            // Edge copies for wrap effect (only single-app rings need this)
+                            property bool isWrapFromTop: index === 0 && slotContainer.appsInRing <= 1 && isMoving && slotContainer.primaryAngle > (slotContainer.maxVisibleAngle - edgeThreshold)
+                            property bool isWrapFromBottom: index === 2 && slotContainer.appsInRing <= 1 && isMoving && slotContainer.primaryAngle < (slotContainer.minVisibleAngle + edgeThreshold)
+
+                            visible: primaryVisible || isWrapFromTop || isWrapFromBottom
                             opacity: {
                                 // Fade at edges of visible range
                                 var a = displayAngle;
