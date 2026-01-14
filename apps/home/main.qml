@@ -256,91 +256,61 @@ Window {
         }
     }
 
-    // Draw separator arcs - position canvas AT the anchor point so (0,0) = anchor
-    // This ensures the same coordinate system as icons
-    Item {
-        id: arcContainer
-        // Position this item so its origin is at the anchor point
-        x: anchorX
-        y: anchorY
-        width: 1
-        height: 1
+    // Draw separator arcs - simple Canvas directly on root
+    Canvas {
+        id: arcCanvas
+        anchors.fill: parent
         z: -1  // Behind icons
 
-        Canvas {
-            id: arcCanvas
-            // Extend canvas to cover visible area from anchor
-            // For right-handed: extend left and up from anchor (bottom-right corner)
-            // For left-handed: extend right and up from anchor (bottom-left corner)
-            x: rightHanded ? -root.width : 0
-            y: -root.height
-            width: root.width
-            height: root.height
+        onPaint: {
+            var ctx = getContext("2d");
+            ctx.reset();
+            ctx.clearRect(0, 0, width, height);
 
-            onPaint: {
-                var ctx = getContext("2d");
-                ctx.reset();
-                ctx.clearRect(0, 0, width, height);
+            if (width <= 0 || height <= 0) return;
 
-                if (root.width <= 0 || root.height <= 0) return;
+            // Use the SAME anchor point as icons: anchorX, anchorY from root
+            var ax = root.anchorX;
+            var ay = root.anchorY;
 
-                // Use root dimensions directly, not canvas dimensions
-                var rw = root.width;
-                var rh = root.height;
+            // DEBUG: Draw marker at anchor - should be at bottom-right corner
+            ctx.fillStyle = "#ff0000";
+            ctx.beginPath();
+            ctx.arc(ax, ay, 50, 0, Math.PI * 2);
+            ctx.fill();
 
-                // The anchor point in canvas coordinates
-                // For right-handed: anchor is at bottom-right (rw, rh)
-                // For left-handed: anchor is at bottom-left (0, rh)
-                var ax = rightHanded ? rw : 0;
-                var ay = rh;
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
 
-                console.log("ArcCanvas: anchor = " + ax + "," + ay + ", root = " + rw + "x" + rh + ", canvas = " + width + "x" + height);
+            // Draw arc lines at each ring radius
+            for (var i = 0; i < rings.length; i++) {
+                var lineRadius = rings[i].radius;
 
-                // DEBUG: Draw a bright marker at the anchor point
-                ctx.fillStyle = "#ff0000";
                 ctx.beginPath();
-                ctx.arc(ax, ay, 50, 0, Math.PI * 2);
-                ctx.fill();
-
-                // DEBUG: Also draw at (0,0) to see canvas origin
-                ctx.fillStyle = "#00ff00";
-                ctx.beginPath();
-                ctx.arc(0, 0, 50, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.lineWidth = 3;
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
-
-                // Draw arc lines at each ring radius
-                for (var i = 0; i < rings.length; i++) {
-                    var lineRadius = rings[i].radius;
-
-                    ctx.beginPath();
-                    if (rightHanded) {
-                        // Arc from left (PI) to up (3PI/2), counterclockwise from anchor
-                        ctx.arc(ax, ay, lineRadius, Math.PI, Math.PI * 1.5, false);
-                    } else {
-                        // Arc from up (3PI/2) to right (2PI)
-                        ctx.arc(ax, ay, lineRadius, Math.PI * 1.5, Math.PI * 2, false);
-                    }
-                    ctx.stroke();
+                if (rightHanded) {
+                    // Arc from left (PI) to up (3PI/2)
+                    ctx.arc(ax, ay, lineRadius, Math.PI, Math.PI * 1.5, false);
+                } else {
+                    // Arc from up (3PI/2) to right (2PI)
+                    ctx.arc(ax, ay, lineRadius, Math.PI * 1.5, Math.PI * 2, false);
                 }
+                ctx.stroke();
             }
+        }
 
-            Timer {
-                id: initialPaintTimer
-                interval: 100
-                running: true
-                onTriggered: arcCanvas.requestPaint()
-            }
+        Timer {
+            id: initialPaintTimer
+            interval: 100
+            running: true
+            onTriggered: arcCanvas.requestPaint()
+        }
 
-            Connections {
-                target: root
-                function onRightHandedChanged() { arcCanvas.requestPaint() }
-                function onWidthChanged() { arcCanvas.requestPaint() }
-                function onHeightChanged() { arcCanvas.requestPaint() }
-                function onRingsChanged() { arcCanvas.requestPaint() }
-            }
+        Connections {
+            target: root
+            function onRightHandedChanged() { arcCanvas.requestPaint() }
+            function onWidthChanged() { arcCanvas.requestPaint() }
+            function onHeightChanged() { arcCanvas.requestPaint() }
+            function onRingsChanged() { arcCanvas.requestPaint() }
         }
     }
 
