@@ -448,37 +448,44 @@ Window {
                     property int effectiveSlots: Math.max(totalSlots, minSlots)
                     property real effectiveOrbit: effectiveSlots * angleStep
 
-                    // Track last valid angle for smooth dragging
-                    property real lastValidAngle: 45  // Start in middle of visible range
-
-                    property real displayAngle: {
+                    // Normalized angle (wrapped to orbit range)
+                    property real normalizedAngle: {
                         var a = ((rawAngle % effectiveOrbit) + effectiveOrbit) % effectiveOrbit;
-                        var exitAngle = 90 + buffer;
-                        var entryAngle = buffer;
-                        if (a <= exitAngle) {
-                            lastValidAngle = a;
-                            return a;
-                        }
-                        if (a >= effectiveOrbit - entryAngle) {
-                            lastValidAngle = a - effectiveOrbit;
-                            return a - effectiveOrbit;
-                        }
-                        // Icon is in hidden zone - return marker
-                        return -999;
+                        return a;
                     }
 
-                    // Use last valid angle when dragging in hidden zone, otherwise use displayAngle
-                    property real renderAngle: (displayAngle === -999 && ringItem.isDragging) ? lastValidAngle : displayAngle
-                    property real angleRad: renderAngle * Math.PI / 180
+                    // Display angle - where icon should render
+                    property real displayAngle: {
+                        var a = normalizedAngle;
+                        var exitAngle = 90 + buffer;
+                        var entryAngle = buffer;
+                        // Visible range: -buffer to 90+buffer
+                        if (a <= exitAngle) return a;
+                        if (a >= effectiveOrbit - entryAngle) return a - effectiveOrbit;
+                        return -999;  // Hidden zone
+                    }
+
+                    // For rendering, clamp hidden zone to edges during drag
+                    property real renderAngle: {
+                        if (displayAngle !== -999) return displayAngle;
+                        if (!ringItem.isDragging) return displayAngle;
+                        // During drag in hidden zone, clamp to nearest edge
+                        var a = normalizedAngle;
+                        var midHidden = (90 + buffer + effectiveOrbit - buffer) / 2;
+                        return (a < midHidden) ? (90 + buffer) : (-buffer);
+                    }
+                    property real angleRad: (renderAngle === -999) ? 0 : (renderAngle * Math.PI / 180)
 
                     // Keep visible while dragging to prevent losing touch events
                     visible: ringItem.isDragging || (displayAngle >= -buffer && displayAngle <= 90 + buffer)
                     opacity: {
                         // During drag, keep full opacity
                         if (ringItem.isDragging) return 1;
-                        // Fade at edges using render angle
-                        if (renderAngle < 0) return Math.max(0, (renderAngle + buffer) / buffer);
-                        if (renderAngle > 90) return Math.max(0, (90 + buffer - renderAngle) / buffer);
+                        // Fade at edges
+                        var a = displayAngle;
+                        if (a === -999) return 0;
+                        if (a < 0) return Math.max(0, (a + buffer) / buffer);
+                        if (a > 90) return Math.max(0, (90 + buffer - a) / buffer);
                         return 1;
                     }
 
