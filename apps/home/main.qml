@@ -455,16 +455,20 @@ Window {
                     // Is icon on screen?
                     property bool onScreen: iconX > -iconSize && iconX < root.width && iconY > -iconSize && iconY < root.height
 
-                    // Edge wrapping: show copy when near edge of visible range
+                    // Edge wrapping: show copy when near edge
+                    // For single-icon rings: use visible range edges
+                    // For multi-icon rings: use 0° and 90° edges
                     property real edgeBuffer: 15
-                    property bool nearMinEdge: displayAngle < minVisibleAngle + edgeBuffer
-                    property bool nearMaxEdge: displayAngle > maxVisibleAngle - edgeBuffer
+                    property real effectiveMinEdge: appsInRing <= 1 ? minVisibleAngle : 0
+                    property real effectiveMaxEdge: appsInRing <= 1 ? maxVisibleAngle : 90
+                    property bool nearMinEdge: displayAngle < effectiveMinEdge + edgeBuffer
+                    property bool nearMaxEdge: displayAngle > effectiveMaxEdge - edgeBuffer
 
                     // Wrapped positions for edge copies
-                    property real wrapMinAngle: displayAngle + visibleRange  // Copy at max edge
-                    property real wrapMaxAngle: displayAngle - visibleRange  // Copy at min edge
-                    property real wrapMinRad: wrapMinAngle * Math.PI / 180
-                    property real wrapMaxRad: wrapMaxAngle * Math.PI / 180
+                    // Use 90° for multi-icon rings, visibleRange for single-icon rings
+                    property real wrapOffset: appsInRing <= 1 ? visibleRange : 90
+                    property real wrapMinAngle: displayAngle + wrapOffset  // Copy at max edge when near min
+                    property real wrapMaxAngle: displayAngle - wrapOffset  // Copy at min edge when near max
 
                     // Render primary and edge wrap copies
                     Repeater {
@@ -491,11 +495,9 @@ Window {
 
                             // Visibility logic
                             property bool myOnScreen: myX > -iconSize && myX < root.width && myY > -iconSize && myY < root.height
-                            // Edge copies only for single-icon rings
-                            property bool showEdgeCopy: slotContainer.appsInRing <= 1
                             visible: (isPrimary && myOnScreen) ||
-                                     (isMinEdgeCopy && showEdgeCopy && slotContainer.nearMinEdge && myOnScreen) ||
-                                     (isMaxEdgeCopy && showEdgeCopy && slotContainer.nearMaxEdge && myOnScreen)
+                                     (isMinEdgeCopy && slotContainer.nearMinEdge && myOnScreen) ||
+                                     (isMaxEdgeCopy && slotContainer.nearMaxEdge && myOnScreen)
 
                             opacity: 1
 
