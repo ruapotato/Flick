@@ -38,7 +38,7 @@ fi
 
 echo "Running: $QMLSCENE $QML_FILE" >> "$LOG_FILE"
 
-# Function to process output and handle launch signals
+# Function to process output and handle launch/haptic signals
 process_output() {
     while IFS= read -r line; do
         # Log the line
@@ -46,12 +46,21 @@ process_output() {
 
         # Check for launch signal
         if [[ "$line" == *"FLICK_LAUNCH_APP:"* ]]; then
-            # Extract path and data: FLICK_LAUNCH_APP:/path/to/file:{"id":"app","exec":"cmd"}
+            # Extract path and data: FLICK_LAUNCH_APP:/path/to/file:exec_command
             local rest="${line#*FLICK_LAUNCH_APP:}"
             local path="${rest%%:*}"
             local data="${rest#*:}"
             echo "Writing launch signal to $path: $data" >> "$LOG_FILE"
             echo "$data" > "$path"
+        fi
+
+        # Check for haptic signal: FLICK_HAPTIC:tap|click|heavy
+        if [[ "$line" == *"FLICK_HAPTIC:"* ]]; then
+            local haptic_type="${line#*FLICK_HAPTIC:}"
+            # Remove any trailing whitespace
+            haptic_type="${haptic_type%%[[:space:]]*}"
+            echo "Writing haptic signal: $haptic_type" >> "$LOG_FILE"
+            echo "$haptic_type" > "$STATE_DIR/haptic_signal"
         fi
     done
 }

@@ -1,5 +1,5 @@
 #!/bin/bash
-SCRIPT_DIR="/home/furios/flick-phosh/Flick/apps/contacts"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_FILE="${HOME}/.local/state/flick/qml_contacts.log"
 
 export QT_QPA_PLATFORM=wayland

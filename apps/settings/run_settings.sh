@@ -2,7 +2,7 @@
 # Wrapper script for Flick-Phosh Settings QML app
 # Simplified: only handles Effects and App Manager settings
 
-SCRIPT_DIR="/home/furios/flick-phosh/Flick/apps/settings"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 QML_FILE="${SCRIPT_DIR}/main.qml"
 LOG_FILE="${HOME}/.local/state/flick/qml_settings.log"
 

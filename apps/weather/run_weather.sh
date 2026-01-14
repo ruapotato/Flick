@@ -1,5 +1,5 @@
 #!/bin/bash
-SCRIPT_DIR="/home/furios/flick-phosh/Flick/apps/weather"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1

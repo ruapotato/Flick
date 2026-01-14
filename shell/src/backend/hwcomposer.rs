@@ -927,10 +927,10 @@ fn handle_input_event(
                             state.pending_app_touch_slot = Some(event.slot());
                             info!("TouchDown: Pending for context menu check (slot {})", slot_id);
                         } else {
-                            // Lock screen: forward immediately
+                            // Lock screen or Home view: forward immediately
                             touch.down(
                                 state,
-                                focus,
+                                focus.clone(),
                                 &smithay::input::touch::DownEvent {
                                     slot: event.slot(),
                                     location: touch_pos.to_f64(),
@@ -939,6 +939,20 @@ fn handle_input_event(
                                 },
                             );
                             touch.frame(state);
+
+                            // Also set keyboard focus so input goes to the window
+                            if let Some((ref surface, _)) = focus {
+                                if let Some(keyboard) = state.seat.get_keyboard() {
+                                    let kb_serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                                    keyboard.set_focus(state, Some(surface.clone()), kb_serial);
+                                    info!("TouchDown: Set keyboard focus to QML window");
+                                }
+                            }
+
+                            // Haptic feedback for touch on home screen
+                            if qml_home_active {
+                                state.system.haptic_tap();
+                            }
                         }
                     } else {
                         info!("TouchDown: No surface found for touch event");
@@ -1516,6 +1530,7 @@ fn handle_input_event(
                             // Write handedness config: left edge = left-handed, right edge = right-handed
                             crate::shell::write_handedness_config(is_right);
                             state.shell.set_view(crate::shell::ShellView::Home);
+                            state.focus_home_window(); // Focus the QML home window for input
                         }
 
                         // Reset gesture state
@@ -1540,6 +1555,7 @@ fn handle_input_event(
                             if *completed {
                                 info!("Swipe up from {} - going home", if shell_view == crate::shell::ShellView::Switcher { "Switcher" } else { "QuickSettings" });
                                 state.shell.set_view(crate::shell::ShellView::Home);
+                                state.focus_home_window(); // Focus the QML home window for input
                             }
                         } else if shell_view == crate::shell::ShellView::Home {
                             // From Home: open app switcher
@@ -2690,6 +2706,9 @@ pub fn run() -> Result<()> {
         // Check for app launch signal from QML home
         if let Some(exec_cmd) = state.shell.check_launch_signal() {
             info!("Launching app from QML home: {}", exec_cmd);
+            // Strong haptic feedback for app launch
+            state.system.haptic_click();
+
             // Extract app_id from command for logging purposes
             let app_id = if exec_cmd.contains("/apps/") {
                 exec_cmd.split("/apps/").nth(1)
@@ -2706,6 +2725,16 @@ pub fn run() -> Result<()> {
                     // Switch to App view after launching
                     state.shell.set_view(crate::shell::ShellView::App);
                 }
+            }
+        }
+
+        // Check for haptic signal from QML home
+        if let Some(haptic_type) = crate::shell::check_haptic_signal() {
+            match haptic_type.as_str() {
+                "tap" => state.system.haptic_tap(),
+                "click" => state.system.haptic_click(),
+                "heavy" => state.system.haptic_heavy(),
+                _ => {}
             }
         }
 
@@ -2874,6 +2903,7 @@ pub fn run() -> Result<()> {
             } else if back_pressed {
                 info!("Pick default back pressed");
                 state.shell.exit_pick_default();
+                state.focus_home_window(); // Focus the QML home window for input
             }
         }
 

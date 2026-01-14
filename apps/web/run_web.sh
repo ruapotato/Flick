@@ -1,7 +1,7 @@
 #!/bin/bash
 # Flick Web - Mobile web browser for Flick shell
 
-SCRIPT_DIR="/home/furios/flick-phosh/Flick/apps/web"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STATE_DIR="$HOME/.local/state/flick"
 LOG_FILE="${STATE_DIR}/web.log"
 

@@ -2,7 +2,7 @@
 # Flick Messages - SMS/MMS messaging for Flick shell
 # Uses ModemManager D-Bus for SMS
 
-SCRIPT_DIR="/home/furios/flick-phosh/Flick/apps/messages"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STATE_DIR="$HOME/.local/state/flick"
 LOG_FILE="${STATE_DIR}/messages.log"
 CMD_FILE="/tmp/flick_messages_cmd"

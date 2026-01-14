@@ -114,8 +114,9 @@ impl XwmHandler for Flick {
             // If no more X11 windows, switch to Home view
             let has_windows = self.space.elements().any(|w| w.x11_surface().is_some());
             if !has_windows {
-                tracing::info!("No more windows after unmap, switching to Home view");
+                tracing::info!("No more X11 windows after unmap, switching to Home view");
                 self.shell.set_view(crate::shell::ShellView::Home);
+                self.focus_home_window(); // Focus the QML home window for input
             }
         }
     }

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Wrapper script for QML notes app
 
-SCRIPT_DIR="/home/furios/flick-phosh/Flick/apps/notes"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 QML_FILE="${SCRIPT_DIR}/main.qml"
 LOG_FILE="${HOME}/.local/state/flick/qml_notes.log"
 DISPLAY_CONFIG="${HOME}/.local/state/flick/display_config.json"

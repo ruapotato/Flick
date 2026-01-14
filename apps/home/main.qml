@@ -159,6 +159,11 @@ Window {
         console.log("FLICK_LAUNCH_APP:" + signalPath + ":" + execCmd);
     }
 
+    // Trigger haptic feedback (tap, click, or heavy)
+    function haptic(type) {
+        console.log("FLICK_HAPTIC:" + type);
+    }
+
     // Visible slots for a ring (how many fit in 90 degree arc)
     function visibleSlots(radius) {
         var arcLength = (Math.PI / 2) * radius;
@@ -208,7 +213,7 @@ Window {
 
     property var rings: generateRings()
 
-    // Physics timer with gentle snap-to-grid
+    // Physics timer with gentle snap-to-grid and haptic feedback
     Timer {
         id: physicsTimer
         interval: 16
@@ -219,8 +224,19 @@ Window {
                 var ring = ringRepeater.itemAt(i);
                 if (!ring) continue;
 
+                var angleStep = ring.ringData.angleStep;
+
+                // Calculate current grid index for haptic feedback
+                var gridIndex = Math.floor(ring.ringRotation / angleStep);
+                if (gridIndex !== ring.lastGridIndex) {
+                    // Ring crossed a grid boundary - trigger haptic
+                    if (ring.isDragging || Math.abs(ring.velocity) > 0.5) {
+                        haptic("tap");
+                    }
+                    ring.lastGridIndex = gridIndex;
+                }
+
                 if (!ring.isDragging) {
-                    var angleStep = ring.ringData.angleStep;
                     var currentOffset = ((ring.ringRotation % angleStep) + angleStep) % angleStep;
                     var distToSnap = Math.min(currentOffset, angleStep - currentOffset);
                     var isAtGrid = distToSnap < 0.3;
@@ -378,6 +394,7 @@ Window {
             property real ringRotation: 0
             property real velocity: 0
             property bool isDragging: false
+            property int lastGridIndex: 0  // Track grid position for haptic feedback
 
             Repeater {
                 model: ringItem.ringData.totalSlots

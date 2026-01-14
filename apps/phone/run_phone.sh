@@ -2,7 +2,7 @@
 # Flick Phone - Native phone dialer for Flick shell
 # Uses oFono D-Bus for telephony
 
-SCRIPT_DIR="/home/furios/flick-phosh/Flick/apps/phone"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STATE_DIR="$HOME/.local/state/flick"
 LOG_FILE="${STATE_DIR}/phone.log"
 CMD_FILE="/tmp/flick_phone_cmd"

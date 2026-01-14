@@ -133,6 +133,31 @@ pub fn home_config_path() -> PathBuf {
     get_state_dir().join("home_config.json")
 }
 
+/// Path to haptic signal file (QML home writes, compositor reads)
+pub fn haptic_signal_path() -> PathBuf {
+    get_state_dir().join("haptic_signal")
+}
+
+/// Check for haptic signal from QML home
+/// Returns the haptic type if signal exists: "tap", "click", or "heavy"
+pub fn check_haptic_signal() -> Option<String> {
+    let haptic_path = haptic_signal_path();
+    if haptic_path.exists() {
+        match std::fs::read_to_string(&haptic_path) {
+            Ok(content) => {
+                // Clear the signal file
+                let _ = std::fs::remove_file(&haptic_path);
+                let haptic_type = content.trim().to_string();
+                if !haptic_type.is_empty() {
+                    return Some(haptic_type);
+                }
+            }
+            Err(_) => {}
+        }
+    }
+    None
+}
+
 /// Write handedness config for QML home to read
 /// right_handed: true = anchor bottom-right, false = anchor bottom-left
 pub fn write_handedness_config(right_handed: bool) {

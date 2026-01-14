@@ -561,12 +561,27 @@ impl Flick {
                 }
                 self.space.unmap_elem(&window);
 
-                // If no more windows, go to home screen
-                let has_windows = self.space.elements().any(|w| w.x11_surface().is_some() || w.toplevel().is_some());
-                if !has_windows {
-                    tracing::info!("No more windows, switching to Home view");
+                // If no more app windows (excluding QML home), go to home screen
+                let has_app_windows = self.space.elements().any(|w| {
+                    // Check if this is the QML home window by title
+                    if let Some(toplevel) = w.toplevel() {
+                        use smithay::wayland::compositor;
+                        let title = compositor::with_states(toplevel.wl_surface(), |states| {
+                            states.data_map
+                                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                .and_then(|data| data.lock().unwrap().title.clone())
+                        });
+                        // Exclude QML home window from the count
+                        title.as_deref() != Some("Flick Home")
+                    } else {
+                        w.x11_surface().is_some()
+                    }
+                });
+                if !has_app_windows {
+                    tracing::info!("No more app windows, switching to Home view");
                     self.shell.set_view(crate::shell::ShellView::Home);
                     self.shell.switcher_scroll = 0.0; // Reset switcher state
+                    self.focus_home_window(); // Focus the QML home window for input
                 }
             } else {
                 // Cancel - restore original position
@@ -582,6 +597,39 @@ impl Flick {
     /// Get keyboard height in pixels
     pub fn get_keyboard_height(&self) -> i32 {
         std::cmp::max(280, (self.screen_size.h as f32 * 0.32) as i32)
+    }
+
+    /// Focus the QML home window (if it exists)
+    /// Call this when switching to Home view to ensure input works
+    pub fn focus_home_window(&mut self) {
+        use smithay::wayland::compositor;
+
+        // Find the home window by title "Flick Home"
+        let home_window = self.space.elements().find(|window| {
+            if let Some(toplevel) = window.toplevel() {
+                let title = compositor::with_states(toplevel.wl_surface(), |states| {
+                    states.data_map
+                        .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                        .and_then(|data| data.lock().unwrap().title.clone())
+                });
+                title.as_deref() == Some("Flick Home")
+            } else {
+                false
+            }
+        }).cloned();
+
+        if let Some(window) = home_window {
+            if let Some(toplevel) = window.toplevel() {
+                let surface = toplevel.wl_surface().clone();
+                if let Some(keyboard) = self.seat.get_keyboard() {
+                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                    keyboard.set_focus(self, Some(surface), serial);
+                    tracing::info!("Set keyboard focus to QML home window");
+                }
+            }
+        } else {
+            tracing::debug!("No QML home window found to focus");
+        }
     }
 
     /// Start home gesture - find the top-most app window and track it for upward slide
@@ -751,6 +799,7 @@ impl Flick {
                 // Haptic feedback for returning to home
                 self.system.haptic_click();
                 self.shell.set_view(crate::shell::ShellView::Home);
+                self.focus_home_window(); // Focus the QML home window for input
 
                 // Restore window to original position (it will be hidden anyway)
                 if let Some(loc) = self.space.element_location(&window) {
@@ -1862,10 +1911,25 @@ impl XdgShellHandler for Flick {
             self.active_window = None;
         }
 
-        // If no more windows, return to Home view
-        if self.space.elements().count() == 0 {
-            tracing::info!("No more windows - returning to Home view");
+        // If no more app windows (excluding QML home), return to Home view
+        let has_app_windows = self.space.elements().any(|w| {
+            if let Some(toplevel) = w.toplevel() {
+                use smithay::wayland::compositor;
+                let title = compositor::with_states(toplevel.wl_surface(), |states| {
+                    states.data_map
+                        .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                        .and_then(|data| data.lock().unwrap().title.clone())
+                });
+                // Exclude QML home window from the count
+                title.as_deref() != Some("Flick Home")
+            } else {
+                w.x11_surface().is_some()
+            }
+        });
+        if !has_app_windows {
+            tracing::info!("No more app windows - returning to Home view");
             self.shell.set_view(crate::shell::ShellView::Home);
+            self.focus_home_window(); // Focus the QML home window for input
         }
     }
 }

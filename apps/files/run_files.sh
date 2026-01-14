@@ -3,7 +3,7 @@
 # Reads text_scale from Flick settings
 # Supports picker mode: --pick [--filter=images] [--start-dir=/path] [--result-file=/tmp/result]
 
-SCRIPT_DIR="/home/furios/flick-phosh/Flick/apps/files"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Support running from any user - default to droidian
 STATE_DIR="$HOME/.local/state/flick"
 LOG_FILE="${STATE_DIR}/files.log"
