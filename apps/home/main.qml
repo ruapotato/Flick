@@ -422,6 +422,16 @@ Window {
                     // Need wrap copy if clipped at an edge
                     property bool needsWrapCopy: clipTop > 0 || clipLeft > 0
 
+                    // Debug logging
+                    onDisplayAngleChanged: {
+                        if (slotData.app && ringItem.ringData.ringIndex === 7) {
+                            console.log("Ring7 slot" + slotIndex + ": angle=" + displayAngle.toFixed(1) +
+                                " pos=" + iconX.toFixed(0) + "," + iconY.toFixed(0) +
+                                " onScreen=" + onScreen + " clip=" + clipTop.toFixed(0) + "/" + clipLeft.toFixed(0) +
+                                " needsWrap=" + needsWrapCopy);
+                        }
+                    }
+
                     // Wrapped angle: shift by 90 degrees for the copy
                     property real wrappedAngle: displayAngle - 90
                     property real wrappedAngleRad: wrappedAngle * Math.PI / 180
