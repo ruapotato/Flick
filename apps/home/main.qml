@@ -292,6 +292,18 @@ Window {
 
                 console.log("ArcCanvas: anchor in canvas coords = " + ax + "," + ay + ", canvas size = " + width + "x" + height);
 
+                // DEBUG: Draw a bright marker at the anchor point
+                ctx.fillStyle = "#ff0000";
+                ctx.beginPath();
+                ctx.arc(ax, ay, 50, 0, Math.PI * 2);
+                ctx.fill();
+
+                // DEBUG: Also draw at (0,0) to see canvas origin
+                ctx.fillStyle = "#00ff00";
+                ctx.beginPath();
+                ctx.arc(0, 0, 50, 0, Math.PI * 2);
+                ctx.fill();
+
                 ctx.lineWidth = 3;
                 ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
 
