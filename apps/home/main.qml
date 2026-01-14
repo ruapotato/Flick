@@ -397,10 +397,34 @@ Window {
 
                     property real rawAngle: slotBaseAngle + ringItem.ringRotation
 
-                    // Simple angle wrapping to 0-90 range
+                    // Calculate the visible angle range for THIS ring based on screen size
+                    // At angle A: y = height - cos(A)*radius, x = width - sin(A)*radius (right-handed)
+                    // Icon visible when: y > -iconSize/2 and x > -iconSize/2
+                    property real minVisibleAngle: {
+                        // Min angle where icon y > -iconSize/2
+                        // height - cos(A)*radius > -iconSize/2
+                        // cos(A) < (height + iconSize/2) / radius
+                        var cosLimit = (root.height + iconSize/2) / ringRadius;
+                        if (cosLimit >= 1) return 0;
+                        if (cosLimit <= -1) return 90; // Can't see this ring at all at low angles
+                        return Math.acos(Math.min(1, cosLimit)) * 180 / Math.PI;
+                    }
+                    property real maxVisibleAngle: {
+                        // Max angle where icon x > -iconSize/2 (right-handed)
+                        // width - sin(A)*radius > -iconSize/2
+                        // sin(A) < (width + iconSize/2) / radius
+                        var sinLimit = (root.width + iconSize/2) / ringRadius;
+                        if (sinLimit >= 1) return 90;
+                        if (sinLimit <= 0) return 0; // Can't see this ring at high angles
+                        return Math.asin(Math.min(1, sinLimit)) * 180 / Math.PI;
+                    }
+                    property real visibleRange: Math.max(1, maxVisibleAngle - minVisibleAngle)
+
+                    // Wrap angle to visible range for this ring
                     property real displayAngle: {
-                        var a = ((rawAngle % 90) + 90) % 90;
-                        return a;
+                        var a = rawAngle - minVisibleAngle;
+                        a = ((a % visibleRange) + visibleRange) % visibleRange;
+                        return a + minVisibleAngle;
                     }
                     property real angleRad: displayAngle * Math.PI / 180
 
@@ -410,52 +434,48 @@ Window {
                         : anchorX + Math.sin(angleRad) * ringRadius - iconSize/2
                     property real iconY: anchorY - Math.cos(angleRad) * ringRadius - iconSize/2
 
-                    // Check how much icon is clipped off screen (in pixels)
-                    property real clipTop: Math.max(0, -iconY)  // How much above screen
-                    property real clipLeft: Math.max(0, -iconX)  // How much left of screen
-                    property real clipBottom: Math.max(0, iconY + iconSize - root.height)  // How much below screen
-                    property real clipRight: Math.max(0, iconX + iconSize - root.width)  // How much right of screen
+                    // Is icon on screen?
+                    property bool onScreen: iconX > -iconSize && iconX < root.width && iconY > -iconSize && iconY < root.height
 
-                    // Is icon at least partially on screen?
-                    property bool onScreen: iconX + iconSize > 0 && iconX < root.width && iconY + iconSize > 0 && iconY < root.height
+                    // Edge wrapping: show copy when near edge of visible range
+                    property real edgeBuffer: 15
+                    property bool nearMinEdge: displayAngle < minVisibleAngle + edgeBuffer
+                    property bool nearMaxEdge: displayAngle > maxVisibleAngle - edgeBuffer
 
-                    // Need wrap copy if clipped at an edge
-                    property bool needsWrapCopy: clipTop > 0 || clipLeft > 0
+                    // Wrapped positions for edge copies
+                    property real wrapMinAngle: displayAngle + visibleRange  // Copy at max edge
+                    property real wrapMaxAngle: displayAngle - visibleRange  // Copy at min edge
+                    property real wrapMinRad: wrapMinAngle * Math.PI / 180
+                    property real wrapMaxRad: wrapMaxAngle * Math.PI / 180
 
-                    // Debug logging
-                    onDisplayAngleChanged: {
-                        if (slotData.app && ringItem.ringData.ringIndex === 7) {
-                            console.log("Ring7 slot" + slotIndex + ": angle=" + displayAngle.toFixed(1) +
-                                " pos=" + iconX.toFixed(0) + "," + iconY.toFixed(0) +
-                                " onScreen=" + onScreen + " clip=" + clipTop.toFixed(0) + "/" + clipLeft.toFixed(0) +
-                                " needsWrap=" + needsWrapCopy);
-                        }
-                    }
-
-                    // Wrapped angle: shift by 90 degrees for the copy
-                    property real wrappedAngle: displayAngle - 90
-                    property real wrappedAngleRad: wrappedAngle * Math.PI / 180
-                    property real wrappedX: rightHanded
-                        ? anchorX - Math.sin(wrappedAngleRad) * ringRadius - iconSize/2
-                        : anchorX + Math.sin(wrappedAngleRad) * ringRadius - iconSize/2
-                    property real wrappedY: anchorY - Math.cos(wrappedAngleRad) * ringRadius - iconSize/2
-                    property bool wrappedOnScreen: wrappedX + iconSize > 0 && wrappedX < root.width && wrappedY + iconSize > 0 && wrappedY < root.height
-
-                    // Render primary and optionally wrapped copy
+                    // Render primary and edge wrap copies
                     Repeater {
-                        model: slotContainer.slotData.app ? 2 : 0  // Primary + 1 wrap copy
+                        model: slotContainer.slotData.app ? 3 : 0  // Primary + 2 edge copies
 
                         Rectangle {
                             id: iconRect
                             property bool isPrimary: index === 0
-                            property bool isWrapCopy: index === 1
+                            property bool isMinEdgeCopy: index === 1  // Shows at max when primary near min
+                            property bool isMaxEdgeCopy: index === 2  // Shows at min when primary near max
 
-                            // Position: primary uses iconX/Y, wrap copy uses wrappedX/Y
-                            x: isPrimary ? slotContainer.iconX : slotContainer.wrappedX
-                            y: isPrimary ? slotContainer.iconY : slotContainer.wrappedY
+                            // Calculate position for each copy
+                            property real myAngle: isPrimary ? slotContainer.displayAngle :
+                                                   isMinEdgeCopy ? slotContainer.wrapMinAngle :
+                                                   slotContainer.wrapMaxAngle
+                            property real myRad: myAngle * Math.PI / 180
+                            property real myX: rightHanded
+                                ? anchorX - Math.sin(myRad) * slotContainer.ringRadius - iconSize/2
+                                : anchorX + Math.sin(myRad) * slotContainer.ringRadius - iconSize/2
+                            property real myY: anchorY - Math.cos(myRad) * slotContainer.ringRadius - iconSize/2
 
-                            // Visible: primary if on screen, wrap copy if needed and on screen
-                            visible: (isPrimary && slotContainer.onScreen) || (isWrapCopy && slotContainer.needsWrapCopy && slotContainer.wrappedOnScreen)
+                            x: myX
+                            y: myY
+
+                            // Visibility logic
+                            property bool myOnScreen: myX > -iconSize && myX < root.width && myY > -iconSize && myY < root.height
+                            visible: (isPrimary && slotContainer.onScreen) ||
+                                     (isMinEdgeCopy && slotContainer.nearMinEdge && myOnScreen) ||
+                                     (isMaxEdgeCopy && slotContainer.nearMaxEdge && myOnScreen)
 
                             opacity: 1
 
