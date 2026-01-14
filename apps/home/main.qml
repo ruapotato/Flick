@@ -260,6 +260,7 @@ Window {
     Canvas {
         id: arcCanvas
         anchors.fill: parent
+        z: 100  // Draw on top of everything for debugging
         onPaint: {
             var ctx = getContext("2d");
             ctx.reset();
