@@ -420,11 +420,29 @@ Window {
                     }
                     property real visibleRange: Math.max(1, maxVisibleAngle - minVisibleAngle)
 
-                    // Wrap angle to visible range for this ring
+                    // Count apps in this ring
+                    property int appsInRing: {
+                        var count = 0;
+                        for (var i = 0; i < ringItem.ringData.slots.length; i++) {
+                            if (ringItem.ringData.slots[i].app) count++;
+                        }
+                        return count;
+                    }
+
+                    // Wrap angle based on ring type:
+                    // - Single icon rings: wrap to visible range (always visible)
+                    // - Multi icon rings: wrap to 90°, allow off-screen
                     property real displayAngle: {
-                        var a = rawAngle - minVisibleAngle;
-                        a = ((a % visibleRange) + visibleRange) % visibleRange;
-                        return a + minVisibleAngle;
+                        if (appsInRing <= 1) {
+                            // Single icon: always keep visible
+                            var a = rawAngle - minVisibleAngle;
+                            a = ((a % visibleRange) + visibleRange) % visibleRange;
+                            return a + minVisibleAngle;
+                        } else {
+                            // Multiple icons: use full 90° range
+                            var a = ((rawAngle % 90) + 90) % 90;
+                            return a;
+                        }
                     }
                     property real angleRad: displayAngle * Math.PI / 180
 
@@ -473,9 +491,11 @@ Window {
 
                             // Visibility logic
                             property bool myOnScreen: myX > -iconSize && myX < root.width && myY > -iconSize && myY < root.height
-                            visible: (isPrimary && slotContainer.onScreen) ||
-                                     (isMinEdgeCopy && slotContainer.nearMinEdge && myOnScreen) ||
-                                     (isMaxEdgeCopy && slotContainer.nearMaxEdge && myOnScreen)
+                            // Edge copies only for single-icon rings
+                            property bool showEdgeCopy: slotContainer.appsInRing <= 1
+                            visible: (isPrimary && myOnScreen) ||
+                                     (isMinEdgeCopy && showEdgeCopy && slotContainer.nearMinEdge && myOnScreen) ||
+                                     (isMaxEdgeCopy && showEdgeCopy && slotContainer.nearMaxEdge && myOnScreen)
 
                             opacity: 1
 
