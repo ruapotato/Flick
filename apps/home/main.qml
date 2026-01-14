@@ -256,61 +256,48 @@ Window {
         }
     }
 
-    // Draw separator arcs - simple Canvas directly on root
-    Canvas {
-        id: arcCanvas
-        anchors.fill: parent
-        z: -1  // Behind icons
+    // DEBUG: QML Rectangle at anchor point - should appear at bottom-right corner
+    Rectangle {
+        id: anchorMarker
+        x: anchorX - 50
+        y: anchorY - 50
+        width: 100
+        height: 100
+        radius: 50
+        color: "#ff0000"
+        z: 200  // On top of everything
+    }
 
-        onPaint: {
-            var ctx = getContext("2d");
-            ctx.reset();
-            ctx.clearRect(0, 0, width, height);
+    // Draw separator arcs using Repeater with QML items instead of Canvas
+    // This uses the EXACT same positioning as icons
+    Repeater {
+        id: arcRepeater
+        model: rings.length
 
-            if (width <= 0 || height <= 0) return;
+        Item {
+            id: arcItem
+            property real ringRadius: rings[index].radius
 
-            // Use the SAME anchor point as icons: anchorX, anchorY from root
-            var ax = root.anchorX;
-            var ay = root.anchorY;
+            // Draw arc as series of small dots
+            Repeater {
+                model: 45  // 45 dots for 90 degree arc
 
-            // DEBUG: Draw marker at anchor - should be at bottom-right corner
-            ctx.fillStyle = "#ff0000";
-            ctx.beginPath();
-            ctx.arc(ax, ay, 50, 0, Math.PI * 2);
-            ctx.fill();
+                Rectangle {
+                    property real dotAngle: index * 2  // 0 to 90 degrees
+                    property real angleRad: dotAngle * Math.PI / 180
 
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+                    x: rightHanded
+                        ? anchorX - Math.sin(angleRad) * arcItem.ringRadius - 2
+                        : anchorX + Math.sin(angleRad) * arcItem.ringRadius - 2
+                    y: anchorY - Math.cos(angleRad) * arcItem.ringRadius - 2
 
-            // Draw arc lines at each ring radius
-            for (var i = 0; i < rings.length; i++) {
-                var lineRadius = rings[i].radius;
-
-                ctx.beginPath();
-                if (rightHanded) {
-                    // Arc from left (PI) to up (3PI/2)
-                    ctx.arc(ax, ay, lineRadius, Math.PI, Math.PI * 1.5, false);
-                } else {
-                    // Arc from up (3PI/2) to right (2PI)
-                    ctx.arc(ax, ay, lineRadius, Math.PI * 1.5, Math.PI * 2, false);
+                    width: 4
+                    height: 4
+                    radius: 2
+                    color: "rgba(255, 255, 255, 0.3)"
+                    z: -1
                 }
-                ctx.stroke();
             }
-        }
-
-        Timer {
-            id: initialPaintTimer
-            interval: 100
-            running: true
-            onTriggered: arcCanvas.requestPaint()
-        }
-
-        Connections {
-            target: root
-            function onRightHandedChanged() { arcCanvas.requestPaint() }
-            function onWidthChanged() { arcCanvas.requestPaint() }
-            function onHeightChanged() { arcCanvas.requestPaint() }
-            function onRingsChanged() { arcCanvas.requestPaint() }
         }
     }
 
