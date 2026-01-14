@@ -282,26 +282,25 @@ Window {
                 endAngle = Math.PI * 2;      // 360 degrees (pointing right)
             }
 
-            // Calculate anchor at corner
-            var ax = rightHanded ? width : 0;
-            var ay = height;
+            // Use root's anchor point to ensure alignment with icons
+            var ax = anchorX;
+            var ay = anchorY;
 
             // Draw separator lines between orbits using same coordinate system as icons
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
             ctx.lineWidth = 2;
 
-            // Draw arc lines between each adjacent pair of rings
-            for (var i = 0; i < rings.length; i++) {
+            // Draw lines BETWEEN adjacent rings (n-1 lines for n rings)
+            for (var i = 0; i < rings.length - 1; i++) {
                 var currentRadius = rings[i].radius;
-                var nextRadius = (i + 1 < rings.length) ? rings[i + 1].radius : currentRadius + ringSpacing;
+                var nextRadius = rings[i + 1].radius;
                 var lineRadius = (currentRadius + nextRadius) / 2;
 
                 // Draw arc using same formula as icon positioning
-                // Icons use: x = anchorX -/+ sin(angle) * radius, y = anchorY - cos(angle) * radius
                 ctx.beginPath();
-                var numSegments = 30;
+                var numSegments = 45;
                 for (var j = 0; j <= numSegments; j++) {
-                    var angle = (j / numSegments) * (Math.PI / 2);  // 0 to 90 degrees in radians
+                    var angle = (j / numSegments) * (Math.PI / 2);  // 0 to 90 degrees
                     var px, py;
                     if (rightHanded) {
                         px = ax - Math.sin(angle) * lineRadius;
