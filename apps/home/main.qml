@@ -530,55 +530,49 @@ Window {
                         anchors.fill: parent
                         preventStealing: true  // Don't let parent steal touch events
 
-                        property real startX: 0
-                        property real startY: 0
+                        // Store GLOBAL coordinates to avoid instability from icon movement
+                        property real startGlobalX: 0
+                        property real startGlobalY: 0
                         property real startRotation: 0
-                        property real lastX: 0
-                        property real lastY: 0
+                        property real lastGlobalX: 0
+                        property real lastGlobalY: 0
                         property real lastTime: 0
                         property bool moved: false
 
-                        function calcRotationDelta(x1, y1, x2, y2) {
-                            // Use anchorX/anchorY from root (already accounts for handedness)
+                        // Calculate angle from anchor point to a global position
+                        function angleFromAnchor(gx, gy) {
                             var ax = anchorX;
                             var ay = anchorY;
-
-                            // Map to global coordinates (null = root window)
-                            var p1 = mapToItem(null, x1, y1);
-                            var p2 = mapToItem(null, x2, y2);
-
-                            // Safety check
-                            if (!p1 || !p2) return 0;
-
-                            // Calculate angles from anchor
-                            var angle1 = Math.atan2(p1.x - ax, ay - p1.y) * 180 / Math.PI;
-                            var angle2 = Math.atan2(p2.x - ax, ay - p2.y) * 180 / Math.PI;
-
-                            // Flip for right-handed
-                            if (rightHanded) {
-                                angle1 = -angle1;
-                                angle2 = -angle2;
-                            }
-
-                            return angle2 - angle1;
+                            var angle = Math.atan2(gx - ax, ay - gy) * 180 / Math.PI;
+                            return rightHanded ? -angle : angle;
                         }
 
                         onPressed: {
-                            startX = mouse.x;
-                            startY = mouse.y;
-                            lastX = mouse.x;
-                            lastY = mouse.y;
+                            // Convert to global immediately and store
+                            var global = mapToItem(null, mouse.x, mouse.y);
+                            startGlobalX = global.x;
+                            startGlobalY = global.y;
+                            lastGlobalX = global.x;
+                            lastGlobalY = global.y;
                             startRotation = ringItem.ringRotation;
                             lastTime = Date.now();
                             moved = false;
                             ringItem.isDragging = true;
                             ringItem.velocity = 0;
-                            console.log("TOUCH_DOWN ring=" + ringItem.ringData.ringIndex + " pos=" + mouse.x.toFixed(0) + "," + mouse.y.toFixed(0));
+                            console.log("TOUCH_DOWN ring=" + ringItem.ringData.ringIndex + " global=" + global.x.toFixed(0) + "," + global.y.toFixed(0));
                         }
 
                         onPositionChanged: {
-                            var delta = calcRotationDelta(lastX, lastY, mouse.x, mouse.y);
-                            var totalDelta = calcRotationDelta(startX, startY, mouse.x, mouse.y);
+                            // Convert current position to global
+                            var global = mapToItem(null, mouse.x, mouse.y);
+
+                            // Calculate angles directly from global positions
+                            var startAngle = angleFromAnchor(startGlobalX, startGlobalY);
+                            var lastAngle = angleFromAnchor(lastGlobalX, lastGlobalY);
+                            var currentAngle = angleFromAnchor(global.x, global.y);
+
+                            var delta = currentAngle - lastAngle;
+                            var totalDelta = currentAngle - startAngle;
 
                             var now = Date.now();
                             var dt = Math.max(1, now - lastTime);
@@ -586,13 +580,12 @@ Window {
                             ringItem.velocity = delta / dt * 16;
                             ringItem.ringRotation = startRotation + totalDelta;
 
-                            lastX = mouse.x;
-                            lastY = mouse.y;
+                            lastGlobalX = global.x;
+                            lastGlobalY = global.y;
                             lastTime = now;
 
                             if (Math.abs(totalDelta) > 3) {
                                 moved = true;
-                                console.log("DRAG ring=" + ringItem.ringData.ringIndex + " delta=" + totalDelta.toFixed(1) + " rot=" + ringItem.ringRotation.toFixed(1));
                             }
                         }
 
