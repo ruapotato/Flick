@@ -254,20 +254,8 @@ Window {
         }
     }
 
-    // DEBUG: QML Rectangle at anchor point - should appear at bottom-right corner
-    Rectangle {
-        id: anchorMarker
-        x: anchorX - 50
-        y: anchorY - 50
-        width: 100
-        height: 100
-        radius: 50
-        color: "#ff0000"
-        z: 200  // On top of everything
-    }
-
-    // Draw separator arcs using Repeater with QML items instead of Canvas
-    // This uses the EXACT same positioning as icons
+    // Draw separator arcs using Repeater with QML items
+    // Uses the same positioning formula as icons for perfect alignment
     Repeater {
         id: arcRepeater
         model: rings.length
@@ -402,59 +390,30 @@ Window {
                     property real angleStep: ringItem.ringData.angleStep
                     property int totalSlots: ringItem.ringData.totalSlots
 
+                    // Small offset from edge so icons don't clip at 0 degrees
                     property real startAngleForRing: Math.asin(Math.min(1, edgeMargin / ringRadius)) * 180 / Math.PI
                     property real slotBaseAngle: slotIndex * angleStep + startAngleForRing
 
                     property real rawAngle: slotBaseAngle + ringItem.ringRotation
+
+                    // Total orbit is the full wrap-around range
                     property real totalOrbit: totalSlots * angleStep
 
-                    property real iconAngularSize: (iconSize / ringRadius) * 180 / Math.PI * 0.5
-                    property real buffer: Math.min(15, iconAngularSize + 5)
-
-                    property int minSlots: Math.ceil((90 + buffer * 2) / angleStep)
-                    property int effectiveSlots: Math.max(totalSlots, minSlots)
-                    property real effectiveOrbit: effectiveSlots * angleStep
-
-                    // Normalized angle (wrapped to orbit range)
-                    property real normalizedAngle: {
-                        var a = ((rawAngle % effectiveOrbit) + effectiveOrbit) % effectiveOrbit;
+                    // Seamless wrapping: angle always in range [0, 90)
+                    // Icons instantly wrap from 90 back to 0
+                    property real displayAngle: {
+                        // First wrap to total orbit
+                        var a = ((rawAngle % totalOrbit) + totalOrbit) % totalOrbit;
+                        // Then wrap to visible 90-degree arc
+                        a = ((a % 90) + 90) % 90;
                         return a;
                     }
 
-                    // Display angle - where icon should render
-                    property real displayAngle: {
-                        var a = normalizedAngle;
-                        var exitAngle = 90 + buffer;
-                        var entryAngle = buffer;
-                        // Visible range: -buffer to 90+buffer
-                        if (a <= exitAngle) return a;
-                        if (a >= effectiveOrbit - entryAngle) return a - effectiveOrbit;
-                        return -999;  // Hidden zone
-                    }
+                    property real angleRad: displayAngle * Math.PI / 180
 
-                    // For rendering, clamp hidden zone to edges during drag
-                    property real renderAngle: {
-                        if (displayAngle !== -999) return displayAngle;
-                        if (!ringItem.isDragging) return displayAngle;
-                        // During drag in hidden zone, clamp to nearest edge
-                        var a = normalizedAngle;
-                        var midHidden = (90 + buffer + effectiveOrbit - buffer) / 2;
-                        return (a < midHidden) ? (90 + buffer) : (-buffer);
-                    }
-                    property real angleRad: (renderAngle === -999) ? 0 : (renderAngle * Math.PI / 180)
-
-                    // Keep visible while dragging to prevent losing touch events
-                    visible: ringItem.isDragging || (displayAngle >= -buffer && displayAngle <= 90 + buffer)
-                    opacity: {
-                        // During drag, keep full opacity
-                        if (ringItem.isDragging) return 1;
-                        // Fade at edges
-                        var a = displayAngle;
-                        if (a === -999) return 0;
-                        if (a < 0) return Math.max(0, (a + buffer) / buffer);
-                        if (a > 90) return Math.max(0, (90 + buffer - a) / buffer);
-                        return 1;
-                    }
+                    // Always visible - no hidden zone
+                    visible: slotData.app !== null
+                    opacity: 1
 
                     x: rightHanded
                         ? anchorX - Math.sin(angleRad) * ringRadius - width/2
