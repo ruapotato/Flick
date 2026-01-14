@@ -397,92 +397,57 @@ Window {
 
                     property real rawAngle: slotBaseAngle + ringItem.ringRotation
 
-                    // Calculate the actual visible angle range for this orbit
-                    // Outer orbits may have radius > screen height, so angle 0 is off-screen
-                    property real minVisibleAngle: {
-                        var maxCos = (root.height - iconSize/2) / ringRadius;
-                        if (maxCos >= 1) return 0;
-                        if (maxCos <= 0) return 45;
-                        return Math.acos(maxCos) * 180 / Math.PI;
+                    // Simple angle wrapping to 0-90 range
+                    property real displayAngle: {
+                        var a = ((rawAngle % 90) + 90) % 90;
+                        return a;
                     }
-                    property real maxVisibleAngle: {
-                        var maxSin = (root.width - iconSize/2) / ringRadius;
-                        if (maxSin >= 1) return 90;
-                        if (maxSin <= 0) return 45;
-                        return Math.asin(maxSin) * 180 / Math.PI;
-                    }
-                    property real visibleRange: maxVisibleAngle - minVisibleAngle
+                    property real angleRad: displayAngle * Math.PI / 180
 
-                    // Count apps in this ring to decide wrapping strategy
-                    property int appsInRing: {
-                        var count = 0;
-                        for (var i = 0; i < ringItem.ringData.slots.length; i++) {
-                            if (ringItem.ringData.slots[i].app) count++;
-                        }
-                        return count;
-                    }
+                    // Calculate pixel position
+                    property real iconX: rightHanded
+                        ? anchorX - Math.sin(angleRad) * ringRadius - iconSize/2
+                        : anchorX + Math.sin(angleRad) * ringRadius - iconSize/2
+                    property real iconY: anchorY - Math.cos(angleRad) * ringRadius - iconSize/2
 
-                    // Primary angle calculation:
-                    // - For rings with 1 app: wrap to stay always visible
-                    // - For rings with multiple apps: use full orbit, some may be off-screen
-                    property real primaryAngle: {
-                        if (appsInRing <= 1) {
-                            // Single app: always keep visible by wrapping to visible range
-                            var a = ((rawAngle % visibleRange) + visibleRange) % visibleRange;
-                            return a + minVisibleAngle;
-                        } else {
-                            // Multiple apps: use 90 degree orbit, allow off-screen
-                            var a = ((rawAngle % 90) + 90) % 90;
-                            return a;
-                        }
-                    }
+                    // Check how much icon is clipped off screen (in pixels)
+                    property real clipTop: Math.max(0, -iconY)  // How much above screen
+                    property real clipLeft: Math.max(0, -iconX)  // How much left of screen
+                    property real clipBottom: Math.max(0, iconY + iconSize - root.height)  // How much below screen
+                    property real clipRight: Math.max(0, iconX + iconSize - root.width)  // How much right of screen
 
-                    // Is this icon currently in the visible range?
-                    property bool inVisibleRange: primaryAngle >= minVisibleAngle - 15 && primaryAngle <= maxVisibleAngle + 15
+                    // Is icon at least partially on screen?
+                    property bool onScreen: iconX + iconSize > 0 && iconX < root.width && iconY + iconSize > 0 && iconY < root.height
 
-                    // For seamless carousel: primary + edge copies for wrap-around
+                    // Need wrap copy if clipped at an edge
+                    property bool needsWrapCopy: clipTop > 0 || clipLeft > 0
+
+                    // Wrapped angle: shift by 90 degrees for the copy
+                    property real wrappedAngle: displayAngle - 90
+                    property real wrappedAngleRad: wrappedAngle * Math.PI / 180
+                    property real wrappedX: rightHanded
+                        ? anchorX - Math.sin(wrappedAngleRad) * ringRadius - iconSize/2
+                        : anchorX + Math.sin(wrappedAngleRad) * ringRadius - iconSize/2
+                    property real wrappedY: anchorY - Math.cos(wrappedAngleRad) * ringRadius - iconSize/2
+                    property bool wrappedOnScreen: wrappedX + iconSize > 0 && wrappedX < root.width && wrappedY + iconSize > 0 && wrappedY < root.height
+
+                    // Render primary and optionally wrapped copy
                     Repeater {
-                        // 3 copies: at -range, 0, +range offset from primary
-                        model: slotContainer.slotData.app ? 3 : 0
+                        model: slotContainer.slotData.app ? 2 : 0  // Primary + 1 wrap copy
 
                         Rectangle {
                             id: iconRect
-                            // Use the orbit's visible range for wrap offsets
-                            property real wrapOffset: slotContainer.visibleRange
-                            property real copyOffset: (index - 1) * wrapOffset  // -range, 0, +range
-                            property real displayAngle: slotContainer.primaryAngle + copyOffset
+                            property bool isPrimary: index === 0
+                            property bool isWrapCopy: index === 1
 
-                            // Primary (index 1) visible if in range (or single-app ring)
-                            // Edge copies only during drag/momentum for smooth wrap animation
-                            property real edgeThreshold: Math.min(15, slotContainer.visibleRange * 0.2)
-                            property bool isPrimary: index === 1
-                            property bool isMoving: ringItem.isDragging || Math.abs(ringItem.velocity) > 0.1
+                            // Position: primary uses iconX/Y, wrap copy uses wrappedX/Y
+                            x: isPrimary ? slotContainer.iconX : slotContainer.wrappedX
+                            y: isPrimary ? slotContainer.iconY : slotContainer.wrappedY
 
-                            // For single-app rings, always visible; for multi-app, check range
-                            property bool primaryVisible: isPrimary && (slotContainer.appsInRing <= 1 || slotContainer.inVisibleRange)
+                            // Visible: primary if on screen, wrap copy if needed and on screen
+                            visible: (isPrimary && slotContainer.onScreen) || (isWrapCopy && slotContainer.needsWrapCopy && slotContainer.wrappedOnScreen)
 
-                            // Edge copies for wrap effect (only single-app rings need this)
-                            property bool isWrapFromTop: index === 0 && slotContainer.appsInRing <= 1 && isMoving && slotContainer.primaryAngle > (slotContainer.maxVisibleAngle - edgeThreshold)
-                            property bool isWrapFromBottom: index === 2 && slotContainer.appsInRing <= 1 && isMoving && slotContainer.primaryAngle < (slotContainer.minVisibleAngle + edgeThreshold)
-
-                            visible: primaryVisible || isWrapFromTop || isWrapFromBottom
-                            opacity: {
-                                // Fade at edges of visible range
-                                var a = displayAngle;
-                                var minA = slotContainer.minVisibleAngle;
-                                var maxA = slotContainer.maxVisibleAngle;
-                                var fadeZone = edgeThreshold;
-                                if (a < minA) return Math.max(0, (a - minA + fadeZone) / fadeZone);
-                                if (a > maxA) return Math.max(0, (maxA + fadeZone - a) / fadeZone);
-                                return 1;
-                            }
-
-                            property real angleRad: displayAngle * Math.PI / 180
-
-                            x: rightHanded
-                                ? anchorX - Math.sin(angleRad) * slotContainer.ringRadius - width/2
-                                : anchorX + Math.sin(angleRad) * slotContainer.ringRadius - width/2
-                            y: anchorY - Math.cos(angleRad) * slotContainer.ringRadius - height/2
+                            opacity: 1
 
                             width: iconSize
                             height: iconSize
@@ -517,7 +482,7 @@ Window {
                             MouseArea {
                                 anchors.fill: parent
                                 preventStealing: true
-                                enabled: parent.inRange
+                                enabled: parent.visible
 
                                 property real startGlobalX: 0
                                 property real startGlobalY: 0
