@@ -1185,6 +1185,18 @@ impl Shell {
         let state_dir = get_state_dir();
         let request_path = state_dir.join("keyboard_request");
 
+        // Debug: always log what we're checking (but only once per second to avoid spam)
+        static LAST_LOG: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let last = LAST_LOG.load(std::sync::atomic::Ordering::Relaxed);
+        if now_secs > last {
+            LAST_LOG.store(now_secs, std::sync::atomic::Ordering::Relaxed);
+            tracing::info!("Checking keyboard_request at {:?}, exists={}", request_path, request_path.exists());
+        }
+
         if request_path.exists() {
             tracing::info!("Found keyboard_request file at {:?}", request_path);
             match std::fs::read_to_string(&request_path) {
