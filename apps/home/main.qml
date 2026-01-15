@@ -4,7 +4,7 @@ import QtQuick.Window 2.15
 Window {
     id: root
     visible: true
-    visibility: Window.Maximized  // Allow compositor to resize for keyboard
+    visibility: Window.FullScreen
     title: "Flick Home"
     color: "#1a1a2e"
     flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnBottomHint
@@ -721,6 +721,7 @@ Window {
             radius: 20
             color: clearMouseArea.pressed ? "#4a4a5e" : "transparent"
             visible: searchActive
+            z: 10  // Above the search box mouse area
 
             Text {
                 anchors.centerIn: parent
@@ -735,16 +736,20 @@ Window {
                 onClicked: {
                     searchInput.text = "";
                     searchInput.focus = false;
+                    console.log("FLICK_KEYBOARD:hide");
                 }
             }
         }
 
+        // Make entire search box tappable to focus input
         MouseArea {
             anchors.fill: parent
-            propagateComposedEvents: true
+            z: -1  // Behind text input
             onClicked: {
+                console.log("Search box tapped - focusing input");
                 searchInput.forceActiveFocus();
-                mouse.accepted = false;
+                console.log("FLICK_KEYBOARD:show");
+                haptic("tap");
             }
         }
     }
