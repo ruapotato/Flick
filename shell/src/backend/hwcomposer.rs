@@ -4225,6 +4225,19 @@ fn render_frame(
                     gl::Clear(gl::COLOR_BUFFER_BIT);
                 }
             }
+
+            // Render keyboard overlay on top of QML home if keyboard is visible
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                if slint_ui.is_keyboard_visible() {
+                    slint::platform::update_timers_and_animations();
+                    slint_ui.set_view("app");  // Use app view to show keyboard overlay
+                    if let Some((width, height, pixels)) = slint_ui.render() {
+                        unsafe {
+                            gl::render_texture(width, height, &pixels, display.width, display.height);
+                        }
+                    }
+                }
+            }
         }
 
         // Render Slint fallback for lock screen when QML is not yet connected
