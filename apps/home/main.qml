@@ -17,7 +17,8 @@ Window {
     property string stateDir: "/home/furios/.local/state/flick"
 
     // Base unit for proportional sizing (based on smaller screen dimension)
-    property real baseUnit: Math.min(width, height)
+    // Use a reasonable default (480) until window is properly sized
+    property real baseUnit: Math.max(480, Math.min(width, height))
 
     // Configuration - all sizes are proportional to screen size
     // This ensures the layout looks good at any resolution/scale factor
@@ -239,6 +240,10 @@ Window {
     }
 
     property var rings: generateRings()
+
+    // Regenerate rings when screen size changes
+    onWidthChanged: if (width > 0 && height > 0) rings = generateRings()
+    onHeightChanged: if (width > 0 && height > 0) rings = generateRings()
 
     // Physics timer with gentle snap-to-grid and haptic feedback
     Timer {
