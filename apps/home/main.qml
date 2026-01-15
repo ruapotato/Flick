@@ -16,12 +16,25 @@ Window {
     // State directory - read from state_dir.txt written by run_home.sh
     property string stateDir: "/home/furios/.local/state/flick"
 
-    // Configuration - sizes scaled for phone display
-    // Icons are 180px, spacing must be larger to prevent overlap
-    property real iconSize: 180
-    property real firstRadius: 300  // First ring further from corner
-    property real ringSpacing: 250  // Distance between ring centers (spread orbits more)
-    property real arcSpacing: 380   // Arc distance between icons (4 icons on outer rings instead of 5)
+    // Base unit for proportional sizing (based on smaller screen dimension)
+    property real baseUnit: Math.min(width, height)
+
+    // Configuration - all sizes are proportional to screen size
+    // This ensures the layout looks good at any resolution/scale factor
+    property real iconSize: baseUnit * 0.18          // ~18% of screen width
+    property real firstRadius: baseUnit * 0.30      // First ring distance from corner
+    property real ringSpacing: baseUnit * 0.25      // Distance between ring centers
+    property real arcSpacing: baseUnit * 0.38       // Arc distance between icons
+
+    // Font sizes proportional to screen
+    property real labelFontSize: baseUnit * 0.022   // App label font size
+    property real searchFontSize: baseUnit * 0.05  // Search box font size
+    property real searchIconSize: baseUnit * 0.055  // Search icon size
+
+    // UI element sizes
+    property real searchBoxHeight: baseUnit * 0.09  // Search box height
+    property real searchBoxMargin: baseUnit * 0.06  // Top margin for search box
+    property real arcDotSize: Math.max(2, baseUnit * 0.006)  // Arc separator dots
 
     // Handedness: false = left-handed (anchor bottom-left), true = right-handed (anchor bottom-right)
     property bool rightHanded: true
@@ -31,7 +44,7 @@ Window {
     property real anchorY: height
 
     // Margin from edge for first column of icons
-    property real edgeMargin: iconSize/2 + 20
+    property real edgeMargin: iconSize/2 + baseUnit * 0.03
 
     // Ring colors - bright rainbow starting from magenta (contrasts with dark purple background)
     property var ringColors: [
@@ -303,13 +316,13 @@ Window {
                     property real angleRad: dotAngle * Math.PI / 180
 
                     x: rightHanded
-                        ? anchorX - Math.sin(angleRad) * arcItem.ringRadius - 2
-                        : anchorX + Math.sin(angleRad) * arcItem.ringRadius - 2
-                    y: anchorY - Math.cos(angleRad) * arcItem.ringRadius - 2
+                        ? anchorX - Math.sin(angleRad) * arcItem.ringRadius - arcDotSize/2
+                        : anchorX + Math.sin(angleRad) * arcItem.ringRadius - arcDotSize/2
+                    y: anchorY - Math.cos(angleRad) * arcItem.ringRadius - arcDotSize/2
 
-                    width: 4
-                    height: 4
-                    radius: 2
+                    width: arcDotSize
+                    height: arcDotSize
+                    radius: arcDotSize/2
                     color: "#4dffffff"
                     z: -1
                 }
@@ -540,7 +553,7 @@ Window {
                             radius: iconSize * 0.15
                             color: "#2a2a3e"
                             border.color: "#4a4a5e"
-                            border.width: 2
+                            border.width: Math.max(1, baseUnit * 0.004)
 
                             // App icon
                             Image {
@@ -633,12 +646,12 @@ Window {
                             // App name label below icon
                             Text {
                                 anchors.top: parent.bottom
-                                anchors.topMargin: 4
+                                anchors.topMargin: baseUnit * 0.008
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: slotContainer.slotData.app ? slotContainer.slotData.app.name : ""
                                 color: "white"
-                                font.pixelSize: 11
-                                width: iconSize + 10
+                                font.pixelSize: labelFontSize
+                                width: iconSize + baseUnit * 0.02
                                 horizontalAlignment: Text.AlignHCenter
                                 elide: Text.ElideRight
                                 opacity: 0.9
@@ -654,23 +667,23 @@ Window {
     Rectangle {
         id: searchBox
         anchors.top: parent.top
-        anchors.topMargin: 50
+        anchors.topMargin: searchBoxMargin
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width * 0.92
-        height: 70
-        radius: 35
+        height: searchBoxHeight
+        radius: searchBoxHeight / 2
         color: searchInput.activeFocus ? "#3a3a4e" : "#2a2a3e"
         border.color: searchInput.activeFocus ? "#6a6aff" : "#4a4a5e"
-        border.width: 3
+        border.width: Math.max(2, baseUnit * 0.005)
         opacity: searchInput.activeFocus || searchActive ? 1.0 : 0.7
 
         // Search icon
         Text {
             anchors.left: parent.left
-            anchors.leftMargin: 24
+            anchors.leftMargin: baseUnit * 0.04
             anchors.verticalCenter: parent.verticalCenter
             text: "\u{1F50D}" // magnifying glass emoji
-            font.pixelSize: 28
+            font.pixelSize: searchIconSize
             color: "#888"
         }
 
@@ -678,12 +691,12 @@ Window {
         TextInput {
             id: searchInput
             anchors.left: parent.left
-            anchors.leftMargin: 65
+            anchors.leftMargin: baseUnit * 0.12
             anchors.right: clearButton.left
-            anchors.rightMargin: 15
+            anchors.rightMargin: baseUnit * 0.025
             anchors.verticalCenter: parent.verticalCenter
             color: "white"
-            font.pixelSize: 24
+            font.pixelSize: searchFontSize
             clip: true
             onTextChanged: {
                 root.searchText = text;
@@ -705,7 +718,7 @@ Window {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Search apps..."
                 color: "#666"
-                font.pixelSize: 24
+                font.pixelSize: searchFontSize
                 visible: !searchInput.text && !searchInput.activeFocus
             }
         }
@@ -713,12 +726,13 @@ Window {
         // Clear button
         Rectangle {
             id: clearButton
+            property real buttonSize: searchBoxHeight * 0.6
             anchors.right: parent.right
-            anchors.rightMargin: 18
+            anchors.rightMargin: baseUnit * 0.03
             anchors.verticalCenter: parent.verticalCenter
-            width: 40
-            height: 40
-            radius: 20
+            width: buttonSize
+            height: buttonSize
+            radius: buttonSize / 2
             color: clearMouseArea.pressed ? "#4a4a5e" : "transparent"
             visible: searchActive
             z: 10  // Above the search box mouse area
@@ -727,7 +741,7 @@ Window {
                 anchors.centerIn: parent
                 text: "\u{2715}" // X symbol
                 color: "#888"
-                font.pixelSize: 22
+                font.pixelSize: searchFontSize * 0.9
             }
 
             MouseArea {
