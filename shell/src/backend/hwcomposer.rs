@@ -788,8 +788,10 @@ fn handle_input_event(
             let shell_view = state.shell.view;
             info!("TouchDown: shell_view={:?}, has_wayland_window={}", shell_view, has_wayland_window);
 
-            // Check if touch is on keyboard overlay (in App or LockScreen view with keyboard visible)
-            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App || shell_view == crate::shell::ShellView::LockScreen {
+            // Check if touch is on keyboard overlay (in App, LockScreen, or Home view with keyboard visible)
+            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App ||
+                                       shell_view == crate::shell::ShellView::LockScreen ||
+                                       shell_view == crate::shell::ShellView::Home {
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     if slint_ui.is_keyboard_visible() {
                         // Keyboard is ~32% of screen height at the bottom
@@ -1140,8 +1142,10 @@ fn handle_input_event(
             let has_wayland_window = state.space.elements().count() > 0;
             let shell_view = state.shell.view;
 
-            // Check if touch is on keyboard overlay (in App or LockScreen view with keyboard visible)
-            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App || shell_view == crate::shell::ShellView::LockScreen {
+            // Check if touch is on keyboard overlay (in App, LockScreen, or Home view with keyboard visible)
+            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App ||
+                                       shell_view == crate::shell::ShellView::LockScreen ||
+                                       shell_view == crate::shell::ShellView::Home {
                 if let Some(ref slint_ui) = state.shell.slint_ui {
                     if slint_ui.is_keyboard_visible() {
                         let screen_height = state.screen_size.h as f64;
@@ -1582,8 +1586,8 @@ fn handle_input_event(
             let has_wayland_window = state.space.elements().count() > 0;
             let shell_view = state.shell.view;
 
-            // Check if touch was on keyboard overlay (in App or LockScreen view with keyboard visible)
-            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App || shell_view == crate::shell::ShellView::LockScreen {
+            // Check if touch was on keyboard overlay (in App, LockScreen, or Home view with keyboard visible)
+            let touch_on_keyboard = if shell_view == crate::shell::ShellView::App || shell_view == crate::shell::ShellView::LockScreen || shell_view == crate::shell::ShellView::Home {
                 if let Some(pos) = last_pos {
                     if let Some(ref slint_ui) = state.shell.slint_ui {
                         if slint_ui.is_keyboard_visible() {
