@@ -703,18 +703,22 @@ Window {
             color: "white"
             font.pixelSize: searchFontSize
             clip: true
+            // Enable focus on click
+            activeFocusOnPress: true
+
+            // Handle text changes
             onTextChanged: {
                 root.searchText = text;
             }
+
+            // Request keyboard when focus changes
             onActiveFocusChanged: {
-                // Request keyboard show/hide from compositor
                 console.log("Search focus changed:", activeFocus);
                 if (activeFocus) {
                     console.log("FLICK_KEYBOARD:show");
                     haptic("tap");
-                } else {
-                    console.log("FLICK_KEYBOARD:hide");
                 }
+                // Don't auto-hide - let user dismiss keyboard manually
             }
 
             // Placeholder text
