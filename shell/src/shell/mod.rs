@@ -1182,29 +1182,20 @@ impl Shell {
     /// Check for keyboard visibility requests from apps (stub - not yet implemented)
     pub fn check_keyboard_request(&mut self) -> Option<bool> {
         // Check for keyboard request from QML home or other apps
-        let state_dir = get_state_dir();
-        let request_path = state_dir.join("keyboard_request");
+        // Use same pattern as haptic check - try to read directly, check multiple paths
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/droidian".to_string());
+        let keyboard_paths = [
+            format!("{}/.local/state/flick/keyboard_request", home),
+            "/tmp/flick_keyboard_request".to_string(),
+        ];
 
-        // Debug: always log what we're checking (but only once per second to avoid spam)
-        static LAST_LOG: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let now_secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let last = LAST_LOG.load(std::sync::atomic::Ordering::Relaxed);
-        if now_secs > last {
-            LAST_LOG.store(now_secs, std::sync::atomic::Ordering::Relaxed);
-            tracing::info!("Checking keyboard_request at {:?}, exists={}", request_path, request_path.exists());
-        }
-
-        if request_path.exists() {
-            tracing::info!("Found keyboard_request file at {:?}", request_path);
-            match std::fs::read_to_string(&request_path) {
-                Ok(content) => {
-                    // Clear the request file
-                    let _ = std::fs::remove_file(&request_path);
-                    let action = content.trim();
-                    tracing::info!("Keyboard request action: '{}'", action);
+        for keyboard_file in &keyboard_paths {
+            if let Ok(content) = std::fs::read_to_string(keyboard_file) {
+                let action = content.trim();
+                if !action.is_empty() {
+                    tracing::info!("Keyboard request from {}: '{}'", keyboard_file, action);
+                    // Clear the file after reading
+                    let _ = std::fs::remove_file(keyboard_file);
                     match action {
                         "show" => return Some(true),
                         "hide" => return Some(false),
@@ -1212,9 +1203,6 @@ impl Shell {
                             tracing::warn!("Unknown keyboard action: '{}'", action);
                         }
                     }
-                }
-                Err(e) => {
-                    tracing::error!("Failed to read keyboard_request: {}", e);
                 }
             }
         }

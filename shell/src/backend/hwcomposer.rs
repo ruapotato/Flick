@@ -3013,6 +3013,15 @@ pub fn run() -> Result<()> {
             }
         }
 
+        // Check for keyboard requests even when blanked (process any pending requests)
+        if let Some(show_keyboard) = state.shell.check_keyboard_request() {
+            info!("Keyboard request received: show={}", show_keyboard);
+            if let Some(ref slint_ui) = state.shell.slint_ui {
+                slint_ui.set_keyboard_visible(show_keyboard);
+                state.resize_windows_for_keyboard(show_keyboard);
+            }
+        }
+
         // Skip rendering if display is blanked
         if state.shell.display_blanked {
             // Still need to dispatch events but don't render
@@ -3042,18 +3051,6 @@ pub fn run() -> Result<()> {
 
         // Check for haptic requests from apps (via /tmp/flick_haptic)
         state.system.check_app_haptic();
-
-        // Check for keyboard requests from QML home or apps
-        if let Some(show_keyboard) = state.shell.check_keyboard_request() {
-            info!("Keyboard request received: show={}", show_keyboard);
-            if let Some(ref slint_ui) = state.shell.slint_ui {
-                info!("Keyboard request: setting visibility to {}", show_keyboard);
-                slint_ui.set_keyboard_visible(show_keyboard);
-                state.resize_windows_for_keyboard(show_keyboard);
-            } else {
-                error!("Keyboard request: slint_ui is None!");
-            }
-        }
 
         // Check for media status updates from player apps
         state.system.check_media();
