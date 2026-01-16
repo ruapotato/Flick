@@ -1,5 +1,24 @@
 # Flick Compositor - Development Notes
 
+## DEPLOYMENT (CLAUDE: USE THIS!)
+
+**SSH to phone:**
+```bash
+ssh phone
+```
+
+**Deploy and build:**
+```bash
+ssh phone "cd ~/Flick && git pull && cd shell && cargo build --release"
+```
+
+**Restart compositor:**
+```bash
+ssh phone "sudo systemctl restart flick"
+```
+
+---
+
 ## BUILD INSTRUCTIONS (CLAUDE: READ THIS FIRST)
 
 You are in charge of building on the phone directly. The shell cannot be built on standard desktop due to missing hardware libraries (libhybris, hwcomposer).

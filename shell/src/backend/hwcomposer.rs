@@ -1786,7 +1786,7 @@ fn handle_input_event(
                                             }
                                         }
                                         KeyboardAction::Enter => {
-                                            state.shell.word_predictor.reset();
+                                            state.shell.word_predictor.clear_word();
                                             if let Some(ref slint_ui) = state.shell.slint_ui {
                                                 slint_ui.set_keyboard_predictions("", "", "");
                                             }
@@ -1847,7 +1847,7 @@ fn handle_input_event(
                                                     }
                                                 }
                                             }
-                                            state.shell.word_predictor.reset();
+                                            state.shell.word_predictor.clear_word();
                                             if let Some(ref slint_ui) = state.shell.slint_ui {
                                                 slint_ui.set_keyboard_predictions("", "", "");
                                             }
