@@ -12,6 +12,10 @@ Window {
     // Search/filter state
     property string searchText: ""
     property bool searchActive: searchText.length > 0
+    property bool keyboardVisible: searchInput.activeFocus
+
+    // Track previous keyboard state for auto-regenerate
+    property bool lastKeyboardVisible: false
 
     // State directory - read from state_dir.txt written by run_home.sh
     property string stateDir: "/home/furios/.local/state/flick"
@@ -202,8 +206,26 @@ Window {
     // Generate ring data
     function generateRings() {
         var result = [];
-        var appIndex = 0;
         var maxRings = 8;
+
+        // When searching with keyboard visible, filter and repack apps into inner rings
+        var appsToShow = [];
+        if (searchActive && keyboardVisible) {
+            // Filter to matching apps only
+            for (var i = 0; i < apps.length; i++) {
+                if (appMatchesSearch(apps[i])) {
+                    appsToShow.push(apps[i]);
+                }
+            }
+            // Limit rings when keyboard is up - keyboard takes ~32% of screen
+            // so we can show about 4 rings max above it
+            maxRings = 4;
+        } else {
+            // Show all apps in normal layout
+            appsToShow = apps.slice();
+        }
+
+        var appIndex = 0;
 
         for (var ringIndex = 0; ringIndex < maxRings; ringIndex++) {
             var radius = firstRadius + (ringIndex * ringSpacing);
@@ -212,8 +234,8 @@ Window {
 
             // Collect apps for this ring
             var ringApps = [];
-            while (appIndex < apps.length && ringApps.length < visSlots) {
-                ringApps.push(apps[appIndex]);
+            while (appIndex < appsToShow.length && ringApps.length < visSlots) {
+                ringApps.push(appsToShow[appIndex]);
                 appIndex++;
             }
 
@@ -244,6 +266,19 @@ Window {
     // Regenerate rings when screen size changes
     onWidthChanged: if (width > 0 && height > 0) rings = generateRings()
     onHeightChanged: if (width > 0 && height > 0) rings = generateRings()
+
+    // Regenerate rings when keyboard visibility changes
+    onKeyboardVisibleChanged: {
+        console.log("Keyboard visible changed to:", keyboardVisible);
+        rings = generateRings();
+    }
+
+    // Regenerate when search text changes (to repack matching apps)
+    onSearchTextChanged: {
+        if (keyboardVisible) {
+            rings = generateRings();
+        }
+    }
 
     // Physics timer with gentle snap-to-grid and haptic feedback
     Timer {
